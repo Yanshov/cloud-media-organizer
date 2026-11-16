@@ -83,9 +83,9 @@ async function imports(){
  assert.deepEqual(ui.locks,[true,false]);assert.equal(ui.get('transfer').disabled,false);
  ui.locks.length=0;await ui.get('manifest').onchange({target:{files:[{text:async()=>{throw Error('read broke')}}]}});assert.deepEqual(ui.locks,[true,false]);assert.match(ui.get('progress').textContent,/read broke/);
  const ui2=panel();
- const ctx2=load(part('    function initGuangya(', '    const MEDIA_VIDEO'),{
+ const ctx2=load(part('    async function runGuangyaImportFiles(', '    function initGuangya(')+part('    function initGuangya(', '    const MEDIA_VIDEO'),{
   VERSION:'2.21.0',makePanel:()=>ui2,bindExportHistory:noop,panelControls:ui=>[ui.get('jsonFile'),ui.get('start')],capture:{token:'test'},
-  currentGuangyaFolder:()=>({id:'0',path:'根目录'}),page:{addEventListener:noop,history:{pushState:noop,replaceState:noop}},appendLog:noop,
+  currentGuangyaFolder:()=>({id:'0',path:'根目录'}),page:{addEventListener:noop,history:{pushState:noop,replaceState:noop}},appendLog:noop,jsonTaskStopped:false,
   normalizeFiles:x=>x,alignGuangyaImport:files=>({files,alignedPath:''}),paced:(_ms,f)=>f,directoryResolver:()=>async()=>'',guangyaSource:()=>({children:async()=>[]}),sleep:async()=>{}
  });
  ctx2.initGuangya();ui2.get('syncExisting').checked=false;
@@ -94,6 +94,21 @@ async function imports(){
  assert.deepEqual(ui2.locks,[true,false]);assert.equal(ui2.get('start').disabled,false);
  ui2.locks.length=0;await ui2.get('jsonFile').onchange({target:{files:[{text:async()=>{throw Error('broken')}}]}});assert.deepEqual(ui2.locks,[true,false]);assert.match(ui2.get('progress').textContent,/broken/);
  console.log('PASS audit imports: one lock across file read/import, no transient unlock; both UIs release after errors/early return; cancelled file chooser does not import pasted JSON');
+}
+async function importRunner(){
+ let stopped=false,submissions=0,directories=0;const logs=[];const valid={name:'same.mkv',path:'same.mkv',type:'file',size:1,md5:'a'.repeat(32)};
+ const ctx=load(part('    async function runGuangyaImportFiles(', '    function initGuangya('),{
+  relativeParts:path=>path?path.split('/'):[],existingFileMessage:(node,file)=>{if(node.md5!==file.md5)throw Error('同名内容不同，未覆盖');return '相同文件，跳过'},
+  importFile:async()=>{submissions++;return {status:'pending',message:'await check'}},sleep:async()=>{},
+ });
+ const files=[{...valid},{...valid,name:'pending.mkv',path:'pending.mkv'},{name:'folder',path:'folder',type:'directory'},{...valid,name:'conflict.mkv',path:'conflict/conflict.mkv'}];
+ const existing={children:async({id})=>id==='root'?[valid]:id==='root/conflict'?[{...valid,name:'conflict.mkv',md5:'c'.repeat(32)}]:[]};
+ const ensure=async path=>{if(path==='folder')directories++;return path==='conflict'?'root/conflict':path?'root/'+path:'root'};
+ const counts=await ctx.runGuangyaImportFiles(files,'root',async()=>({}),ensure,existing,(message,event)=>logs.push({message,event}),()=>{if(stopped)throw Object.assign(Error('stopped'),{stop:true,cancelled:true})});
+ assert.deepEqual({...counts},{saved:0,pending:1,missed:0,failed:1,directories:1,skipped:1,processed:4});assert.equal(directories,1);assert.equal(submissions,1);assert.equal(logs.filter(x=>x.event).length,4);
+ stopped=true;const before=submissions;const halted=await ctx.runGuangyaImportFiles([{...valid}],'root',async()=>({}),ensure,existing,noop,()=>{if(stopped)throw Object.assign(Error('stopped'),{stop:true,cancelled:true})});
+ assert.equal(submissions,before);assert.equal(halted.processed,1);assert.equal(halted.failed,1);
+ console.log('PASS Guangya import runner: same-name skip, content conflict, pending result, directories, progress events and cancellation before writes');
 }
 async function extras(){
  const extra={id:'e',parentId:'p',name:'Extras',directory:true},nested={id:'n',parentId:'e',name:'nested',directory:true},video={id:'v',parentId:'n',name:'main.mkv'};
@@ -171,4 +186,4 @@ async function sharedHelpers(){
  console.log('PASS shared helpers: FIFO bounds; auth headers; &/and grouping, specials and canonical aliases; numeric titles, years, ambiguity and movie isolation retained');
 }
 
-(async()=>{await sharedHelpers();await manifests();await languageAndLinking();await guangyaListing();await replacements();await imports();await extras();await openSubtitles();historyAndAI()})().catch(e=>{console.error(e);process.exitCode=1});
+(async()=>{await sharedHelpers();await manifests();await languageAndLinking();await guangyaListing();await replacements();await imports();await importRunner();await extras();await openSubtitles();historyAndAI()})().catch(e=>{console.error(e);process.exitCode=1});

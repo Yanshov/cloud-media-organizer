@@ -502,6 +502,46 @@
         }
         return counts;
     }
+    async function runGuangyaImportFiles(files, targetId, post, ensureDirectory, existingSource, log, check) {
+        const counts = { saved: 0, pending: 0, missed: 0, failed: 0, directories: 0, skipped: 0, processed: 0 };
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i], label = `[${i + 1}/${files.length}] ${file.path}`;
+            counts.processed++;
+            try {
+                check();
+                log(label, { index: i + 1, total: files.length, path: file.path });
+                if (file.type === 'directory') {
+                    await ensureDirectory(file.path);
+                    counts.directories++;
+                    log(label + '：目录已就绪');
+                } else {
+                    const parent = await ensureDirectory(relativeParts(file.path).slice(0, -1).join('/'));
+                    check();
+                    const matches = (await existingSource.children({ id: parent || (targetId === '0' ? '' : targetId) })).filter(node => node.name === file.name);
+                    if (matches.length > 1) throw new Error('目标存在多个同名项目，未上传');
+                    if (matches.length) {
+                        const message = existingFileMessage(matches[0], file);
+                        counts.skipped++;
+                        log(label + '：' + message);
+                    } else {
+                        check();
+                        const result = await importFile(file, parent || targetId, post);
+                        if (result.status === 'saved') counts.saved++;
+                        else if (result.status === 'pending') counts.pending++;
+                        else counts.missed++;
+                        log(label + '：' + result.message);
+                        if (result.stop) { log('任务已停止，不再处理后续项目'); break; }
+                    }
+                }
+            } catch (error) {
+                counts.failed++;
+                log(label + '：失败，' + error.message);
+                if (error.stop || error.cancelled) { log('任务已停止，不再处理后续项目'); break; }
+            }
+            if ((i + 1) % 128 === 0) await sleep(0);
+        }
+        return counts;
+    }
     function initGuangya() {
         const ui = makePanel(`光鸭跨盘 JSON ${VERSION}`, `
             <p id="status"></p><p id="target"></p><p id="progress"></p>
@@ -590,7 +630,7 @@
             } catch (error) { log('无法开始：' + error.message); ui.get('progress').textContent = '导入失败：' + error.message; return; }
             if (alignedPath) log(`清单中的 /${alignedPath} 就是当前目录，直接复用，不再重复嵌套`);
             if (!files.length) { ui.get('progress').textContent = '清单目录就是当前目录，没有需要导入的子项目'; return; }
-            let saved = 0, pending = 0, missed = 0, failed = 0, processed = 0, directories = 0, skipped = 0;
+            let counts = null;
             let cancelled = false, setupError = '', replacementCounts = null;
             const token = capture.token;
             const post = paced(650, (endpoint, body) => requestJson(`https://api.guangyapan.com${endpoint}`, {
@@ -615,37 +655,12 @@
                     refreshHistorySummary(ui, '光鸭');
                     return;
                 }
-                for (let i = 0; i < files.length; i++) {
-                    const f = files[i];
-                    processed++;
-                    ui.get('progress').textContent = `导入进度：${i + 1}/${files.length}（已处理 ${Math.floor(i * 100 / files.length)}%） ${f.path}`;
-                    const label = `[${i + 1}/${files.length}] ${f.path}`;
-                    try {
-                        if (f.type === 'directory') {
-                            await ensureDirectory(f.path);
-                            directories++;
-                            log(label + '：目录已就绪');
-                        } else {
-                            const target = await ensureDirectory(relativeParts(f.path).slice(0, -1).join('/'));
-                            const matches = (await existingSource.children({id:target})).filter(node => node.name === f.name);
-                            if (matches.length > 1) throw new Error('目标存在多个同名项目，未上传');
-                            if (matches.length) {
-                                const message = existingFileMessage(matches[0], f);
-                                skipped++; log(label + '：' + message); continue;
-                            }
-                            const result = await importFile(f, target, post);
-                            if (result.status === 'saved') saved++;
-                            else if (result.status === 'pending') pending++;
-                            else missed++;
-                            log(label + '：' + result.message);
-                            if (result.stop) { log('任务已停止，不再处理后续项目'); break; }
-                        }
-                    } catch (error) {
-                        failed++; log(label + '：失败，' + error.message);
-                        if (error.stop) { log('任务已停止，不再处理后续项目'); break; }
-                    }
-                    if ((i + 1) % 128 === 0) await sleep(0);
-                }
+                counts = await runGuangyaImportFiles(files, parentId, post, ensureDirectory, existingSource,
+                    (message, event) => {
+                        if (event) ui.get('progress').textContent = `导入进度：${event.index}/${event.total}（已处理 ${Math.floor((event.index - 1) * 100 / event.total)}%） ${event.path}`;
+                        log(message);
+                    },
+                    () => { if (jsonTaskStopped) throw Object.assign(new Error('已停止后续请求；已提交的操作请刷新目录核对'), { stop: true, cancelled: true }); });
             } catch (error) {
                 setupError = error.message;
                 log('导入未完成：' + setupError);
@@ -654,8 +669,11 @@
                     const c = replacementCounts;
                     const incomplete = c.pending + c.missed + c.failed + c.skipped + c.cleanupFailed + files.length - c.processed;
                     ui.get('progress').textContent = `${incomplete ? '未全部完成' : '完成'}：新版已验证 ${c.verified}，新导入 ${c.imported}，复用 ${c.reused}，旧文件已删除 ${c.deleted}，空旧目录已清理 ${c.directories}；待确认 ${c.pending}，未命中 ${c.missed}，失败 ${c.failed}，跳过 ${c.skipped}，旧版清理失败 ${c.cleanupFailed}，未处理 ${files.length - c.processed}。`;
-                } else ui.get('progress').textContent = cancelled ? '已取消，未修改网盘文件' : setupError ? '导入未完成：' + setupError : `导入结束：已处理 ${processed}/${files.length} 项；确认生成 ${saved}，同名跳过 ${skipped}，待确认 ${pending}，未命中 ${missed}，失败 ${failed}，目录就绪 ${directories}。`;
-                if (!replacementCounts) log(`结束：文件已确认生成 ${saved}，同名跳过 ${skipped}，待确认 ${pending}，秒传未命中 ${missed}；目录就绪 ${directories}，失败项目 ${failed}，未处理 ${files.length - processed}。`);
+                } else if (counts) {
+                    const { saved, pending, missed, failed, processed, directories, skipped } = counts;
+                    ui.get('progress').textContent = `导入结束：已处理 ${processed}/${files.length} 项；确认生成 ${saved}，同名跳过 ${skipped}，待确认 ${pending}，未命中 ${missed}，失败 ${failed}，目录就绪 ${directories}。`;
+                } else ui.get('progress').textContent = cancelled ? '已取消，未修改网盘文件' : setupError ? '导入未完成：' + setupError : '导入未开始';
+                if (counts) log(`结束：文件已确认生成 ${counts.saved}，同名跳过 ${counts.skipped}，待确认 ${counts.pending}，秒传未命中 ${counts.missed}；目录就绪 ${counts.directories}，失败项目 ${counts.failed}，未处理 ${files.length - counts.processed}。`);
                 if (!cancelled) log('请刷新目录核对结果；未完成项目保留旧版，已验证的新版可在下次复用。');
                 lockedTarget = null;
                 refreshStatus();

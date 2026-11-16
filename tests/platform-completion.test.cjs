@@ -72,12 +72,12 @@ async function guangyaExisting(){
  const ui={get:id=>{if(!elements.has(id))elements.set(id,{value:'',disabled:false,checked:false,textContent:''});return elements.get(id)},busy(){},onActivate(){}};
  const base=core().api;
  const start=script.indexOf('    function initGuangya('),end=script.indexOf('    const MEDIA_VIDEO',start);
- const ctx=vm.createContext({URL,VERSION:version,makePanel:()=>ui,bindExportHistory(){},panelControls:()=>[],capture:{token:'test'},currentGuangyaFolder:()=>({id:'42',path:'target'}),
+ const ctx=vm.createContext({URL,VERSION:version,makePanel:()=>ui,bindExportHistory(){},panelControls:()=>[],capture:{token:'test'},jsonTaskStopped:false,currentGuangyaFolder:()=>({id:'42',path:'target'}),
   page:{addEventListener(){},history:{pushState(){},replaceState(){}}},appendLog:(_ui,message)=>logs.push(message),normalizeFiles:x=>x,alignGuangyaImport:files=>({files,alignedPath:''}),
   paced:(_ms,fn)=>fn,directoryResolver:()=>async()=> '42',guangyaSource:()=>({children:async()=>{reads++;return children}}),relativeParts:value=>value.split('/'),
   existingFileMessage:(node,file)=>{if(node.directory||node.size!==file.size||node.md5!==file.md5)throw Error('同名内容不同，未覆盖');return '已有相同文件，跳过'},
   importFile:async()=>{submissions++;return {status:'saved',message:'confirmed'}},sleep:async()=>{}});
- vm.runInContext(script.slice(start,end),ctx);ctx.initGuangya();
+ vm.runInContext(script.slice(script.indexOf('    async function runGuangyaImportFiles('),start)+script.slice(start,end),ctx);ctx.initGuangya();
  const file={path:'test.mkv',name:'test.mkv',md5:'a'.repeat(32),size:1};
  ui.get('json').value=JSON.stringify([file]);ui.get('syncExisting').checked=false;
  children=[{...file,id:'x'}];await ui.get('start').onclick();assert.equal(submissions,0);assert.match(ui.get('progress').textContent,/同名跳过 1/);
