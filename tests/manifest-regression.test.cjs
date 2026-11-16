@@ -27,7 +27,7 @@ function languageAndLinking(){
  })();
 }
 async function guangyaListing(){
- const ctx=load(core+part('    async function readPages(', '    function decimalId(')+part('    async function guangyaListPage(', '    async function requestJson(')+part('    function guangyaSource(', '    function replacementJournalKey('),{
+ const ctx=load(core+part('    async function readPages(', '    function decimalId(')+part('    async function guangyaListPage(', '    function currentGuangyaFolder(')+part('    function guangyaSource(', '    function replacementJournalKey('),{
   API:{list:'/list',mkdir:'/mkdir'},paced:(_ms,fn)=>fn,guangyaCode:r=>r.code,apiError:()=>Object.assign(Error('api'),{stop:true}),readExportHistory:()=>({}),
 
   decimalId:v=>Number.isSafeInteger(v)&&v>=0?String(v):typeof v==='string'&&/^\d+$/.test(v)?v:null,

@@ -198,60 +198,6 @@
         }
         return { status: 'pending', message: `接口已报告秒传命中，8 次查询仍在处理；请稍后刷新目录核对。任务 ID：${taskId}` };
     }
-    async function guangyaListPage(post, parentId, page, loaded = 0) {
-        const response = await post(API.list, { parentId: parentId === '0' ? '' : parentId, page: page - 1, pageSize: 100, dirType: 0, orderBy: 0, sortType: 0, fileTypes: [], resType: 0, needPlayRecord: false, needSubFolderStat: true });
-        if (guangyaCode(response) !== 0) throw apiError('读取光鸭目录', response);
-        const data = response.data === undefined ? {} : response.data;
-        if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('光鸭目录响应格式异常，未将其视为空目录');
-        const total = nonNegativeInteger(data.total);
-        if (data.list !== undefined && !Array.isArray(data.list) || data.list === undefined && (data.hasMore === true || total > 0))
-            throw new Error(`光鸭目录列表不完整（目录 ID：${parentId || '根目录'}），未将其视为空目录`);
-        const items = data.list || [];
-        const more = typeof data.hasMore === 'boolean' ? data.hasMore : total != null ? loaded + items.length < total : items.length >= 100;
-        return { items, more, total };
-    }
-    function directoryResolver(rootId, post, log = () => {}) {
-        const folders = new Map([['', Promise.resolve(rootId === '0' ? '' : rootId)]]);
-        const listings = new Map();
-        async function children(parentId) {
-            if (!listings.has(parentId)) listings.set(parentId, readPages((number, count) => guangyaListPage(post, parentId, number, count), file => decimalId(file.fileId)).then(items => {
-                const names = new Map();
-                for (const item of items) names.set(item.fileName, names.has(item.fileName) ? null : item);
-                return names;
-            }));
-            return listings.get(parentId);
-        }
-        async function ensure(path) {
-            if (folders.has(path)) return folders.get(path);
-            const parts = relativeParts(path);
-            const pending = (async () => {
-                const parentId = await ensure(parts.slice(0, -1).join('/'));
-                const name = parts.at(-1);
-                const names = await children(parentId);
-                if (names.has(name)) {
-                    const item = names.get(name);
-                    if (!item || Number(item.resType) !== 2) throw new Error('同名文件或多个同名目录，无法确定目标：' + path);
-                    const id = decimalId(item.fileId);
-                    if (!id || id === '0' || id === parentId) throw new Error('目标目录 ID 无效：' + path);
-                    log('使用已有目录：' + path);
-                    return id;
-                }
-                let response;
-                try { response = await post(API.mkdir, { parentId, dirName: name, failIfNameExist: true }); }
-                catch (error) { throw Object.assign(new Error('创建目录请求异常，结果待核对：' + path + '；' + error.message + '；该目录下的后续项目将跳过'), { stop: error.stop }); }
-                if (guangyaCode(response) !== 0) throw apiError('创建目录 ' + path, response);
-                const id = decimalId(response.data?.fileId);
-                if (!id || id === '0' || id === parentId) throw new Error('创建目录未返回有效 ID，请刷新核对：' + path);
-                names.set(name, { fileId: id, fileName: name, resType: 2 });
-                listings.set(id, Promise.resolve(new Map()));
-                log('已创建目录：' + path);
-                return id;
-            })();
-            folders.set(path, pending);
-            return pending;
-        }
-        return ensure;
-    }
     async function requestJson(url, options = {}) {
         if (jsonTaskStopped) throw Object.assign(new Error('已停止后续请求；已提交的操作请刷新目录核对'), {stop:true, cancelled:true});
         const controller = new AbortController();
