@@ -227,16 +227,19 @@
                 if (parsed.endEpisode && parsed.endEpisode !== parsed.episode) throw new Error('合并多集视频需单独选字幕');
                 const episode = parsed.tv ? 'S' + String(parsed.season).padStart(2,'0') + 'E' + String(parsed.episode).padStart(2,'0') : '';
                 const terms = [...new Set([title + (episode ? ' ' + episode : ''), title])];
-                const candidates = [], seen = new Set(), aliases = new Set(parsed.aliases || []);
+                const candidates = [], seen = new Map(), aliases = new Set(parsed.aliases || []);
                 const excluded = {年份:0,季集:0,语言:0,待确认上限:0};
                 let pages = 0, rejected = 0, uncertain = 0;
                 const wanted = (config.language || 'zh-cn,zh-tw,zh').split(',');
                 const preferred = candidate => candidate.titleMatched && (wanted.includes(candidate.language) || candidate.bilingual && wanted.includes('en'));
                 const seasonKey = parsed.tv ? JSON.stringify([config.assrtToken,title.toLowerCase(),parsed.year || '',parsed.tmdbId || '',parsed.season]) : '';
+                let cacheMiss = false;
                 const collect = async item => {
                     check();
-                    if (!item.id || seen.has(String(item.id))) return false;
-                    seen.add(String(item.id));
+                    if (!item.id) return false;
+                    const id = String(item.id), fileSignature = Array.isArray(item.filelist) && item.filelist.length ? JSON.stringify(item.filelist.map(file => file.f)) : '';
+                    if (seen.has(id) && (!fileSignature || seen.get(id) === fileSignature)) return false;
+                    seen.set(id, fileSignature || seen.get(id) || '');
                     const release = [item.native_name,item.videoname].filter(value => value && !/^(?:不知道|未知|不详|unknown)$/i.test(value.trim())).join(' · '), langs = item.lang?.langlist || {};
                     const language = langs.langchs ? 'zh-cn' : langs.langcht ? 'zh-tw' : langs.langdou ? 'zh' : langs.langeng ? 'en' : '';
                     const pack = {source:'Assrt', assrtId:item.id, release, language, parsed:{...parsed,aliases:[...aliases]}};
@@ -285,13 +288,10 @@
                     log('Assrt 整季复用', `${title} · ${episode} · 复查 ${cached.size} 组已确认资源 · 匹配 ${candidates.filter(preferred).length} 份`);
                     const selection = {node:row.node || {name:''}, candidates:[...candidates]};
                     selectSubtitleCandidate(selection, config.language || 'zh-cn,zh-tw,zh');
-                    if (!selection.selectedCandidate) {
-                        // A newer search may include files missing from the cached package snapshot.
-                        seen.clear(); candidates.length = 0; uncertain = 0; rejected = 0;
-                        for (const reason of Object.keys(excluded)) excluded[reason] = 0;
-                    }
+                    // Keep cached IDs and candidates so fresh search pages do not re-expand the same packages.
+                    cacheMiss = !selection.selectedCandidate;
                 }
-                if (!candidates.some(preferred)) for (const q of terms) {
+                if (cacheMiss || !candidates.some(preferred)) for (const q of terms) {
                     for (let pos = 0; pos < 75; pos += 15) {
                         check(); pages++;
                         const key = JSON.stringify(['assrt',config.assrtToken,q,pos]);

@@ -212,6 +212,18 @@
         return { videos: pending, linked, unmatched: unmatched.filter(sub => pendingParents.has(sub.parentId)), skipped: videos.length - pending.length };
     }
     const tmdbClients = new Map();
+    async function mediaSeasonEpisodes(client, seriesId, seasonNumber) {
+        const path = '/tv/' + seriesId + '/season/' + seasonNumber;
+        const [season, english] = await Promise.all([client.get(path), client.get(path, { language: 'en-US' }).catch(() => null)]);
+        const englishEpisodes = english?.episodes || [];
+        return {
+            year: (season.air_date || '').slice(0, 4),
+            episodes: (season.episodes || []).map(episode => ({
+                ...episode,
+                aliases: [...new Set([episode.name, englishEpisodes.find(item => item.episode_number === episode.episode_number)?.name].filter(Boolean))]
+            }))
+        };
+    }
     function tmdbClient(credential) {
         credential = credential.trim();
         if (!credential) throw new Error('请先填写 TMDB API Key 或 API Read Access Token');
@@ -236,12 +248,14 @@
             evict(cache, 500);
             return entry.promise;
         };
-        const client = { get, async search(query) {
+        const client = { get, async search(query, earlyStop = null) {
             const first = await get('/search/multi', { query, include_adult: 'false' });
             const results = [...first.results];
+            if (earlyStop && await earlyStop(results)) return [...new Map(results.filter(r => ['movie', 'tv'].includes(r.media_type)).map(r => [r.media_type + ':' + r.id, r])).values()];
             for (let page = 2; page <= Math.min(first.total_pages || 1, 5); page++) {
                 const next = await get('/search/multi', { query, include_adult: 'false', page });
                 results.push(...next.results);
+                if (earlyStop && await earlyStop(results)) break;
             }
             return [...new Map(results.filter(r => ['movie', 'tv'].includes(r.media_type)).map(r => [r.media_type + ':' + r.id, r])).values()];
         } };

@@ -25,6 +25,31 @@ function types() {
     console.log('PASS media types: single episode and AI TV retained; count alone never decides; confirmed choice wins; conflicting hints require confirmation');
 }
 
+async function tmdbSearchAndEpisodeAliases() {
+    let calls=0;
+    const clientContext=load(part('    const tmdbClients =', '    function mediaGuangyaPost('),{
+        paced:(_delay,fn)=>fn,
+        requestJson:async raw=>{calls++;const page=Number(new URL(raw).searchParams.get('page')||1);return {results:[{id:page,media_type:'movie',title:'Film'}],total_pages:5};}
+    });
+    const client=clientContext.tmdbClient('fixture-token');
+    const early=await client.search('Film',results=>results.length===1);assert.equal(early.length,1);assert.equal(calls,1,'Unique first-page match stops pagination');
+    calls=0;const later=await client.search('Other',results=>results.length>=3);assert.equal(later.length,3);assert.equal(calls,3,'Search continues only until callback accepts accumulated results');
+    const episodeContext=load(part('    async function mediaSeasonEpisodes(', '    function tmdbClient('));
+    const season=await episodeContext.mediaSeasonEpisodes({get:async(path,params={})=>params.language==='en-US'?{episodes:[{episode_number:1,name:'Crimson Sky'}]}:{air_date:'2024-01-01',episodes:[{episode_number:1,name:'血色天空'}]}},42,1);
+    assert.equal(season.year,'2024');assert.deepEqual(Array.from(season.episodes[0].aliases),['血色天空','Crimson Sky']);
+    const fallback=await episodeContext.mediaSeasonEpisodes({get:async(_path,params={})=>{if(params.language)throw Error('English unavailable');return {episodes:[{episode_number:1,name:'血色天空'}]}}},42,1);
+    assert.deepEqual(Array.from(fallback.episodes[0].aliases),['血色天空'],'English lookup failure retains local season results');
+    console.log('PASS TMDB efficiency and episodes: unique match stops page fetches; English episode aliases augment Chinese names; English lookup failure falls back');
+}
+
+function aiProviderKey() {
+    const values={mediaAIProvider:{value:'qwen'},mediaAIKey:{value:'secret'},mediaAIBase:{value:''},mediaAIModel:{value:''},mediaAIState:{textContent:''}};
+    const handler=part("        ui.get('mediaAIProvider').onchange", "        ui.get('mediaAIModelSelect').onchange");
+    const ctx=load(handler,{ui:{get:id=>values[id]},aiPresets:{qwen:{base:'https://api.example',model:'qwen-model',link:'https://example'}},updateAILink(){},showAIModels(){},invalidate(){}});
+    values.mediaAIProvider.onchange();assert.equal(values.mediaAIKey.value,'secret');assert.equal(values.mediaAIBase.value,'https://api.example');assert.equal(values.mediaAIModel.value,'qwen-model');
+    console.log('PASS AI provider switching: key remains while provider presets update');
+}
+
 async function subtitles() {
     const ctx=load(part('    function subtitleDownloadUrl(', '    function subtitleDrive('),{Blob});
     const video={id:'v',parentId:'p',name:'电影.2000.mkv',size:10000};
@@ -210,12 +235,13 @@ async function subtitleUI() {
     const get=id=>{assert.ok(elements.has(id),'Missing UI element '+id);return elements.get(id)};
     const video={id:'v',name:'电影.2000.mkv',size:10000,folders:[],path:'电影.2000.mkv'};
     const sub={id:'s',name:'电影.2000.zh-cn.srt'};
-    let broken=true,hasSubtitle=true,queries=0,saves=0,reads=0,aliasCalls=0;
+    let broken=true,hasSubtitle=true,queries=0,saves=0,reads=0,aliasCalls=0,panelMarkup='',movedSettings=[];
     const downloads=[];
     const ctx=load(part('    function subtitleDownloadUrl(', '    function subtitleDrive('));
     Object.assign(ctx,{document:{createElement:element},makePanel:(_title,html)=>{
+        panelMarkup=html;
         for(const tag of html.matchAll(/<[^>]+\bid="([^"]+)"[^>]*>/g)){const el=element();el.checked=/\bchecked\b/.test(tag[0]);el.disabled=/\bdisabled\b/.test(tag[0]);elements.set(tag[1],el)}
-        return {get,moveSettings(){},openSettings(){},busy(){}};
+        return {get,moveSettings(ids){movedSettings=ids},openSettings(){},busy(){}};
     },mediaContext:async()=>({selected:[video],source:{},path:'电影'}),selectedTreeCache:{stale:true},
     collectMediaSelection:async()=>({videos:[video],linked:new Map([['v',hasSubtitle?[sub]:[]]])}),
     parseMediaName:()=>({query:'电影',year:2000}),mediaBonusName:()=>false,mediaRecords:{get:()=>({query:'电影',year:2000,type:'movie',match:'movie:7'})},mediaStem:name=>name.replace(/\.[^.]+$/,''),
@@ -227,6 +253,8 @@ async function subtitleUI() {
     });
     vm.runInContext(part('    function subtitleInventory(', '    if (location.hostname'),ctx);
     ctx.initSubtitles();get('assrtToken').value='test';
+    assert.match(panelMarkup,/复制完整报告/);assert.match(panelMarkup,/复制未补齐路径/);assert.match(panelMarkup,/OpenSubtitles 账号（提高下载配额，可选）/);
+    assert.deepEqual(Array.from(movedSettings),['subtitleSettings','subtitleAccountSettings']);
     await get('readSubtitles').onclick();
     assert.match(get('subtitleSummary').textContent,/待核验 1/);assert.equal(queries,0);assert.equal(get('fillSubtitles').disabled,true);assert.equal(get('searchSubtitles').disabled,true);assert.equal(get('recheckSubtitles').disabled,false);
     broken=false;await get('recheckSubtitles').onclick();assert.match(get('subtitleSummary').textContent,/已有\/已补齐 1/);assert.equal(queries,0);assert.equal(reads,2);
@@ -269,4 +297,4 @@ async function guangyaReceipts() {
     console.log('PASS Guangya: rapid upload and signed OSS byte upload; readback failure, missing task and accepted-task auth failure retain receipt; explicit rejection clears receipt; recheck recovers with one create only');
 }
 
-(async()=>{types();await subtitles();await receipts();await folders();await cleanup();await subtitleUI();await guangyaReceipts();})().catch(e=>{console.error(e);process.exitCode=1;});
+(async()=>{types();aiProviderKey();await tmdbSearchAndEpisodeAliases();await subtitles();await receipts();await folders();await cleanup();await subtitleUI();await guangyaReceipts();})().catch(e=>{console.error(e);process.exitCode=1;});

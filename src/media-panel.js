@@ -114,10 +114,9 @@
         };
         ui.get('mediaAIProvider').onchange = () => {
             const preset = aiPresets[ui.get('mediaAIProvider').value];
-            ui.get('mediaAIKey').value = '';
             if (preset) { ui.get('mediaAIBase').value = preset.base; ui.get('mediaAIModel').value = preset.model; }
             updateAILink(); showAIModels(); invalidate();
-            ui.get('mediaAIState').textContent = '服务商已切换，请填入对应密钥，再获取模型列表。';
+            ui.get('mediaAIState').textContent = '服务商已切换；如密钥不同，请手动更新后获取模型列表。';
         };
         ui.get('mediaAIModelSelect').onchange = () => {
             const value = ui.get('mediaAIModelSelect').value;
@@ -155,10 +154,10 @@
             input.oninput = () => { change(input.value); invalidate(); };
             input.onchange = () => label.startsWith('搜索片名') ? undefined : refreshPreview(); return input;
         };
-        const key = text => text.normalize('NFKC').toLowerCase().replace(/[\p{P}\p{Z}\s]/gu, '');
+        const key = titleKey;
         const peers = row => rows.filter(r => r.group === row.group);
         const readyRow = row => {
-            if (!row.detail || row.error) return false;
+            if (!row.detail || row.error || !row.type || !row.title || !row.year) return false;
             try { mediaPath(row); return true; } catch { return false; }
         };
         const skipRows = async targets => {
@@ -338,15 +337,15 @@
                     else if (regular.length === 1) row.season = regular[0].season_number;
                 }
                 if (row.type === 'tv' && row.season != null) {
-                    const season = await client.get('/tv/' + row.detail.id + '/season/' + row.season);
-                    row.seasonEpisodes = season.episodes || [];
-                    row.seasonYear = (season.air_date || '').slice(0, 4);
+                    const season = await mediaSeasonEpisodes(client, row.detail.id, row.season);
+                    row.seasonEpisodes = season.episodes;
+                    row.seasonYear = season.year;
                     if (row.episode == null) {
                         const parsed = parseMediaName(row.node.name, row.node.folders || []);
                         if (parsed.episode != null) { row.episode = parsed.episode; row.endEpisode = parsed.endEpisode; }
                         else {
                             const original = key(mediaStem(row.node.name));
-                            const matches = row.seasonEpisodes.filter(ep => { const title = key(ep.name || ''); return title.length >= 3 && original.includes(title); });
+                            const matches = row.seasonEpisodes.filter(ep => (ep.aliases || [ep.name]).some(name => { const title = key(name || ''); return title.length >= 3 && original.includes(title); }));
                             if (matches.length === 1) { row.episode = matches[0].episode_number; row.episodeInferred = true; }
                         }
                     }
@@ -395,8 +394,6 @@
                 checkStopped();
                 if (!query) throw new Error('未提取到片名，请填写搜索片名后重新匹配');
                 let candidates = [], lookupError = '';
-                try { candidates = await client.search(query); }
-                catch (error) { lookupError = error.message; }
                 const reference = group.find(row => row.tv) || group[0];
                 const reliable = async list => {
                     const preference = mediaCandidatePreference(reference);
@@ -411,6 +408,8 @@
                     }
                     return matches;
                 };
+                try { candidates = await client.search(query, async results => (await reliable(results)).length === 1); }
+                catch (error) { lookupError = error.message; }
                 const exact = await reliable(candidates);
                 for (const row of group) row.candidates = candidates;
                 if (exact.length !== 1) {

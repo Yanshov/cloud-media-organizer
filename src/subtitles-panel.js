@@ -22,7 +22,7 @@
             <details id="subtitleDiagnostics"><summary>字幕运行日志</summary><div class="panel-actions"><button id="copySubtitleLog">复制日志</button><button id="clearSubtitleLog">清空日志</button></div><textarea id="subtitleLog" readonly rows="8" spellcheck="false" aria-label="字幕运行日志" style="width:100%;font:12px/1.45 monospace;resize:vertical"></textarea></details>
             <label><input id="onlyChoiceSubtitles" type="checkbox" checked>只看待选择</label>
             <div id="subtitleRows"></div>
-            <div class="panel-actions"><button id="searchSubtitles" disabled>重搜未完成项</button><button id="copyMissingSubtitles" disabled>复制缺失清单</button><button id="copySubtitleReport" disabled>复制查询结果</button></div>
+            <div class="panel-actions"><button id="searchSubtitles" disabled>重搜未完成项</button><button id="copyMissingSubtitles" disabled>复制未补齐路径</button><button id="copySubtitleReport" disabled>复制完整报告</button></div>
             <details id="subtitleSettings"><summary>字幕来源与 API 设置</summary>
             <label><input id="useAssrt" type="checkbox" checked>Assrt 射手网 · 按片名搜索</label>
             <label><span class="credential-head"><span>Assrt API Token</span><a href="https://assrt.net/api/user/token" target="_blank" rel="noopener noreferrer">获取 Token ↗</a></span><input id="assrtToken" type="password" autocomplete="off"></label>
@@ -35,10 +35,11 @@
             <label><input id="useShooter" type="checkbox" checked>射手 · 网盘视频片段哈希匹配（免 Key）</label>
             <p>仅取四段各 4KB 视频数据，不下载完整视频。网盘拒绝分段读取时跳过该来源。<a href="https://www.shooter.cn/" target="_blank" rel="noopener noreferrer">射手官网 ↗</a></p>
             <div class="panel-actions"><button id="saveSubtitleSettings">保存设置</button><button id="forgetSubtitleKey">清除凭证</button></div>
-            <details><summary>OpenSubtitles 账号登录（下载需要时）</summary><label>用户名<input id="subtitleUsername" autocomplete="off"></label><label>密码<input id="subtitlePassword" type="password" autocomplete="off"></label><button id="loginSubtitles">登录</button><p id="subtitleLoginState">未登录；密码不保存，令牌仅本页有效。</p></details></details>
+            </details>
+            <details id="subtitleAccountSettings"><summary>OpenSubtitles 账号（提高下载配额，可选）</summary><label>用户名<input id="subtitleUsername" autocomplete="off"></label><label>密码<input id="subtitlePassword" type="password" autocomplete="off"></label><button id="loginSubtitles">登录</button><p id="subtitleLoginState">未登录；密码不保存，令牌仅本页有效。</p></details>
             <p>仅检查外置字幕，不检测内嵌字幕。保留原字幕格式；同名不同内容不覆盖。中文内容检查不区分简繁，简繁筛选依赖来源语言标注。</p>
 `, 'subtitle');
-        ui.moveSettings(['subtitleSettings']);
+        ui.moveSettings(['subtitleSettings','subtitleAccountSettings']);
         let inventory = [], drive = null, busy = false, cancelled = false;
         const service = createSubtitleService({check:() => check(), log:(event, detail) => diag(event, detail)});
         const prefs = GM_getValue('cross-drive-subtitle-settings', {});

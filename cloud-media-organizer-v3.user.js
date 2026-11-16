@@ -2167,6 +2167,18 @@
         return { videos: pending, linked, unmatched: unmatched.filter(sub => pendingParents.has(sub.parentId)), skipped: videos.length - pending.length };
     }
     const tmdbClients = new Map();
+    async function mediaSeasonEpisodes(client, seriesId, seasonNumber) {
+        const path = '/tv/' + seriesId + '/season/' + seasonNumber;
+        const [season, english] = await Promise.all([client.get(path), client.get(path, { language: 'en-US' }).catch(() => null)]);
+        const englishEpisodes = english?.episodes || [];
+        return {
+            year: (season.air_date || '').slice(0, 4),
+            episodes: (season.episodes || []).map(episode => ({
+                ...episode,
+                aliases: [...new Set([episode.name, englishEpisodes.find(item => item.episode_number === episode.episode_number)?.name].filter(Boolean))]
+            }))
+        };
+    }
     function tmdbClient(credential) {
         credential = credential.trim();
         if (!credential) throw new Error('请先填写 TMDB API Key 或 API Read Access Token');
@@ -2191,12 +2203,14 @@
             evict(cache, 500);
             return entry.promise;
         };
-        const client = { get, async search(query) {
+        const client = { get, async search(query, earlyStop = null) {
             const first = await get('/search/multi', { query, include_adult: 'false' });
             const results = [...first.results];
+            if (earlyStop && await earlyStop(results)) return [...new Map(results.filter(r => ['movie', 'tv'].includes(r.media_type)).map(r => [r.media_type + ':' + r.id, r])).values()];
             for (let page = 2; page <= Math.min(first.total_pages || 1, 5); page++) {
                 const next = await get('/search/multi', { query, include_adult: 'false', page });
                 results.push(...next.results);
+                if (earlyStop && await earlyStop(results)) break;
             }
             return [...new Map(results.filter(r => ['movie', 'tv'].includes(r.media_type)).map(r => [r.media_type + ':' + r.id, r])).values()];
         } };
@@ -2771,10 +2785,9 @@
         };
         ui.get('mediaAIProvider').onchange = () => {
             const preset = aiPresets[ui.get('mediaAIProvider').value];
-            ui.get('mediaAIKey').value = '';
             if (preset) { ui.get('mediaAIBase').value = preset.base; ui.get('mediaAIModel').value = preset.model; }
             updateAILink(); showAIModels(); invalidate();
-            ui.get('mediaAIState').textContent = '服务商已切换，请填入对应密钥，再获取模型列表。';
+            ui.get('mediaAIState').textContent = '服务商已切换；如密钥不同，请手动更新后获取模型列表。';
         };
         ui.get('mediaAIModelSelect').onchange = () => {
             const value = ui.get('mediaAIModelSelect').value;
@@ -2812,10 +2825,10 @@
             input.oninput = () => { change(input.value); invalidate(); };
             input.onchange = () => label.startsWith('搜索片名') ? undefined : refreshPreview(); return input;
         };
-        const key = text => text.normalize('NFKC').toLowerCase().replace(/[\p{P}\p{Z}\s]/gu, '');
+        const key = titleKey;
         const peers = row => rows.filter(r => r.group === row.group);
         const readyRow = row => {
-            if (!row.detail || row.error) return false;
+            if (!row.detail || row.error || !row.type || !row.title || !row.year) return false;
             try { mediaPath(row); return true; } catch { return false; }
         };
         const skipRows = async targets => {
@@ -2995,15 +3008,15 @@
                     else if (regular.length === 1) row.season = regular[0].season_number;
                 }
                 if (row.type === 'tv' && row.season != null) {
-                    const season = await client.get('/tv/' + row.detail.id + '/season/' + row.season);
-                    row.seasonEpisodes = season.episodes || [];
-                    row.seasonYear = (season.air_date || '').slice(0, 4);
+                    const season = await mediaSeasonEpisodes(client, row.detail.id, row.season);
+                    row.seasonEpisodes = season.episodes;
+                    row.seasonYear = season.year;
                     if (row.episode == null) {
                         const parsed = parseMediaName(row.node.name, row.node.folders || []);
                         if (parsed.episode != null) { row.episode = parsed.episode; row.endEpisode = parsed.endEpisode; }
                         else {
                             const original = key(mediaStem(row.node.name));
-                            const matches = row.seasonEpisodes.filter(ep => { const title = key(ep.name || ''); return title.length >= 3 && original.includes(title); });
+                            const matches = row.seasonEpisodes.filter(ep => (ep.aliases || [ep.name]).some(name => { const title = key(name || ''); return title.length >= 3 && original.includes(title); }));
                             if (matches.length === 1) { row.episode = matches[0].episode_number; row.episodeInferred = true; }
                         }
                     }
@@ -3052,8 +3065,6 @@
                 checkStopped();
                 if (!query) throw new Error('未提取到片名，请填写搜索片名后重新匹配');
                 let candidates = [], lookupError = '';
-                try { candidates = await client.search(query); }
-                catch (error) { lookupError = error.message; }
                 const reference = group.find(row => row.tv) || group[0];
                 const reliable = async list => {
                     const preference = mediaCandidatePreference(reference);
@@ -3068,6 +3079,8 @@
                     }
                     return matches;
                 };
+                try { candidates = await client.search(query, async results => (await reliable(results)).length === 1); }
+                catch (error) { lookupError = error.message; }
                 const exact = await reliable(candidates);
                 for (const row of group) row.candidates = candidates;
                 if (exact.length !== 1) {
@@ -3448,16 +3461,19 @@
                 if (parsed.endEpisode && parsed.endEpisode !== parsed.episode) throw new Error('合并多集视频需单独选字幕');
                 const episode = parsed.tv ? 'S' + String(parsed.season).padStart(2,'0') + 'E' + String(parsed.episode).padStart(2,'0') : '';
                 const terms = [...new Set([title + (episode ? ' ' + episode : ''), title])];
-                const candidates = [], seen = new Set(), aliases = new Set(parsed.aliases || []);
+                const candidates = [], seen = new Map(), aliases = new Set(parsed.aliases || []);
                 const excluded = {年份:0,季集:0,语言:0,待确认上限:0};
                 let pages = 0, rejected = 0, uncertain = 0;
                 const wanted = (config.language || 'zh-cn,zh-tw,zh').split(',');
                 const preferred = candidate => candidate.titleMatched && (wanted.includes(candidate.language) || candidate.bilingual && wanted.includes('en'));
                 const seasonKey = parsed.tv ? JSON.stringify([config.assrtToken,title.toLowerCase(),parsed.year || '',parsed.tmdbId || '',parsed.season]) : '';
+                let cacheMiss = false;
                 const collect = async item => {
                     check();
-                    if (!item.id || seen.has(String(item.id))) return false;
-                    seen.add(String(item.id));
+                    if (!item.id) return false;
+                    const id = String(item.id), fileSignature = Array.isArray(item.filelist) && item.filelist.length ? JSON.stringify(item.filelist.map(file => file.f)) : '';
+                    if (seen.has(id) && (!fileSignature || seen.get(id) === fileSignature)) return false;
+                    seen.set(id, fileSignature || seen.get(id) || '');
                     const release = [item.native_name,item.videoname].filter(value => value && !/^(?:不知道|未知|不详|unknown)$/i.test(value.trim())).join(' · '), langs = item.lang?.langlist || {};
                     const language = langs.langchs ? 'zh-cn' : langs.langcht ? 'zh-tw' : langs.langdou ? 'zh' : langs.langeng ? 'en' : '';
                     const pack = {source:'Assrt', assrtId:item.id, release, language, parsed:{...parsed,aliases:[...aliases]}};
@@ -3506,13 +3522,10 @@
                     log('Assrt 整季复用', `${title} · ${episode} · 复查 ${cached.size} 组已确认资源 · 匹配 ${candidates.filter(preferred).length} 份`);
                     const selection = {node:row.node || {name:''}, candidates:[...candidates]};
                     selectSubtitleCandidate(selection, config.language || 'zh-cn,zh-tw,zh');
-                    if (!selection.selectedCandidate) {
-                        // A newer search may include files missing from the cached package snapshot.
-                        seen.clear(); candidates.length = 0; uncertain = 0; rejected = 0;
-                        for (const reason of Object.keys(excluded)) excluded[reason] = 0;
-                    }
+                    // Keep cached IDs and candidates so fresh search pages do not re-expand the same packages.
+                    cacheMiss = !selection.selectedCandidate;
                 }
-                if (!candidates.some(preferred)) for (const q of terms) {
+                if (cacheMiss || !candidates.some(preferred)) for (const q of terms) {
                     for (let pos = 0; pos < 75; pos += 15) {
                         check(); pages++;
                         const key = JSON.stringify(['assrt',config.assrtToken,q,pos]);
@@ -4026,7 +4039,7 @@
             <details id="subtitleDiagnostics"><summary>字幕运行日志</summary><div class="panel-actions"><button id="copySubtitleLog">复制日志</button><button id="clearSubtitleLog">清空日志</button></div><textarea id="subtitleLog" readonly rows="8" spellcheck="false" aria-label="字幕运行日志" style="width:100%;font:12px/1.45 monospace;resize:vertical"></textarea></details>
             <label><input id="onlyChoiceSubtitles" type="checkbox" checked>只看待选择</label>
             <div id="subtitleRows"></div>
-            <div class="panel-actions"><button id="searchSubtitles" disabled>重搜未完成项</button><button id="copyMissingSubtitles" disabled>复制缺失清单</button><button id="copySubtitleReport" disabled>复制查询结果</button></div>
+            <div class="panel-actions"><button id="searchSubtitles" disabled>重搜未完成项</button><button id="copyMissingSubtitles" disabled>复制未补齐路径</button><button id="copySubtitleReport" disabled>复制完整报告</button></div>
             <details id="subtitleSettings"><summary>字幕来源与 API 设置</summary>
             <label><input id="useAssrt" type="checkbox" checked>Assrt 射手网 · 按片名搜索</label>
             <label><span class="credential-head"><span>Assrt API Token</span><a href="https://assrt.net/api/user/token" target="_blank" rel="noopener noreferrer">获取 Token ↗</a></span><input id="assrtToken" type="password" autocomplete="off"></label>
@@ -4039,10 +4052,11 @@
             <label><input id="useShooter" type="checkbox" checked>射手 · 网盘视频片段哈希匹配（免 Key）</label>
             <p>仅取四段各 4KB 视频数据，不下载完整视频。网盘拒绝分段读取时跳过该来源。<a href="https://www.shooter.cn/" target="_blank" rel="noopener noreferrer">射手官网 ↗</a></p>
             <div class="panel-actions"><button id="saveSubtitleSettings">保存设置</button><button id="forgetSubtitleKey">清除凭证</button></div>
-            <details><summary>OpenSubtitles 账号登录（下载需要时）</summary><label>用户名<input id="subtitleUsername" autocomplete="off"></label><label>密码<input id="subtitlePassword" type="password" autocomplete="off"></label><button id="loginSubtitles">登录</button><p id="subtitleLoginState">未登录；密码不保存，令牌仅本页有效。</p></details></details>
+            </details>
+            <details id="subtitleAccountSettings"><summary>OpenSubtitles 账号（提高下载配额，可选）</summary><label>用户名<input id="subtitleUsername" autocomplete="off"></label><label>密码<input id="subtitlePassword" type="password" autocomplete="off"></label><button id="loginSubtitles">登录</button><p id="subtitleLoginState">未登录；密码不保存，令牌仅本页有效。</p></details>
             <p>仅检查外置字幕，不检测内嵌字幕。保留原字幕格式；同名不同内容不覆盖。中文内容检查不区分简繁，简繁筛选依赖来源语言标注。</p>
 `, 'subtitle');
-        ui.moveSettings(['subtitleSettings']);
+        ui.moveSettings(['subtitleSettings','subtitleAccountSettings']);
         let inventory = [], drive = null, busy = false, cancelled = false;
         const service = createSubtitleService({check:() => check(), log:(event, detail) => diag(event, detail)});
         const prefs = GM_getValue('cross-drive-subtitle-settings', {});
