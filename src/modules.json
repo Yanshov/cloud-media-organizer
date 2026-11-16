@@ -1,0 +1,11 @@
+[
+  "core.js",
+  "panel.js",
+  "manifest.js",
+  "guangya.js",
+  "media.js",
+  "media-panel.js",
+  "subtitles.js",
+  "subtitles-panel.js",
+  "bootstrap.js"
+]

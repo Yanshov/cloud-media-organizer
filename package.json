@@ -1,0 +1,14 @@
+{
+  "name": "cloud-media-organizer",
+  "version": "3.1.0",
+  "private": true,
+  "description": "Userscript for cloud manifests, media organization and verified subtitle uploads",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node scripts/build.cjs",
+    "check": "node scripts/build.cjs --check",
+    "test": "node scripts/test.cjs"
+  }
+}
