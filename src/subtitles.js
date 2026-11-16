@@ -86,10 +86,7 @@
             .replace(/\s+/g, ' ').trim();
     }
     function subtitleTitleKey(value) {
-        // English title connectors share an identity: Love, Death & Robots / Love.Death.and.Robots.
-        return String(value || '').normalize('NFKC').toLowerCase()
-            .replace(/(\p{Script=Latin})[. _-]*&[. _-]*(?=\p{Script=Latin})/gu, '$1 and ')
-            .replace(/[\p{P}\p{Z}\s]/gu, '');
+        return titleKey(value);
     }
     function subtitleWorkIdentity(parsed, fields, name) {
         const titleNumbers = String(parsed.query || '').match(/(?:19|20)\d{2}/g) || [];
@@ -214,7 +211,7 @@
             const item = result.sub?.subs?.find(item => String(item.id) === String(id));
             if (!item) throw new Error('Assrt 未返回对应字幕详情');
             detailCache.delete(key); detailCache.set(key,{time:Date.now(),item});
-            while (detailCache.size > 24) detailCache.delete(detailCache.keys().next().value);
+            evict(detailCache, 24);
             return item;
         };
         const assrtEpisode = (name, parsed) => {
@@ -270,7 +267,7 @@
                                 videoname:item.videoname || detail.videoname, title:detail.title, lang:item.lang, filelist:files.map(file => ({f:file.f,s:file.s}))});
                             while (packs.size > 8) packs.delete(packs.keys().next().value);
                             seasonCache.delete(seasonKey); seasonCache.set(seasonKey,packs);
-                            while (seasonCache.size > 24) seasonCache.delete(seasonCache.keys().next().value);
+                            evict(seasonCache, 24);
                         }
                         rejected += dropped;
                         if (kept.length) onFiles(`${release || 'Assrt #' + item.id} · 保留 ${kept.length}/${files.length} 份：${kept.slice(0,12).join('；')}${kept.length > 12 ? '；其余 ' + (kept.length - 12) + ' 份见候选列表' : ''}${dropped ? '；排除年份/季集/语言不符或超出待确认上限 ' + dropped + ' 份' : ''}`);
@@ -300,7 +297,7 @@
                         const key = JSON.stringify(['assrt',config.assrtToken,q,pos]);
                         if (!searchCache.has(key)) {
                             searchCache.set(key, assrtRequest('search',config,{q,cnt:15,pos,filelist:1}).catch(error => {searchCache.delete(key); throw error;}));
-                            while (searchCache.size > 200) searchCache.delete(searchCache.keys().next().value);
+                            evict(searchCache, 200);
                         }
                         let result;
                         try { result = await searchCache.get(key); }
@@ -601,7 +598,7 @@
         };
         const post = paced(350, (path, body, allowed = [0,200]) => driveCall(async () => {
             const response = await requestJson(guangya ? 'https://api.guangyapan.com' + path : session.base + path, {
-                method:'POST', credentials:'omit', headers:guangya ? {'Content-Type':'application/json', Authorization:'Bearer ' + session.token, dt:'4'} : {...session.headers, 'Content-Type':'application/json'}, body:JSON.stringify(body)
+                method:'POST', credentials:'omit', headers:guangya ? guangyaAuthHeaders(session.token) : {...session.headers, 'Content-Type':'application/json'}, body:JSON.stringify(body)
             });
             if (!allowed.includes(guangya ? guangyaCode(response) : apiCode(response))) {
                 const error = apiError('字幕网盘操作', response);

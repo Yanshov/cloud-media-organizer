@@ -27,6 +27,17 @@
             return result;
         };
     }
+    function evict(map, max) {
+        while (map.size > max) map.delete(map.keys().next().value);
+    }
+    function titleKey(value) {
+        return String(value || '').normalize('NFKC').toLowerCase()
+            .replace(/(\p{Script=Latin})[. _-]*&[. _-]*(?=\p{Script=Latin})/gu, '$1 and ')
+            .replace(/[\p{P}\p{Z}\s]/gu, '');
+    }
+    function guangyaAuthHeaders(token) {
+        return { 'Content-Type': 'application/json;charset=utf-8', Authorization: 'Bearer ' + token, dt: '4' };
+    }
     function nonNegativeInteger(value) {
         if ((typeof value !== 'number' && typeof value !== 'string') || String(value).trim() === '') return null;
         const number = Number(value);

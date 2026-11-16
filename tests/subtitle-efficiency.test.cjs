@@ -5,7 +5,7 @@ const config={assrt:true,assrtToken:'test',open:true,key:'open-test',shooter:tru
 function load(extra={},source=script) {
  const ctx=vm.createContext({URL,URLSearchParams,Date,Uint8Array,ArrayBuffer,TextEncoder,TextDecoder,Blob,
   paced:(_ms,fn)=>fn,sleep:async()=>{},GM_getValue:(_key,value)=>value,GM_setValue:()=>{},...extra});
- vm.runInContext(source.slice(source.indexOf('    function subtitleDownloadUrl('),source.indexOf('    function subtitleDrive(')),ctx);return ctx;
+ vm.runInContext(source.slice(source.indexOf('    function evict('),source.indexOf('    function nonNegativeInteger(')) + source.slice(source.indexOf('    function subtitleDownloadUrl('),source.indexOf('    function subtitleDrive(')),ctx);return ctx;
 }
 const row=(query='瑞克和莫蒂',season=1,episode=1,year=2013)=>({node:{name:`${query}.${year}.S${season}E${episode}.mkv`},parsed:{query,year,tv:true,season,episode}});
 const packs=(season=1,episodes=11)=>[1,2].map(id=>({id:season*100+id,native_name:`瑞克和莫蒂 第${season}季/Rick and Morty S${String(season).padStart(2,'0')}`,

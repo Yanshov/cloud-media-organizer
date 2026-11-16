@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const source = fs.readFileSync(require('node:path').join(__dirname, '../cloud-media-organizer-v3.user.js'), 'utf8');
 const part = (a,b) => { const start=source.indexOf(a), end=source.indexOf(b,start); assert.ok(start>=0 && end>start,a); return source.slice(start,end); };
-const load = (code, extras={}) => { const ctx=vm.createContext({TextEncoder,TextDecoder,URL,atob,Uint8Array,Date,GM_getValue:(_key,def)=>def,GM_setValue:()=>{},...extras}); vm.runInContext(code,ctx); return ctx; };
+const load = (code, extras={}) => { const ctx=vm.createContext({TextEncoder,TextDecoder,URL,atob,Uint8Array,Date,GM_getValue:(_key,def)=>def,GM_setValue:()=>{},...extras}); vm.runInContext(part('    function evict(', '    function nonNegativeInteger(')+code,ctx); return ctx; };
 const md5 = bytes => crypto.createHash('md5').update(bytes).digest('hex');
 const language='zh-cn,zh-tw,zh';
 const valid=Buffer.from('1\n00:00:01,000 --> 00:00:03,000\n中文字幕 Test\n');

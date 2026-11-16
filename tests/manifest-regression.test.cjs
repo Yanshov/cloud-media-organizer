@@ -1,7 +1,7 @@
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict'),path=require('node:path');
 const source=fs.readFileSync(path.join(__dirname,'../cloud-media-organizer-v3.user.js'),'utf8');
 const part=(a,b)=>{const i=source.indexOf(a),j=source.indexOf(b,i);assert.ok(i>=0&&j>i,a);return source.slice(i,j)};
-const load=(code,extras={})=>{const ctx=vm.createContext({URL,URLSearchParams,TextEncoder,TextDecoder,Uint8Array,ArrayBuffer,Blob,Date,VERSION:'2.21.0',...extras});vm.runInContext(code,ctx);return ctx};
+const load=(code,extras={})=>{const ctx=vm.createContext({URL,URLSearchParams,TextEncoder,TextDecoder,Uint8Array,ArrayBuffer,Blob,Date,VERSION:'2.21.0',...extras});vm.runInContext(part('    function evict(', '    function nonNegativeInteger(')+code,ctx);return ctx};
 const noop=()=>{};
 const MEDIA_VIDEO=/\.(mkv|mp4)$/i,MEDIA_SUB=/\.(srt|ass|ssa|vtt)$/i;
 const matchSelected=(nodes,selected)=>nodes.filter(n=>selected.some(s=>s.id===n.id));
@@ -143,4 +143,32 @@ async function manifests(){
  console.log('PASS audit manifests: roundtrip directory/file export, zero bytes and uppercase hashes; invalid/traversing/conflicting input rejected; missing metadata reported; pagination detects repeats, stalls, missing data and changing totals');
 }
 
-(async()=>{await manifests();await languageAndLinking();await guangyaListing();await replacements();await imports();await extras();await openSubtitles();historyAndAI()})().catch(e=>{console.error(e);process.exitCode=1});
+async function sharedHelpers(){
+ const ctx=load(part('    const MEDIA_VIDEO', '    const tmdbClients')+part('    function mediaCanonicalResolver(', '    const mediaPlaybackAttachment')+part('    function mediaWorkCounts(', '    function initMediaOrganizer('));
+ const entries=new Map([['a',1],['b',2],['c',3]]);
+ ctx.evict(entries,2);assert.deepEqual([...entries.keys()],['b','c']);
+ ctx.evict(entries,2);assert.equal(entries.size,2);ctx.evict(entries,0);assert.equal(entries.size,0);
+ assert.equal(ctx.titleKey('Ｌｏｖｅ, Death & Robots'),ctx.titleKey('Love.Death.and.Robots'));
+ assert.notEqual(ctx.titleKey('Blade Runner'),ctx.titleKey('Blade Runner 2049'));
+ assert.equal(ctx.titleKey(null),'');
+ assert.deepEqual({...ctx.guangyaAuthHeaders('test')},{'Content-Type':'application/json;charset=utf-8',Authorization:'Bearer test',dt:'4'});
+ const rows=['Love, Death & Robots','Love.Death.and.Robots'].map((query,i)=>({query,tv:true,sourceYear:'2019',season:1,episode:i+1,node:{id:String(i),parentId:'p',name:query+'.S01E0'+(i+1)+'.mkv'}}));
+ ctx.mediaWorkCounts(rows);assert.equal(rows[0].workVideoCount,2);assert.equal(rows[1].workNumberedCount,2);
+ assert.equal(ctx.mediaRecognitionGroup(rows[0],false),ctx.mediaRecognitionGroup(rows[1],false));
+ assert.notEqual(ctx.mediaRecognitionGroup(rows[0],false),ctx.mediaRecognitionGroup({...rows[1],sourceYear:'2020'},false));
+ assert.notEqual(ctx.mediaRecognitionGroup({...rows[0],tv:false},true),ctx.mediaRecognitionGroup({...rows[1],tv:false},true));
+ const detail={id:1,name:'Love, Death & Robots',original_name:'Love, Death & Robots',first_air_date:'2019-01-01'};
+ const ancestor={id:'folder',name:'Love.Death.and.Robots'};
+ const special={node:{name:'Rock.and.Roll.mkv',ancestors:[ancestor]}};
+ const regular={...rows[0],type:'tv',detail,node:{...rows[0].node,ancestors:[ancestor]}};
+ const changed=await ctx.resolveMediaSpecials([regular,special],{get:async()=>({episodes:[{name:'Rock & Roll',episode_number:1}]})});
+ assert.equal(changed.length,1);assert.equal(special.season,0);assert.equal(special.episode,1);
+ const resolve=ctx.mediaCanonicalResolver({search:async()=>[{...detail,media_type:'tv'}],get:async()=>detail});
+ assert.equal(await resolve({name:'Love.Death.and.Robots.2019.mkv'}),'Love, Death & Robots.2019.mkv');
+ await assert.rejects(resolve({name:'Love.Death.and.Robots.2020.mkv'}),/无法唯一确认/);
+ const ambiguous=ctx.mediaCanonicalResolver({search:async()=>[detail,detail]});
+ await assert.rejects(ambiguous({name:'Love.Death.and.Robots.2019.mkv'}),/无法唯一确认/);
+ console.log('PASS shared helpers: FIFO bounds; auth headers; &/and grouping, specials and canonical aliases; numeric titles, years, ambiguity and movie isolation retained');
+}
+
+(async()=>{await sharedHelpers();await manifests();await languageAndLinking();await guangyaListing();await replacements();await imports();await extras();await openSubtitles();historyAndAI()})().catch(e=>{console.error(e);process.exitCode=1});

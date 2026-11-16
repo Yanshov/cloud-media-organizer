@@ -6,7 +6,7 @@ const valid=new TextEncoder().encode('1\n00:00:01,000 --> 00:00:03,000\n中文�
 function load(extra={},source=script){
  const ctx=vm.createContext({URL,URLSearchParams,Date,Uint8Array,ArrayBuffer,TextEncoder,TextDecoder,Blob,
   paced:(_ms,fn)=>fn,sleep:async()=>{},GM_getValue:(_k,v)=>v,GM_setValue:()=>{},...extra});
- vm.runInContext(part('    function subtitleDownloadUrl(','    function subtitleDrive(',source),ctx);return ctx;
+ vm.runInContext(source.slice(source.indexOf('    function evict('),source.indexOf('    function nonNegativeInteger(')) + part('    function subtitleDownloadUrl(','    function subtitleDrive(',source),ctx);return ctx;
 }
 const row=episode=>({node:{id:'v'+episode,parentId:'p',size:100000,name:`Love, Death & Robots.2019.S01E${String(episode).padStart(2,'0')}.mp4`},parsed:{query:'Love, Death & Robots',year:2019,tv:true,season:1,episode}});
 async function names(){

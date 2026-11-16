@@ -33,7 +33,7 @@
             if (hasFileMetadata(entry) && /^[a-f0-9]{40}$/i.test(entry.gcid || '')) knownContent.set(entry.gcid.toUpperCase(), entry);
         }
         const post = paced(180, (endpoint, body) => requestJson(`https://api.guangyapan.com${endpoint}`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json;charset=utf-8', Authorization: `Bearer ${token}`, dt: '4' }, body: JSON.stringify(body)
+            method: 'POST', headers: guangyaAuthHeaders(token), body: JSON.stringify(body)
         }));
         const node = file => {
             const id = decimalId(file?.fileId);
@@ -541,7 +541,7 @@
             const token = capture.token;
             const post = paced(650, (endpoint, body) => requestJson(`https://api.guangyapan.com${endpoint}`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json;charset=utf-8', Authorization: `Bearer ${token}`, dt: '4' },
+                headers: guangyaAuthHeaders(token),
                 body: JSON.stringify(body)
             }));
             const ensureDirectory = directoryResolver(parentId, post, log);

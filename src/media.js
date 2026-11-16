@@ -68,7 +68,7 @@
     // A special episode is still part of the programme; only explicit bonus labels count.
     const mediaBonusName = name => /花絮|幕后|幕後|预告|預告|制作特辑|製作特輯|拍摄特辑|拍攝特輯|(?:^|[^a-z0-9])(?:extras?|featurettes?|trailers?|teasers?|bloopers?|outtakes?|sample|behind[ ._-]+the[ ._-]+scenes|special[ ._-]+features)(?=$|[^a-z0-9])/i.test(mediaStem(name));
     async function resolveMediaSpecials(rows, client, parentPath = '') {
-        const key = value => String(value).normalize('NFKC').toLowerCase().replace(/[\p{P}\p{Z}\s]/gu, '');
+        const key = titleKey;
         const scopes = row => [...parentPath.split('/').filter(Boolean).map((name, i, parts) => ({ id: 'path:' + parts.slice(0, i + 1).join('/'), name })), ...(row.node.ancestors || []).map(a => ({ id: 'id:' + a.id, name: a.name }))];
         const contexts = new Map(), changed = [];
         for (const row of rows) {
@@ -233,7 +233,7 @@
             if (saved && Date.now() - saved.time < 600000) return saved.promise;
             const entry = {time:Date.now(), promise:request(path, params).catch(error => { if (cache.get(key) === entry) cache.delete(key); throw error; })};
             cache.delete(key); cache.set(key, entry);
-            while (cache.size > 500) cache.delete(cache.keys().next().value);
+            evict(cache, 500);
             return entry.promise;
         };
         const client = { get, async search(query) {
@@ -246,13 +246,13 @@
             return [...new Map(results.filter(r => ['movie', 'tv'].includes(r.media_type)).map(r => [r.media_type + ':' + r.id, r])).values()];
         } };
         tmdbClients.set(credential, client);
-        while (tmdbClients.size > 2) tmdbClients.delete(tmdbClients.keys().next().value);
+        evict(tmdbClients, 2);
         return client;
     }
     function mediaGuangyaPost(token) {
         const request = async (endpoint, body) => {
             const result = await requestJson('https://api.guangyapan.com' + endpoint, {
-                method: 'POST', headers: { 'Content-Type': 'application/json;charset=utf-8', Authorization: 'Bearer ' + token, dt: '4' }, body: JSON.stringify(body)
+                method: 'POST', headers: guangyaAuthHeaders(token), body: JSON.stringify(body)
             });
             if (guangyaCode(result) !== 0) throw apiError('光鸭整理', result);
             return result;
@@ -465,7 +465,7 @@
     }
     function mediaCanonicalResolver(client) {
         const cache = new Map();
-        const key = value => value.normalize('NFKC').toLowerCase().replace(/[\p{P}\p{Z}\s]/gu, '');
+        const key = titleKey;
         return async node => {
             if (node.directory && (mediaExistingCategory([node.name]) || /^Season \d{2}$/.test(node.name))) return null;
             const match = node.name.match(/^(.+)\.((?:19|20)\d{2})(?=\.|$)/);
@@ -648,7 +648,6 @@
                 const episodes = Array.isArray(item.episodes) ? item.episodes : [{index:0, season:item.season, episode:item.episode, confidence:item.confidence}];
                 const identity = validateMediaAIIdentity({...item, episodes});
                 const work = mediaBracketTitle(group[index].node.name);
-                const titleKey = value => value.normalize('NFKC').toLowerCase().replace(/[\p{P}\p{Z}\s]/gu, '');
                 if (work?.release && titleKey(identity.title) === titleKey(work.release)) throw new Error('模型将发布组误作片名，未采用；请重新识别完整作品名');
                 identified.push(identity);
             } catch (error) { identified.push({error:error.message}); }
@@ -670,7 +669,7 @@
             entries.set(id, {fingerprint:fingerprint(row.node), query:row.title, aliases:[row.detail.title,row.detail.original_title,row.detail.name,row.detail.original_name].filter(Boolean), year:row.year, sourceYear:row.sourceYear, type:row.type, match:row.match, season:row.season, episode:row.episode, endEpisode:row.endEpisode, aiAssisted:row.aiAssisted});
         };
         const save = () => {
-            while (entries.size > 3000) entries.delete(entries.keys().next().value);
+            evict(entries, 3000);
             GM_setValue(storageKey, [...entries]);
         };
         return {get, remember, save, count: () => [...entries.keys()].filter(id => JSON.parse(id)[0] === location.hostname).length};
@@ -686,7 +685,7 @@
         const groups = new Map();
         for (const row of rows) {
             if (mediaBonusName(row.node.name)) continue;
-            const key = JSON.stringify([row.node.parentId, row.aiType || row.type || '', row.query.normalize('NFKC').toLowerCase().replace(/[\p{P}\p{Z}\s]/gu, '') || row.node.id]);
+            const key = JSON.stringify([row.node.parentId, row.aiType || row.type || '', titleKey(row.query) || row.node.id]);
             if (!groups.has(key)) groups.set(key, []);
             groups.get(key).push(row);
         }
@@ -698,5 +697,5 @@
     function mediaRecognitionGroup(row, aiEnabled) {
         // Isolate movies before asking AI; never apply one movie title to siblings.
         if (aiEnabled && (!row.tv || row.standalone)) return 'file:' + row.node.id;
-        return JSON.stringify([String(row.query || '').normalize('NFKC').toLowerCase().replace(/[\p{P}\p{Z}\s]/gu, '') || row.node.id, row.node.parentId, aiEnabled ? '' : row.sourceYear, row.standalone ? row.node.id : '']);
+        return JSON.stringify([titleKey(row.query) || row.node.id, row.node.parentId, aiEnabled ? '' : row.sourceYear, row.standalone ? row.node.id : '']);
     }

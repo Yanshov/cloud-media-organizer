@@ -5,7 +5,7 @@ const crypto = require('node:crypto');
 const source = fs.readFileSync(require('node:path').join(__dirname, '../cloud-media-organizer-v3.user.js'), 'utf8');
 const part = (start, end) => source.slice(source.indexOf(start), source.indexOf(end));
 const identityContext = vm.createContext({Date});
-vm.runInContext(part('    const mediaStem =', '    // A special episode'), identityContext);
+vm.runInContext(part('    function evict(', '    function nonNegativeInteger(')+part('    const mediaStem =', '    // A special episode'), identityContext);
 vm.runInContext(part('    function subtitleQueryTitle(', '    function createSubtitleService('), identityContext);
 const parse = name => { identityContext.name = name; return vm.runInContext('parseMediaName(name)', identityContext); };
 const match = (query, year, fields, filename) => {
@@ -153,7 +153,7 @@ async function driveVerification() {
             },
             SUBTITLE_LIMIT:16*1024*1024
         });
-        vm.runInContext(part('    function subtitleDrive(', '    function subtitleInventory('), ctx);
+        vm.runInContext(part('    function evict(', '    function nonNegativeInteger(')+part('    function subtitleDrive(', '    function subtitleInventory('), ctx);
         ctx.driveContext = {session:{provider:'123',base:'https://www.123pan.com',headers:{}}, source:{children:async () => {
             listingCalls++;
             if (uploaded && scenario === 'list-transient' && listingCalls <= 3) throw Error('网络连接失败');

@@ -26,7 +26,7 @@ const context = vm.createContext({URL, URLSearchParams, Uint8Array, ArrayBuffer,
         throw Error('Unexpected request');
     }
 });
-vm.runInContext(source.slice(source.indexOf('    function subtitleDownloadUrl('), source.indexOf('    function subtitleDrive(')), context);
+vm.runInContext(source.slice(source.indexOf('    function evict('),source.indexOf('    function nonNegativeInteger(')) + source.slice(source.indexOf('    function subtitleDownloadUrl('), source.indexOf('    function subtitleDrive(')), context);
 const run = code => vm.runInContext(code, context);
 const pick = (candidates, language = 'zh-cn,zh-tw,zh') => {
     context.row = {node:{name:'肥胖症：尸检.2016.mkv'}, candidates:[...candidates], sources:[]};

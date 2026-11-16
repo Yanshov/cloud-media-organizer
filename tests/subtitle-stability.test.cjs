@@ -5,7 +5,7 @@ const valid=new TextEncoder().encode('1\n00:00:01,000 --> 00:00:04,000\n测试�
 function load(extra={}) {
  const ctx=vm.createContext({URL,URLSearchParams,Date,Uint8Array,ArrayBuffer,TextEncoder,TextDecoder,DataView,Blob,
   paced:(_ms,fn)=>fn,sleep:async()=>{},GM_getValue:(_key,value)=>value,GM_setValue:()=>{},...extra});
- vm.runInContext(part('    function subtitleDownloadUrl(', '    function subtitleDrive('),ctx);return ctx;
+ vm.runInContext(part('    function evict(', '    function nonNegativeInteger(') + part('    function subtitleDownloadUrl(', '    function subtitleDrive('),ctx);return ctx;
 }
 const config={assrtToken:'test',language:'zh-cn,zh-tw,zh'};
 const makeRow=(query='路西法',year=2019)=>({node:{name:query+'.'+year+'.mkv'},parsed:{query,year,tv:false}});
