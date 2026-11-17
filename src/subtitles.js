@@ -300,6 +300,11 @@
             pauseSearchSource(name, reason) { unavailableSources.set(name, reason); },
             resetDownloadBatch() { failedAssrtPackages.clear(); assrtDownloadBlocked = false; },
             assrtDownloadUnavailable() { return assrtDownloadBlocked; },
+            assrtCachedEpisode(row, config, onFiles = () => {}, check = () => {}) {
+                const parsed = row.parsed;
+                if (!parsed.tv || !subtitleQueryTitle(parsed.query, parsed.year) || parsed.season == null || parsed.episode == null || parsed.endEpisode && parsed.endEpisode !== parsed.episode) return [];
+                return this.assrtSearch(row, {...config,assrtCacheOnly:true}, onFiles, check, false);
+            },
             async assrtSearch(row, config, onFiles = () => {}, check = () => {}, allowFallback = true) {
                 const parsed = row.parsed;
                 const title = subtitleQueryTitle(parsed.query, parsed.year);
@@ -378,6 +383,7 @@
                     return true;
                 };
                 const cached = seasonCache.get(seasonKey);
+                if (config.assrtCacheOnly && !cached) return [];
                 if (cached) {
                     // Snapshot: collect refreshes the bounded cache while rechecking each episode.
                     for (const item of [...cached.values()]) await collect(item);
@@ -387,7 +393,7 @@
                     // Keep cached IDs and candidates so fresh search pages do not re-expand the same packages.
                     cacheMiss = !selection.selectedCandidate;
                 }
-                if (cacheMiss || !candidates.some(preferred)) for (const term of terms) {
+                if (!config.assrtCacheOnly && (cacheMiss || !candidates.some(preferred))) for (const term of terms) {
                     if (unavailableSources.has('Assrt 片名搜索')) break;
                     const q = term.q; mainSearch = term.main;
                     for (let pos = 0; pos < 75; pos += 15) {
@@ -423,6 +429,11 @@
                 log('Assrt 筛选', `查询 ${pages} 页 · 保留 ${candidates.length} 份 · 排除 ${rejected} 份（${Object.entries(excluded).map(([reason,count]) => reason + ' ' + count).join('，')}）· 待确认 ${candidates.filter(candidate => !candidate.titleMatched).length} 份`);
                 return candidates;
             },
+            thunderCachedEpisode(row, config, onFiles = () => {}, verify = () => {}) {
+                const parsed = row.parsed;
+                if (!parsed.tv || !subtitleQueryTitle(parsed.query, parsed.year) || parsed.season == null || parsed.episode == null || parsed.endEpisode && parsed.endEpisode !== parsed.episode) return [];
+                return this.thunderSearch(row, {...config,thunderCacheOnly:true}, onFiles, verify);
+            },
             async thunderSearch(row, config, onFiles = () => {}, verify = () => {}) {
                 check(); verify();
                 const parsed = row.parsed, title = subtitleQueryTitle(parsed.query, parsed.year);
@@ -430,7 +441,9 @@
                 if (parsed.tv && (parsed.season == null || parsed.episode == null)) throw new Error('缺少明确季集，未按片名搜索');
                 if (parsed.endEpisode && parsed.endEpisode !== parsed.episode) throw new Error('合并多集视频需单独选字幕');
                 const query = title + (parsed.tv ? ' S' + String(parsed.season).padStart(2,'0') + 'E' + String(parsed.episode).padStart(2,'0') : '');
-                const cacheKey = JSON.stringify(['thunder', query]);
+                const seasonKey = parsed.tv ? JSON.stringify(['thunder-season',titleKey(title),parsed.year || '',parsed.tmdbId || '',parsed.season]) : '';
+                const cacheKey = config.thunderCacheOnly ? seasonKey : JSON.stringify(['thunder', query]);
+                if (config.thunderCacheOnly && !searchCache.has(cacheKey)) return [];
                 log('迅雷 查询', `实际搜索词：${query} · ${searchCache.has(cacheKey) ? '使用缓存' : '请求来源'}`);
                 if (!searchCache.has(cacheKey)) {
                     searchCache.set(cacheKey, thunderRequest(query, verify).then(result => {
@@ -466,6 +479,9 @@
                 }
                 onFiles(`${query} · ${candidates.length} 份字幕文件` + (candidates.length ? '：' + candidates.slice(0, 12).map(candidate => candidate.name).join('；') + (candidates.length > 12 ? '；…' : '') : ''));
                 candidates.sort((a,b) => Number(a.opaque) - Number(b.opaque));
+                if (seasonKey && !config.thunderCacheOnly && candidates.some(candidate => candidate.titleMatched)) {
+                    searchCache.set(seasonKey,items); evict(searchCache,200);
+                }
                 if (rejectionSamples.length) log('迅雷 排除样例', rejectionSamples.join('；'));
                 log('迅雷 筛选', `保留 ${candidates.length} 份 · 排除 ${Object.values(excluded).reduce((a,b) => a + b,0)} 份（${Object.entries(excluded).map(([reason,count]) => reason + ' ' + count).join('，')}）· 待确认 ${candidates.filter(candidate => !candidate.titleMatched).length} 份`);
                 return candidates;
@@ -825,9 +841,26 @@
     async function searchSubtitleSources(row, config, service, drive, log = () => {}, check = () => {}, resume = false) {
         if (!resume) { row.error = ''; row.candidates = []; row.selectedCandidate = null; row.manualCandidate = false; row.aiSuggested = false; row.sources = []; }
         const title = subtitleQueryTitle(row.parsed.query, row.parsed.year);
-        if (!resume) log('查找阶段', `${row.node.name} · 第一阶段：视频指纹匹配；无可靠指纹候选后进入片名搜索`);
+        if (!resume && row.parsed.tv) {
+            for (const [name,enabled,method] of [['迅雷',config.thunder,'thunderCachedEpisode'],['Assrt 片名搜索',config.assrt && config.assrtToken && !service.assrtDownloadUnavailable?.(),'assrtCachedEpisode']]) {
+                if (!enabled || !service[method] || service.searchUnavailable?.(name)) continue;
+                check();
+                const cached = await service[method](row, config, message => log(name + ' 缓存文件列表', message), check);
+                check();
+                const selection = {node:row.node,candidates:cached};
+                selectSubtitleCandidate(selection, config.language);
+                if (!selection.selectedCandidate) continue;
+                row.candidates.push(...cached);
+                row.sources.push({name,count:cached.length});
+                selectSubtitleCandidate(row, config.language);
+                log('整季快速命中', `${row.node.name} · ${name} · 复查缓存中的片名、年份及准确季集后选中；跳过本集视频取样与来源搜索，下载后仍检查正文`);
+                break;
+            }
+        }
+        if (!resume && !row.selectedCandidate) log('查找阶段', `${row.node.name} · 第一阶段：视频指纹匹配；无可靠指纹候选后进入片名搜索`);
         const run = async (name, enabled, configured, search) => {
             check();
+            if (!resume && row.sources.some(source => source.name === name)) return;
             if (resume) {
                 if (!row.sources.some(source => source.name === name && source.deferred)) return;
                 row.sources = row.sources.filter(source => source.name !== name);
@@ -842,9 +875,11 @@
                 const reason = name === '射手' ? '已有其他来源候选，暂缓视频取样' : '已有可靠字幕，省去重复查询与视频取样';
                 row.sources.push({name,skipped:reason,deferred:true}); log('来源跳过', `${name}：${reason}`); return;
             }
+            const started = Date.now(); let fetchedAt = 0;
             try {
                 log('来源', `${name} 开始，搜索片名：${title}`);
                 const found = await search(); check();
+                fetchedAt = Date.now();
                 const source = {name,count:found.length};
                 row.candidates.push(...found); row.sources.push(source);
                 log('来源', `${name} 返回 ${found.length} 个文件候选`);
@@ -858,6 +893,8 @@
                 if ([429,509].includes(error.status) || error.apiStatus === 30900 || error.assrtCooldown || name === '射手' && (error.hashSample || /超时|无法连接字幕来源/.test(error.message))) service.pauseSearchSource?.(name,error.message);
                 log(error.phase === 'drive-auth' ? '网盘授权失败' : '来源失败', `${row.node.name} · ${name}：${error.message}`);
                 if (error.phase === 'drive-auth') { row.error = error.message; row.searchMessage = subtitleSearchMessage(row); throw error; }
+            } finally {
+                log('来源耗时', `${row.node.name} · ${name} · 查询 ${(((fetchedAt || Date.now()) - started) / 1000).toFixed(1)} 秒${fetchedAt ? '，候选判断 ' + ((Date.now() - fetchedAt) / 1000).toFixed(1) + ' 秒' : ''}`);
             }
         };
         await run('射手', config.shooter, true, async () => {
