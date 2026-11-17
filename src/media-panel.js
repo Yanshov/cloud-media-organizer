@@ -10,9 +10,8 @@
             <label>API 地址<input id="mediaAIBase" type="url" placeholder="https://服务商地址/v1"></label>
             <label><span class="credential-head"><span>API Key</span><a id="mediaAIKeyLink" href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener noreferrer" hidden>获取 API ↗</a></span><input id="mediaAIKey" type="password" autocomplete="off" placeholder="粘贴 API Key；可带或不带 Bearer 前缀"></label>
             <label>模型<select id="mediaAIModelSelect"></select></label>
-            <div class="panel-actions"><button id="fetchMediaAIModels">获取模型列表</button></div>
+            <div class="panel-actions"><button id="fetchMediaAIModels">获取模型列表</button><button id="saveMediaAI">保存设置</button><button id="testMediaAI">测试连接</button><button id="forgetMediaAI">清除密钥</button></div>
             <label id="mediaAIManualModel" hidden>手动填写模型 ID<input id="mediaAIModel" placeholder="接口不提供列表时手动填写"></label>
-            <div class="panel-actions"><button id="saveMediaAI">保存设置</button><button id="testMediaAI">测试连接</button><button id="forgetMediaAI">清除密钥</button></div>
             <p id="mediaAIState" role="status"></p></details>
             <p id="mediaTarget"></p><p id="mediaRecordState" role="status"></p>
             <div class="panel-actions"><button id="scanMedia">识别并预览</button><button id="runMedia" disabled>确认执行</button><button id="stopMedia" hidden disabled>停止</button></div>
