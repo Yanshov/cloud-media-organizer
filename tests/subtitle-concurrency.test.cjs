@@ -2,7 +2,7 @@ const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),asse
 const source=fs.readFileSync(path.join(__dirname,'../cloud-media-organizer-v3.user.js'),'utf8');
 const part=(a,b)=>{const start=source.indexOf(a),end=source.indexOf(b,start);assert.ok(start>=0&&end>start,a);return source.slice(start,end)};
 const ctx=vm.createContext({Date,Uint8Array,TextEncoder,TextDecoder,sleep:async()=>{}});
-vm.runInContext(part('    function paced(', '    function nonNegativeInteger(')+part('    function subtitleDownloadUrl(', '    function subtitleDrive(')+part('    function subtitleSearchGroups(', '    async function subtitleEnrichAliases('),ctx);
+vm.runInContext(part('    function paced(', '    function nonNegativeInteger(')+part('    function subtitleDownloadUrl(', '    function subtitleDrive(')+part('    function subtitleSearchGroups(', '    function initSubtitles('),ctx);
 const gate=()=>{let release;const promise=new Promise(resolve=>release=resolve);return {promise,release}};
 const flush=async()=>{for(let i=0;i<60;i++)await Promise.resolve()};
 async function limitsAndDrain() {

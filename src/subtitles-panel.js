@@ -26,9 +26,6 @@
         }
         return [...groups.values()];
     }
-    async function subtitleEnrichAliases(parsed, credential, check = () => {}, log = () => {}) {
-        return resolveMediaWork(parsed,credential,check,log);
-    }
     function initSubtitles(provider = '123') {
         const ui = makePanel(provider + ' 字幕', `
             <p>选中视频或文件夹，先“检查目录字幕”查看哪些缺字幕，再查找、补齐到视频所在目录。</p>
@@ -200,7 +197,7 @@
                         const credential = GM_getValue('cross-drive-tmdb-key', ''), aliasStarted = Date.now();
                         try {
                             const parsed = row.parsed;
-                            if (await subtitleEnrichAliases(parsed, credential, check, diag)) {
+                            if (await resolveMediaWork(parsed,credential,check,diag)) {
                                 mediaRecords.rememberParsed?.(row.node,parsed); mediaRecords.save?.();
                                 diag('作品别名', `已复用或确认作品资料，取得 ${parsed.aliases.length} 个片名用于搜索`);
                             }

@@ -3716,9 +3716,6 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             .replace(year ? new RegExp('[._\\s:(\\[-]+' + String(year).replace(/\D/g, '') + '[)\\]\\s]*$') : /$^/, ' ')
             .replace(/\s+/g, ' ').trim();
     }
-    function subtitleTitleKey(value) {
-        return titleKey(value);
-    }
     function subtitleWorkIdentity(parsed, fields, name) {
         const titleNumbers = String(parsed.query || '').match(/(?:19|20)\d{2}/g) || [];
         const years = value => [...String(value).normalize('NFKC').matchAll(/(?:^|[^\p{L}\p{N}])((?:19|20)\d{2})(?=$|[^\p{L}\p{N}])/gu)].map(m => m[1]).filter(y => Number(y) <= new Date().getFullYear() + 1 && (!titleNumbers.includes(y) || y === String(parsed.year)));
@@ -3739,7 +3736,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             text = text.split(/(?:^|[. _\[(-])(?:\d{3,4}p|4k|8k|BluRay|BDRip|WEB(?:[ ._-]?(?:DL|Rip))?|REMUX|HDTV|DVD(?:Rip)?|x26[45]|h[ ._-]?26[45]|HEVC|AVC|chs|cht|eng|简体|繁体|简中|繁中|中英|双语)(?=$|[. _\])&+-])/i)[0];
             text = text.replace(/(?:^|[. _-])S\d{1,2}[. _-]*E\d{1,3}[\s\S]*$/i, '');
             if (parsed.tv) text = text.replace(/(?:[. _-]*(?:S\d{1,2}|Season[. _-]*\d{1,2}|第[零〇一二两三四五六七八九十百\d]+季))[. _-]*$/i, '');
-            return subtitleTitleKey(text);
+            return titleKey(text);
         };
         const target = clean(subtitleQueryTitle(parsed.query, parsed.year), true);
         const fileYears = years(name), packYears = [...new Set(fields.flatMap(years))];
@@ -3838,7 +3835,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
     }
     function subtitleSearchNames(parsed) {
         const names = [parsed.query,...(parsed.aliases || [])].map(name => subtitleQueryTitle(name,parsed.year)).filter(Boolean);
-        const unique = names.filter((name,index) => names.findIndex(other => subtitleTitleKey(other) === subtitleTitleKey(name)) === index);
+        const unique = names.filter((name,index) => names.findIndex(other => titleKey(other) === titleKey(name)) === index);
         // Include an original Japanese title before spending the budget on regional Chinese variants.
         const japanese = unique.find(name => /[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(name));
         const latin = unique.find(name => /\p{Script=Latin}/u.test(name) && !/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(name));
@@ -4349,7 +4346,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     const attrs = item.attributes || {}, feature = attrs.feature_details || {};
                     const identity = parsed.tv ? feature.parent_tmdb_id : feature.tmdb_id;
                     const yearMatches = parsed.tv || !parsed.year || !feature.year || String(feature.year) === String(parsed.year);
-                    const titleMatched = [feature.title, feature.movie_name].some(value => subtitleTitleKey(value) === subtitleTitleKey(title)) && yearMatches;
+                    const titleMatched = [feature.title, feature.movie_name].some(value => titleKey(value) === titleKey(title)) && yearMatches;
                     if (parsed.tmdbId && identity && String(identity) !== String(parsed.tmdbId)) continue;
                     if (!parsed.tv && /episode|tvshow/i.test(feature.feature_type || '')) continue;
                     if (parsed.tv && (Number(feature.season_number) !== parsed.season || Number(feature.episode_number) !== parsed.episode)) continue;
@@ -5165,9 +5162,6 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         }
         return [...groups.values()];
     }
-    async function subtitleEnrichAliases(parsed, credential, check = () => {}, log = () => {}) {
-        return resolveMediaWork(parsed,credential,check,log);
-    }
     function initSubtitles(provider = '123') {
         const ui = makePanel(provider + ' 字幕', `
             <p>选中视频或文件夹，先“检查目录字幕”查看哪些缺字幕，再查找、补齐到视频所在目录。</p>
@@ -5339,7 +5333,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                         const credential = GM_getValue('cross-drive-tmdb-key', ''), aliasStarted = Date.now();
                         try {
                             const parsed = row.parsed;
-                            if (await subtitleEnrichAliases(parsed, credential, check, diag)) {
+                            if (await resolveMediaWork(parsed,credential,check,diag)) {
                                 mediaRecords.rememberParsed?.(row.node,parsed); mediaRecords.save?.();
                                 diag('作品别名', `已复用或确认作品资料，取得 ${parsed.aliases.length} 个片名用于搜索`);
                             }
