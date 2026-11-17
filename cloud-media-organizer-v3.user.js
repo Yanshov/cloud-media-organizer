@@ -1774,6 +1774,7 @@
     }
     async function runGuangyaImportFiles(files, targetId, post, ensureDirectory, existingSource, log, check) {
         const counts = { saved: 0, pending: 0, missed: 0, failed: 0, directories: 0, skipped: 0, processed: 0 };
+        let listing = null, reads = 0, reused = 0;
         for (let i = 0; i < files.length; i++) {
             const file = files[i], label = `[${i + 1}/${files.length}] ${file.path}`;
             counts.processed++;
@@ -1781,20 +1782,33 @@
                 check();
                 log(label, { index: i + 1, total: files.length, path: file.path });
                 if (file.type === 'directory') {
+                    listing = null;
                     await ensureDirectory(file.path);
                     counts.directories++;
                     log(label + '：目录已就绪');
                 } else {
                     const parent = await ensureDirectory(relativeParts(file.path).slice(0, -1).join('/'));
                     check();
-                    const matches = (await existingSource.children({ id: parent || (targetId === '0' ? '' : targetId) })).filter(node => node.name === file.name);
-                    if (matches.length > 1) throw new Error('目标存在多个同名项目，未上传');
-                    if (matches.length) {
-                        const message = existingFileMessage(matches[0], file);
+                    const parentId = parent || (targetId === '0' ? '' : targetId);
+                    let names = listing?.parentId === parentId ? listing.names : null;
+                    // Reuse only positive lookups. Absence must be checked on a fresh listing before submitting.
+                    if (!names?.has(file.name)) {
+                        listing = null; reads++;
+                        const nodes = await existingSource.children({ id: parentId });
+                        check();
+                        names = new Map();
+                        for (const node of nodes) names.set(node.name, names.has(node.name) ? null : node);
+                        listing = { parentId, names };
+                    } else reused++;
+                    if (names.has(file.name)) {
+                        const existing = names.get(file.name);
+                        if (!existing) throw new Error('目标存在多个同名项目，未上传');
+                        const message = existingFileMessage(existing, file);
                         counts.skipped++;
                         log(label + '：' + message);
                     } else {
                         check();
+                        listing = null;
                         const result = await importFile(file, parent || targetId, post);
                         if (result.status === 'saved') counts.saved++;
                         else if (result.status === 'pending') counts.pending++;
@@ -1804,12 +1818,14 @@
                     }
                 }
             } catch (error) {
+                listing = null;
                 counts.failed++;
                 log(label + '：失败，' + error.message);
                 if (error.stop || error.cancelled) { log('任务已停止，不再处理后续项目'); break; }
             }
             if ((i + 1) % 128 === 0) await sleep(0);
         }
+        log(`目录检查：读取 ${reads} 次，复用已有项 ${reused} 次；新提交前仍读取最新目录`);
         return counts;
     }
     function initGuangya() {
