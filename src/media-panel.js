@@ -8,7 +8,7 @@
             <p>先解析文件名并查询 TMDB，仅对未匹配的文件调用大模型补全作品名，再核对影视资料和季集；接口失败或同名作品有歧义时保留人工确认。字幕有多个待选候选时，也可请求一次 AI 建议。不上传视频；会发送文件名、文件夹名或字幕候选名称，调用可能计费。仍需 TMDB 密钥。</p>
             <label>服务商<select id="mediaAIProvider"><option value="custom">自定义兼容接口</option><option value="deepseek">DeepSeek</option><option value="qwen">通义千问</option><option value="siliconflow">硅基流动</option><option value="openai">OpenAI</option></select></label>
             <label>API 地址<input id="mediaAIBase" type="url" placeholder="https://服务商地址/v1"></label>
-            <label><span class="credential-head"><span>API Key</span><a id="mediaAIKeyLink" href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener noreferrer" hidden>获取 API ↗</a></span><input id="mediaAIKey" type="password" autocomplete="off" placeholder="服务商 API Key；本地服务可留空"></label>
+            <label><span class="credential-head"><span>API Key</span><a id="mediaAIKeyLink" href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener noreferrer" hidden>获取 API ↗</a></span><input id="mediaAIKey" type="password" autocomplete="off" placeholder="粘贴 API Key；可带或不带 Bearer 前缀"></label>
             <label>模型<select id="mediaAIModelSelect"></select></label>
             <div class="panel-actions"><button id="fetchMediaAIModels">获取模型列表</button></div>
             <label id="mediaAIManualModel" hidden>手动填写模型 ID<input id="mediaAIModel" placeholder="接口不提供列表时手动填写"></label>
@@ -30,9 +30,11 @@
         ui.moveSettings(['mediaSettings','mediaAISettings']);
         ui.get('tmdbKey').value = GM_getValue('cross-drive-tmdb-key', '');
         ui.get('mediaSettings').open = true;
-        const aiSaved = GM_getValue('cross-drive-media-ai', {});
+        const storedAI = GM_getValue('cross-drive-media-ai', {});
+        const aiSaved = migrateMediaAISettings(storedAI);
+        if (aiSaved !== storedAI) GM_setValue('cross-drive-media-ai', aiSaved);
         const aiPresets = {
-            deepseek: {base:'https://api.deepseek.com/v1', model:'deepseek-chat', link:'https://platform.deepseek.com/api_keys'},
+            deepseek: {base:'https://api.deepseek.com', model:'deepseek-flash', link:'https://platform.deepseek.com/api_keys'},
             qwen: {base:'https://dashscope.aliyuncs.com/compatible-mode/v1', model:'qwen-plus', link:'https://bailian.console.aliyun.com/'},
             siliconflow: {base:'https://api.siliconflow.cn/v1', model:'', link:'https://cloud.siliconflow.cn/account/ak'},
             openai: {base:'https://api.openai.com/v1', model:'', link:'https://platform.openai.com/api-keys'}
@@ -40,7 +42,7 @@
         ui.get('enableMediaAI').checked = aiSaved.enabled === true;
         ui.get('mediaAIProvider').value = aiSaved.provider || 'custom';
         ui.get('mediaAIBase').value = aiSaved.base || ''; ui.get('mediaAIKey').value = aiSaved.key || ''; ui.get('mediaAIModel').value = aiSaved.model || '';
-        const aiSettings = () => ({enabled:ui.get('enableMediaAI').checked, provider:ui.get('mediaAIProvider').value, base:ui.get('mediaAIBase').value.trim(), key:ui.get('mediaAIKey').value.trim(), model:ui.get('mediaAIModel').value.trim()});
+        const aiSettings = () => ({enabled:ui.get('enableMediaAI').checked, provider:ui.get('mediaAIProvider').value, base:ui.get('mediaAIBase').value.trim(), key:normalizeMediaAIKey(ui.get('mediaAIKey').value), model:ui.get('mediaAIModel').value.trim()});
         const updateAILink = () => { const preset = aiPresets[ui.get('mediaAIProvider').value]; const link = ui.get('mediaAIKeyLink'); link.hidden = !preset; if (preset) link.href = preset.link; };
         const showAIModels = (models = []) => {
             const current = ui.get('mediaAIModel').value.trim(), select = ui.get('mediaAIModelSelect');

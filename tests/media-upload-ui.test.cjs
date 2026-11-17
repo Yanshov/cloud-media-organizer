@@ -53,6 +53,14 @@ async function aiFallbackGuards() {
         GM_xmlhttpRequest:options=>{captured=JSON.parse(options.data);options.onload({status:200,responseText:JSON.stringify({choices:[{message:{content:'{"index":1,"confidence":0.96}'}}]})});}
     });
     const result=await ai.createMediaAI({base:'https://ai.example/v1',key:'secret',model:'test'}).disambiguateSubtitle({work:{title:'片名'},candidates:[{index:1,name:'subtitle.srt'}]});
+    const keyCheck=load(part('    function mediaAIEndpoint(', '    function validateMediaAIIdentity('),{
+        GM_xmlhttpRequest:options=>{assert.equal(options.headers.Authorization,'Bearer valid-secret');options.onload({status:401,responseText:JSON.stringify({error:{message:'Authentication failed for valid-secret'}})});}
+    });
+    assert.equal(keyCheck.normalizeMediaAIKey('  Bearer valid-secret  '),'valid-secret');
+    assert.equal(keyCheck.migrateMediaAISettings({provider:'deepseek',model:'deepseek-chat',key:'Bearer valid-secret'}).model,'deepseek-flash');
+    assert.equal(keyCheck.migrateMediaAISettings({provider:'deepseek',base:'https://api.deepseek.com/v1',model:'deepseek-chat',key:'secret'}).base,'https://api.deepseek.com');
+    assert.equal(keyCheck.migrateMediaAISettings({provider:'deepseek',model:'deepseek-chat',key:'Bearer valid-secret'}).key,'valid-secret');
+    await assert.rejects(keyCheck.createMediaAI({base:'https://api.deepseek.com',key:'Bearer valid-secret',model:'deepseek-flash'}).ask({test:true}),error=>error.status===401&&/Authentication failed/.test(error.message)&&!error.message.includes('valid-secret'));
     assert.deepEqual({...result},{index:1,confidence:0.96});assert.equal(captured.max_tokens,2000);assert.match(captured.messages[0].content,/只能返回输入中的候选 index/);
     assert.match(captured.messages[0].content,/rejected/,'AI schema includes explicit per-candidate rejections');
     const candidate={language:'zh-cn',name:'Series.S01E01.1080p.srt',release:'Series',titleMatched:false};
