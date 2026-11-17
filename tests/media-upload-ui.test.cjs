@@ -53,7 +53,7 @@ async function aiFallbackGuards() {
         GM_xmlhttpRequest:options=>{captured=JSON.parse(options.data);options.onload({status:200,responseText:JSON.stringify({choices:[{message:{content:'{"index":1,"confidence":0.96}'}}]})});}
     });
     const result=await ai.createMediaAI({base:'https://ai.example/v1',key:'secret',model:'test'}).disambiguateSubtitle({work:{title:'片名'},candidates:[{index:1,name:'subtitle.srt'}]});
-    assert.deepEqual({...result},{index:1,confidence:0.96});assert.equal(captured.max_tokens,120);assert.match(captured.messages[0].content,/只能返回输入中的候选 index/);
+    assert.deepEqual({...result},{index:1,confidence:0.96});assert.equal(captured.max_tokens,1000);assert.match(captured.messages[0].content,/只能返回输入中的候选 index/);
     const candidate={language:'zh-cn',name:'Series.S01E01.1080p.srt',release:'Series',titleMatched:false};
     const subtitle=load(part('    function subtitleFileInfo(', '    function subtitleSearchSummary('));
     const row={node:{name:'Series.S01E01.1080p.mkv'},parsed:{query:'Series',tv:true,year:'2020',season:1,episode:1,tmdbId:'42'},candidates:[candidate]};

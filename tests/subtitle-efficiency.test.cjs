@@ -71,8 +71,8 @@ async function sources() {
  await ctx.searchSubtitleSources(r,config,service,drive);assert.deepEqual(calls,['assrt']);assert.equal(r.sources.filter(s=>s.deferred).length,2);
  r.candidates.forEach(c=>c.downloadFailed=true);await ctx.searchSubtitleSources(r,config,service,drive,()=>{},()=>{},true);assert.deepEqual(calls,['assrt','open','sample','shooter']);assert.ok(!r.sources.some(s=>s.deferred));assert.equal(r.candidates.length,2);assert.equal(r.candidates[0].source,'射手');
  await ctx.searchSubtitleSources(r,config,service,drive,()=>{},()=>{},true);assert.equal(calls.length,4,'Resume queries each deferred source at most once');
- delete bilingual.downloadFailed;calls.length=0;service.assrtSearch=async()=>[{...bilingual,bilingual:false,name:'瑞克和莫蒂.S01E01.简体.ass'}];await ctx.searchSubtitleSources(row(),config,service,drive);assert.deepEqual(calls,['open'],'Monolingual result queries other title sources but defers sampling');
- calls.length=0;service.assrtSearch=async()=>[{...bilingual,titleMatched:false}];await ctx.searchSubtitleSources(row(),config,service,drive);assert.deepEqual(calls,['open'],'Unconfirmed title queries other title providers but defers sampling');
+ delete bilingual.downloadFailed;calls.length=0;service.assrtSearch=async()=>[{...bilingual,bilingual:false,name:'瑞克和莫蒂.S01E01.简体.ass'}];await ctx.searchSubtitleSources(row(),config,service,drive);assert.deepEqual(calls,[],'Reliable monolingual result defers all remaining sources');
+ calls.length=0;service.assrtSearch=async()=>[{...bilingual,titleMatched:false}];await ctx.searchSubtitleSources(row(),config,service,drive);assert.deepEqual(calls,['open','sample','shooter'],'Unconfirmed title must not block hash-source fallback');
  calls.length=0;service.assrtSearch=async()=>[{...bilingual,language:'en',name:'Rick.and.Morty.S01E01.eng.srt',bilingual:false}];await ctx.searchSubtitleSources(row(),{...config,language:'en'},service,drive);assert.equal(calls.length,0,'Reliable English stops duplicate English queries');
  console.log('PASS efficiency sources: reliable bilingual avoids additional APIs and four range reads; deferred providers resume once after failure; monolingual/uncertain candidates retain full fallback; English selection supported');
 }
@@ -101,7 +101,7 @@ async function fillFallback() {
  },mediaContext:async()=>({selected:[video],source:{},path:'剧集'}),selectedTreeCache:{stale:true},
  collectMediaSelection:async()=>({videos:[video],linked:new Map()}),parseMediaName:()=>row().parsed,mediaBonusName:()=>false,mediaRecords:{get:()=>null},mediaStem:name=>name.replace(/\.[^.]+$/,''),
  subtitleDrive:()=>({sample:async()=>{calls.push('sample');return 'hash'},reconcile:async()=>[],save:async(_row,name)=>{saves++;calls.push('save');return {id:'s',name}}})});
- ctx.createSubtitleService=()=>({assrtSearch:async()=>{calls.push('assrt');return [bi]},shooterHash:async()=>{calls.push('shooter');return [{...bi,source:'射手',hashMatched:true}]},fetchFile:async c=>{calls.push('download-'+c.source);if(c.source==='Assrt')throw Error('正文无效');return {result:{ext:'srt'},bytes:valid}}});
+ ctx.createSubtitleService=()=>({assrtSearch:async()=>{calls.push('assrt');return [{...bi}]},shooterHash:async()=>{calls.push('shooter');return [{...bi,source:'射手',hashMatched:true}]},fetchFile:async c=>{calls.push('download-'+c.source);if(c.source==='Assrt')throw Error('正文无效');return {result:{ext:'srt'},bytes:valid}}});
  vm.runInContext(part('    function subtitleInventory(', '    if (location.hostname'),ctx);ctx.initSubtitles();elements.get('assrtToken').value='test';elements.get('useThunder').checked=false;
  await elements.get('readSubtitles').onclick();assert.deepEqual(calls,['assrt']);
  await elements.get('fillSubtitles').onclick();assert.deepEqual(calls,['assrt','download-Assrt','sample','shooter','download-射手','save']);assert.equal(saves,1);assert.match(elements.get('subtitleSummary').textContent,/已有\/已补齐 1/);

@@ -148,6 +148,11 @@
             if (foreign.length === 1) aliases.add(foreign[0]);
         }
         const fileTitle = clean(name);
+        const numbered = fileTitle.match(/^(.*?\D)(\d{1,2})?$/);
+        if (numbered && [...aliases].some(alias => {
+            const targetNumbered = alias.match(/^(.*?\D)(\d{1,2})?$/);
+            return targetNumbered && targetNumbered[1] === numbered[1] && (targetNumbered[2] || '') !== (numbered[2] || '');
+        })) return {titleMatched:false, hardMismatch:true, matchReason:'片名续集编号不符'};
         const fileParts = splitMixed(name).map(part => clean(part)).filter(Boolean);
         const generic = !fileTitle || /^(?:\d{1,3}|track\d+|台|港|简|繁|字幕|subtitle|subtitles)$/i.test(fileTitle);
         const mixedMatched = fileParts.length === 2 && fileParts.some(part => aliases.has(part)) && /\p{Script=Han}/u.test(fileParts[0]) !== /\p{Script=Han}/u.test(fileParts[1]);
@@ -157,15 +162,15 @@
         const related = !!target && [...aliases].some(alias => titles.some(part => part && part.includes(alias)) || fileTitle && alias.includes(fileTitle));
         return {titleMatched:matched, related, aliases:[...aliases], matchReason:matched ? '' : '文件片名未能确认为同一作品'};
     }
-    function subtitleCandidateFilter(parsed, fields, name) {
+    function subtitleCandidateFilter(parsed, fields, name, semanticReview = false) {
         const text = String(name || '').normalize('NFKC');
         const opaque = /^[a-f0-9]{40}\.(?:srt|ass|ssa|vtt)$/i.test(text);
         if (/(?:^|[^a-z])(?:MAD|AMV)(?=$|[^a-z])|混剪|合集|剪辑|恶搞|鬼畜|\d+帧/i.test(text)) return {excluded:'内容'};
-        if (!opaque && !parsed.tv && /\s+-\s*\d+(?=\D|$)|(?:^|[^a-z])(?:EP|E)\s*\d+|\[\d+\]|第[\d零〇一二两三四五六七八九十百]+[话話集]|[\d零〇一二两三四五六七八九十百]+之卷/i.test(text)) return {excluded:'季集'};
+        if (!opaque && !parsed.tv && /\s+-\s*\d+(?=\s*(?:\.|\[|$))|(?:^|[^a-z])(?:EP|E)\s*\d{1,3}(?![a-z0-9])|\[\d+\]|第[\d零〇一二两三四五六七八九十百]+[话話集]|[\d零〇一二两三四五六七八九十百]+之卷/i.test(text)) return {excluded:'季集'};
         const match = subtitleWorkIdentity(parsed, fields, opaque ? '' : name);
-        if (match.hardMismatch) return {...match,excluded:'年份'};
+        if (match.hardMismatch) return {...match,excluded:match.matchReason === '片名续集编号不符' ? '无关' : '年份'};
         if (opaque) return {...match,titleMatched:false,opaque:true,matchReason:'哈希文件名无法确认作品，需手动选择'};
-        if (!match.titleMatched && !match.related) return {...match,excluded:'无关'};
+        if (!match.titleMatched && !match.related && !semanticReview) return {...match,excluded:'无关'};
         return match;
     }
     function subtitleEndTime(text, ext) {
@@ -198,6 +203,7 @@
     function createSubtitleService({wait = ms => sleep(ms), check = () => {}, log = () => {}} = {}) {
         let token = '', tokenKey = '';
         const failedAssrtPackages = new Set();
+        const unavailableSources = new Map();
         let assrtDownloadBlocked = false;
         const searchCache = new Map(), seasonCache = new Map(), detailCache = new Map();
         const thunderRequest = paced(1100, (title, verify) => {
@@ -232,6 +238,12 @@
                     return result;
                 } catch (error) {
                     check();
+                    if (config.nonBlockingSearch && ([429,509].includes(error.status) || error.apiStatus === 30900)) {
+                        assrtBlockedUntil = Date.now() + Math.max(60000, error.retryAfterMs || 0);
+                        unavailableSources.set('Assrt 片名搜索', error.message);
+                        log('来源暂停', `Assrt ${error.message}；本批跳过该来源，立即继续其他来源`);
+                        throw error;
+                    }
                     if (![429,509].includes(error.status) && error.apiStatus !== 30900) {
                         if (attempt === 0 && (/连接|超时|网络/i.test(error.message) || [408,500,502,503,504].includes(error.status))) {
                             log('Assrt 请求重试', `${error.message}；等待 3.5 秒后重试一次`); await pause(3500); continue;
@@ -275,6 +287,9 @@
             return found.length === 1 && Number(found[0][1]) === parsed.season && Number(found[0][2]) === parsed.episode && !/E\d+[ ._-]*[-~][ ._-]*(?:E)?\d+/i.test(name);
         };
         return {
+            resetSearchBatch() { unavailableSources.clear(); },
+            searchUnavailable(name) { return unavailableSources.get(name); },
+            pauseSearchSource(name, reason) { unavailableSources.set(name, reason); },
             resetDownloadBatch() { failedAssrtPackages.clear(); assrtDownloadBlocked = false; },
             assrtDownloadUnavailable() { return assrtDownloadBlocked; },
             async assrtSearch(row, config, onFiles = () => {}, check = () => {}, allowFallback = true) {
@@ -304,6 +319,7 @@
                 let cacheMiss = false;
                 const collect = async item => {
                     check();
+                    if (config.nonBlockingSearch && unavailableSources.has('Assrt 片名搜索')) return false;
                     if (!item.id) return false;
                     const id = String(item.id), fileSignature = Array.isArray(item.filelist) && item.filelist.length ? JSON.stringify(item.filelist.map(file => file.f)) : '';
                     if (seen.has(id) && (!fileSignature || seen.get(id) === fileSignature)) return false;
@@ -323,7 +339,7 @@
                             if (episodeMismatch) { excluded.季集++; dropped++; sampleRejection(name, '季集不符'); continue; }
                             const info = subtitleFileInfo(name, language);
                             if (info.language && !['zh-cn','zh-tw','zh','en'].includes(info.language) && !wanted.includes(info.language)) { excluded.语言++; dropped++; sampleRejection(name, '语言 ' + info.language); continue; }
-                            const match = subtitleCandidateFilter({...parsed,aliases:[...aliases]}, [item.native_name,item.videoname,detail.native_name,detail.title], name);
+                            const match = subtitleCandidateFilter({...parsed,aliases:[...aliases]}, [item.native_name,item.videoname,detail.native_name,detail.title], name, !!config.reviewCandidates);
                             if (match.excluded) { excluded[match.excluded]++; dropped++; sampleRejection(name, match.matchReason || match.excluded); continue; }
                             if (mainSearch) { match.titleMatched = false; match.matchReason = '主名兜底搜索，需确认完整片名'; }
                             if (files.length === 1 && langs.langdou && info.language.startsWith('zh')) info.bilingual = true;
@@ -364,8 +380,10 @@
                     cacheMiss = !selection.selectedCandidate;
                 }
                 if (cacheMiss || !candidates.some(preferred)) for (const term of terms) {
+                    if (unavailableSources.has('Assrt 片名搜索')) break;
                     const q = term.q; mainSearch = term.main;
                     for (let pos = 0; pos < 75; pos += 15) {
+                        if (unavailableSources.has('Assrt 片名搜索')) break;
                         check(); pages++;
                         const key = JSON.stringify(['assrt',config.assrtToken,q,pos]);
                         const cachedSearch = searchCache.has(key);
@@ -428,7 +446,7 @@
                     seen.add(url);
                     const episodeTagged = /S\d+[ ._-]*E\d+/i.test(name);
                     if (episodeTagged && (!parsed.tv || !assrtEpisode(name, parsed))) { excluded.季集++; sampleRejection(name, '季集不符'); continue; }
-                    const match = subtitleCandidateFilter(parsed, [], name);
+                    const match = subtitleCandidateFilter(parsed, [], name, !!config.reviewCandidates);
                     if (match.excluded) { excluded[match.excluded]++; sampleRejection(name, match.matchReason || match.excluded); continue; }
                     const labels = [Array.isArray(item.languages) ? item.languages.join(' ') : '', item.simple_name || ''].join(' ').replace(/\\u0026/gi, '&').replace(/英语/g, '英文');
                     const metadata = subtitleFileInfo(labels), info = subtitleFileInfo(name, metadata.language);
@@ -616,15 +634,15 @@
             const conflicts = [...original].some(token => /^(?:2160p|1080p|720p)$/.test(token) && [...version].some(other => /^(?:2160p|1080p|720p)$/.test(other) && token !== other));
             const overlaps = [...original].filter(token => version.has(token)).length;
             const lang = wanted.includes(candidate.language) || wanted.some(value => subtitleLanguageMatch(candidate.name, value));
-            const identity = candidate.identityMatched || candidate.titleMatched;
-            const reliable = !!candidate.hashMatched || !!identity && lang && !conflicts;
+            const identity = candidate.identityMatched || candidate.titleMatched || candidate.aiAccepted;
+            const reliable = !candidate.downloadFailed && !candidate.hardMismatch && (!!candidate.hashMatched || !!identity && lang && !conflicts);
             const preference = wanted.indexOf(candidate.language);
             return {candidate, reliable, preference:subtitlePreference(candidate, language), score:(candidate.hashMatched ? 1000 : 0) + (candidate.identityMatched ? 100 : 0) + (candidate.titleMatched ? 50 : 0) + overlaps * 10 + (lang ? 5 : 0) + (preference < 0 ? 0 : (wanted.length - preference) / 10)};
         }).sort((a,b) => Number(!!a.candidate.opaque) - Number(!!b.candidate.opaque) || Number(b.reliable) - Number(a.reliable) || b.preference - a.preference || b.score - a.score);
         row.candidates = scored.map(item => item.candidate);
         row.autoCandidates = scored.filter(item => item.reliable).map(item => item.candidate);
         row.selectedCandidate = row.autoCandidates[0] || null;
-        row.aiSuggested = false;
+        row.aiSuggested = !!row.selectedCandidate?.aiAccepted;
     }
     function subtitleSearchState(row) {
         if (row.complete) return 'complete';
@@ -661,6 +679,47 @@
         if (sourceQuality && candidateQuality && sourceQuality !== candidateQuality) return null;
         return candidate;
     }
+    function createSubtitleReviewer(ai, language, log = () => {}, check = () => {}) {
+        let parseFailures = 0, disabled = false;
+        return async (row, found) => {
+            if (disabled) return;
+            const unique = new Set();
+            const candidates = found.filter(candidate => {
+                if (candidate.opaque || candidate.hardMismatch || candidate.detailError || candidate.mainTitleFallback || candidate.downloadFailed) return false;
+                const key = JSON.stringify([candidate.name,candidate.release,candidate.language,candidate.bilingual]);
+                if (unique.has(key)) return false;
+                unique.add(key); return true;
+            }).map(candidate => ({index:row.candidates.indexOf(candidate), source:candidate.source, name:String(candidate.name || '').slice(0,400),
+                release:String(candidate.release || '').slice(0,400), language:candidate.language, bilingual:!!candidate.bilingual}));
+            // Batch every distinct candidate, rather than silently dropping everything after the first three.
+            for (let offset = 0; offset < candidates.length; offset += 20) {
+                const batch = candidates.slice(offset,offset + 20);
+                check();
+                log('AI 候选判断', `${row.node.name} · ${batch[0].source} · 第 ${offset + 1}—${offset + batch.length}/${candidates.length} 个不同候选`);
+                try {
+                    const result = await ai.disambiguateSubtitle({work:{title:row.parsed.query,aliases:row.parsed.aliases || [],year:row.parsed.year || '',
+                        tv:!!row.parsed.tv,season:row.parsed.season,episode:row.parsed.episode,tmdbId:row.parsed.tmdbId || ''},candidates:batch});
+                    check(); parseFailures = 0;
+                    const candidate = batch.some(item => item.index === result?.index) && subtitleAICandidate(result,row,language);
+                    log('AI 判断依据', `${row.node.name} · index=${result?.index ?? '无'} · confidence=${result?.confidence ?? '无'} · ${String(result?.reason || '未提供依据').slice(0,300)}`);
+                    if (candidate) {
+                        candidate.aiAccepted = true;
+                        selectSubtitleCandidate(row,language);
+                        log('AI 字幕建议', `${row.node.name} · ${subtitleCandidateLabel(candidate)} · 置信度 ${Math.round(result.confidence * 100)}%`);
+                        return;
+                    }
+                    log('AI 字幕建议', `${row.node.name} · 未确认可用字幕，继续其他候选或来源`);
+                } catch (error) {
+                    check(); if (error.stop) throw error;
+                    log('AI 字幕建议', `${row.node.name} · 判断失败：${error.message}；继续其他来源`);
+                    parseFailures = error.aiParse ? parseFailures + 1 : 0;
+                    if (parseFailures >= 2) { disabled = true; log('AI 字幕建议', '连续两次解析失败，本批剩余 AI 判断已停用'); return; }
+                    // A failed request is not evidence about the remaining candidates.
+                    return;
+                }
+            }
+        };
+    }
     function subtitleSearchSummary(rows) {
         const count = {complete:0,pending:0,ready:0,choice:0,failed:0,missing:0,unsearched:0};
         for (const row of rows) count[subtitleSearchState(row)]++;
@@ -686,10 +745,11 @@
             }
             if (!enabled) { row.sources.push({name,skipped:'已关闭'}); log('来源跳过', `${name} 已关闭`); return; }
             if (!configured) { row.sources.push({name,error:'未配置密钥，未查询'}); log('来源跳过', `${name} 未配置密钥`); return; }
+            const unavailable = service.searchUnavailable?.(name);
+            if (unavailable) { row.sources.push({name,error:'本批来源暂停：' + unavailable}); log('来源跳过', `${name} 本批已暂停：${unavailable}`); return; }
             selectSubtitleCandidate(row, config.language);
             const selected = row.selectedCandidate;
-            if ((!resume && selected && (selected.source === '迅雷' || (config.language === 'en' ? selected.language === 'en' : selected.bilingual)))
-                || name === '射手' && row.candidates.some(candidate => !candidate.downloadFailed)) {
+            if (selected) {
                 const reason = name === '射手' ? '已有其他来源候选，暂缓视频取样' : '已有可靠字幕，省去重复查询与视频取样';
                 row.sources.push({name,skipped:reason,deferred:true}); log('来源跳过', `${name}：${reason}`); return;
             }
@@ -698,14 +758,17 @@
                 const found = await search(); check();
                 row.candidates.push(...found); row.sources.push({name,count:found.length});
                 log('来源', `${name} 返回 ${found.length} 个文件候选`);
+                selectSubtitleCandidate(row, config.language);
+                if (!row.selectedCandidate && config.reviewCandidates) await config.reviewCandidates(row, found);
             } catch (error) {
                 check(); row.sources.push({name,error:error.message});
+                if ([429,509].includes(error.status) || error.apiStatus === 30900 || error.assrtCooldown || name === '射手' && /超时/.test(error.message)) service.pauseSearchSource?.(name,error.message);
                 log(error.phase === 'drive-auth' ? '网盘授权失败' : '来源失败', `${row.node.name} · ${name}：${error.message}`);
                 if (error.phase === 'drive-auth') { row.error = error.message; row.searchMessage = subtitleSearchMessage(row); throw error; }
             }
         };
         await run('迅雷', config.thunder, true, () => service.thunderSearch(row, config, message => log('迅雷 文件列表', message), check));
-        await run('Assrt 片名搜索', config.assrt, config.assrtToken, () => service.assrtSearch(row, config, message => log('Assrt 文件列表', message), check,
+        await run('Assrt 片名搜索', config.assrt, config.assrtToken, () => service.assrtSearch(row, {...config,nonBlockingSearch:true}, message => log('Assrt 文件列表', message), check,
             !row.candidates.some(candidate => candidate.source === '迅雷' && candidate.titleMatched && !candidate.downloadFailed)));
         await run('OpenSubtitles', config.open, config.key, () => service.search(row, config));
         await run('射手', config.shooter, true, async () => {

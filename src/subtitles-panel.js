@@ -76,7 +76,7 @@
             <p>仅检查外置字幕，不检测内嵌字幕。保留原字幕格式；同名不同内容不覆盖。中文内容检查不区分简繁，简繁筛选依赖来源语言标注。</p>
 `, 'subtitle');
         ui.moveSettings(['subtitleSettings','subtitleAccountSettings']);
-        let inventory = [], drive = null, busy = false, cancelled = false;
+        let inventory = [], drive = null, busy = false, cancelled = false, reviewCandidates = null;
         const service = createSubtitleService({check:() => check(), log:(event, detail) => diag(event, detail)});
         const prefs = GM_getValue('cross-drive-subtitle-settings', {});
         const shooterMigration = 'cross-drive-subtitle-shooter-default-v1';
@@ -171,11 +171,15 @@
             if (!config.shooter) diag('来源跳过', '射手已关闭');
             cancelled = false; lock(true); let done = 0;
             const aiConfig = GM_getValue('cross-drive-media-ai', {}) || {};
-            let ai = null, aiParseFailures = 0;
+            let ai = null;
             if (aiConfig.enabled && aiConfig.base && aiConfig.model) {
                 try { mediaAIEndpoint(aiConfig); ai = createMediaAI(aiConfig); }
                 catch (error) { diag('AI 字幕建议', 'AI 设置无效，跳过候选消歧：' + error.message); }
             }
+            service.resetSearchBatch?.();
+            reviewCandidates = ai ? createSubtitleReviewer(ai, config.language, diag, check) : null;
+            config.reviewCandidates = reviewCandidates;
+            diag('查找策略', ai ? '迅雷优先；有歧义的名称交给 AI 判断；无法确认则继续其他来源；限流来源本批暂停' : 'AI 未启用，使用严格片名匹配；无法确认则继续其他来源；限流来源本批暂停');
             try {
                 drive.assertReady?.();
                 for (const row of rows) {
@@ -193,21 +197,6 @@
                     }
                     diag('作品别名', row.parsed.aliases?.length ? row.parsed.aliases.join('；') : '无');
                     await searchSubtitleSources(row, config, service, drive, diag, check);
-                    if (ai && subtitleSearchState(row) === 'choice' && row.candidates.length >= 2) {
-                        const candidates = row.candidates.slice(0, 3).map((candidate, index) => ({index, source:candidate.source, language:candidate.language, bilingual:!!candidate.bilingual, release:String(candidate.release || '').slice(0, 80), name:String(candidate.name || '').slice(0, 160)}));
-                        try {
-                            check();
-                            const result = await ai.disambiguateSubtitle({work:{title:row.parsed.query,year:row.parsed.year || '',season:row.parsed.season,episode:row.parsed.episode,tmdbId:row.parsed.tmdbId || ''},candidates});
-                            check();
-                            aiParseFailures = 0;
-                            const candidate = subtitleAICandidate(result, row, config.language);
-                            if (candidate && candidates.some(item => item.index === row.candidates.indexOf(candidate))) {
-                                row.selectedCandidate = candidate; row.autoCandidates = [candidate]; row.aiSuggested = true; row.manualCandidate = false;
-                                row.searchMessage = subtitleSearchMessage(row);
-                                diag('AI 字幕建议', `${row.node.name} · ${subtitleCandidateLabel(candidate)} · 置信度 ${Math.round(result.confidence * 100)}%`);
-                            } else diag('AI 字幕建议', `${row.node.name} · 结果未通过作品、季集、置信度、语言或版本检查，保留待选择`);
-                        } catch (error) { check(); diag('AI 字幕建议', `${row.node.name} · 消歧失败，保留待选择：${error.message}`); aiParseFailures = error.aiParse ? aiParseFailures + 1 : 0; if (aiParseFailures >= 2) { ai = null; diag('AI 字幕建议', '连续两次解析失败，本批剩余 AI 消歧已停用'); } }
-                    }
                     if (!row.selectedCandidate && row.candidates.length) diag('待选样例', row.candidates.slice(0, 8).map(candidate => `${subtitleCandidateLabel(candidate)}（${candidate.matchReason || '未满足自动选择条件'}）`).join('；'));
                     diag('视频结果', `${row.node.name} · ${row.selectedCandidate ? (row.aiSuggested ? 'AI 建议 ' : '自动选择 ') + subtitleCandidateLabel(row.selectedCandidate) : row.candidates.length ? '有候选待手选' : row.sources.some(source => source.error) ? '查询失败' : '未找到'}`);
                     meter(++done, rows.length); render();
@@ -252,6 +241,7 @@
         ui.get('recheckSubtitles').onclick = () => readSubtitles(false);
         ui.get('fillSubtitles').onclick = async () => {
             const rows = inventory.filter(row => !row.complete && !row.pendingVerification && row.selectedCandidate), config = settings();
+            config.reviewCandidates = reviewCandidates;
             cancelled = false; lock(true); let done = 0, failed = 0, pending = 0;
             service.resetDownloadBatch?.();
             try {

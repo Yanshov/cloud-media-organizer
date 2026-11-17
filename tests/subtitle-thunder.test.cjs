@@ -38,10 +38,10 @@ async function searchAndDownloads() {
     assert.equal(new URL(requests[0].url).searchParams.get('name'),'电影','Search omits filename year');
     assert.equal(requests[0].method,'GET');assert.equal(requests[0].anonymous,true);
     assert.match(requests[0].headers['User-Agent'],/^XLPlayer\//);assert.equal(requests[0].headers.Authorization,undefined);
-    assert.equal(candidates.length,4,'Wrong year, TV episodes, archives, unsafe URLs and duplicates excluded');
+    assert.equal(candidates.length,3,'Wrong year, sequel, TV episodes, archives, unsafe URLs and duplicates excluded');
     assert.equal(candidates[0].name,'电影.2000.ass');assert.equal(candidates[0].language,'zh-cn');assert.equal(candidates[0].bilingual,true);
     assert.equal(candidates[1].language,'zh-tw','Explicit filename language overrides generic metadata');
-    assert.equal(candidates[2].language,'en');assert.equal(candidates[3].titleMatched,false,'Wrong title remains unconfirmed');
+    assert.equal(candidates[2].language,'en');assert.ok(!candidates.some(c=>c.name==='电影2.2000.srt'),'Conflicting sequel cannot reach AI or automatic selection');
     assert.equal(candidates[0].titleMatched,true);assert.match(logs[0],/电影\.2000\.ass/);
     r.candidates=candidates;ctx.selectSubtitleCandidate(r,language);assert.equal(r.selectedCandidate,candidates[0]);
     const fetched=await service.fetchFile(candidates[0],config);
@@ -98,8 +98,8 @@ async function sourceOrder() {
     calls.length=0;service.assrtSearch=async()=>{calls.push('assrt');return [{...mono,bilingual:true}]};
     r=row();await ctx.searchSubtitleSources(r,config,service,drive);assert.deepEqual(calls,['thunder']);assert.ok(r.sources.find(s=>s.name==='Assrt 片名搜索').deferred);r.candidates.forEach(c=>c.downloadFailed=true);
     await ctx.searchSubtitleSources(r,config,service,drive,()=>{},()=>{},true);
-    assert.deepEqual(calls,['thunder','assrt','open'],'Download fallback resumes deferred title sources; Assrt candidate defers shooter sampling');
-    await ctx.searchSubtitleSources(r,config,service,drive,()=>{},()=>{},true);assert.equal(calls.length,3,'Repeated resume makes no request while another source has candidates');
+    assert.deepEqual(calls,['thunder','assrt'],'Download fallback stops as soon as a reliable alternative is found');
+    await ctx.searchSubtitleSources(r,config,service,drive,()=>{},()=>{},true);assert.equal(calls.length,2,'Repeated resume makes no request while another source has a reliable candidate');
     calls.length=0;service.assrtSearch=async()=>{calls.push('assrt');return []};service.thunderSearch=async()=>{calls.push('thunder');throw Error('HTTP 429')};
     r=row();await ctx.searchSubtitleSources(r,config,service,drive);
     assert.deepEqual(calls,['thunder','assrt','open','sample','shooter']);assert.equal(r.sources.find(s=>s.name==='迅雷').error,'HTTP 429');
