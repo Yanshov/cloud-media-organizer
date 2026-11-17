@@ -197,6 +197,8 @@
     }
     function createSubtitleService({wait = ms => sleep(ms), check = () => {}, log = () => {}} = {}) {
         let token = '', tokenKey = '';
+        const failedAssrtPackages = new Set();
+        let assrtDownloadBlocked = false;
         const searchCache = new Map(), seasonCache = new Map(), detailCache = new Map();
         const thunderRequest = paced(1100, (title, verify) => {
             check(); verify();
@@ -273,7 +275,9 @@
             return found.length === 1 && Number(found[0][1]) === parsed.season && Number(found[0][2]) === parsed.episode && !/E\d+[ ._-]*[-~][ ._-]*(?:E)?\d+/i.test(name);
         };
         return {
-            async assrtSearch(row, config, onFiles = () => {}, check = () => {}) {
+            resetDownloadBatch() { failedAssrtPackages.clear(); assrtDownloadBlocked = false; },
+            assrtDownloadUnavailable() { return assrtDownloadBlocked; },
+            async assrtSearch(row, config, onFiles = () => {}, check = () => {}, allowFallback = true) {
                 const parsed = row.parsed;
                 const title = subtitleQueryTitle(parsed.query, parsed.year);
                 if (!title) throw new Error('缺少可搜索的作品名');
@@ -285,8 +289,8 @@
                 const mainTitle = title.includes(':') ? title.slice(0,title.indexOf(':')).trim() : '';
                 const terms = [
                     {q:title + (episode ? ' ' + episode : ''), main:false}, {q:title, main:false},
-                    ...(parsed.aliases || []).filter(value => /\p{Script=Latin}/u.test(value) && !/\p{Script=Han}/u.test(value)).map(value => ({q:subtitleQueryTitle(value, parsed.year), main:false})),
-                    ...(mainTitle ? [{q:mainTitle, main:true}] : [])
+                    ...(allowFallback ? parsed.aliases || [] : []).filter(value => /\p{Script=Latin}/u.test(value) && !/\p{Script=Han}/u.test(value)).map(value => ({q:subtitleQueryTitle(value, parsed.year), main:false})),
+                    ...(allowFallback && mainTitle ? [{q:mainTitle, main:true}] : [])
                 ].map(term => ({...term,q:queryText(term.q)})).filter((term,index,all) => term.q && all.findIndex(other => other.q === term.q) === index);
                 const candidates = [], seen = new Map(), aliases = new Set(parsed.aliases || []);
                 const excluded = {年份:0,季集:0,语言:0,内容:0,无关:0,待确认上限:0};
@@ -480,14 +484,22 @@
             async fetchFile(candidate, config, progress = () => {}, verify = () => {}) {
                 for (let attempt = 0; attempt < 2; attempt++) {
                     verify();
-                    const result = await this.download(candidate, config); verify();
-                    if (result.fileName) progress('文件选择', `${candidate.assrtId} · ${result.fileName}`);
+                    let result;
                     try {
+                        result = await this.download(candidate, config); verify();
+                        if (result.fileName) progress('文件选择', `${candidate.assrtId} · ${result.fileName}`);
                         const bytes = await subtitleBinary(result.url, {allowHttp:result.allowHttp === true}); verify();
                         return {result, bytes};
                     } catch (error) {
                         verify();
-                        if (error.status === 493 && candidate.source === 'Assrt') throw Object.assign(new Error(`Assrt 单文件提取失败（HTTP 493，资源 #${candidate.assrtId}）；优先尝试其他资源包`), {status:493});
+                        if (error.status === 493 && candidate.source === 'Assrt') {
+                            failedAssrtPackages.add(String(candidate.assrtId));
+                            if (!assrtDownloadBlocked && failedAssrtPackages.size >= 2) {
+                                assrtDownloadBlocked = true;
+                                log('下载熔断', `Assrt 下载已熔断：本批已有 ${failedAssrtPackages.size} 个资源包返回 493，剩余 Assrt 候选跳过`);
+                            }
+                            throw Object.assign(new Error(`Assrt 单文件提取失败（HTTP 493，资源 #${candidate.assrtId}）；优先尝试其他资源包`), {status:493});
+                        }
                         if (attempt || error.phase !== 'transfer' || !([401,403,408,429,500,502,503,504].includes(error.status) || error.retryable)) throw error;
                         progress('下载重试', `${candidate.source} · ${new URL(result.url).hostname} · ${error.message}；刷新下载地址后重试一次`);
                         if (candidate.source === 'Assrt') detailCache.delete(detailKey(candidate.assrtId,config));
@@ -497,6 +509,7 @@
             },
             async download(candidate, config) {
                 if (candidate.source === 'Assrt') {
+                    if (assrtDownloadBlocked) throw Object.assign(new Error('Assrt 下载已熔断，本批跳过'), {assrtDownloadBlocked:true});
                     let item;
                     try { item = await assrtDetail(candidate.assrtId, config, true); }
                     catch (error) {
@@ -667,8 +680,9 @@
             if (!configured) { row.sources.push({name,error:'未配置密钥，未查询'}); log('来源跳过', `${name} 未配置密钥`); return; }
             selectSubtitleCandidate(row, config.language);
             const selected = row.selectedCandidate;
-            if (!resume && selected && (config.language === 'en' ? selected.language === 'en' : selected.bilingual)) {
-                const reason = '已有可靠的' + (config.language === 'en' ? '英文' : '双语') + '字幕，省去重复查询与视频取样';
+            if ((!resume && selected && (selected.source === '迅雷' || (config.language === 'en' ? selected.language === 'en' : selected.bilingual)))
+                || name === '射手' && row.candidates.some(candidate => !candidate.downloadFailed)) {
+                const reason = name === '射手' ? '已有其他来源候选，暂缓视频取样' : '已有可靠字幕，省去重复查询与视频取样';
                 row.sources.push({name,skipped:reason,deferred:true}); log('来源跳过', `${name}：${reason}`); return;
             }
             try {
@@ -682,8 +696,9 @@
                 if (error.phase === 'drive-auth') { row.error = error.message; row.searchMessage = subtitleSearchMessage(row); throw error; }
             }
         };
-        await run('Assrt 片名搜索', config.assrt, config.assrtToken, () => service.assrtSearch(row, config, message => log('Assrt 文件列表', message), check));
         await run('迅雷', config.thunder, true, () => service.thunderSearch(row, config, message => log('迅雷 文件列表', message), check));
+        await run('Assrt 片名搜索', config.assrt, config.assrtToken, () => service.assrtSearch(row, config, message => log('Assrt 文件列表', message), check,
+            !row.candidates.some(candidate => candidate.source === '迅雷' && candidate.titleMatched && !candidate.downloadFailed)));
         await run('OpenSubtitles', config.open, config.key, () => service.search(row, config));
         await run('射手', config.shooter, true, async () => {
             log('射手取样', `pathinfo：${row.node.name}`);
@@ -698,14 +713,21 @@
         row.complete = false; row.pendingVerification = false;
         const unreadable = [], invalid = [];
         for (const sub of row.subtitles.filter(sub => /\.(srt|ass|ssa|vtt)$/i.test(sub.name))) {
-            check(); log('正文检查', `${row.node.name} · 读取现有字幕 ${sub.name}`);
+            check(); drive.assertReady?.();
+            if (drive.verified?.get(sub,language)) {
+                row.complete = true; row.error = ''; row.searchMessage = '已核验记录复用：' + sub.name;
+                log('已核验记录复用', `${row.node.name} · ${sub.name}`); return;
+            }
+            log('正文检查', `${row.node.name} · 读取现有字幕 ${sub.name}`);
             let bytes;
             try { bytes = await drive.read(sub, message => log('核验重试', message), check); check(); }
             catch (error) { check(); if (error.stop) throw error; unreadable.push(sub.name + '：' + error.message); log('现有字幕待核验', `${sub.name}：${error.message}`); continue; }
             try {
-                subtitlePayload(bytes, sub.name.split('.').pop().toLowerCase(), language, message => log('字幕解码', message));
+                let encoding = '';
+                subtitlePayload(bytes, sub.name.split('.').pop().toLowerCase(), language, message => { encoding = message; log('字幕解码', message); });
                 if (language !== 'zh-cn,zh-tw,zh' && language !== 'en' && !subtitleLanguageMatch(sub.name, language)) { invalid.push(sub.name + '：正文含中文，但所选简繁标记未确认'); continue; }
                 row.complete = true; row.error = ''; row.searchMessage = '已有字幕正文已核验：' + sub.name;
+                try { drive.verified?.remember(sub,bytes,language,encoding); } catch (error) { log('核验记录', '保存失败：' + error.message); }
                 log('现有字幕确认', `${row.node.name} · ${sub.name} 正文格式和语言检查通过`); return;
             } catch (error) { invalid.push(sub.name + '：' + error.message); log('现有字幕无效', `${sub.name}：${error.message}`); }
         }
@@ -716,6 +738,21 @@
         const {session, source} = context, guangya = session.provider === '光鸭';
         // A token digest scopes receipts without storing a credential. Token changes do not reuse old receipts.
         const receiptKey = session.token ? 'cross-drive-subtitle-uploads-v1:' + subtitleMd5(new TextEncoder().encode((session.provider || '123') + ':' + session.token)) : '';
+        const verifiedKey = receiptKey.replace('cross-drive-subtitle-uploads-v1:', 'cross-drive-subtitle-verified-v1:');
+        const savedVerified = verifiedKey && GM_getValue(verifiedKey, []);
+        const verifiedEntries = new Map(Array.isArray(savedVerified) ? savedVerified : []);
+        const verifiedIdentity = node => node.id != null && Number.isSafeInteger(node.size) && node.size >= 0 && /^[a-f0-9]{32}$/i.test(node.md5 || '')
+            ? JSON.stringify([String(node.id),node.size,node.md5.toLowerCase()]) : '';
+        const verified = {
+            get(node,language) { const record = verifiedEntries.get(verifiedIdentity(node)); return record?.language === language && record.encoding && record.time > 0 ? record : undefined; },
+            remember(node,bytes,language,encoding) {
+                const key = verifiedIdentity(node);
+                if (!verifiedKey || !key || node.size !== bytes.length || node.md5.toLowerCase() !== subtitleMd5(bytes)) return;
+                verifiedEntries.delete(key); verifiedEntries.set(key,{time:Date.now(),encoding,language}); evict(verifiedEntries,5000);
+                GM_setValue(verifiedKey,[...verifiedEntries]);
+            },
+            clear() { verifiedEntries.clear(); if (verifiedKey) GM_setValue(verifiedKey,[]); }
+        };
         const savedReceipts = receiptKey && GM_getValue(receiptKey, []);
         const receipts = new Map(Array.isArray(savedReceipts) ? savedReceipts.filter(entry => Array.isArray(entry) && typeof entry[0] === 'string' && entry[1] && typeof entry[1].name === 'string' && Number.isSafeInteger(entry[1].size) && /^[a-f0-9]{32}$/i.test(entry[1].md5 || '')) : []);
         const videoKey = row => JSON.stringify([String(row.node.id), String(row.node.parentId), row.node.name, row.node.size]);
@@ -828,7 +865,7 @@
             await subtitleBinary(endpoint.href, {method:'PUT', headers:{'Content-Type':type, Date:date, 'x-oss-security-token':creds.sessionToken, Authorization:'OSS ' + creds.accessKeyID + ':' + signature}, bytes});
         }
         return {
-            read, reconcile, assertReady,
+            read, reconcile, assertReady, verified,
             async sample(row, check = () => {}) {
                 const size = row.node.size;
                 if (!Number.isSafeInteger(size) || size < 12288) throw new Error('视频大小不可用，无法取样');

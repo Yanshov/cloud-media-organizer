@@ -116,10 +116,11 @@ async function subtitles() {
     const drive={sample:async()=>{calls.push('sample');return 'sample'}};
     let r=row();
     await ctx.searchSubtitleSources(r,{assrt:true,assrtToken:'k',open:false,shooter:true,language},service,drive);
-    assert.deepEqual(calls,['assrt','sample','shooter']);assert.equal(r.selectedCandidate,bilingual);
+    assert.deepEqual(calls,['assrt']);assert.equal(r.selectedCandidate,mono);
+    mono.downloadFailed=true;await ctx.searchSubtitleSources(r,{assrt:true,assrtToken:'k',open:false,shooter:true,language},service,drive,()=>{},()=>{},true);assert.equal(r.selectedCandidate,bilingual);delete mono.downloadFailed;
     calls=[];service.assrtSearch=async()=>{calls.push('assrt');throw Error('HTTP 509')};
     r=row();await ctx.searchSubtitleSources(r,{assrt:true,assrtToken:'k',shooter:true,language},service,drive);
-    assert.equal(r.sources[0].error,'HTTP 509');assert.equal(r.selectedCandidate,bilingual);assert.equal(calls.at(-1),'shooter');
+    assert.equal(r.sources.find(s=>s.name==='Assrt 片名搜索').error,'HTTP 509');assert.equal(r.selectedCandidate,bilingual);assert.equal(calls.at(-1),'shooter');
     calls=[];service.assrtSearch=async()=>{calls.push('assrt');stop=true;return []};
     await assert.rejects(ctx.searchSubtitleSources(row(),{assrt:true,assrtToken:'k',shooter:true,language},service,drive,()=>{},()=>{if(stop)throw Error('已停止')}),/已停止/);
     assert.deepEqual(calls,['assrt']);
@@ -313,11 +314,11 @@ async function subtitleUI() {
     await get('readSubtitles').onclick();
     assert.match(get('subtitleSummary').textContent,/待核验 1/);assert.equal(queries,0);assert.equal(get('fillSubtitles').disabled,true);assert.equal(get('searchSubtitles').disabled,true);assert.equal(get('recheckSubtitles').disabled,false);
     broken=false;await get('recheckSubtitles').onclick();assert.match(get('subtitleSummary').textContent,/已有\/已补齐 1/);assert.equal(queries,0);assert.equal(reads,2);
-    hasSubtitle=false;await get('readSubtitles').onclick();assert.equal(queries,2);assert.equal(get('fillSubtitles').disabled,false);
+    hasSubtitle=false;await get('readSubtitles').onclick();assert.equal(queries,1);assert.equal(get('fillSubtitles').disabled,false);
     await get('fillSubtitles').onclick();assert.equal(saves,1);assert.match(get('subtitleProgress').textContent,/待核验 1，失败 0/);assert.equal(get('fillSubtitles').disabled,true);
     assert.deepEqual(downloads,['A1','B'],'493 prioritizes another package before siblings of broken package');assert.equal(aliasCalls,1,'Old confirmed records lazily resolve trusted aliases');
-    await get('searchSubtitles').onclick();assert.equal(queries,2,'Pending upload cannot be searched/refilled');
-    await get('recheckSubtitles').onclick();assert.match(get('subtitleSummary').textContent,/已有\/已补齐 1/);assert.equal(saves,1);assert.equal(queries,2,'Recheck only reads drive inventory');
+    await get('searchSubtitles').onclick();assert.equal(queries,1,'Pending upload cannot be searched/refilled');
+    await get('recheckSubtitles').onclick();assert.match(get('subtitleSummary').textContent,/已有\/已补齐 1/);assert.equal(saves,1);assert.equal(queries,1,'Recheck only reads drive inventory');
     hasSubtitle=false;aiConfig={enabled:true,base:'https://ai.example',model:'test'};
     ctx.createMediaAI=()=>({disambiguateSubtitle:async payload=>{assert.equal(payload.candidates.length,2);assert.equal(payload.work.tmdbId,'7');return {index:1,confidence:.96}}});
     aiCandidates=true;

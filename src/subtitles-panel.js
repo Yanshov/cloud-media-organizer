@@ -234,6 +234,7 @@
         ui.get('fillSubtitles').onclick = async () => {
             const rows = inventory.filter(row => !row.complete && !row.pendingVerification && row.selectedCandidate), config = settings();
             cancelled = false; lock(true); let done = 0, failed = 0, pending = 0;
+            service.resetDownloadBatch?.();
             try {
                 drive.assertReady?.();
                 for (const row of rows) {
@@ -252,6 +253,7 @@
                             }
                             const candidate = candidates.shift();
                             attempted.add(candidate);
+                            if (candidate.source === 'Assrt' && service.assrtDownloadUnavailable?.()) { candidate.downloadFailed = true; diag('候选跳过', `${row.node.name} · Assrt 下载已熔断`); continue; }
                             check();
                             try {
                                 diag('候选下载', `${row.node.name} · ${subtitleCandidateLabel(candidate)} 开始`);
@@ -261,6 +263,7 @@
                                 diag('正文校验', `${row.node.name} · ${candidate.source} 通过，${bytes.length} 字节，${result.ext.toUpperCase()}`);
                                 payload = {candidate, result, bytes}; break;
                             } catch (error) {
+                                candidate.downloadFailed = true;
                                 check(); if (error.stop) throw error; failures.push(candidate.source + ' · ' + (candidate.name || candidate.release) + '：' + error.message);
                                 diag('候选失败', `${row.node.name} · ${candidate.source}：${error.message}`);
                                 if (error.status === 493 && candidate.source === 'Assrt') candidates.sort((a,b) => Number(a.source === 'Assrt' && a.assrtId === candidate.assrtId) - Number(b.source === 'Assrt' && b.assrtId === candidate.assrtId));
@@ -295,7 +298,11 @@
         ui.get('openSubtitlesKey').onchange = () => { service.logout(); ui.get('subtitleLoginState').textContent = '未登录'; };
         ui.get('subtitleLanguage').onchange = () => { inventory = []; drive = null; render(); status('语言已更改，请重新查找。'); };
         ui.get('saveSubtitleSettings').onclick = () => { GM_setValue('cross-drive-subtitle-settings', settings()); status('设置已保存。'); };
-        ui.get('forgetSubtitleKey').onclick = () => { ui.get('openSubtitlesKey').value = ''; ui.get('assrtToken').value = ''; ui.get('subtitlePassword').value = ''; service.logout(); ui.get('subtitleLoginState').textContent = '未登录'; GM_setValue('cross-drive-subtitle-settings', settings()); status('已清除凭证。'); };
+        ui.get('forgetSubtitleKey').onclick = () => {
+            const currentDrive = drive || subtitleDrive({session:provider === '光鸭' ? {provider,token:capture.token} : recover123Session(),source:{}});
+            currentDrive.verified?.clear();
+            ui.get('openSubtitlesKey').value = ''; ui.get('assrtToken').value = ''; ui.get('subtitlePassword').value = ''; service.logout(); ui.get('subtitleLoginState').textContent = '未登录'; GM_setValue('cross-drive-subtitle-settings', settings()); status('已清除凭证和当前账号的字幕核验记录。');
+        };
         ui.get('loginSubtitles').onclick = async () => {
             lock(true);
             try { await service.login(ui.get('subtitleUsername').value.trim(), ui.get('subtitlePassword').value, settings()); ui.get('subtitleLoginState').textContent = '已登录（仅本页有效）'; status('登录成功。'); }
