@@ -3282,6 +3282,7 @@
     }
 
     function subtitleRemoteJson(url, options = {}) {
+        const timeout = options.timeout || 30000;
         const hostname = new URL(url).hostname;
         if (!['api.opensubtitles.com', 'www.shooter.cn', 'api.assrt.net', 'api-shoulei-ssl.xunlei.com'].includes(hostname)) throw new Error('不支持的字幕接口地址');
         if (typeof GM_xmlhttpRequest !== 'function') throw new Error('需要 Tampermonkey 的跨域请求权限，请更新并保存完整脚本');
@@ -3289,7 +3290,7 @@
         return new Promise((resolve, reject) => GM_xmlhttpRequest({
             responseType: shooter ? 'arraybuffer' : 'text',
             url, method: options.method || 'GET', headers: options.headers || {}, data: options.body,
-            anonymous: true, timeout: 30000,
+            anonymous: true, timeout,
             onload: response => {
                 let data;
                 const bytes = shooter && response.response instanceof ArrayBuffer ? new Uint8Array(response.response) : null;
@@ -3307,7 +3308,7 @@
                 resolve(data);
             },
             onerror: () => reject(new Error('无法连接字幕来源，请检查网络或脚本跨域授权')),
-            ontimeout: () => reject(new Error('字幕来源请求超时（30 秒）')),
+            ontimeout: () => reject(new Error(`字幕来源请求超时（${timeout / 1000} 秒）`)),
             onabort: () => reject(new Error('字幕请求已取消'))
         }));
     }
@@ -3785,7 +3786,7 @@
             },
             async shooterHash(hash, name, language = 'zh') {
                 const body = new URLSearchParams({filehash:hash, pathinfo:name, format:'json', lang:language === 'en' ? 'Eng' : 'Chn'}).toString();
-                const result = await subtitleRemoteJson('https://www.shooter.cn/api/subapi.php', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body});
+                const result = await subtitleRemoteJson('https://www.shooter.cn/api/subapi.php', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body, timeout:8000});
                 if (result === null || result === -1 || Array.isArray(result) && !result.length) return [];
                 if (!Array.isArray(result)) throw new Error('射手接口返回异常，暂时无法匹配');
                 return result.flatMap(item => (item.Files || []).filter(file => file.Link).map(file => ({source:'射手', hashMatched:true, name:item.Desc || '', release:item.Desc || '', language:'', url:file.Link, ext:String(file.Ext || '').replace(/^\./,'').toLowerCase()}))).filter(item => ['srt','ass','ssa','vtt'].includes(item.ext));
@@ -3851,7 +3852,7 @@
             let request, rejected = false;
             const fail = message => { rejected = true; reject(new Error(message)); request?.abort(); };
             request = GM_xmlhttpRequest({url, method, headers, data: bytes && new Blob([bytes]), anonymous:true,
-                responseType:'arraybuffer', timeout:60000,
+                responseType:'arraybuffer', timeout:range ? 8000 : 60000,
                 onreadystatechange: response => {
                     if (range && response.readyState === 2 && response.status && response.status !== 206) fail('网盘未提供分段读取，已停止取样，不下载完整视频');
                 },
@@ -4045,21 +4046,22 @@
                 if (!row.selectedCandidate && config.reviewCandidates) await config.reviewCandidates(row, found);
             } catch (error) {
                 check(); row.sources.push({name,error:error.message});
-                if ([429,509].includes(error.status) || error.apiStatus === 30900 || error.assrtCooldown || name === '射手' && /超时/.test(error.message)) service.pauseSearchSource?.(name,error.message);
+                if ([429,509].includes(error.status) || error.apiStatus === 30900 || error.assrtCooldown || name === '射手' && (error.hashSample || /超时|无法连接字幕来源/.test(error.message))) service.pauseSearchSource?.(name,error.message);
                 log(error.phase === 'drive-auth' ? '网盘授权失败' : '来源失败', `${row.node.name} · ${name}：${error.message}`);
                 if (error.phase === 'drive-auth') { row.error = error.message; row.searchMessage = subtitleSearchMessage(row); throw error; }
             }
         };
+        await run('射手', config.shooter, true, async () => {
+            log('射手取样', `${row.node.name} · 按射手算法读取四段各 4KB，非网盘完整 MD5`);
+            const hash = await drive.sample(row, check, message => log('视频指纹', `${row.node.name} · ${message}`)); check();
+            const found = await service.shooterHash(hash, row.node.name, config.language); check();
+            log('指纹匹配', `${row.node.name} · ${found.length ? '命中 ' + found.length + ' 份字幕，仍需下载检查正文、语言和时长' : '未命中，转片名搜索'}`);
+            return found;
+        });
         await run('迅雷', config.thunder, true, () => service.thunderSearch(row, config, message => log('迅雷 文件列表', message), check));
         await run('Assrt 片名搜索', config.assrt, config.assrtToken, () => service.assrtSearch(row, {...config,nonBlockingSearch:true}, message => log('Assrt 文件列表', message), check,
             !row.candidates.some(candidate => candidate.source === '迅雷' && candidate.titleMatched && !candidate.downloadFailed)));
         await run('OpenSubtitles', config.open, config.key, () => service.search(row, config));
-        await run('射手', config.shooter, true, async () => {
-            log('射手取样', `pathinfo：${row.node.name}`);
-            const hash = await drive.sample(row, check); check();
-            log('射手取样', `${row.node.name} · 已计算 4 段视频哈希`);
-            return service.shooterHash(hash, row.node.name, config.language);
-        });
         check(); selectSubtitleCandidate(row, config.language);
         row.searchMessage = subtitleSearchMessage(row);
     }
@@ -4110,6 +4112,7 @@
         const savedReceipts = receiptKey && GM_getValue(receiptKey, []);
         const receipts = new Map(Array.isArray(savedReceipts) ? savedReceipts.filter(entry => Array.isArray(entry) && typeof entry[0] === 'string' && entry[1] && typeof entry[1].name === 'string' && Number.isSafeInteger(entry[1].size) && /^[a-f0-9]{32}$/i.test(entry[1].md5 || '')) : []);
         const videoKey = row => JSON.stringify([String(row.node.id), String(row.node.parentId), row.node.name, row.node.size]);
+        const sampleCache = new Map();
         const pendingFor = row => [...receipts].filter(([,record]) => record.video === videoKey(row));
         const persistReceipts = () => { if (receiptKey) GM_setValue(receiptKey, [...receipts]); };
         let authError = null;
@@ -4220,15 +4223,24 @@
         }
         return {
             read, reconcile, assertReady, verified,
-            async sample(row, check = () => {}) {
+            async sample(row, check = () => {}, progress = () => {}) {
+                check(); assertReady();
                 const size = row.node.size;
                 if (!Number.isSafeInteger(size) || size < 12288) throw new Error('视频大小不可用，无法取样');
+                const key = JSON.stringify([videoKey(row),row.node.md5 || '']);
+                if (sampleCache.has(key)) { progress('复用已计算的四段指纹'); return sampleCache.get(key); }
                 const url = await downloadUrl(row.node), hashes = [];
-                for (const offset of [4096,Math.floor(size / 3) * 2,Math.floor(size / 3),size - 8192]) {
-                    check();
-                    hashes.push(subtitleMd5(await subtitleBinary(url, {headers:{Range:`bytes=${offset}-${offset + 4095}`}, range:[offset, offset + 4095,size], limit:4096})));
-                }
-                return hashes.join(';');
+                try {
+                    for (const offset of [4096,Math.floor(size / 3) * 2,Math.floor(size / 3),size - 8192]) {
+                        check();
+                        hashes.push(subtitleMd5(await subtitleBinary(url, {headers:{Range:`bytes=${offset}-${offset + 4095}`}, range:[offset, offset + 4095,size], limit:4096})));
+                    }
+                } catch (error) { error.hashSample = true; throw error; }
+                check();
+                const hash = hashes.join(';');
+                sampleCache.set(key,hash); evict(sampleCache,200);
+                progress('四段取样完成，共 16KB；仅在当前目录会话缓存指纹');
+                return hash;
             },
             async save(row, name, bytes, progress = () => {}, check = () => {}) {
                 check();
@@ -4372,7 +4384,7 @@
             <div class="panel-actions"><button id="searchSubtitles" disabled>重搜未完成项</button><button id="copyMissingSubtitles" disabled>复制未补齐路径</button><button id="copySubtitleReport" disabled>复制完整报告</button></div>
             <details id="subtitleSettings"><summary>字幕来源与设置</summary>
             <label><input id="useThunder" type="checkbox" checked>迅雷 · 按片名搜索（免 Key，免费）</label>
-            <label><input id="useShooter" type="checkbox" checked>射手 · 视频片段哈希匹配（免 Key）</label>
+            <label><input id="useShooter" type="checkbox" checked>射手 · 优先按视频指纹匹配（免 Key）</label>
             <p>射手仅取四段各 4KB 视频数据，不下载完整视频。网盘拒绝分段读取时跳过该来源。<a href="https://www.shooter.cn/" target="_blank" rel="noopener noreferrer">射手官网 ↗</a></p>
             <label><input id="useAssrt" type="checkbox" checked>Assrt 射手网 · 按片名搜索（需 Token）</label>
             <label><span class="credential-head"><span>Assrt API Token</span><a href="https://assrt.net/api/user/token" target="_blank" rel="noopener noreferrer">获取 Token ↗</a></span><input id="assrtToken" type="password" autocomplete="off"></label>
@@ -4492,7 +4504,7 @@
             service.resetSearchBatch?.();
             reviewCandidates = ai ? createSubtitleReviewer(ai, config.language, diag, check) : null;
             config.reviewCandidates = reviewCandidates;
-            diag('查找策略', ai ? '迅雷优先；有歧义的名称交给 AI 判断；无法确认则继续其他来源；限流来源本批暂停' : 'AI 未启用，使用严格片名匹配；无法确认则继续其他来源；限流来源本批暂停');
+            diag('查找策略', `${config.shooter ? '先按视频指纹匹配，未命中再查迅雷' : '视频指纹来源关闭，迅雷优先'}；${ai ? '名称有歧义时交给 AI 判断' : 'AI 未启用，使用严格片名匹配'}；限流或射手超时后本批跳过该来源`);
             try {
                 drive.assertReady?.();
                 for (const row of rows) {

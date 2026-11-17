@@ -90,19 +90,19 @@ async function sourceOrder() {
     const service={assrtSearch:async()=>{calls.push('assrt');return [mono]},thunderSearch:async()=>{calls.push('thunder');return [bilingual]},search:async()=>{calls.push('open');return []},shooterHash:async()=>{calls.push('shooter');return []}};
     const drive={sample:async()=>{calls.push('sample');return 'hash'}};
     let r=row();await ctx.searchSubtitleSources(r,config,service,drive);
-    assert.deepEqual(calls,['thunder']);assert.equal(r.selectedCandidate,bilingual,'Bilingual thunder outranks simplified monolingual Assrt');
-    assert.deepEqual(Array.from(r.sources.filter(s=>s.deferred),s=>s.name),['Assrt 片名搜索','OpenSubtitles','射手']);
+    assert.deepEqual(calls,['sample','shooter','thunder']);assert.equal(r.selectedCandidate,bilingual,'Bilingual thunder outranks simplified monolingual Assrt');
+    assert.deepEqual(Array.from(r.sources.filter(s=>s.deferred),s=>s.name),['Assrt 片名搜索','OpenSubtitles']);
     calls.length=0;service.thunderSearch=async()=>{calls.push('thunder');return [{...bilingual,bilingual:false}]};
-    await ctx.searchSubtitleSources(row(),config,service,drive);assert.deepEqual(calls,['thunder'],'Reliable monolingual thunder also makes zero Assrt requests');
+    await ctx.searchSubtitleSources(row(),config,service,drive);assert.deepEqual(calls,['sample','shooter','thunder'],'Reliable monolingual thunder also makes zero Assrt requests');
     service.thunderSearch=async()=>{calls.push('thunder');return [bilingual]};
     calls.length=0;service.assrtSearch=async()=>{calls.push('assrt');return [{...mono,bilingual:true}]};
-    r=row();await ctx.searchSubtitleSources(r,config,service,drive);assert.deepEqual(calls,['thunder']);assert.ok(r.sources.find(s=>s.name==='Assrt 片名搜索').deferred);r.candidates.forEach(c=>c.downloadFailed=true);
+    r=row();await ctx.searchSubtitleSources(r,config,service,drive);assert.deepEqual(calls,['sample','shooter','thunder']);assert.ok(r.sources.find(s=>s.name==='Assrt 片名搜索').deferred);r.candidates.forEach(c=>c.downloadFailed=true);
     await ctx.searchSubtitleSources(r,config,service,drive,()=>{},()=>{},true);
-    assert.deepEqual(calls,['thunder','assrt'],'Download fallback stops as soon as a reliable alternative is found');
-    await ctx.searchSubtitleSources(r,config,service,drive,()=>{},()=>{},true);assert.equal(calls.length,2,'Repeated resume makes no request while another source has a reliable candidate');
+    assert.deepEqual(calls,['sample','shooter','thunder','assrt'],'Download fallback stops as soon as a reliable alternative is found');
+    await ctx.searchSubtitleSources(r,config,service,drive,()=>{},()=>{},true);assert.equal(calls.length,4,'Repeated resume makes no request while another source has a reliable candidate');
     calls.length=0;service.assrtSearch=async()=>{calls.push('assrt');return []};service.thunderSearch=async()=>{calls.push('thunder');throw Error('HTTP 429')};
     r=row();await ctx.searchSubtitleSources(r,config,service,drive);
-    assert.deepEqual(calls,['thunder','assrt','open','sample','shooter']);assert.equal(r.sources.find(s=>s.name==='迅雷').error,'HTTP 429');
+    assert.deepEqual(calls,['sample','shooter','thunder','assrt','open']);assert.equal(r.sources.find(s=>s.name==='迅雷').error,'HTTP 429');
     assert.equal(ctx.subtitleSearchState(r),'failed','Source failure never becomes a definitive not-found result');
     console.log('PASS thunder orchestration: Assrt/thunder/OpenSubtitles/Shooter order, shared ranking, reliable bilingual deferral, one-time resume and isolated source failure');
 }

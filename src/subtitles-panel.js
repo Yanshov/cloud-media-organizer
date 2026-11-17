@@ -59,7 +59,7 @@
             <div class="panel-actions"><button id="searchSubtitles" disabled>重搜未完成项</button><button id="copyMissingSubtitles" disabled>复制未补齐路径</button><button id="copySubtitleReport" disabled>复制完整报告</button></div>
             <details id="subtitleSettings"><summary>字幕来源与设置</summary>
             <label><input id="useThunder" type="checkbox" checked>迅雷 · 按片名搜索（免 Key，免费）</label>
-            <label><input id="useShooter" type="checkbox" checked>射手 · 视频片段哈希匹配（免 Key）</label>
+            <label><input id="useShooter" type="checkbox" checked>射手 · 优先按视频指纹匹配（免 Key）</label>
             <p>射手仅取四段各 4KB 视频数据，不下载完整视频。网盘拒绝分段读取时跳过该来源。<a href="https://www.shooter.cn/" target="_blank" rel="noopener noreferrer">射手官网 ↗</a></p>
             <label><input id="useAssrt" type="checkbox" checked>Assrt 射手网 · 按片名搜索（需 Token）</label>
             <label><span class="credential-head"><span>Assrt API Token</span><a href="https://assrt.net/api/user/token" target="_blank" rel="noopener noreferrer">获取 Token ↗</a></span><input id="assrtToken" type="password" autocomplete="off"></label>
@@ -179,7 +179,7 @@
             service.resetSearchBatch?.();
             reviewCandidates = ai ? createSubtitleReviewer(ai, config.language, diag, check) : null;
             config.reviewCandidates = reviewCandidates;
-            diag('查找策略', ai ? '迅雷优先；有歧义的名称交给 AI 判断；无法确认则继续其他来源；限流来源本批暂停' : 'AI 未启用，使用严格片名匹配；无法确认则继续其他来源；限流来源本批暂停');
+            diag('查找策略', `${config.shooter ? '先按视频指纹匹配，未命中再查迅雷' : '视频指纹来源关闭，迅雷优先'}；${ai ? '名称有歧义时交给 AI 判断' : 'AI 未启用，使用严格片名匹配'}；限流或射手超时后本批跳过该来源`);
             try {
                 drive.assertReady?.();
                 for (const row of rows) {

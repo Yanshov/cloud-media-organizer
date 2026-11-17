@@ -91,8 +91,8 @@ async function uiAuth(){
  loadDrive(ctx,null); // Install actual drive factory without invoking its operations.
  ctx.createSubtitleService=()=>({assrtSearch:async()=>{searches++;return []},shooterHash:async()=>{throw Error('Must not query shooter')},fetchFile:async()=>{downloads++;throw Error('Must not download')}});
  vm.runInContext(part('    function subtitleInventory(','    if (location.hostname'),ctx);ctx.initSubtitles();elements.get('assrtToken').value='test';elements.get('useThunder').checked=false;
- await elements.get('readSubtitles').onclick();assert.equal(searches,1);assert.equal(apiCalls,1);assert.match(elements.get('subtitleLog').value,/查找中断.*网盘登录失效或权限不足/);assert.ok(!elements.get('subtitleLog').value.includes('Love, Death & Robots.2019.S01E02.mp4 · 射手'));
- await elements.get('searchSubtitles').onclick();assert.equal(searches,1);assert.equal(apiCalls,1);
+ await elements.get('readSubtitles').onclick();assert.equal(searches,0);assert.equal(apiCalls,1);assert.match(elements.get('subtitleLog').value,/查找中断.*网盘登录失效或权限不足/);assert.ok(!elements.get('subtitleLog').value.includes('Love, Death & Robots.2019.S01E02.mp4 · 射手'));
+ await elements.get('searchSubtitles').onclick();assert.equal(searches,0);assert.equal(apiCalls,1);
  await elements.get('fillSubtitles').onclick();assert.equal(downloads,0);assert.equal(apiCalls,1);assert.match(elements.get('subtitleProgress').textContent,/重新检查目录/);
  console.log('PASS log UI integration: 2-video search halts on first drive auth failure; repeated search/fill do not query providers, download files or upload with known invalid session; actionable status shown');
 }
@@ -106,10 +106,10 @@ async function uiCooldown(){
  },mediaContext:async()=>({selected:videos,source:{},path:'剧集'}),selectedTreeCache:{stale:true},
  collectMediaSelection:async()=>({videos,linked:new Map()}),parseMediaName:name=>row(Number(name.match(/E(\d+)/)[1])).parsed,mediaBonusName:()=>false,mediaRecords:{get:()=>null},
  subtitleDrive:()=>({assertReady(){},reconcile:async()=>[],sample:async()=>{samples++;return 'hash'},save:async()=>{saves++}})});
- ctx.createSubtitleService=()=>({assrtSearch:async r=>[1,2,3].map(id=>({source:'Assrt',assrtId:id,name:`Love.Death.and.Robots.S01E0${r.parsed.episode}.简体&英文.ass`,language:'zh-cn',bilingual:true,titleMatched:true})),fetchFile:async()=>{downloads++;throw Object.assign(Error('限流重试已停止'),{assrtCooldown:true,stop:true})}});
+ ctx.createSubtitleService=()=>({shooterHash:async()=>[],assrtSearch:async r=>[1,2,3].map(id=>({source:'Assrt',assrtId:id,name:`Love.Death.and.Robots.S01E0${r.parsed.episode}.简体&英文.ass`,language:'zh-cn',bilingual:true,titleMatched:true})),fetchFile:async()=>{downloads++;throw Object.assign(Error('限流重试已停止'),{assrtCooldown:true,stop:true})}});
  vm.runInContext(part('    function subtitleInventory(','    if (location.hostname'),ctx);ctx.initSubtitles();elements.get('assrtToken').value='test';elements.get('useThunder').checked=false;
  await elements.get('readSubtitles').onclick();assert.match(elements.get('subtitleSummary').textContent,/可补齐 2/);
- await elements.get('fillSubtitles').onclick();assert.equal(downloads,1,'Do not burn siblings or later videos');assert.equal(samples,0);assert.equal(saves,0);
+ await elements.get('fillSubtitles').onclick();assert.equal(downloads,1,'Do not burn siblings or later videos');assert.equal(samples,2);assert.equal(saves,0);
  assert.match(elements.get('subtitleLog').value,/下载暂停/);assert.ok(!elements.get('subtitleLog').value.includes('[候选失败]'));
  assert.match(elements.get('subtitleSummary').textContent,/可补齐 2/);assert.match(elements.get('subtitleSummary').textContent,/失败 0/);
  console.log('PASS log UI cooldown: renewed rate limit pauses on first candidate; no sibling failures, deferred queries or uploads; both videos remain ready with zero failed count');
