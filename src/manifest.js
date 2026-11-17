@@ -415,7 +415,8 @@
             <p id="scope">先在网盘页面选中文件/文件夹，再导出 JSON；可粘贴后导入，也可点“选择文件”。</p>
             <textarea id="json" placeholder="导出的 JSON 会显示在这里；导入时也可粘贴 JSON"></textarea>
             <input id="manifest" type="file" accept=".json,application/json" hidden>
-            <div class="panel-actions"><button id="generate">导出 JSON</button><button id="transfer">导入 JSON</button><button id="chooseManifest">选择文件</button><button id="copy">复制 JSON</button><button id="save">保存 JSON</button><button id="clear">清除</button></div>
+            <div class="panel-actions"><button id="generate">导出 JSON</button><button id="transfer">导入 JSON</button><button id="chooseManifest">选择文件</button></div>
+            <div class="panel-actions" style="padding-top:0;border-top:0;margin-top:0"><button id="save">下载 JSON</button></div>
             <p id="status"></p><p id="progress"></p><div id="log"></div>`);
         bindExportHistory(ui, provider);
         ui.get('incremental').closest('label').hidden = true;
@@ -450,13 +451,9 @@
                 }, parentPath);
                 if (!result.entries.length) throw new Error('没有可导出的文件信息');
                 const summary = exportManifestJson(ui, provider, result);
-                ui.get('status').textContent = `完成（${scope}）：${summary}。` + (!ui.get('json').value ? '没有可导出的内容。' : '请复制或保存 JSON，到目标盘导入。') + (result.skipped.length ? ` 缺少有效 MD5/大小，已跳过 ${result.skipped.length} 项：${result.skipped.slice(0, 5).join('、')}` : '');
+                ui.get('status').textContent = `完成（${scope}）：${summary}。` + (!ui.get('json').value ? '没有可导出的内容。' : '请下载 JSON，到目标盘导入。') + (result.skipped.length ? ` 缺少有效 MD5/大小，已跳过 ${result.skipped.length} 项：${result.skipped.slice(0, 5).join('、')}` : '');
             } catch (error) { ui.get('status').textContent = '失败：' + error.message; }
             finally { controls.forEach(button => { button.disabled = false; }); ui.busy(false); }
-        };
-        ui.get('clear').onclick = () => {
-            ui.get('manifest').value = ''; ui.get('json').value = ''; ui.get('log').textContent = '';
-            ui.get('status').textContent = ''; ui.get('progress').textContent = '';
         };
         ui.get('generate').onclick = () => generate();
         ui.get('save').onclick = () => {
@@ -464,7 +461,6 @@
             if (!value) { ui.get('status').textContent = '请先生成 JSON'; return; }
             saveJsonFile(value, `${provider}-跨盘清单-${Date.now()}.json`, message => { ui.get('status').textContent = message; });
         };
-        ui.get('copy').onclick = () => copyManifest(ui);
         return ui;
     }
     function inspectRequest(target, headers, body) {

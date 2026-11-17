@@ -436,7 +436,7 @@
         if (tabs.has(id)) return tabs.get(id).ui;
         const pane = document.createElement('section');
         pane.id = id + 'Pane'; pane.className = 'tool-pane'; pane.setAttribute('role', 'tabpanel'); pane.setAttribute('aria-labelledby', id + 'Tab'); pane.tabIndex = 0; pane.hidden = true;
-        pane.innerHTML = `<h3></h3>${media ? '' : `<div class="export-options"><label><input id="incremental" type="checkbox" checked>复用旧记录，加快读取</label></div><p id="historySummary" style="padding:8px;border:1px solid var(--border);border-radius:4px"></p><div class="export-options"><button id="importHistory">导入旧清单</button><button id="resetHistory">重置导出记录</button><input id="historyFile" type="file" accept=".json,application/json" hidden></div>`}${html}`;
+        pane.innerHTML = `<h3></h3>${media ? '' : `<details id="exportHistory"><summary>导出记录（续传加速）</summary><div class="export-options"><label><input id="incremental" type="checkbox" checked>复用旧记录，加快读取</label></div><p id="historySummary" style="padding:8px;border:1px solid var(--border);border-radius:4px"></p><div class="export-options"><button id="importHistory">导入旧清单</button><button id="resetHistory">重置导出记录</button><input id="historyFile" type="file" accept=".json,application/json" hidden></div></details>`}${html}`;
         pane.querySelector('h3').textContent = title;
         let stopJson;
         if (id === 'json') {
@@ -487,7 +487,7 @@
         return ui;
     }
     function panelControls(ui) {
-        return ['json', 'manifest', 'jsonFile', 'historyFile', 'generate', 'exportManifest', 'transfer', 'start', 'chooseManifest', 'chooseJsonFile', 'copy', 'copyJson', 'save', 'saveJson', 'clear', 'incremental', 'resetHistory', 'importHistory', 'syncExisting'].map(ui.get).filter(Boolean);
+        return ['json', 'manifest', 'jsonFile', 'historyFile', 'generate', 'exportManifest', 'transfer', 'start', 'chooseManifest', 'chooseJsonFile', 'copyJson', 'save', 'saveJson', 'incremental', 'resetHistory', 'importHistory', 'syncExisting'].map(ui.get).filter(Boolean);
     }
     function appendLog(ui, message) {
         const line = document.createElement('div');
@@ -971,7 +971,8 @@
             <p id="scope">先在网盘页面选中文件/文件夹，再导出 JSON；可粘贴后导入，也可点“选择文件”。</p>
             <textarea id="json" placeholder="导出的 JSON 会显示在这里；导入时也可粘贴 JSON"></textarea>
             <input id="manifest" type="file" accept=".json,application/json" hidden>
-            <div class="panel-actions"><button id="generate">导出 JSON</button><button id="transfer">导入 JSON</button><button id="chooseManifest">选择文件</button><button id="copy">复制 JSON</button><button id="save">保存 JSON</button><button id="clear">清除</button></div>
+            <div class="panel-actions"><button id="generate">导出 JSON</button><button id="transfer">导入 JSON</button><button id="chooseManifest">选择文件</button></div>
+            <div class="panel-actions" style="padding-top:0;border-top:0;margin-top:0"><button id="save">下载 JSON</button></div>
             <p id="status"></p><p id="progress"></p><div id="log"></div>`);
         bindExportHistory(ui, provider);
         ui.get('incremental').closest('label').hidden = true;
@@ -1006,13 +1007,9 @@
                 }, parentPath);
                 if (!result.entries.length) throw new Error('没有可导出的文件信息');
                 const summary = exportManifestJson(ui, provider, result);
-                ui.get('status').textContent = `完成（${scope}）：${summary}。` + (!ui.get('json').value ? '没有可导出的内容。' : '请复制或保存 JSON，到目标盘导入。') + (result.skipped.length ? ` 缺少有效 MD5/大小，已跳过 ${result.skipped.length} 项：${result.skipped.slice(0, 5).join('、')}` : '');
+                ui.get('status').textContent = `完成（${scope}）：${summary}。` + (!ui.get('json').value ? '没有可导出的内容。' : '请下载 JSON，到目标盘导入。') + (result.skipped.length ? ` 缺少有效 MD5/大小，已跳过 ${result.skipped.length} 项：${result.skipped.slice(0, 5).join('、')}` : '');
             } catch (error) { ui.get('status').textContent = '失败：' + error.message; }
             finally { controls.forEach(button => { button.disabled = false; }); ui.busy(false); }
-        };
-        ui.get('clear').onclick = () => {
-            ui.get('manifest').value = ''; ui.get('json').value = ''; ui.get('log').textContent = '';
-            ui.get('status').textContent = ''; ui.get('progress').textContent = '';
         };
         ui.get('generate').onclick = () => generate();
         ui.get('save').onclick = () => {
@@ -1020,7 +1017,6 @@
             if (!value) { ui.get('status').textContent = '请先生成 JSON'; return; }
             saveJsonFile(value, `${provider}-跨盘清单-${Date.now()}.json`, message => { ui.get('status').textContent = message; });
         };
-        ui.get('copy').onclick = () => copyManifest(ui);
         return ui;
     }
     function inspectRequest(target, headers, body) {
@@ -1822,7 +1818,8 @@
             <input id="jsonFile" type="file" accept=".json,application/json" hidden>
             <div class="export-options"><label><input id="syncExisting" type="checkbox" checked>导入新版，成功后删除对应旧版</label></div>
             <div id="syncPreview" class="sync-preview" hidden><h4>导入预览</h4><p id="syncDestination"></p><p id="syncSummary"></p><div id="syncList"></div><div class="sync-actions"><button id="confirmSync">确认执行</button><button id="cancelSync">取消</button></div></div>
-            <div class="panel-actions"><button id="exportManifest">导出 JSON</button><button id="start">导入 JSON</button><button id="chooseJsonFile">选择文件</button><button id="copyJson">复制 JSON</button><button id="saveJson">保存 JSON</button><button id="clear">清除</button></div>
+            <div class="panel-actions"><button id="exportManifest">导出 JSON</button><button id="start">导入 JSON</button><button id="chooseJsonFile">选择文件</button></div>
+            <div class="panel-actions" style="padding-top:0;border-top:0;margin-top:0"><button id="saveJson">下载 JSON</button><button id="copyJson">复制 JSON</button></div>
             <div id="log"></div>`);
         bindExportHistory(ui, '光鸭');
         const controls = panelControls(ui);
@@ -1873,13 +1870,6 @@
             const value = ui.get('json').value;
             if (!value) { ui.get('status').textContent = '请先导出 JSON'; return; }
             saveJsonFile(value, `光鸭-跨盘-${Date.now()}.json`, message => { ui.get('status').textContent = message; });
-        };
-        ui.get('clear').onclick = () => {
-            ui.get('json').value = '';
-            ui.get('jsonFile').value = '';
-            ui.get('log').textContent = '';
-            ui.get('progress').textContent = '';
-            refreshStatus();
         };
         ui.get('jsonFile').onchange = event => { const file = event.target.files?.[0]; if (file) return startImport(file); };
         ui.get('chooseJsonFile').onclick = () => ui.get('jsonFile').click();
@@ -2698,7 +2688,8 @@
             <p id="mediaTarget"></p><p id="mediaRecordState" role="status"></p>
             <div class="panel-actions"><button id="scanMedia">识别并预览</button><button id="previewMedia" hidden>更新预览</button><button id="runMedia" disabled>确认执行</button><button id="stopMedia" hidden disabled>停止</button></div>
             <div id="mediaMeter" hidden><label id="mediaMeterLabel" for="mediaBar"></label><progress id="mediaBar" max="100" value="0" style="display:block;width:100%;height:12px;margin:8px 0;accent-color:gray"></progress></div><p id="mediaProgress" role="status"></p><div id="mediaSummary"></div>
-            <details id="mediaMore"><summary>更多操作</summary><label><input id="forceMedia" type="checkbox">强制重新读取与识别（忽略本次缓存）</label><div class="panel-actions"><button id="skipPendingMedia" disabled>跳过全部待处理</button><button id="restoreSkippedMedia" disabled>恢复已跳过</button><button id="clearMedia">清除列表</button></div></details>
+            <div class="panel-actions"><button id="skipPendingMedia" disabled>跳过全部待处理</button><button id="restoreSkippedMedia" disabled>恢复已跳过</button></div>
+            <details id="mediaMore"><summary>高级选项</summary><label><input id="forceMedia" type="checkbox">强制重新读取与识别（忽略本次缓存）</label><div class="panel-actions"><button id="clearMedia">清除列表</button></div></details>
             <div id="mediaPreview" style="max-height:240px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px"></div>
             <div id="mediaRows"></div>
             <details id="mediaCleanup"><summary>清理文件（独立操作）</summary>
@@ -4125,29 +4116,29 @@
     function initSubtitles(provider = '123') {
         const ui = makePanel(provider + ' 字幕', `
             <p>选中视频或文件夹，查找字幕后批量补齐到视频所在目录。</p>
-            <div class="panel-actions"><button id="readSubtitles">查找字幕</button><button id="recheckSubtitles" disabled>重新检查目录</button><button id="fillSubtitles" disabled>补齐字幕</button><button id="stopSubtitles" hidden>停止</button><button id="clearSubtitles">清除列表</button></div>
+            <div class="panel-actions"><button id="readSubtitles">查找字幕</button><button id="recheckSubtitles" disabled>重新检查目录</button><button id="fillSubtitles" disabled>补齐字幕</button><button id="stopSubtitles" hidden>停止</button></div>
             <p id="subtitleProgress" role="status">先在网页勾选视频或文件夹。</p>
             <progress id="subtitleMeter" max="1" value="0" hidden style="width:100%;accent-color:#666"></progress>
             <div id="subtitleSummary" hidden class="sync-preview"></div>
-            <details id="subtitleDiagnostics"><summary>字幕运行日志</summary><div class="panel-actions"><button id="copySubtitleLog">复制日志</button><button id="clearSubtitleLog">清空日志</button></div><textarea id="subtitleLog" readonly rows="8" spellcheck="false" aria-label="字幕运行日志" style="width:100%;font:12px/1.45 monospace;resize:vertical"></textarea></details>
             <label><input id="onlyChoiceSubtitles" type="checkbox" checked>只看待选择</label>
             <div id="subtitleRows"></div>
             <div class="panel-actions"><button id="searchSubtitles" disabled>重搜未完成项</button><button id="copyMissingSubtitles" disabled>复制未补齐路径</button><button id="copySubtitleReport" disabled>复制完整报告</button></div>
-            <details id="subtitleSettings"><summary>字幕来源与 API 设置</summary>
-            <label><input id="useAssrt" type="checkbox" checked>Assrt 射手网 · 按片名搜索</label>
+            <details id="subtitleSettings"><summary>字幕来源与设置</summary>
+            <label><input id="useThunder" type="checkbox" checked>迅雷 · 按片名搜索（免 Key，免费）</label>
+            <label><input id="useShooter" type="checkbox" checked>射手 · 视频片段哈希匹配（免 Key）</label>
+            <p>射手仅取四段各 4KB 视频数据，不下载完整视频。网盘拒绝分段读取时跳过该来源。<a href="https://www.shooter.cn/" target="_blank" rel="noopener noreferrer">射手官网 ↗</a></p>
+            <label><input id="useAssrt" type="checkbox" checked>Assrt 射手网 · 按片名搜索（需 Token）</label>
             <label><span class="credential-head"><span>Assrt API Token</span><a href="https://assrt.net/api/user/token" target="_blank" rel="noopener noreferrer">获取 Token ↗</a></span><input id="assrtToken" type="password" autocomplete="off"></label>
             <p>电影按不带年份的片名搜索；剧集先按片名＋季集搜索，没结果再按片名搜索。需要个人 Token，额度以服务返回为准；未配置不算作“未找到”。获取页面不可用时，无法在脚本内代办 Token。</p>
-            <label><input id="useThunder" type="checkbox" checked>迅雷 · 按片名搜索（免 Key，免费）</label>
-            <label><input id="useOpenSubtitles" type="checkbox">OpenSubtitles（可选，受账号额度限制）</label>
+            <label><input id="useOpenSubtitles" type="checkbox">OpenSubtitles（需 API Key，可选）</label>
             <label><span class="credential-head"><span>OpenSubtitles API Key</span><a href="https://www.opensubtitles.com/en/consumers" target="_blank" rel="noopener noreferrer">获取 API ↗</a></span><input id="openSubtitlesKey" type="password" autocomplete="off"></label>
             <p>注册并登录官网 → API Consumers → 创建应用 → 复制 API Key。下载配额以账号返回为准。</p>
             <label>字幕语言<select id="subtitleLanguage"><option value="zh-cn,zh-tw,zh">中文（简体 / 繁体）</option><option value="zh-cn">简体中文</option><option value="zh-tw">繁体中文</option><option value="en">英文</option></select></label>
             <p>中文自动选择顺序：双语优先（简体双语优于繁体双语），其次简体中文，再次繁体中文。可在文件列表手动指定某份字幕。</p>
-            <label><input id="useShooter" type="checkbox" checked>射手 · 网盘视频片段哈希匹配（免 Key）</label>
-            <p>仅取四段各 4KB 视频数据，不下载完整视频。网盘拒绝分段读取时跳过该来源。<a href="https://www.shooter.cn/" target="_blank" rel="noopener noreferrer">射手官网 ↗</a></p>
             <div class="panel-actions"><button id="saveSubtitleSettings">保存设置</button><button id="forgetSubtitleKey">清除凭证</button></div>
             </details>
             <details id="subtitleAccountSettings"><summary>OpenSubtitles 账号（提高下载配额，可选）</summary><label>用户名<input id="subtitleUsername" autocomplete="off"></label><label>密码<input id="subtitlePassword" type="password" autocomplete="off"></label><button id="loginSubtitles">登录</button><p id="subtitleLoginState">未登录；密码不保存，令牌仅本页有效。</p></details>
+            <details id="subtitleDiagnostics"><summary>字幕运行日志</summary><div class="panel-actions"><button id="copySubtitleLog">复制日志</button><button id="clearSubtitleLog">清空日志</button></div><textarea id="subtitleLog" readonly rows="8" spellcheck="false" aria-label="字幕运行日志" style="width:100%;font:12px/1.45 monospace;resize:vertical"></textarea></details>
             <p>仅检查外置字幕，不检测内嵌字幕。保留原字幕格式；同名不同内容不覆盖。中文内容检查不区分简繁，简繁筛选依赖来源语言标注。</p>
 `, 'subtitle');
         ui.moveSettings(['subtitleSettings','subtitleAccountSettings']);
@@ -4230,7 +4221,7 @@
         };
         const lock = value => {
             busy = value; ui.busy(value);
-            for (const id of ['readSubtitles','recheckSubtitles','clearSubtitles','saveSubtitleSettings','forgetSubtitleKey','loginSubtitles','openSubtitlesKey','subtitleUsername','subtitlePassword','useOpenSubtitles','useShooter','useAssrt','useThunder','assrtToken','subtitleLanguage']) ui.get(id).disabled = value;
+            for (const id of ['readSubtitles','recheckSubtitles','saveSubtitleSettings','forgetSubtitleKey','loginSubtitles','openSubtitlesKey','subtitleUsername','subtitlePassword','useOpenSubtitles','useShooter','useAssrt','useThunder','assrtToken','subtitleLanguage']) ui.get(id).disabled = value;
             ui.get('stopSubtitles').hidden = !value; ui.get('stopSubtitles').disabled = !value; render();
         };
         const searchRows = async rows => {
@@ -4378,7 +4369,6 @@
         };
         ui.get('searchSubtitles').onclick = () => searchRows(inventory.filter(row => !row.complete));
         ui.get('stopSubtitles').onclick = () => { cancelled = true; ui.get('stopSubtitles').disabled = true; status('等待当前请求结束后停止…'); };
-        ui.get('clearSubtitles').onclick = () => { inventory = []; drive = null; ui.get('subtitleMeter').hidden = true; render(); status('已清除列表。'); diag('列表', '已清除字幕结果列表'); };
         ui.get('clearSubtitleLog').onclick = () => { ui.get('subtitleLog').value = ''; diag('日志', '已清空'); };
         ui.get('onlyChoiceSubtitles').onchange = render;
         ui.get('openSubtitlesKey').onchange = () => { service.logout(); ui.get('subtitleLoginState').textContent = '未登录'; };

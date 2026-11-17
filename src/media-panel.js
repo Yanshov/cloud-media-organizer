@@ -17,7 +17,8 @@
             <p id="mediaTarget"></p><p id="mediaRecordState" role="status"></p>
             <div class="panel-actions"><button id="scanMedia">识别并预览</button><button id="previewMedia" hidden>更新预览</button><button id="runMedia" disabled>确认执行</button><button id="stopMedia" hidden disabled>停止</button></div>
             <div id="mediaMeter" hidden><label id="mediaMeterLabel" for="mediaBar"></label><progress id="mediaBar" max="100" value="0" style="display:block;width:100%;height:12px;margin:8px 0;accent-color:gray"></progress></div><p id="mediaProgress" role="status"></p><div id="mediaSummary"></div>
-            <details id="mediaMore"><summary>更多操作</summary><label><input id="forceMedia" type="checkbox">强制重新读取与识别（忽略本次缓存）</label><div class="panel-actions"><button id="skipPendingMedia" disabled>跳过全部待处理</button><button id="restoreSkippedMedia" disabled>恢复已跳过</button><button id="clearMedia">清除列表</button></div></details>
+            <div class="panel-actions"><button id="skipPendingMedia" disabled>跳过全部待处理</button><button id="restoreSkippedMedia" disabled>恢复已跳过</button></div>
+            <details id="mediaMore"><summary>高级选项</summary><label><input id="forceMedia" type="checkbox">强制重新读取与识别（忽略本次缓存）</label><div class="panel-actions"><button id="clearMedia">清除列表</button></div></details>
             <div id="mediaPreview" style="max-height:240px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px"></div>
             <div id="mediaRows"></div>
             <details id="mediaCleanup"><summary>清理文件（独立操作）</summary>

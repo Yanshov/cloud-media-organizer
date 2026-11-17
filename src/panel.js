@@ -177,7 +177,7 @@
         if (tabs.has(id)) return tabs.get(id).ui;
         const pane = document.createElement('section');
         pane.id = id + 'Pane'; pane.className = 'tool-pane'; pane.setAttribute('role', 'tabpanel'); pane.setAttribute('aria-labelledby', id + 'Tab'); pane.tabIndex = 0; pane.hidden = true;
-        pane.innerHTML = `<h3></h3>${media ? '' : `<div class="export-options"><label><input id="incremental" type="checkbox" checked>复用旧记录，加快读取</label></div><p id="historySummary" style="padding:8px;border:1px solid var(--border);border-radius:4px"></p><div class="export-options"><button id="importHistory">导入旧清单</button><button id="resetHistory">重置导出记录</button><input id="historyFile" type="file" accept=".json,application/json" hidden></div>`}${html}`;
+        pane.innerHTML = `<h3></h3>${media ? '' : `<details id="exportHistory"><summary>导出记录（续传加速）</summary><div class="export-options"><label><input id="incremental" type="checkbox" checked>复用旧记录，加快读取</label></div><p id="historySummary" style="padding:8px;border:1px solid var(--border);border-radius:4px"></p><div class="export-options"><button id="importHistory">导入旧清单</button><button id="resetHistory">重置导出记录</button><input id="historyFile" type="file" accept=".json,application/json" hidden></div></details>`}${html}`;
         pane.querySelector('h3').textContent = title;
         let stopJson;
         if (id === 'json') {
@@ -228,7 +228,7 @@
         return ui;
     }
     function panelControls(ui) {
-        return ['json', 'manifest', 'jsonFile', 'historyFile', 'generate', 'exportManifest', 'transfer', 'start', 'chooseManifest', 'chooseJsonFile', 'copy', 'copyJson', 'save', 'saveJson', 'clear', 'incremental', 'resetHistory', 'importHistory', 'syncExisting'].map(ui.get).filter(Boolean);
+        return ['json', 'manifest', 'jsonFile', 'historyFile', 'generate', 'exportManifest', 'transfer', 'start', 'chooseManifest', 'chooseJsonFile', 'copyJson', 'save', 'saveJson', 'incremental', 'resetHistory', 'importHistory', 'syncExisting'].map(ui.get).filter(Boolean);
     }
     function appendLog(ui, message) {
         const line = document.createElement('div');

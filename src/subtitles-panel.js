@@ -15,29 +15,29 @@
     function initSubtitles(provider = '123') {
         const ui = makePanel(provider + ' 字幕', `
             <p>选中视频或文件夹，查找字幕后批量补齐到视频所在目录。</p>
-            <div class="panel-actions"><button id="readSubtitles">查找字幕</button><button id="recheckSubtitles" disabled>重新检查目录</button><button id="fillSubtitles" disabled>补齐字幕</button><button id="stopSubtitles" hidden>停止</button><button id="clearSubtitles">清除列表</button></div>
+            <div class="panel-actions"><button id="readSubtitles">查找字幕</button><button id="recheckSubtitles" disabled>重新检查目录</button><button id="fillSubtitles" disabled>补齐字幕</button><button id="stopSubtitles" hidden>停止</button></div>
             <p id="subtitleProgress" role="status">先在网页勾选视频或文件夹。</p>
             <progress id="subtitleMeter" max="1" value="0" hidden style="width:100%;accent-color:#666"></progress>
             <div id="subtitleSummary" hidden class="sync-preview"></div>
-            <details id="subtitleDiagnostics"><summary>字幕运行日志</summary><div class="panel-actions"><button id="copySubtitleLog">复制日志</button><button id="clearSubtitleLog">清空日志</button></div><textarea id="subtitleLog" readonly rows="8" spellcheck="false" aria-label="字幕运行日志" style="width:100%;font:12px/1.45 monospace;resize:vertical"></textarea></details>
             <label><input id="onlyChoiceSubtitles" type="checkbox" checked>只看待选择</label>
             <div id="subtitleRows"></div>
             <div class="panel-actions"><button id="searchSubtitles" disabled>重搜未完成项</button><button id="copyMissingSubtitles" disabled>复制未补齐路径</button><button id="copySubtitleReport" disabled>复制完整报告</button></div>
-            <details id="subtitleSettings"><summary>字幕来源与 API 设置</summary>
-            <label><input id="useAssrt" type="checkbox" checked>Assrt 射手网 · 按片名搜索</label>
+            <details id="subtitleSettings"><summary>字幕来源与设置</summary>
+            <label><input id="useThunder" type="checkbox" checked>迅雷 · 按片名搜索（免 Key，免费）</label>
+            <label><input id="useShooter" type="checkbox" checked>射手 · 视频片段哈希匹配（免 Key）</label>
+            <p>射手仅取四段各 4KB 视频数据，不下载完整视频。网盘拒绝分段读取时跳过该来源。<a href="https://www.shooter.cn/" target="_blank" rel="noopener noreferrer">射手官网 ↗</a></p>
+            <label><input id="useAssrt" type="checkbox" checked>Assrt 射手网 · 按片名搜索（需 Token）</label>
             <label><span class="credential-head"><span>Assrt API Token</span><a href="https://assrt.net/api/user/token" target="_blank" rel="noopener noreferrer">获取 Token ↗</a></span><input id="assrtToken" type="password" autocomplete="off"></label>
             <p>电影按不带年份的片名搜索；剧集先按片名＋季集搜索，没结果再按片名搜索。需要个人 Token，额度以服务返回为准；未配置不算作“未找到”。获取页面不可用时，无法在脚本内代办 Token。</p>
-            <label><input id="useThunder" type="checkbox" checked>迅雷 · 按片名搜索（免 Key，免费）</label>
-            <label><input id="useOpenSubtitles" type="checkbox">OpenSubtitles（可选，受账号额度限制）</label>
+            <label><input id="useOpenSubtitles" type="checkbox">OpenSubtitles（需 API Key，可选）</label>
             <label><span class="credential-head"><span>OpenSubtitles API Key</span><a href="https://www.opensubtitles.com/en/consumers" target="_blank" rel="noopener noreferrer">获取 API ↗</a></span><input id="openSubtitlesKey" type="password" autocomplete="off"></label>
             <p>注册并登录官网 → API Consumers → 创建应用 → 复制 API Key。下载配额以账号返回为准。</p>
             <label>字幕语言<select id="subtitleLanguage"><option value="zh-cn,zh-tw,zh">中文（简体 / 繁体）</option><option value="zh-cn">简体中文</option><option value="zh-tw">繁体中文</option><option value="en">英文</option></select></label>
             <p>中文自动选择顺序：双语优先（简体双语优于繁体双语），其次简体中文，再次繁体中文。可在文件列表手动指定某份字幕。</p>
-            <label><input id="useShooter" type="checkbox" checked>射手 · 网盘视频片段哈希匹配（免 Key）</label>
-            <p>仅取四段各 4KB 视频数据，不下载完整视频。网盘拒绝分段读取时跳过该来源。<a href="https://www.shooter.cn/" target="_blank" rel="noopener noreferrer">射手官网 ↗</a></p>
             <div class="panel-actions"><button id="saveSubtitleSettings">保存设置</button><button id="forgetSubtitleKey">清除凭证</button></div>
             </details>
             <details id="subtitleAccountSettings"><summary>OpenSubtitles 账号（提高下载配额，可选）</summary><label>用户名<input id="subtitleUsername" autocomplete="off"></label><label>密码<input id="subtitlePassword" type="password" autocomplete="off"></label><button id="loginSubtitles">登录</button><p id="subtitleLoginState">未登录；密码不保存，令牌仅本页有效。</p></details>
+            <details id="subtitleDiagnostics"><summary>字幕运行日志</summary><div class="panel-actions"><button id="copySubtitleLog">复制日志</button><button id="clearSubtitleLog">清空日志</button></div><textarea id="subtitleLog" readonly rows="8" spellcheck="false" aria-label="字幕运行日志" style="width:100%;font:12px/1.45 monospace;resize:vertical"></textarea></details>
             <p>仅检查外置字幕，不检测内嵌字幕。保留原字幕格式；同名不同内容不覆盖。中文内容检查不区分简繁，简繁筛选依赖来源语言标注。</p>
 `, 'subtitle');
         ui.moveSettings(['subtitleSettings','subtitleAccountSettings']);
@@ -120,7 +120,7 @@
         };
         const lock = value => {
             busy = value; ui.busy(value);
-            for (const id of ['readSubtitles','recheckSubtitles','clearSubtitles','saveSubtitleSettings','forgetSubtitleKey','loginSubtitles','openSubtitlesKey','subtitleUsername','subtitlePassword','useOpenSubtitles','useShooter','useAssrt','useThunder','assrtToken','subtitleLanguage']) ui.get(id).disabled = value;
+            for (const id of ['readSubtitles','recheckSubtitles','saveSubtitleSettings','forgetSubtitleKey','loginSubtitles','openSubtitlesKey','subtitleUsername','subtitlePassword','useOpenSubtitles','useShooter','useAssrt','useThunder','assrtToken','subtitleLanguage']) ui.get(id).disabled = value;
             ui.get('stopSubtitles').hidden = !value; ui.get('stopSubtitles').disabled = !value; render();
         };
         const searchRows = async rows => {
@@ -268,7 +268,6 @@
         };
         ui.get('searchSubtitles').onclick = () => searchRows(inventory.filter(row => !row.complete));
         ui.get('stopSubtitles').onclick = () => { cancelled = true; ui.get('stopSubtitles').disabled = true; status('等待当前请求结束后停止…'); };
-        ui.get('clearSubtitles').onclick = () => { inventory = []; drive = null; ui.get('subtitleMeter').hidden = true; render(); status('已清除列表。'); diag('列表', '已清除字幕结果列表'); };
         ui.get('clearSubtitleLog').onclick = () => { ui.get('subtitleLog').value = ''; diag('日志', '已清空'); };
         ui.get('onlyChoiceSubtitles').onchange = render;
         ui.get('openSubtitlesKey').onchange = () => { service.logout(); ui.get('subtitleLoginState').textContent = '未登录'; };

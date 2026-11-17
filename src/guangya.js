@@ -549,7 +549,8 @@
             <input id="jsonFile" type="file" accept=".json,application/json" hidden>
             <div class="export-options"><label><input id="syncExisting" type="checkbox" checked>导入新版，成功后删除对应旧版</label></div>
             <div id="syncPreview" class="sync-preview" hidden><h4>导入预览</h4><p id="syncDestination"></p><p id="syncSummary"></p><div id="syncList"></div><div class="sync-actions"><button id="confirmSync">确认执行</button><button id="cancelSync">取消</button></div></div>
-            <div class="panel-actions"><button id="exportManifest">导出 JSON</button><button id="start">导入 JSON</button><button id="chooseJsonFile">选择文件</button><button id="copyJson">复制 JSON</button><button id="saveJson">保存 JSON</button><button id="clear">清除</button></div>
+            <div class="panel-actions"><button id="exportManifest">导出 JSON</button><button id="start">导入 JSON</button><button id="chooseJsonFile">选择文件</button></div>
+            <div class="panel-actions" style="padding-top:0;border-top:0;margin-top:0"><button id="saveJson">下载 JSON</button><button id="copyJson">复制 JSON</button></div>
             <div id="log"></div>`);
         bindExportHistory(ui, '光鸭');
         const controls = panelControls(ui);
@@ -600,13 +601,6 @@
             const value = ui.get('json').value;
             if (!value) { ui.get('status').textContent = '请先导出 JSON'; return; }
             saveJsonFile(value, `光鸭-跨盘-${Date.now()}.json`, message => { ui.get('status').textContent = message; });
-        };
-        ui.get('clear').onclick = () => {
-            ui.get('json').value = '';
-            ui.get('jsonFile').value = '';
-            ui.get('log').textContent = '';
-            ui.get('progress').textContent = '';
-            refreshStatus();
         };
         ui.get('jsonFile').onchange = event => { const file = event.target.files?.[0]; if (file) return startImport(file); };
         ui.get('chooseJsonFile').onclick = () => ui.get('jsonFile').click();
