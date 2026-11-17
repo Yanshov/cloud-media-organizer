@@ -40,7 +40,8 @@ const pick = (candidates, language = 'zh-cn,zh-tw,zh') => {
     const row = {node:{name:'肥胖症：尸检.2016.mkv'}, parsed:{query:'肥胖症：尸检.2016', year:2016, tv:false}};
     const log = [];
     const candidates = await service.assrtSearch(row, config, message => log.push(message));
-    assert.equal(requests[0].url.searchParams.get('q'), '肥胖症:尸检');
+    assert.equal(requests[0].url.searchParams.get('q'), '肥胖症 尸检');
+    assert.equal(row.parsed.query, '肥胖症：尸检.2016', 'Outbound cleanup must not alter the identity title');
     assert.equal(requests[0].url.searchParams.get('filelist'), '1');
     assert.equal(requests.length, 1, 'File list in search must avoid extra detail requests');
     assert.deepEqual(Array.from(candidates, c => c.name), names);

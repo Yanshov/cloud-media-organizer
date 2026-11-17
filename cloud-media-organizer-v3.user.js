@@ -3310,8 +3310,10 @@
         // Foreign suffixes override a multilingual package's Chinese label.
         const foreign = value.match(/\[([a-z]{2,3})\]\.(?:srt|ass|ssa|vtt)$/)?.[1] || value.match(/(?:\[|[._ -])(fra|fre|fr|spa|es|ger|deu|de|ita|it|por|pt|rus|ru|jpn|ja|kor|ko|ara|ar|tha|th|vie|vi|ind|id|dut|nld|nl|pol|pl|tur|tr|hin|hi)(?:\])?\.(?:srt|ass|ssa|vtt)$/)?.[1];
         const languages = {fra:'fr',fre:'fr',spa:'es',ger:'de',deu:'de',ita:'it',por:'pt',rus:'ru',jpn:'ja',kor:'ko',ara:'ar',tha:'th',vie:'vi',ind:'id',dut:'nl',nld:'nl',pol:'pl',tur:'tr',hin:'hi'};
+        const fullLanguages = {german:'de',spanish:'es',french:'fr',italian:'it',portuguese:'pt',russian:'ru',japanese:'ja',korean:'ko',arabic:'ar',thai:'th',vietnamese:'vi',indonesian:'id',dutch:'nl',polish:'pl',turkish:'tr',hindi:'hi',greek:'el',hebrew:'he',finnish:'fi',estonian:'et',hungarian:'hu',swedish:'sv',danish:'da',norwegian:'no',czech:'cs',romanian:'ro'};
+        const fullLanguage = Object.keys(fullLanguages).find(tag);
         const bilingual = /中英|简英|繁英|双语|bilingual/.test(value) || chinese && english;
-        return {language:simplified ? 'zh-cn' : traditional ? 'zh-tw' : chinese || bilingual ? 'zh' : english ? 'en' : foreign ? languages[foreign] || foreign : fallback, bilingual};
+        return {language:simplified ? 'zh-cn' : traditional ? 'zh-tw' : chinese || bilingual ? 'zh' : english ? 'en' : foreign ? languages[foreign] || foreign : fullLanguage ? fullLanguages[fullLanguage] : fallback, bilingual};
     }
     function subtitlePreference(candidate, language) {
         const info = subtitleFileInfo(candidate.name, candidate.language);
@@ -3364,7 +3366,11 @@
         const yearConflict = year => parsed.year && year && String(parsed.year) !== year && !(laterSeason && Number(year) >= Number(parsed.year));
         if (yearConflict(fileYear)) return {titleMatched:false, hardMismatch:true, matchReason:`文件年份 ${fileYear} 与视频 ${parsed.year} 不符`};
         if (!fileYear && packYears.length === 1 && yearConflict(packYears[0])) return {titleMatched:false, hardMismatch:true, matchReason:`资源年份 ${packYears[0]} 与视频 ${parsed.year} 不符`};
-        const aliases = new Set([target, ...(parsed.aliases || []).map(value => clean(value, true)).filter(Boolean)]);
+        const variants = value => {
+            const text = String(value || '').normalize('NFKC');
+            return [text, text.replace(/^(.*?\D)\d+\s*:\s*(\S.*)$/, '$1:$2')].map(value => clean(value, true)).filter(Boolean);
+        };
+        const aliases = new Set([target, ...[subtitleQueryTitle(parsed.query, parsed.year), ...(parsed.aliases || [])].flatMap(variants)]);
         let packMatched = false;
         const splitMixed = part => {
             // Common Assrt display: Chinese title + English release name, without a slash.
@@ -3387,8 +3393,12 @@
         const fileTitle = clean(name);
         const fileParts = splitMixed(name).map(part => clean(part)).filter(Boolean);
         const generic = !fileTitle || /^(?:\d{1,3}|track\d+|台|港|简|繁|字幕|subtitle|subtitles)$/i.test(fileTitle);
-        const matched = !!target && (generic ? packMatched && packYears.length <= 1 : aliases.has(fileTitle) || fileParts.length > 1 && fileParts.every(part => aliases.has(part)));
-        return {titleMatched:matched, aliases:[...aliases], matchReason:matched ? '' : '文件片名未能确认为同一作品'};
+        const mixedMatched = fileParts.length === 2 && fileParts.some(part => aliases.has(part)) && /\p{Script=Han}/u.test(fileParts[0]) !== /\p{Script=Han}/u.test(fileParts[1]);
+        if (mixedMatched) for (const part of fileParts) aliases.add(part);
+        const matched = !!target && (generic ? packMatched && packYears.length <= 1 : aliases.has(fileTitle) || mixedMatched || fileParts.length > 1 && fileParts.every(part => aliases.has(part)));
+        const titles = [fileTitle,...groups.flat()];
+        const related = !!target && [...aliases].some(alias => titles.some(part => part && part.includes(alias)) || fileTitle && alias.includes(fileTitle));
+        return {titleMatched:matched, related, aliases:[...aliases], matchReason:matched ? '' : '文件片名未能确认为同一作品'};
     }
     function createSubtitleService({wait = ms => sleep(ms), check = () => {}, log = () => {}} = {}) {
         let token = '', tokenKey = '';
@@ -3475,9 +3485,17 @@
                 if (parsed.tv && (parsed.season == null || parsed.episode == null)) throw new Error('缺少明确季集，未按片名搜索');
                 if (parsed.endEpisode && parsed.endEpisode !== parsed.episode) throw new Error('合并多集视频需单独选字幕');
                 const episode = parsed.tv ? 'S' + String(parsed.season).padStart(2,'0') + 'E' + String(parsed.episode).padStart(2,'0') : '';
-                const terms = [...new Set([title + (episode ? ' ' + episode : ''), title])];
+                // Assrt query punctuation is cleaned independently of the identity title.
+                const queryText = value => String(value).normalize('NFKC').replace(/[!:"“”()|@~^/<>=*]/g, ' ').replace(/\s+/g, ' ').trim();
+                const mainTitle = title.includes(':') ? title.slice(0,title.indexOf(':')).trim() : '';
+                const terms = [
+                    {q:title + (episode ? ' ' + episode : ''), main:false}, {q:title, main:false},
+                    ...(parsed.aliases || []).filter(value => /\p{Script=Latin}/u.test(value) && !/\p{Script=Han}/u.test(value)).map(value => ({q:subtitleQueryTitle(value, parsed.year), main:false})),
+                    ...(mainTitle ? [{q:mainTitle, main:true}] : [])
+                ].map(term => ({...term,q:queryText(term.q)})).filter((term,index,all) => term.q && all.findIndex(other => other.q === term.q) === index);
                 const candidates = [], seen = new Map(), aliases = new Set(parsed.aliases || []);
-                const excluded = {年份:0,季集:0,语言:0,待确认上限:0};
+                const excluded = {年份:0,季集:0,语言:0,无关:0,待确认上限:0};
+                let mainSearch = false;
                 let pages = 0, rejected = 0, uncertain = 0;
                 const wanted = (config.language || 'zh-cn,zh-tw,zh').split(',');
                 const preferred = candidate => candidate.titleMatched && (wanted.includes(candidate.language) || candidate.bilingual && wanted.includes('en'));
@@ -3506,10 +3524,12 @@
                             if (info.language && !['zh-cn','zh-tw','zh','en'].includes(info.language) && !wanted.includes(info.language)) { excluded.语言++; dropped++; continue; }
                             const match = subtitleWorkIdentity({...parsed,aliases:[...aliases]}, [item.native_name,item.videoname,detail.native_name,detail.title], name);
                             if (match.hardMismatch) { excluded.年份++; dropped++; continue; }
+                            if (!match.titleMatched && !match.related) { excluded.无关++; dropped++; continue; }
+                            if (mainSearch) { match.titleMatched = false; match.matchReason = '主名兜底搜索，需确认完整片名'; }
                             if (files.length === 1 && langs.langdou && info.language.startsWith('zh')) info.bilingual = true;
                             if (!match.titleMatched && ++uncertain > 60) { excluded.待确认上限++; dropped++; continue; }
                             if (match.titleMatched) { confirmed = true; for (const alias of match.aliases) aliases.add(alias); }
-                            candidates.push({...pack, ...info, name, assrtFileName:name, fileSize:file.s || '', titleMatched:match.titleMatched, matchReason:match.matchReason});
+                            candidates.push({...pack, ...info, name, assrtFileName:name, fileSize:file.s || '', titleMatched:match.titleMatched, mainTitleFallback:mainSearch, matchReason:match.matchReason});
                             kept.push(name);
                         }
                         // Keep complete file lists, not another episode's selected candidate or signed URL.
@@ -3522,10 +3542,13 @@
                             evict(seasonCache, 24);
                         }
                         rejected += dropped;
-                        if (kept.length) onFiles(`${release || 'Assrt #' + item.id} · 保留 ${kept.length}/${files.length} 份：${kept.slice(0,12).join('；')}${kept.length > 12 ? '；其余 ' + (kept.length - 12) + ' 份见候选列表' : ''}${dropped ? '；排除年份/季集/语言不符或超出待确认上限 ' + dropped + ' 份' : ''}`);
+                        if (kept.length) onFiles(`${release || 'Assrt #' + item.id} · 保留 ${kept.length}/${files.length} 份：${kept.slice(0,12).join('；')}${kept.length > 12 ? '；其余 ' + (kept.length - 12) + ' 份见候选列表' : ''}${dropped ? '；排除年份/季集/语言不符、无关或超出待确认上限 ' + dropped + ' 份' : ''}`);
                     } catch (error) {
                         check();
-                        if (candidates.filter(candidate => candidate.detailError).length < 10) candidates.push({...pack, name:item.filename || release || 'Assrt #' + item.id, titleMatched:false, detailError:error.message});
+                        const match = subtitleWorkIdentity({...parsed,aliases:[...aliases]}, [item.native_name,item.videoname], item.filename || release);
+                        if (match.hardMismatch) { excluded.年份++; rejected++; }
+                        else if (!match.related) { excluded.无关++; rejected++; }
+                        if (!match.hardMismatch && match.related && candidates.filter(candidate => candidate.detailError).length < 10) candidates.push({...pack, name:item.filename || release || 'Assrt #' + item.id, titleMatched:false, mainTitleFallback:mainSearch, detailError:error.message});
                         onFiles(`${release || 'Assrt #' + item.id} · 文件列表读取失败：${error.message}`);
                     }
                     return true;
@@ -3540,7 +3563,8 @@
                     // Keep cached IDs and candidates so fresh search pages do not re-expand the same packages.
                     cacheMiss = !selection.selectedCandidate;
                 }
-                if (cacheMiss || !candidates.some(preferred)) for (const q of terms) {
+                if (cacheMiss || !candidates.some(preferred)) for (const term of terms) {
+                    const q = term.q; mainSearch = term.main;
                     for (let pos = 0; pos < 75; pos += 15) {
                         check(); pages++;
                         const key = JSON.stringify(['assrt',config.assrtToken,q,pos]);
@@ -3565,7 +3589,7 @@
                         // Stop on a useful first page too, keeping alternative packages for failed downloads.
                         if (items.length < 15 || !fresh || reliable.some(candidate => wanted.includes('en') && !wanted.some(lang => lang.startsWith('zh')) || candidate.bilingual) && new Set(reliable.map(candidate => candidate.assrtId)).size >= 2) break;
                     }
-                    if (candidates.some(preferred)) break;
+                    if (candidates.some(candidate => candidate.titleMatched)) break;
                 }
                 for (const candidate of candidates) candidate.parsed.aliases = [...aliases];
                 log('Assrt 筛选', `查询 ${pages} 页 · 保留 ${candidates.length} 份 · 排除 ${rejected} 份（${Object.entries(excluded).map(([reason,count]) => reason + ' ' + count).join('，')}）· 待确认 ${candidates.filter(candidate => !candidate.titleMatched).length} 份`);
@@ -3796,7 +3820,7 @@
     function subtitleAICandidate(result, row, language) {
         if (!Number.isInteger(result?.index) || !Number.isFinite(result.confidence) || result.confidence < .9 || result.confidence > 1) return null;
         const candidate = row.candidates?.[result.index];
-        if (!candidate || candidate.hardMismatch) return null;
+        if (!candidate || candidate.hardMismatch || candidate.mainTitleFallback) return null;
         const parsed = row.parsed, identity = candidate.workIdentity;
         if (subtitleWorkIdentity(parsed, [candidate.release], candidate.name || '').hardMismatch) return null;
         if (identity) {
@@ -4113,6 +4137,28 @@
             return { node, parsed, subtitles, complete:false, pendingVerification:false, path: '/' + [parentPath, node.path].filter(Boolean).join('/') };
         });
     }
+    async function subtitleEnrichAliases(parsed, credential, check = () => {}) {
+        if (!credential || parsed.tmdbId && parsed.aliases?.length) return false;
+        const client = tmdbClient(credential), type = parsed.tv ? 'tv' : 'movie';
+        if (parsed.tmdbId) {
+            const detail = await client.get(`/${type}/${parsed.tmdbId}`, {append_to_response:'alternative_titles'}); check();
+            if (String(detail.id) !== String(parsed.tmdbId) || !parsed.tv && parsed.year && detail.release_date && !detail.release_date.startsWith(String(parsed.year))) throw new Error('已确认作品的编号或年份与资料不一致');
+            parsed.aliases = [...new Set([detail.title,detail.original_title,detail.name,detail.original_name,
+                ...(detail.alternative_titles?.titles || detail.alternative_titles?.results || []).filter(item => ['CN','TW','HK','US','GB'].includes(item.iso_3166_1)).map(item => item.title)].filter(Boolean))].slice(0,40);
+        } else {
+            if (!parsed.year) return false;
+            const title = subtitleQueryTitle(parsed.query, parsed.year), key = subtitleTitleKey(title);
+            if (!key) return false;
+            const results = await client.search(title); check();
+            const matches = results.filter(item => item.media_type === type && String(item.release_date || item.first_air_date || '').slice(0,4) === String(parsed.year)
+                && [item.title,item.name,item.original_title,item.original_name].some(value => value && subtitleTitleKey(value) === key));
+            if (matches.length !== 1) return false;
+            const match = matches[0], english = await client.get(`/${type}/${match.id}`, {language:'en-US'}); check();
+            if (String(english.id) !== String(match.id) || String(english.release_date || english.first_air_date || '').slice(0,4) !== String(parsed.year)) throw new Error('英文资料的编号或年份与搜索结果不一致');
+            parsed.aliases = [...new Set([...(parsed.aliases || []),match.original_title,match.original_name,english.title,english.name].filter(Boolean))].slice(0,40);
+        }
+        return true;
+    }
     function initSubtitles(provider = '123') {
         const ui = makePanel(provider + ' 字幕', `
             <p>选中视频或文件夹，查找字幕后批量补齐到视频所在目录。</p>
@@ -4247,16 +4293,12 @@
                 for (const row of rows) {
                     check(); status(`查找字幕 ${done + 1}/${rows.length}：${row.node.name}`);
                     diag('源文件', row.node.name);
-                    if (row.parsed.tmdbId && !row.parsed.aliases?.length) {
+                    if (!row.parsed.tmdbId || !row.parsed.aliases?.length) {
                         const credential = GM_getValue('cross-drive-tmdb-key', '');
                         if (credential) {
                             try {
                                 const parsed = row.parsed;
-                                const detail = await tmdbClient(credential).get(`/${parsed.tv ? 'tv' : 'movie'}/${parsed.tmdbId}`, {append_to_response:'alternative_titles'}); check();
-                                if (String(detail.id) !== String(parsed.tmdbId) || !parsed.tv && parsed.year && detail.release_date && !detail.release_date.startsWith(String(parsed.year))) throw new Error('已确认作品的编号或年份与资料不一致');
-                                parsed.aliases = [...new Set([detail.title,detail.original_title,detail.name,detail.original_name,
-                                    ...(detail.alternative_titles?.titles || detail.alternative_titles?.results || []).filter(item => ['CN','TW','HK','US','GB'].includes(item.iso_3166_1)).map(item => item.title)].filter(Boolean))].slice(0,40);
-                                diag('作品别名', `已按确认的 TMDB 编号读取 ${parsed.aliases.length} 个片名；搜索词仍为 ${subtitleQueryTitle(parsed.query, parsed.year)}`);
+                                if (await subtitleEnrichAliases(parsed, credential, check)) diag('作品别名', `已按${parsed.tmdbId ? '确认的 TMDB 编号' : '唯一同名同年结果'}读取 ${parsed.aliases.length} 个片名；搜索词仍为 ${subtitleQueryTitle(parsed.query, parsed.year)}`);
                             } catch (error) { check(); diag('作品别名', '读取失败，继续按原片名严格匹配：' + error.message); }
                         }
                     }

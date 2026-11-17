@@ -12,6 +12,28 @@
             return { node, parsed, subtitles, complete:false, pendingVerification:false, path: '/' + [parentPath, node.path].filter(Boolean).join('/') };
         });
     }
+    async function subtitleEnrichAliases(parsed, credential, check = () => {}) {
+        if (!credential || parsed.tmdbId && parsed.aliases?.length) return false;
+        const client = tmdbClient(credential), type = parsed.tv ? 'tv' : 'movie';
+        if (parsed.tmdbId) {
+            const detail = await client.get(`/${type}/${parsed.tmdbId}`, {append_to_response:'alternative_titles'}); check();
+            if (String(detail.id) !== String(parsed.tmdbId) || !parsed.tv && parsed.year && detail.release_date && !detail.release_date.startsWith(String(parsed.year))) throw new Error('已确认作品的编号或年份与资料不一致');
+            parsed.aliases = [...new Set([detail.title,detail.original_title,detail.name,detail.original_name,
+                ...(detail.alternative_titles?.titles || detail.alternative_titles?.results || []).filter(item => ['CN','TW','HK','US','GB'].includes(item.iso_3166_1)).map(item => item.title)].filter(Boolean))].slice(0,40);
+        } else {
+            if (!parsed.year) return false;
+            const title = subtitleQueryTitle(parsed.query, parsed.year), key = subtitleTitleKey(title);
+            if (!key) return false;
+            const results = await client.search(title); check();
+            const matches = results.filter(item => item.media_type === type && String(item.release_date || item.first_air_date || '').slice(0,4) === String(parsed.year)
+                && [item.title,item.name,item.original_title,item.original_name].some(value => value && subtitleTitleKey(value) === key));
+            if (matches.length !== 1) return false;
+            const match = matches[0], english = await client.get(`/${type}/${match.id}`, {language:'en-US'}); check();
+            if (String(english.id) !== String(match.id) || String(english.release_date || english.first_air_date || '').slice(0,4) !== String(parsed.year)) throw new Error('英文资料的编号或年份与搜索结果不一致');
+            parsed.aliases = [...new Set([...(parsed.aliases || []),match.original_title,match.original_name,english.title,english.name].filter(Boolean))].slice(0,40);
+        }
+        return true;
+    }
     function initSubtitles(provider = '123') {
         const ui = makePanel(provider + ' 字幕', `
             <p>选中视频或文件夹，查找字幕后批量补齐到视频所在目录。</p>
@@ -146,16 +168,12 @@
                 for (const row of rows) {
                     check(); status(`查找字幕 ${done + 1}/${rows.length}：${row.node.name}`);
                     diag('源文件', row.node.name);
-                    if (row.parsed.tmdbId && !row.parsed.aliases?.length) {
+                    if (!row.parsed.tmdbId || !row.parsed.aliases?.length) {
                         const credential = GM_getValue('cross-drive-tmdb-key', '');
                         if (credential) {
                             try {
                                 const parsed = row.parsed;
-                                const detail = await tmdbClient(credential).get(`/${parsed.tv ? 'tv' : 'movie'}/${parsed.tmdbId}`, {append_to_response:'alternative_titles'}); check();
-                                if (String(detail.id) !== String(parsed.tmdbId) || !parsed.tv && parsed.year && detail.release_date && !detail.release_date.startsWith(String(parsed.year))) throw new Error('已确认作品的编号或年份与资料不一致');
-                                parsed.aliases = [...new Set([detail.title,detail.original_title,detail.name,detail.original_name,
-                                    ...(detail.alternative_titles?.titles || detail.alternative_titles?.results || []).filter(item => ['CN','TW','HK','US','GB'].includes(item.iso_3166_1)).map(item => item.title)].filter(Boolean))].slice(0,40);
-                                diag('作品别名', `已按确认的 TMDB 编号读取 ${parsed.aliases.length} 个片名；搜索词仍为 ${subtitleQueryTitle(parsed.query, parsed.year)}`);
+                                if (await subtitleEnrichAliases(parsed, credential, check)) diag('作品别名', `已按${parsed.tmdbId ? '确认的 TMDB 编号' : '唯一同名同年结果'}读取 ${parsed.aliases.length} 个片名；搜索词仍为 ${subtitleQueryTitle(parsed.query, parsed.year)}`);
                             } catch (error) { check(); diag('作品别名', '读取失败，继续按原片名严格匹配：' + error.message); }
                         }
                     }

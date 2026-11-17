@@ -32,7 +32,7 @@ async function pagination() {
 }
 async function limits() {
  let calls=0;const logs=[];
- const packs=Array.from({length:15},(_,i)=>({id:i+1,native_name:'不确定的片名',lang:{langlist:{langchs:true}},filelist:Array.from({length:120},(_,j)=>({f:`Unrelated.Title${j}.2019.chs.srt`}))}));
+ const packs=Array.from({length:15},(_,i)=>({id:i+1,native_name:'路西法 候选合集',lang:{langlist:{langchs:true}},filelist:Array.from({length:120},(_,j)=>({f:`路西法.未确认版本${j}.2019.chs.srt`}))}));
  const ctx=load({subtitleRemoteJson:async raw=>{calls++;return {status:0,sub:{subs:new URL(raw).searchParams.get('pos')==='0'?packs:[]}}},record:(...args)=>logs.push(args)});
  const service=vm.runInContext('createSubtitleService({log:record})',ctx);
  const candidates=await service.assrtSearch(makeRow(),config);assert.equal(candidates.length,60);assert.equal(calls,2);
