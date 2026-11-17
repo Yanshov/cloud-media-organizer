@@ -93,6 +93,7 @@ function startup(){
  }
  const names=[...script.matchAll(/^    (?:async )?function (\w+)\(/gm)].map(m=>m[1]);assert.equal(new Set(names).size,names.length,'No duplicate function declarations');
  assert.ok(script.includes('id="subtitleViewChoice" value="choice"'));assert.ok(script.includes('// @version      '+version));
+ assert.doesNotMatch(script,/窗口与外观|appearance\.innerHTML/,'Appearance controls no longer display the removed heading or explanatory line');
  console.log('PASS complete startup: hooks before DOM ready; media/subtitle panels on 123/Guangya; JSON on all three; no duplicate declarations; choice filter and version present');
 }
 (async()=>{await hooks();await imports();await stop();await manifestUI();await guangyaExisting();startup()})().catch(e=>{console.error(e);process.exitCode=1});

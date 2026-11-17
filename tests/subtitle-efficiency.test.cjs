@@ -1,7 +1,7 @@
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict'),path=require('node:path');
 const script=fs.readFileSync(path.join(__dirname,'../cloud-media-organizer-v3.user.js'),'utf8');
 const part=(a,b)=>script.slice(script.indexOf(a),script.indexOf(b));
-const config={assrt:true,assrtToken:'test',open:true,key:'open-test',shooter:true,language:'zh-cn,zh-tw,zh'};
+const config={assrt:true,assrtToken:'test',open:true,key:'open-test',thunder:true,language:'zh-cn,zh-tw,zh'};
 function load(extra={},source=script) {
  const ctx=vm.createContext({URL,URLSearchParams,Date,Uint8Array,ArrayBuffer,TextEncoder,TextDecoder,Blob,
   paced:(_ms,fn)=>fn,sleep:async()=>{},GM_getValue:(_key,value)=>value,GM_setValue:()=>{},...extra});
@@ -65,16 +65,16 @@ function years() {
  console.log('PASS efficiency TV years: later-season release year accepted with exact season/episode and work identity; pre-premiere, conflicting first-season, wrong-series, missing-episode and movie guards retained');
 }
 async function sources() {
- const ctx=load(),calls=[],r=row(),bilingual={source:'Assrt',name:'瑞克和莫蒂.S01E01.简体&英文.ass',language:'zh-cn',bilingual:true,titleMatched:true};
- const service={assrtSearch:async()=>{calls.push('assrt');return [bilingual]},search:async()=>{calls.push('open');return []},shooterHash:async()=>{calls.push('shooter');return [{...bilingual,source:'射手',hashMatched:true}]}};
- const drive={sample:async()=>{calls.push('sample');return 'hash'}};
- await ctx.searchSubtitleSources(r,config,service,drive);assert.deepEqual(calls,['sample','shooter']);assert.equal(r.sources.filter(s=>s.deferred).length,2);
- r.candidates.forEach(c=>c.downloadFailed=true);await ctx.searchSubtitleSources(r,config,service,drive,()=>{},()=>{},true);assert.deepEqual(calls,['sample','shooter','assrt']);assert.ok(r.sources.some(s=>s.name==='OpenSubtitles'&&s.deferred));assert.equal(r.candidates.length,2);assert.equal(r.selectedCandidate.source,'Assrt');
- await ctx.searchSubtitleSources(r,config,service,drive,()=>{},()=>{},true);assert.equal(calls.length,3,'Resume queries each deferred source at most once');
- delete bilingual.downloadFailed;service.shooterHash=async()=>{calls.push('shooter');return []};calls.length=0;service.assrtSearch=async()=>[{...bilingual,bilingual:false,name:'瑞克和莫蒂.S01E01.简体.ass'}];await ctx.searchSubtitleSources(row(),config,service,drive);assert.deepEqual(calls,['sample','shooter'],'Reliable monolingual result defers all remaining sources');
- calls.length=0;service.assrtSearch=async()=>[{...bilingual,titleMatched:false}];await ctx.searchSubtitleSources(row(),config,service,drive);assert.deepEqual(calls,['sample','shooter','open'],'Unconfirmed title must not block hash-source fallback');
- calls.length=0;service.assrtSearch=async()=>[{...bilingual,language:'en',name:'Rick.and.Morty.S01E01.eng.srt',bilingual:false}];await ctx.searchSubtitleSources(row(),{...config,language:'en'},service,drive);assert.equal(calls.length,2,'Reliable English stops duplicate English queries');
- console.log('PASS efficiency sources: reliable bilingual avoids additional APIs and four range reads; deferred providers resume once after failure; monolingual/uncertain candidates retain full fallback; English selection supported');
+ const ctx=load(),calls=[],r=row(),bilingual={source:'迅雷',name:'瑞克和莫蒂.S01E01.简体&英文.ass',language:'zh-cn',bilingual:true,titleMatched:true};
+ const mono={source:'Assrt',name:'瑞克和莫蒂.S01E01.简体.ass',language:'zh-cn',bilingual:false,titleMatched:true};
+ const service={thunderSearch:async()=>{calls.push('thunder');return [bilingual]},assrtSearch:async()=>{calls.push('assrt');return [mono]},search:async()=>{calls.push('open');return []}};
+ await ctx.searchSubtitleSources(r,config,service,{});assert.deepEqual(calls,['thunder']);assert.equal(r.sources.filter(s=>s.deferred).length,2);
+ r.candidates.forEach(c=>c.downloadFailed=true);await ctx.searchSubtitleSources(r,config,service,{},()=>{},()=>{},true);assert.deepEqual(calls,['thunder','assrt']);assert.ok(r.sources.some(s=>s.name==='OpenSubtitles'&&s.deferred));assert.equal(r.candidates.length,2);assert.equal(r.selectedCandidate.source,'Assrt');
+ await ctx.searchSubtitleSources(r,config,service,{},()=>{},()=>{},true);assert.equal(calls.length,2,'Repeated resume adds no provider query after the first fallback');
+ calls.length=0;service.thunderSearch=async()=>{calls.push('thunder');return []};service.assrtSearch=async()=>{calls.push('assrt');return [{...mono}]};await ctx.searchSubtitleSources(row(),config,service,{});assert.deepEqual(calls,['thunder','assrt'],'Title sources run in order without video sampling');
+  calls.length=0;service.assrtSearch=async()=>[{...mono,titleMatched:false}];await ctx.searchSubtitleSources(row(),config,service,{});assert.deepEqual(calls,['thunder','open'],'Unconfirmed title keeps searching later sources');
+  calls.length=0;service.assrtSearch=async()=>[{...mono,language:'en',name:'Rick.and.Morty.S01E01.eng.srt',bilingual:false}];await ctx.searchSubtitleSources(row(),{...config,language:'en'},service,{});assert.equal(calls.length,1,'Reliable English stops duplicate English queries');
+ console.log('PASS efficiency sources: title providers run in order; reliable candidates defer later calls; failed downloads resume deferred providers once; unconfirmed and English cases remain covered');
 }
 async function refreshAndPagination() {
  let searches=0;const ctx=load({subtitleRemoteJson:async raw=>{
@@ -100,12 +100,12 @@ async function fillFallback() {
   return {get:id=>elements.get(id),moveSettings(){},openSettings(){},busy(){}};
  },mediaContext:async()=>({selected:[video],source:{},path:'剧集'}),selectedTreeCache:{stale:true},
  collectMediaSelection:async()=>({videos:[video],linked:new Map()}),parseMediaName:()=>row().parsed,mediaBonusName:()=>false,mediaRecords:{get:()=>null},mediaStem:name=>name.replace(/\.[^.]+$/,''),
- subtitleDrive:()=>({sample:async()=>{calls.push('sample');return 'hash'},reconcile:async()=>[],save:async(_row,name)=>{saves++;calls.push('save');return {id:'s',name}}})});
- ctx.createSubtitleService=()=>({assrtSearch:async()=>{calls.push('assrt');return [{...bi}]},shooterHash:async()=>{calls.push('shooter');return [{...bi,source:'射手',hashMatched:true}]},fetchFile:async c=>{calls.push('download-'+c.source);if(c.source==='射手')throw Error('正文无效');return {result:{ext:'srt'},bytes:valid}}});
- vm.runInContext(part('    function subtitleInventory(', '    if (location.hostname'),ctx);ctx.initSubtitles();elements.get('assrtToken').value='test';elements.get('useThunder').checked=false;
- await elements.get('readSubtitles').onclick();assert.deepEqual(calls,['sample','shooter']);
- await elements.get('fillSubtitles').onclick();assert.deepEqual(calls,['sample','shooter','download-射手','assrt','download-Assrt','save']);assert.equal(saves,1);assert.match(elements.get('subtitleSummary').textContent,/已有\/已补齐 1/);
+ subtitleDrive:()=>({reconcile:async()=>[],save:async(_row,name)=>{saves++;calls.push('save');return {id:'s',name}}})});
+ ctx.createSubtitleService=()=>({thunderSearch:async()=>{calls.push('thunder');return [{...bi,source:'迅雷'}]},assrtSearch:async()=>{calls.push('assrt');return [{...bi,source:'Assrt'}]},fetchFile:async c=>{calls.push('download-'+c.source);if(c.source==='迅雷')throw Error('正文无效');return {result:{ext:'srt'},bytes:valid}}});
+ vm.runInContext(part('    function subtitleInventory(', '    if (location.hostname'),ctx);ctx.initSubtitles();elements.get('assrtToken').value='test';
+ await elements.get('readSubtitles').onclick();assert.deepEqual(calls,['thunder']);
+ await elements.get('fillSubtitles').onclick();assert.deepEqual(calls,['thunder','download-迅雷','assrt','download-Assrt','save']);assert.equal(saves,1);assert.match(elements.get('subtitleSummary').textContent,/已有\/已补齐 1/);
  assert.match(elements.get('subtitleLog').value,/来源补查/);
- console.log('PASS efficiency fill integration: failed hash-matched download triggers deferred Assrt search, validates its body and uploads exactly once; no re-download of failed candidates');
+ console.log('PASS efficiency fill integration: failed Thunder download triggers deferred Assrt search, validates its body and uploads exactly once; no re-download of failed candidates');
 }
 (async()=>{await regression();await batch();await isolation();years();await sources();await refreshAndPagination();await fillFallback()})().catch(e=>{console.error(e);process.exitCode=1});

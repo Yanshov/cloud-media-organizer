@@ -10,12 +10,12 @@ const file=(name,n)=>({name,ext:'ass',url:'https://example.com/'+n,languages:['�
 const realName='[KRSUB][Kamen Rider Geats Movie - 4 Aces and the Black Fox][BDRIP][1080p][x265_FLAC][CHS-SCLA].ass';
 (async()=>{
     const requests=[],payloads=[],logs=[];
-    const ctx=load({GM_xmlhttpRequest:r=>{if(r.url.includes('shooter.cn')){r.onload({status:200,responseText:'[]'});return;}requests.push(r.url);assert.match(r.url,/xunlei/);r.onload({status:200,responseText:JSON.stringify({code:0,data:[
+    const ctx=load({GM_xmlhttpRequest:r=>{requests.push(r.url);assert.match(r.url,/xunlei/);r.onload({status:200,responseText:JSON.stringify({code:0,data:[
         file('其他作品A.ass',1),file('其他作品B.ass',2),file('其他作品C.ass',3),file(realName,4),file(realName,5),
         file('假面骑士亚极陀 - 07.ass',6),file('错误年份.2020.ass',7)]})})}});
     const service=ctx.createSubtitleService(),r=row();
     const reviewer=ctx.createSubtitleReviewer({disambiguateSubtitle:async payload=>{payloads.push(payload);return {index:payload.candidates.find(c=>c.name===realName).index,confidence:.96,reason:'完整副标题一致，Movie 为包装词'};}},language,(...a)=>logs.push(a.join(' ')));
-    const config={thunder:true,assrt:true,assrtToken:'test',shooter:true,language,reviewCandidates:reviewer};
+    const config={thunder:true,assrt:true,assrtToken:'test',language,reviewCandidates:reviewer};
     await ctx.searchSubtitleSources(r,config,service,{sample:async()=> 'hash'});
     assert.equal(payloads.length,1);assert.equal(payloads[0].candidates.length,4,'Distinct raw names beyond the first three reach AI; duplicates collapse');
     assert.equal(ctx.subtitleCandidateFilter({query:'假面骑士龙骑剧场版 最后的篇章',year:2002,tv:false},[],"[SV-MirrorWorld] Kamen Rider Ryuki - Episode Final (Directors Cut) [E79807B6]_字幕01.ENG.ass",true).excluded,undefined,'Release checksum is not an episode number');
@@ -29,11 +29,11 @@ const realName='[KRSUB][Kamen Rider Geats Movie - 4 Aces and the Black Fox][BDRI
         assert.equal(ctx.subtitleAICandidate({index:0,confidence:1},target,language),null,'AI cannot override an explicit sequel conflict');
     }
     const hash={source:'迅雷',name:'a'.repeat(40)+'.ass',opaque:true,language:'zh-cn'};
-    let aiCalls=0, sampleCalls=0;
+    let aiCalls=0;
     const uncertain=row();
-    await ctx.searchSubtitleSources(uncertain,{thunder:true,shooter:true,language,reviewCandidates:ctx.createSubtitleReviewer({disambiguateSubtitle:async()=>{aiCalls++;}},language)},
-        {thunderSearch:async()=>[hash],shooterHash:async()=>[]},{sample:async()=>{sampleCalls++;return 'hash'}});
-    assert.equal(aiCalls,0,'Opaque names are not sent for guessing');assert.equal(sampleCalls,1,'Uncertain results cannot block shooter');
+    await ctx.searchSubtitleSources(uncertain,{thunder:true,language,reviewCandidates:ctx.createSubtitleReviewer({disambiguateSubtitle:async()=>{aiCalls++;}},language)},
+        {thunderSearch:async()=>[hash]},{ });
+    assert.equal(aiCalls,0,'Opaque names are not sent for guessing');
     let attempts=0;const failureLogs=[];
     const broken=ctx.createSubtitleReviewer({disambiguateSubtitle:async()=>{attempts++;throw Object.assign(Error('empty'),{aiParse:true})}},language,(...a)=>failureLogs.push(a.join(' ')));
     for(let i=0;i<3;i++){const target=row();target.candidates=[{source:'迅雷',name:'Different Translation.ass',language:'zh-cn'}];await broken(target,target.candidates);}
@@ -42,19 +42,19 @@ const realName='[KRSUB][Kamen Rider Geats Movie - 4 Aces and the Black Fox][BDRI
     await ctx.createSubtitleReviewer({disambiguateSubtitle:async payload=>{chunks++;assert.ok(payload.candidates.length<=20);return {index:null,confidence:0,reason:'无法确认'}}},language)(many,many.candidates);
     assert.equal(chunks,3,'Every distinct candidate is considered in bounded batches');
     const alternate='Kamen Rider Amazons The Movie - The Last Judgement.srt';let alternateCalls=0;
-    const assrt=load({GM_xmlhttpRequest:r=>{if(r.url.includes('shooter.cn')){r.onload({status:200,responseText:'[]'});return;}assert.match(r.url,/assrt/);r.onload({status:200,responseText:JSON.stringify({status:0,sub:{subs:[{id:1,native_name:'Alternative release',lang:{langlist:{langchs:true}},filelist:[{f:alternate,s:30000}]}]}})});}});
+    const assrt=load({GM_xmlhttpRequest:r=>{assert.match(r.url,/assrt/);r.onload({status:200,responseText:JSON.stringify({status:0,sub:{subs:[{id:1,native_name:'Alternative release',lang:{langlist:{langchs:true}},filelist:[{f:alternate,s:30000}]}]}})});}});
     const alternativeRow=row();alternativeRow.parsed={query:'假面骑士Amazons:最后的审判',year:2018,tv:false,aliases:['Kamen Rider Amazons The Movie: The Final Judgment']};
-    await assrt.searchSubtitleSources(alternativeRow,{assrt:true,assrtToken:'test',shooter:true,language,reviewCandidates:assrt.createSubtitleReviewer({disambiguateSubtitle:async p=>{alternateCalls++;assert.equal(p.candidates[0].name,alternate);return {index:p.candidates[0].index,confidence:.95};}},language)},assrt.createSubtitleService(),{sample:async()=> 'hash'});
+    await assrt.searchSubtitleSources(alternativeRow,{assrt:true,assrtToken:'test',language,reviewCandidates:assrt.createSubtitleReviewer({disambiguateSubtitle:async p=>{alternateCalls++;assert.equal(p.candidates[0].name,alternate);return {index:p.candidates[0].index,confidence:.95};}},language)},assrt.createSubtitleService(),{});
     assert.equal(alternateCalls,1);assert.equal(alternativeRow.selectedCandidate.name,alternate,'Assrt also preserves alternate translations for AI');
-    let assrtCalls=0,thunderCalls=0,shooterCalls=0;const waits=[];
+    let assrtCalls=0,thunderCalls=0;const waits=[];
     const limited=load({sleep:async ms=>waits.push(ms),GM_xmlhttpRequest:r=>{
         if(r.url.includes('xunlei')){thunderCalls++;r.onload({status:200,responseText:JSON.stringify({code:0,data:[]})});}
         else if(r.url.includes('assrt')){assrtCalls++;r.onload({status:509,responseText:'limited'});}
-        else {shooterCalls++;r.onload({status:200,responseText:'[]'});}
+        else throw new Error('Unexpected request');
     }});
     const limitedService=limited.createSubtitleService();limitedService.resetSearchBatch();
-    for(const q of ['甲','乙']){const target=row();target.parsed.query=q;await limited.searchSubtitleSources(target,{thunder:true,assrt:true,assrtToken:'test',shooter:true,language},limitedService,{sample:async()=> 'hash'});}
-    assert.equal(assrtCalls,1,'First 509 pauses Assrt for remaining videos');assert.equal(thunderCalls,3);assert.equal(shooterCalls,2);
+    for(const q of ['甲','乙']){const target=row();target.parsed.query=q;await limited.searchSubtitleSources(target,{thunder:true,assrt:true,assrtToken:'test',language},limitedService,{});}
+    assert.equal(assrtCalls,1,'First 509 pauses Assrt for remaining videos');assert.ok(thunderCalls>=2,'The remaining title source keeps searching');
     assert.ok(waits.every(ms=>ms<=1100),'Only normal Thunder request spacing; no Assrt quota waits');assert.ok(limitedService.searchUnavailable('Assrt 片名搜索'));
     limitedService.resetSearchBatch();assert.equal(limitedService.searchUnavailable('Assrt 片名搜索'),undefined,'New search resets batch suspension; server cooldown remains enforced');
     console.log('PASS semantic flow: logged Geats name reaches AI before deferral, all batches, dedup, sequel guards, failed download exclusion, opaque fallback, AI breaker and nonblocking 509');

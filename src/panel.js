@@ -199,7 +199,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 .sync-preview{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px}.sync-preview h4{margin:0 0 8px}.sync-preview p{margin:6px 0}#syncList{overflow-wrap:anywhere;font-size:15px}#syncDestination{font-weight:600}
 .export-options{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin:12px 0}.export-options input{width:auto}.export-options button{font-size:14px;padding:7px 12px}.credential-head{display:flex;justify-content:space-between;align-items:center;gap:12px}.credential-head a{font-size:15px;flex-shrink:0}
 .source-result{margin:12px 0;padding:12px;border:1px solid var(--border);border-radius:8px}.source-result button{margin:8px 8px 0 0;font-size:16px}
-.workspace-appearance{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:18px 20px;margin:20px 0}.workspace-appearance>p{color:var(--muted);font-size:14px}
+.workspace-appearance{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:18px 20px;margin:20px 0}
 .theme-row{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:14px 0}.theme-row select{width:220px;margin:0}
 #settingsSections{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}#settingsSections>.sync-item{margin:0}#settingsSections legend{font-size:18px;font-weight:600}#settingsSections h3{font-size:18px;font-weight:600}#backToTools{margin-top:18px}
 #toggle{display:grid;place-items:center;width:50px;height:50px;padding:0;border-radius:15px;background:var(--surface);box-shadow:0 5px 20px #0003}#toggle svg{width:24px;height:24px;pointer-events:none}
@@ -217,7 +217,6 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             const frame = document.createElement('div'); frame.className = 'workspace-frame';
             const navigation = root.querySelector('.workspace-toolbar'); navigation.className = 'workspace-navigation';
             const appearance = document.createElement('section'); appearance.className = 'workspace-appearance';
-            appearance.innerHTML = '<h4>窗口与外观</h4><p>尺寸按窗口外框实际像素计算。</p>';
             for (const label of [...navigation.querySelectorAll('.theme-row')]) appearance.append(label);
             root.querySelector('#settingsSections').before(appearance);
             const navTitle = document.createElement('p'); navTitle.className = 'nav-caption'; navTitle.textContent = '工作空间'; navigation.prepend(navTitle);

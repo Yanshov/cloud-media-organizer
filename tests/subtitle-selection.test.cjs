@@ -2,6 +2,8 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const assert = require('node:assert/strict');
 const source = fs.readFileSync(require('node:path').join(__dirname, '../cloud-media-organizer-v3.user.js'), 'utf8');
+assert.doesNotMatch(source,/shooter\.cn|shooterHash|useShooter|cross-drive-subtitle-shooter-default-v1/i,'Retired provider has no runtime or permission hooks');
+assert.doesNotMatch(source,/async sample\(row/,'Subtitle scans no longer sample video bytes');
 const prefix = 'Obesity.The.Post.Mortem.720p.WEB.h264-spamTV.';
 const names = ['简体&英文.ass','简体&英文.srt','简体.ass','简体.srt','繁体&英文.ass','繁体&英文.srt','繁体.ass','繁体.srt','英文.srt'].map(suffix => prefix + suffix);
 const requests = [], transfers = [];
@@ -22,7 +24,6 @@ const context = vm.createContext({URL, URLSearchParams, Uint8Array, ArrayBuffer,
             if (detailFails) throw Error('HTTP 509');
             return {status:0, sub:{subs:[{id:123, filelist:names.map((f, i) => ({f,s:'318KB',url:'http://file0.assrt.net/onthefly/123/' + i + '?_=1&-=signed&api=1'}))}]}};
         }
-        if (url.includes('subapi.php')) return [];
         throw Error('Unexpected request');
     }
 });
@@ -91,7 +92,5 @@ const pick = (candidates, language = 'zh-cn,zh-tw,zh') => {
     const fallback = await service.assrtSearch(mismatch, config);
     assert.equal(fallback[0].detailError, 'HTTP 509');
     assert.equal(pick(fallback).selectedCandidate, null);
-    await service.shooterHash('test-hash', row.node.name);
-    assert.equal(new URLSearchParams(requests.at(-1).options.body).get('pathinfo'), row.node.name);
-    console.log('PASS: 9 real resource names; bilingual > simplified > traditional; exact selected download; HTTP GET transfer and text validation; secure upload unchanged; detail fallback; episode guard; shooter original filename');
+    console.log('PASS: 9 real resource names; bilingual > simplified > traditional; exact selected download; HTTP GET transfer and text validation; secure upload unchanged; detail fallback and episode guard');
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -1,7 +1,7 @@
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict'),path=require('node:path');
 const script=fs.readFileSync(path.join(__dirname,'../cloud-media-organizer-v3.user.js'),'utf8');
 const part=(a,b,source=script)=>source.slice(source.indexOf(a),source.indexOf(b));
-const config={assrt:true,assrtToken:'test',shooter:true,language:'zh-cn,zh-tw,zh'};
+const config={assrt:true,assrtToken:'test',language:'zh-cn,zh-tw,zh'};
 const valid=new TextEncoder().encode('1\n00:00:01,000 --> 00:00:03,000\n中文字幕 Test\n');
 function load(extra={},source=script){
  const ctx=vm.createContext({URL,URLSearchParams,Date,Uint8Array,ArrayBuffer,TextEncoder,TextDecoder,Blob,
@@ -69,15 +69,15 @@ function loadDrive(ctx,context){
 async function auth(){
  let calls=0,providerCalls=0;const ctx=load({requestJson:async()=>{calls++;throw Object.assign(Error('HTTP 401'),{status:401,stop:true})}});
  const drive=loadDrive(ctx,{session:{provider:'光鸭',token:'test'},source:{children:async()=>{throw Error('Must not list after auth failure')}}});
- const service={assrtSearch:async()=>[],shooterHash:async()=>{providerCalls++;return []}};
- const r=row(1);await assert.rejects(ctx.searchSubtitleSources(r,config,service,drive),e=>e.phase==='drive-auth'&&e.stop&&/重新检查目录/.test(e.message));assert.equal(calls,1);assert.equal(providerCalls,0);assert.match(r.error,/网盘登录失效或权限不足/);
- await assert.rejects(drive.sample(row(2)),e=>e.phase==='drive-auth');await assert.rejects(drive.save(row(1),'test.srt',valid),e=>e.phase==='drive-auth');assert.equal(calls,1,'Known invalid drive session makes no further network calls');
- const providerError={...service,assrtSearch:async()=>{throw Object.assign(Error('Provider HTTP 401'),{status:401,stop:true})}};
- const other=row(2);await ctx.searchSubtitleSources(other,config,providerError,{sample:async()=> 'hash'});assert.equal(providerCalls,1,'Provider auth errors still permit other sources');
+ const service={thunderSearch:async()=>{providerCalls++;return []},assrtSearch:async()=>[]};
+ const r=row(1);await ctx.searchSubtitleSources(r,{...config,thunder:true},service,drive);assert.equal(calls,0);assert.equal(providerCalls,1,'Subtitle searches use title providers without reading video bytes');
+ await assert.rejects(drive.read({id:'s',name:'test.srt',size:valid.length,md5:'a'.repeat(32)}),e=>e.phase==='drive-auth');await assert.rejects(drive.save(row(1),'test.srt',valid),e=>e.phase==='drive-auth');assert.equal(calls,1,'Known invalid drive session makes no further network calls');
+ const providerError={thunderSearch:async()=>[],assrtSearch:async()=>{throw Object.assign(Error('Provider HTTP 401'),{status:401,stop:true})}};
+ const other=row(2);await ctx.searchSubtitleSources(other,{...config,thunder:true},providerError,{});assert.equal(ctx.subtitleSearchState(other),'failed','Provider auth errors stay isolated from other sources');
  // Source directory auth errors share the same fatal boundary.
  let lists=0;const listed=loadDrive(ctx,{session:{provider:'123',token:'test'},source:{children:async()=>{lists++;throw Object.assign(Error('API code 110'),{stop:true})}}});
  await assert.rejects(listed.save(row(1),'test.srt',valid),e=>e.phase==='drive-auth'&&e.stop);await assert.rejects(listed.save(row(2),'test.srt',valid),e=>e.phase==='drive-auth');assert.equal(lists,1);
- console.log('PASS log drive auth: real drive API 401 propagates through shooter sampling; records useful error; later sample/save make zero requests; directory code 110 stops too; subtitle provider 401 retains source fallback');
+ console.log('PASS log drive auth: title search makes no video-byte request; real subtitle read 401 stops later writes; directory auth and isolated provider errors remain guarded');
 }
 async function uiAuth(){
  const elements=new Map();let apiCalls=0,searches=0,downloads=0;
@@ -89,15 +89,15 @@ async function uiAuth(){
  },mediaContext:async()=>({selected:videos,session:{provider:'光鸭',token:'test'},source:{},path:'剧集'}),selectedTreeCache:{stale:true},
  collectMediaSelection:async()=>({videos,linked:new Map()}),parseMediaName:name=>row(Number(name.match(/E(\d+)/)[1])).parsed,mediaBonusName:()=>false,mediaRecords:{get:()=>null}});
  loadDrive(ctx,null); // Install actual drive factory without invoking its operations.
- ctx.createSubtitleService=()=>({assrtSearch:async()=>{searches++;return []},shooterHash:async()=>{throw Error('Must not query shooter')},fetchFile:async()=>{downloads++;throw Error('Must not download')}});
+  ctx.createSubtitleService=()=>({assrtSearch:async()=>{searches++;return []},fetchFile:async()=>{downloads++;throw Error('Must not download')}});
  vm.runInContext(part('    function subtitleInventory(','    if (location.hostname'),ctx);ctx.initSubtitles();elements.get('assrtToken').value='test';elements.get('useThunder').checked=false;
- await elements.get('readSubtitles').onclick();assert.equal(searches,0);assert.equal(apiCalls,1);assert.match(elements.get('subtitleLog').value,/查找中断.*网盘登录失效或权限不足/);assert.ok(!elements.get('subtitleLog').value.includes('Love, Death & Robots.2019.S01E02.mp4 · 射手'));
- await elements.get('searchSubtitles').onclick();assert.equal(searches,0);assert.equal(apiCalls,1);
- await elements.get('fillSubtitles').onclick();assert.equal(downloads,0);assert.equal(apiCalls,1);assert.match(elements.get('subtitleProgress').textContent,/重新检查目录/);
- console.log('PASS log UI integration: 2-video search halts on first drive auth failure; repeated search/fill do not query providers, download files or upload with known invalid session; actionable status shown');
+  await elements.get('readSubtitles').onclick();assert.equal(searches,2);assert.equal(apiCalls,0);assert.match(elements.get('subtitleLog').value,/查找结束/);
+  await elements.get('searchSubtitles').onclick();assert.equal(searches,4);assert.equal(apiCalls,0);
+  await elements.get('fillSubtitles').onclick();assert.equal(downloads,0);assert.equal(apiCalls,0);
+  console.log('PASS log UI integration: title search starts after inventory without video sampling; repeat search and empty fill make no unrelated drive requests');
 }
 async function uiCooldown(){
- const elements=new Map();let downloads=0,samples=0,saves=0;
+  const elements=new Map();let downloads=0,saves=0;
  const element=()=>({value:'',checked:false,disabled:false,hidden:false,dataset:{},style:{},children:[],textContent:'',append(...c){this.children.push(...c)},appendChild(c){this.children.push(c)},replaceChildren(...c){this.children=c},querySelectorAll(){return []}});
  const videos=[row(1).node,row(2).node].map(n=>({...n,folders:[],path:n.name}));
  const ctx=load({document:{createElement:element},makePanel:(_title,html)=>{
@@ -105,11 +105,11 @@ async function uiCooldown(){
   return {get:id=>elements.get(id),moveSettings(){},openSettings(){},busy(){}};
  },mediaContext:async()=>({selected:videos,source:{},path:'剧集'}),selectedTreeCache:{stale:true},
  collectMediaSelection:async()=>({videos,linked:new Map()}),parseMediaName:name=>row(Number(name.match(/E(\d+)/)[1])).parsed,mediaBonusName:()=>false,mediaRecords:{get:()=>null},
- subtitleDrive:()=>({assertReady(){},reconcile:async()=>[],sample:async()=>{samples++;return 'hash'},save:async()=>{saves++}})});
- ctx.createSubtitleService=()=>({shooterHash:async()=>[],assrtSearch:async r=>[1,2,3].map(id=>({source:'Assrt',assrtId:id,name:`Love.Death.and.Robots.S01E0${r.parsed.episode}.简体&英文.ass`,language:'zh-cn',bilingual:true,titleMatched:true})),fetchFile:async()=>{downloads++;throw Object.assign(Error('限流重试已停止'),{assrtCooldown:true,stop:true})}});
+  subtitleDrive:()=>({assertReady(){},reconcile:async()=>[],save:async()=>{saves++}})});
+  ctx.createSubtitleService=()=>({assrtSearch:async r=>[1,2,3].map(id=>({source:'Assrt',assrtId:id,name:`Love.Death.and.Robots.S01E0${r.parsed.episode}.简体&英文.ass`,language:'zh-cn',bilingual:true,titleMatched:true})),fetchFile:async()=>{downloads++;throw Object.assign(Error('限流重试已停止'),{assrtCooldown:true,stop:true})}});
  vm.runInContext(part('    function subtitleInventory(','    if (location.hostname'),ctx);ctx.initSubtitles();elements.get('assrtToken').value='test';elements.get('useThunder').checked=false;
  await elements.get('readSubtitles').onclick();assert.match(elements.get('subtitleSummary').textContent,/可补齐 2/);
- await elements.get('fillSubtitles').onclick();assert.equal(downloads,1,'Do not burn siblings or later videos');assert.equal(samples,2);assert.equal(saves,0);
+  await elements.get('fillSubtitles').onclick();assert.equal(downloads,1,'Do not burn siblings or later videos');assert.equal(saves,0);
  assert.match(elements.get('subtitleLog').value,/下载暂停/);assert.ok(!elements.get('subtitleLog').value.includes('[候选失败]'));
  assert.match(elements.get('subtitleSummary').textContent,/可补齐 2/);assert.match(elements.get('subtitleSummary').textContent,/失败 0/);
  console.log('PASS log UI cooldown: renewed rate limit pauses on first candidate; no sibling failures, deferred queries or uploads; both videos remain ready with zero failed count');

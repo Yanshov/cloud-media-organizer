@@ -12,12 +12,13 @@ function element(tag = '') {
 const videos = ['complete','ready','failure','invalid','pending'].map((id,index) => ({id, parentId:'folder-' + id, name:'同名影片.2020.mkv', size:10000,
     folders:['目录' + index], path:'目录' + index + '/同名影片.2020.mkv'}));
 const valid = new TextEncoder().encode('1\n00:00:01,000 --> 00:00:03,000\n合成中文字幕 Test\n');
-const linked = new Map(['complete','invalid','pending'].map(id => [id,[{id:'s-' + id, name:'同名影片.2020.zh-cn.srt'}]]));
-const elements = new Map(), copies = [], queried = []; let reads = 0, samples = 0, saves = 0, empty = false, collectionError = false, pauseRead = null;
+const linked = new Map(['complete','invalid','pending'].map(id => [id,[{id:'s-' + id, parentId:'folder-' + id, name:'同名影片.2020.zh-cn.srt',size:30}]]));
+const siblings = new Map(videos.map(video => [video.parentId,[video,...(linked.get(video.id)||[])]]));
+const elements = new Map(), copies = [], queried = [], deleted = []; let reads = 0, saves = 0, empty = false, collectionError = false, pauseRead = null;
 const get = id => { assert.ok(elements.has(id),id); return elements.get(id); };
 const ctx = vm.createContext({URL, TextEncoder, TextDecoder, Uint8Array, Date,
     navigator:{clipboard:{writeText:async text => copies.push(text)}}, document:{createElement:element},
-    GM_getValue:(key,fallback) => key === 'cross-drive-subtitle-shooter-default-v1' ? true : key === 'cross-drive-subtitle-settings' ? {assrt:false,shooter:false,thunder:true} : fallback,
+    GM_getValue:(key,fallback) => key === 'cross-drive-subtitle-settings' ? {assrt:false,thunder:true} : fallback,
     GM_setValue(){}, makePanel:(_title,html) => {
         for (const tag of html.matchAll(/<([^\s>]+)[^>]*\bid="([^"]+)"[^>]*>/g)) {
             const el = element(tag[1]); el.checked = /\bchecked\b/.test(tag[0]); el.disabled = /\bdisabled\b/.test(tag[0]); elements.set(tag[2],el);
@@ -26,13 +27,17 @@ const ctx = vm.createContext({URL, TextEncoder, TextDecoder, Uint8Array, Date,
     },
     mediaContext:async () => ({selected:[{id:'chosen',name:'本次所选文件夹'}],source:{},path:'影视库'}),
     collectMediaSelection:async () => { if (collectionError) throw Error('目录读取失败'); return {videos:empty ? [] : videos,linked}; },
+    MEDIA_VIDEO:/\.(?:mkv|mp4)$/i, MEDIA_SUB:/\.(?:srt|ass|ssa|vtt)$/i,
+    mediaSubtitleSuffix:(video,subtitle)=>{const stem=video.replace(/\.[^.]+$/,''),candidate=subtitle.replace(/\.[^.]+$/,'');return candidate.startsWith(stem)?candidate.slice(stem.length):null;},
+    recycleMedia:async item=>{deleted.push(item.id);siblings.set(item.parentId,siblings.get(item.parentId).filter(node=>node.id!==item.id));},
+    mediaContext:async()=>({selected:[{id:'chosen',name:'本次所选文件夹'}],session:{provider:'123',token:'test',base:'https://drive.example',headers:{}},source:{children:async({id})=>siblings.get(id)||[]},path:'影视库'}),
     parseMediaName:() => ({query:'同名影片',year:2020,tv:false}), mediaBonusName:() => false, mediaRecords:{get:() => null}, mediaStem:name => name.replace(/\.[^.]+$/,''),
     createSubtitleService:() => ({thunderSearch:async row => {
         queried.push(row.node.id);
         if (row.node.id === 'failure') throw Error('来源连接失败');
         return row.node.id === 'ready' ? [{source:'迅雷',name:'同名影片.2020.简体.srt',language:'zh-cn',titleMatched:true}] : [];
     },fetchFile:async () => ({result:{ext:'srt'},bytes:valid})}),
-    subtitleDrive:() => ({reconcile:async () => [],sample:async () => {samples++; throw Error('Unexpected sampling');},
+    subtitleDrive:() => ({verified:{get(){},forget(){}},reconcile:async () => [],
         read:async sub => {
             reads++; if (pauseRead) await pauseRead;
             if (sub.id === 's-pending') throw Error('读取连接失败');
@@ -53,11 +58,11 @@ const view = value => {get('subtitleView').value = value; get('subtitleView').on
     const checking = get('recheckSubtitles').onclick();
     // Three existing-subtitle reads may overlap; rows without files finish first.
     for (let i = 0; i < 100 && reads < 3; i++) await Promise.resolve();
-    assert.equal(reads,3,'Directory UI overlaps up to three subtitle reads');
+    assert.equal(reads,3,'Directory UI overlaps up to three subtitle reads: ' + get('subtitleProgress').textContent + ' / ' + get('subtitleCoverage').textContent + ' / ' + shown() + ' / ' + get('subtitleLog').value);
     assert.match(get('subtitleCoverage').textContent,/缺字幕 2 · 待核验 0 · 尚未检查 3/);
     assert.match(shown(),/尚未检查/);
     pauseRead = null; releaseRead(); await checking;
-    assert.equal(reads,3); assert.equal(samples,0); assert.equal(queried.length,0); assert.equal(saves,0);
+    assert.equal(reads,3); assert.equal(queried.length,0); assert.equal(saves,0);
     assert.equal(get('subtitleSummary').hidden,true,'Inventory alone shows coverage rather than empty provider statistics');
     assert.match(get('subtitleCoverage').textContent,/影视库.*本次所选文件夹/);
     assert.match(get('subtitleCoverage').textContent,/视频 5 · 已有可用字幕 1 · 缺字幕 3 · 待核验 1/);
@@ -90,5 +95,13 @@ const view = value => {get('subtitleView').value = value; get('subtitleView').on
     assert.equal(get('subtitleCoverage').hidden,true); assert.equal(get('copyMissingSubtitles').disabled,true); assert.doesNotMatch(get('subtitleEmpty').textContent,/均已有/);
     empty = false; collectionError = true; await get('recheckSubtitles').onclick();
     assert.equal(get('subtitleCoverage').hidden,true); assert.equal(get('subtitleRows').children.length,0); assert.match(get('subtitleProgress').textContent,/目录读取失败/);
-    console.log('PASS subtitle directory inventory: independent scan makes no provider/sample/write calls; incomplete vs pending vs unchecked states, full paths, filters/empty states, collapse preservation, copy scope, fill updates and stale-scan clearing (mocked API/DOM, synthetic subtitles)');
+    collectionError = false; await get('recheckSubtitles').onclick(); view('all');
+    const checkboxes=()=>get('subtitleRows').querySelectorAll('input');
+    assert.equal(checkboxes().length,3,'Only subtitle files linked to a unique video are offered for deletion');
+    checkboxes()[0].checked=true;checkboxes()[0].onchange();assert.equal(get('reviewSubtitleDeletes').disabled,false);
+    get('reviewSubtitleDeletes').onclick();assert.match(get('subtitleDeleteList').textContent,/目录0\/同名影片\.2020\.zh-cn\.srt/);assert.equal(get('subtitleDeletePreview').open,true);
+    const original=siblings.get('folder-complete')[1];original.name='其他影片.zh-cn.srt';await get('confirmSubtitleDeletes').onclick();assert.equal(deleted.length,0,'Stale subtitle name blocks deletion');assert.match(get('subtitleProgress').textContent,/失败 1 个/);
+    original.name='同名影片.2020.zh-cn.srt';siblings.get('folder-complete')[0].name='另一个作品.mkv';get('reviewSubtitleDeletes').onclick();await get('confirmSubtitleDeletes').onclick();assert.equal(deleted.length,0,'Changed associated video blocks deletion');
+    siblings.get('folder-complete')[0].name='同名影片.2020.mkv';get('reviewSubtitleDeletes').onclick();await get('confirmSubtitleDeletes').onclick();assert.deepEqual(deleted,['s-complete']);assert.match(get('subtitleCoverage').textContent,/已有可用字幕 0/,'Deletion triggers a fresh subtitle status check');
+    console.log('PASS subtitle directory inventory: scan makes no provider/write calls; incomplete vs pending vs unchecked states, full paths, filters/empty states, collapse preservation, copy scope, fill updates, stale-scan clearing and previewed safe batch deletion (mocked API/DOM)');
 })().catch(error => {console.error(error); process.exitCode = 1;});

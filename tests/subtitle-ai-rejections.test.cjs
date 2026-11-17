@@ -50,7 +50,7 @@ const review = fn => ctx.createSubtitleReviewer({disambiguateSubtitle:fn},langua
     assert.equal(ctx.subtitleSearchState(absent),'missing','Confirmed wrong works no longer inflate manual choices');
 
     const invalid=row(); invalid.candidates=Array.from({length:9},(_,i)=>file('Unknown '+i+'.ass'));
-    invalid.candidates[6].hashMatched=true;
+    invalid.candidates[6].identityMatched=true;
     invalid.candidates[7].identityMatched=true;
     invalid.candidates[8].titleMatched=true;
     await review(async()=>({index:0,confidence:.95,rejected:[reject(0),reject(99),reject(-1),reject('1'),reject(1.5),
