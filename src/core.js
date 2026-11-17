@@ -30,6 +30,21 @@
     function evict(map, max) {
         while (map.size > max) map.delete(map.keys().next().value);
     }
+    async function forEachConcurrent(items, limit, run, check = () => {}) {
+        let next = 0, failure = null;
+        const verify = () => { if (failure) throw failure; check(); };
+        const worker = async () => {
+            try {
+                while (next < items.length) {
+                    verify();
+                    await run(items[next++], verify);
+                }
+            } catch (error) { failure ||= error; }
+        };
+        // Drain active work before allowing another UI task to start.
+        await Promise.all(Array.from({length:Math.min(limit, items.length)}, worker));
+        verify();
+    }
     function titleKey(value) {
         // Strip Latin accents without removing Japanese dakuten/handakuten.
         return String(value || '').normalize('NFD').replace(/(\p{Script=Latin})\p{M}+/gu, '$1').normalize('NFKC').toLowerCase()

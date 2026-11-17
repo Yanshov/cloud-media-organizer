@@ -21,6 +21,8 @@
 // @connect      api.opensubtitles.com
 // @connect      api.assrt.net
 // @connect      api-shoulei-ssl.xunlei.com
+// @connect      api.subdl.com
+// @connect      dl.subdl.com
 // @connect      subtitle.v.geilijiasu.com
 // @connect      www.shooter.cn
 // @connect      shooter.cn

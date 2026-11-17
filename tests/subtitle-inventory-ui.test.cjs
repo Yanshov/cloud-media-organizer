@@ -51,10 +51,10 @@ const view = value => {get('subtitleView').value = value; get('subtitleView').on
     let releaseRead;
     pauseRead = new Promise(resolve => {releaseRead = resolve;});
     const checking = get('recheckSubtitles').onclick();
-    // Let the first existing-subtitle read begin; uninspected rows must not be called missing.
-    for (let i = 0; i < 20 && !reads; i++) await Promise.resolve();
-    assert.equal(reads,1);
-    assert.match(get('subtitleCoverage').textContent,/缺字幕 0 · 待核验 0 · 尚未检查 5/);
+    // Three existing-subtitle reads may overlap; rows without files finish first.
+    for (let i = 0; i < 100 && reads < 3; i++) await Promise.resolve();
+    assert.equal(reads,3,'Directory UI overlaps up to three subtitle reads');
+    assert.match(get('subtitleCoverage').textContent,/缺字幕 2 · 待核验 0 · 尚未检查 3/);
     assert.match(shown(),/尚未检查/);
     pauseRead = null; releaseRead(); await checking;
     assert.equal(reads,3); assert.equal(samples,0); assert.equal(queried.length,0); assert.equal(saves,0);

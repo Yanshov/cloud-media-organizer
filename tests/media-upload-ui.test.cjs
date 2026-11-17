@@ -295,6 +295,7 @@ async function subtitleUI() {
     let broken=true,hasSubtitle=true,queries=0,saves=0,reads=0,aliasCalls=0,panelMarkup='',movedSettings=[],aiConfig={},aiCandidates=false,readBytes=valid,recovered=[];
     const downloads=[];
     const ctx=load(part('    function subtitleDownloadUrl(', '    function subtitleDrive('));
+    vm.runInContext(part('    function paced(', '    function evict('),ctx);
     Object.assign(ctx,{mediaAIEndpoint:()=> 'https://ai.example/v1/chat/completions',document:{createElement:element},makePanel:(_title,html)=>{
         panelMarkup=html;
         for(const tag of html.matchAll(/<[^>]+\bid="([^"]+)"[^>]*>/g)){const el=element();el.checked=/\bchecked\b/.test(tag[0]);el.disabled=/\bdisabled\b/.test(tag[0]);elements.set(tag[1],el)}

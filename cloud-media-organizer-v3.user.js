@@ -21,6 +21,8 @@
 // @connect      api.opensubtitles.com
 // @connect      api.assrt.net
 // @connect      api-shoulei-ssl.xunlei.com
+// @connect      api.subdl.com
+// @connect      dl.subdl.com
 // @connect      subtitle.v.geilijiasu.com
 // @connect      www.shooter.cn
 // @connect      shooter.cn
@@ -69,6 +71,21 @@
     }
     function evict(map, max) {
         while (map.size > max) map.delete(map.keys().next().value);
+    }
+    async function forEachConcurrent(items, limit, run, check = () => {}) {
+        let next = 0, failure = null;
+        const verify = () => { if (failure) throw failure; check(); };
+        const worker = async () => {
+            try {
+                while (next < items.length) {
+                    verify();
+                    await run(items[next++], verify);
+                }
+            } catch (error) { failure ||= error; }
+        };
+        // Drain active work before allowing another UI task to start.
+        await Promise.all(Array.from({length:Math.min(limit, items.length)}, worker));
+        verify();
     }
     function titleKey(value) {
         // Strip Latin accents without removing Japanese dakuten/handakuten.
@@ -3305,7 +3322,7 @@
     function subtitleRemoteJson(url, options = {}) {
         const timeout = options.timeout || 30000;
         const hostname = new URL(url).hostname;
-        if (!['api.opensubtitles.com', 'www.shooter.cn', 'api.assrt.net', 'api-shoulei-ssl.xunlei.com'].includes(hostname)) throw new Error('不支持的字幕接口地址');
+        if (!['api.opensubtitles.com', 'www.shooter.cn', 'api.assrt.net', 'api-shoulei-ssl.xunlei.com', 'api.subdl.com'].includes(hostname)) throw new Error('不支持的字幕接口地址');
         if (typeof GM_xmlhttpRequest !== 'function') throw new Error('需要 Tampermonkey 的跨域请求权限，请更新并保存完整脚本');
         const shooter = hostname === 'www.shooter.cn';
         return new Promise((resolve, reject) => GM_xmlhttpRequest({
@@ -3517,9 +3534,22 @@
         const failedAssrtPackages = new Set();
         const unavailableSources = new Map();
         let assrtDownloadBlocked = false;
-        const searchCache = new Map(), seasonCache = new Map(), detailCache = new Map();
+        const searchCache = new Map(), seasonCache = new Map(), detailCache = new Map(), pendingDetails = new Map();
+        const subdlRequest = paced(1100, async (params, config, verify) => {
+            check(); verify();
+            const paused = unavailableSources.get('SubDL');
+            if (paused) throw new Error('SubDL 本批已暂停：' + paused);
+            const result = await subtitleRemoteJson('https://api.subdl.com/api/v1/subtitles?' + new URLSearchParams({...params,api_key:config.subdlKey}));
+            if (result?.status !== true || !Array.isArray(result.subtitles)) {
+                const status = Number(result?.statusCode);
+                if (result?.status === false && !status && /can't find/i.test(String(result.error || ''))) return {status:true,subtitles:[],totalPages:1};
+                throw Object.assign(new Error('SubDL 查询失败' + (status ? '（' + status + '）' : '') + '：' + String(result?.error || '响应格式异常').slice(0,100)), {status});
+            }
+            return result;
+        });
         const thunderRequest = paced(1100, (title, verify) => {
             check(); verify();
+            if (unavailableSources.has('迅雷')) throw new Error('迅雷本批已暂停');
             return subtitleRemoteJson('https://api-shoulei-ssl.xunlei.com/oracle/subtitle?' + new URLSearchParams({name:title}), {
                 headers:{'User-Agent':'XLPlayer/3.1.1 (com.xunlei.XLPlayer; build:65742; macOS 15.0.0) Alamofire/5.4.3'}
             });
@@ -3536,6 +3566,7 @@
         let assrtBlockedUntil = 0;
         const assrtRequest = paced(3500, async (path, config, params) => {
             check();
+            if (config.nonBlockingSearch && unavailableSources.has('Assrt 片名搜索')) throw new Error('Assrt 本批搜索已暂停');
             if (!config.assrtToken) throw new Error('请在设置填写 Assrt Token，片名搜索尚未执行');
             if (Date.now() < assrtBlockedUntil) throw Object.assign(new Error('Assrt 仍在冷却，请约 ' + Math.ceil((assrtBlockedUntil - Date.now()) / 1000) + ' 秒后重搜失败项'), {assrtCooldown:true});
             const query = new URLSearchParams({...params, token:config.assrtToken});
@@ -3587,12 +3618,15 @@
                 log('Assrt 下载等待', `正在冷却，等待约 ${Math.ceil((assrtBlockedUntil - Date.now()) / 1000)} 秒再获取下载地址，可点击停止`);
                 while (Date.now() < assrtBlockedUntil) await pause(assrtBlockedUntil - Date.now());
             }
-            const result = await assrtRequest('detail',config,{id});
-            const item = result.sub?.subs?.find(item => String(item.id) === String(id));
-            if (!item) throw new Error('Assrt 未返回对应字幕详情');
-            detailCache.delete(key); detailCache.set(key,{time:Date.now(),item});
-            evict(detailCache, 24);
-            return item;
+            if (!pendingDetails.has(key)) pendingDetails.set(key, (async () => {
+                const result = await assrtRequest('detail',config,{id});
+                const item = result.sub?.subs?.find(item => String(item.id) === String(id));
+                if (!item) throw new Error('Assrt 未返回对应字幕详情');
+                detailCache.delete(key); detailCache.set(key,{time:Date.now(),item});
+                evict(detailCache, 24);
+                return item;
+            })().finally(() => pendingDetails.delete(key)));
+            return pendingDetails.get(key);
         };
         const assrtEpisode = (name, parsed) => {
             const found = [...String(name).matchAll(/S(\d{1,2})[ ._-]*E(\d{1,3})(?!\d)/gi)];
@@ -3790,6 +3824,68 @@
                 log('迅雷 筛选', `保留 ${candidates.length} 份 · 排除 ${Object.values(excluded).reduce((a,b) => a + b,0)} 份（${Object.entries(excluded).map(([reason,count]) => reason + ' ' + count).join('，')}）· 待确认 ${candidates.filter(candidate => !candidate.titleMatched).length} 份`);
                 return candidates;
             },
+            async subdlSearch(row, config, onFiles = () => {}, verify = () => {}) {
+                check(); verify();
+                if (!config.subdlKey) throw new Error('请先填写 SubDL API Key');
+                const parsed = row.parsed, title = subtitleQueryTitle(parsed.query,parsed.year);
+                if (!title) throw new Error('缺少可搜索的作品名');
+                if (parsed.tv && (parsed.season == null || parsed.episode == null || parsed.endEpisode && parsed.endEpisode !== parsed.episode)) throw new Error('缺少唯一准确季集，未查询 SubDL');
+                const languages = config.language === 'en' ? 'EN' : config.language === 'zh-tw' ? 'ZH_BG' : 'ZH,ZH_BG';
+                const params = {type:parsed.tv ? 'tv' : 'movie',languages,releases:1,unpack:1,subs_per_page:30};
+                if (parsed.tmdbId) params.tmdb_id = parsed.tmdbId;
+                else params.film_name = title;
+                if (parsed.tv) { params.season_number = parsed.season; params.episode_number = parsed.episode; }
+                const candidates = [], seen = new Set(), excluded = {年份:0,季集:0,语言:0,内容:0,无关:0,格式:0}, samples = [];
+                const reject = (reason, name) => { excluded[reason]++; if (samples.length < 8) samples.push(`${name}（${reason}）`); };
+                log('SubDL 查询', `${parsed.tmdbId ? 'TMDB #' + parsed.tmdbId : title} · ${params.type} · ${languages}`);
+                for (let page = 1; page <= 2 && candidates.length < 60; page++) {
+                    check(); verify();
+                    const query = {...params,page}, key = JSON.stringify(['subdl',config.subdlKey,query]);
+                    if (!searchCache.has(key)) {
+                        searchCache.set(key,subdlRequest(query,config,verify).catch(error => { searchCache.delete(key); throw error; })); evict(searchCache,200);
+                    }
+                    const result = await searchCache.get(key); check(); verify();
+                    for (const work of Array.isArray(result.results) ? result.results : []) {
+                        if (parsed.tmdbId && work.tmdb_id && String(work.tmdb_id) !== String(parsed.tmdbId) || work.type && work.type !== params.type || !parsed.tv && parsed.year && work.year && String(work.year) !== String(parsed.year)) throw new Error('SubDL 返回作品编号、类型或年份与目标冲突，未采用结果');
+                    }
+                    log('SubDL 响应', `第 ${page} 页 · ${result.subtitles.length} 条资源`);
+                    for (const item of result.subtitles) {
+                        if (!item || item.ai_translated) continue;
+                        const fallback = ({ZH:'zh',ZH_BG:'zh-tw',EN:'en'})[item.language];
+                        if (!fallback) { reject('语言',item.name); continue; }
+                        const fields = [...(Array.isArray(item.releases) ? item.releases.filter(value => typeof value === 'string') : []),String(item.name || '').replace(/\.zip$/i,'')];
+                        const unpacked = Array.isArray(item.unpack_files) ? item.unpack_files.filter(file => file?.url && /\.(srt|ass|ssa|vtt)$/i.test(file.name || '')) : [];
+                        const files = unpacked.length ? unpacked : [{name:item.name,url:item.url,season:item.season,episode:item.episode}];
+                        for (const file of files) {
+                            const name = String(file.name || ''), ext = name.split('.').pop().toLowerCase();
+                            if (!['srt','ass','ssa','vtt','zip'].includes(ext) || !file.url) { reject('格式',name); continue; }
+                            let url;
+                            try { url = subtitleDownloadUrl(file.url,{base:'https://dl.subdl.com/'}); } catch { reject('格式',name); continue; }
+                            if (seen.has(url)) continue;
+                            seen.add(url);
+                            const tagged = /S\d+[ ._-]*E\d+/i.test(name);
+                            const exactEpisode = tagged ? assrtEpisode(name,parsed) : Number(file.season) === parsed.season && Number(file.episode) === parsed.episode && !item.full_season && !(Number(item.episode_end) > Number(item.episode_from));
+                            // SubDL uses season=0 for unknown metadata; an explicit SxxExx filename still identifies the episode.
+                            if ((!parsed.tv && tagged) || parsed.tv && (tagged && !exactEpisode || !exactEpisode && ext !== 'zip' || Number(file.season) > 0 && Number(file.season) !== parsed.season)) { reject('季集',name); continue; }
+                            const archiveTitle = name.replace(/\.zip$/i,'');
+                            const archiveIdentity = ext === 'zip' && subtitleWorkIdentity(parsed,[],archiveTitle);
+                            if (archiveIdentity?.hardMismatch) { reject('年份',name); continue; }
+                            const matchName = ext === 'zip' ? fields.find(value => subtitleWorkIdentity(parsed,[],value).titleMatched) || archiveTitle : name;
+                            const match = subtitleCandidateFilter(parsed,fields,matchName,!!config.reviewCandidates);
+                            if (match.excluded) { reject(match.excluded,name); continue; }
+                            const info = subtitleFileInfo(name,fallback);
+                            if (!info.language.startsWith('zh') && info.language !== 'en') { reject('语言',name); continue; }
+                            if (candidates.length >= 60) break;
+                            candidates.push({source:'SubDL',name,...info,...match,titleMatched:match.titleMatched && (!parsed.tv || exactEpisode || ext === 'zip'),url,ext,release:fields.join(' · '),subdlFields:fields,parsed:{...parsed}});
+                        }
+                    }
+                    if (page >= Number(result.totalPages || 1) || result.subtitles.length < 30) break;
+                }
+                onFiles(`${title} · ${candidates.length} 份字幕资源：${candidates.slice(0,12).map(candidate => candidate.name).join('；')}`);
+                if (samples.length) log('SubDL 排除样例',samples.join('；'));
+                log('SubDL 筛选',`保留 ${candidates.length} 份 · 排除 ${Object.values(excluded).reduce((a,b) => a+b,0)} 份（${Object.entries(excluded).map(([reason,count]) => reason + ' ' + count).join('，')}）`);
+                return candidates.sort((a,b) => Number(a.opaque) - Number(b.opaque));
+            },
             logout() { token = ''; tokenKey = ''; searchCache.clear(); seasonCache.clear(); detailCache.clear(); },
             async login(username, password, config) {
                 token = ''; tokenKey = '';
@@ -3841,8 +3937,13 @@
                     let result;
                     try {
                         result = await this.download(candidate, config); verify();
-                        if (result.fileName) progress('文件选择', `${candidate.assrtId} · ${result.fileName}`);
-                        const bytes = await subtitleBinary(result.url, {allowHttp:result.allowHttp === true}); verify();
+                        if (result.fileName) progress('文件选择', `${candidate.assrtId || candidate.source} · ${result.fileName}`);
+                        let bytes = await subtitleBinary(result.url, {allowHttp:result.allowHttp === true}); verify();
+                        if (candidate.source === 'SubDL' && result.ext === 'zip') {
+                            const file = await subtitleSubdlArchive(bytes,candidate,config.language,verify);
+                            bytes = file.bytes; result.ext = file.ext; result.fileName = file.name;
+                            progress('SubDL 压缩包选择',file.name);
+                        }
                         return {result, bytes};
                     } catch (error) {
                         verify();
@@ -3882,6 +3983,7 @@
                 }
                 if (candidate.source === '射手') return {url:subtitleDownloadUrl(candidate.url,{allowHttp:true,base:'https://www.shooter.cn/'}), ext:candidate.ext,allowHttp:true};
                 if (candidate.source === '迅雷') return {url:subtitleDownloadUrl(candidate.url,{allowHttp:true}), ext:candidate.ext,allowHttp:true};
+                if (candidate.source === 'SubDL') return {url:subtitleDownloadUrl(candidate.url),ext:candidate.ext,fileName:candidate.name};
                 const result = await request('/download', config, {file_id:candidate.fileId});
                 const ext = String(result?.file_name || candidate.name).split('.').pop().toLowerCase();
                 return {url:subtitleDownloadUrl(result?.link), ext};
@@ -3890,6 +3992,70 @@
     }
 
     const SUBTITLE_LIMIT = 16 * 1024 * 1024;
+    async function subtitleSubdlArchive(bytes, candidate, language, check = () => {}) {
+        // Read the ZIP directory first; inflate only the selected text subtitle.
+        const invalid = () => new Error('SubDL ZIP 格式不支持或数据不完整（不支持加密、ZIP64、多卷及 RAR）');
+        const view = new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
+        let end = bytes.length - 22;
+        for (; end >= Math.max(0,bytes.length - 65557); end--) {
+            if (view.getUint32(end,true) === 0x06054b50 && end + 22 + view.getUint16(end+20,true) === bytes.length) break;
+        }
+        if (end < 0 || end < bytes.length - 65557) throw invalid();
+        const count = view.getUint16(end+10,true), size = view.getUint32(end+12,true), start = view.getUint32(end+16,true);
+        if (view.getUint16(end+4,true) || view.getUint16(end+6,true) || count !== view.getUint16(end+8,true) || count > 2000 || start + size !== end) throw invalid();
+        const files = [];
+        let offset = start;
+        for (let i = 0; i < count; i++) {
+            check();
+            if (offset + 46 > end || view.getUint32(offset,true) !== 0x02014b50) throw invalid();
+            const flags = view.getUint16(offset+8,true), method = view.getUint16(offset+10,true), crc = view.getUint32(offset+16,true);
+            const compressed = view.getUint32(offset+20,true), length = view.getUint32(offset+24,true), local = view.getUint32(offset+42,true);
+            const nameSize = view.getUint16(offset+28,true), next = offset + 46 + nameSize + view.getUint16(offset+30,true) + view.getUint16(offset+32,true);
+            if (next > end || view.getUint16(offset+34,true)) throw invalid();
+            const path = new TextDecoder(flags & 0x800 ? 'utf-8' : 'gb18030').decode(bytes.subarray(offset+46,offset+46+nameSize));
+            const name = path.split(/[\\/]/).pop(), ext = name.split('.').pop().toLowerCase();
+            offset = next;
+            if (!['srt','ass','ssa','vtt'].includes(ext) || path.startsWith('__MACOSX/') || name.startsWith('._')) continue;
+            if (flags & 1 || ![0,8].includes(method) || !length || length > SUBTITLE_LIMIT || compressed > SUBTITLE_LIMIT) continue;
+            if (candidate.parsed.tv) {
+                const episodes = [...name.matchAll(/S(\d{1,2})[ ._-]*E(\d{1,3})(?!\d)/gi)];
+                if (episodes.length !== 1 || Number(episodes[0][1]) !== candidate.parsed.season || Number(episodes[0][2]) !== candidate.parsed.episode || /E\d+[ ._-]*[-~][ ._-]*(?:E)?\d+/i.test(name)) continue;
+            }
+            const match = subtitleCandidateFilter(candidate.parsed,candidate.subdlFields || [],name);
+            const info = subtitleFileInfo(name,candidate.language);
+            if (match.excluded || !match.titleMatched || !subtitleLanguageMatch(name,language) && !language.split(',').some(wanted => wanted === info.language || wanted.startsWith('zh') && info.language === 'zh')) continue;
+            files.push({name,ext,method,crc,compressed,length,local,flags,score:subtitlePreference({...info,name},language)});
+        }
+        if (offset !== end) throw invalid();
+        files.sort((a,b) => b.score-a.score || a.name.localeCompare(b.name));
+        if (!files.length) throw new Error('SubDL 压缩包没有通过片名、年份、季集及语言检查的文本字幕');
+        const file = files[0], local = file.local;
+        if (local + 30 > start || view.getUint32(local,true) !== 0x04034b50 || view.getUint16(local+6,true) !== file.flags || view.getUint16(local+8,true) !== file.method) throw invalid();
+        const dataStart = local + 30 + view.getUint16(local+26,true) + view.getUint16(local+28,true);
+        if (dataStart + file.compressed > start) throw invalid();
+        let payload = bytes.subarray(dataStart,dataStart+file.compressed);
+        if (file.method === 8) {
+            let inflater;
+            try { inflater = new DecompressionStream('deflate-raw'); } catch { throw new Error('当前浏览器不支持 ZIP 解压，请更新浏览器或选择其他来源的单文件字幕'); }
+            const reader = new Blob([payload]).stream().pipeThrough(inflater).getReader(), chunks = [];
+            let total = 0;
+            try {
+                for (;;) {
+                    check(); const {done,value} = await reader.read(); if (done) break;
+                    total += value.length;
+                    if (total > file.length || total > SUBTITLE_LIMIT) throw invalid();
+                    chunks.push(value);
+                }
+            } finally { await reader.cancel().catch(() => {}); }
+            payload = new Uint8Array(total); let at = 0;
+            for (const chunk of chunks) { payload.set(chunk,at); at += chunk.length; }
+        }
+        check();
+        let crc = 0xffffffff;
+        for (const byte of payload) { crc ^= byte; for (let bit = 0; bit < 8; bit++) crc = crc >>> 1 ^ (crc & 1 ? 0xedb88320 : 0); }
+        if (payload.length !== file.length || (crc ^ 0xffffffff) >>> 0 !== file.crc) throw invalid();
+        return {name:file.name,ext:file.ext,bytes:payload};
+    }
     function subtitleBinary(url, {method = 'GET', headers = {}, bytes, range, limit = SUBTITLE_LIMIT, allowHttp = false} = {}) {
         url = subtitleDownloadUrl(url, {allowHttp:allowHttp && method === 'GET' && !bytes && !Object.keys(headers).length});
         return new Promise((resolve, reject) => {
@@ -3975,7 +4141,9 @@
     }
     function createSubtitleBodyReviewer(ai, log = () => {}, check = () => {}) {
         let parseFailures = 0;
-        return async (row, text, ext) => {
+        return paced(0, async (row, text, ext, verify = check) => {
+            const check = verify;
+            check();
             const unknown = reason => ({status:'unconfirmed', reason});
             if (parseFailures >= 2) return unknown('本批 AI 正文复查已停用');
             const dialogue = subtitleDialogue(text, ext).trim();
@@ -3997,7 +4165,7 @@
                 log('AI 正文复查失败', `${row.node.name} · ${error.message}`);
                 return unknown('AI 复查未完成');
             }
-        };
+        });
     }
     function subtitleLanguageMatch(name, wanted) {
         const info = subtitleFileInfo(name);
@@ -4064,7 +4232,9 @@
     }
     function createSubtitleReviewer(ai, language, log = () => {}, check = () => {}) {
         let parseFailures = 0, disabled = false;
-        return async (row, found) => {
+        return paced(0, async (row, found, verify = check) => {
+            const check = verify;
+            check();
             if (disabled) return;
             const unique = new Set();
             const reviewKey = candidate => JSON.stringify([candidate.source,candidate.name,candidate.release,candidate.language,candidate.bilingual]);
@@ -4124,7 +4294,7 @@
                     || candidate.hashMatched || candidate.identityMatched || candidate.titleMatched || candidate.aiAccepted);
                 selectSubtitleCandidate(row,language);
             }
-        };
+        });
     }
     function subtitleSearchSummary(rows) {
         const count = {complete:0,pending:0,ready:0,choice:0,failed:0,missing:0,unsearched:0};
@@ -4188,13 +4358,13 @@
                 row.candidates.push(...found); row.sources.push(source);
                 log('来源', `${name} 返回 ${found.length} 个文件候选`);
                 selectSubtitleCandidate(row, config.language);
-                if (!row.selectedCandidate && config.reviewCandidates) await config.reviewCandidates(row, found);
+                if (!row.selectedCandidate && config.reviewCandidates) await config.reviewCandidates(row, found, check);
                 source.count = found.filter(candidate => row.candidates.includes(candidate)).length;
                 source.rejected = found.length - source.count;
                 log('来源判断', `${row.node.name} · ${name} · 返回 ${found.length}，AI 排除 ${source.rejected}，保留 ${source.count} · ${row.selectedCandidate ? '产生可靠候选，后续来源暂缓' : source.count ? '只有待确认候选，继续下一来源' : '没有可用候选，继续下一来源'}`);
             } catch (error) {
                 check(); row.sources.push({name,error:error.message});
-                if ([429,509].includes(error.status) || error.apiStatus === 30900 || error.assrtCooldown || name === '射手' && (error.hashSample || /超时|无法连接字幕来源/.test(error.message))) service.pauseSearchSource?.(name,error.message);
+                if ([429,509].includes(error.status) || name === 'SubDL' && [401,403].includes(error.status) || error.apiStatus === 30900 || error.assrtCooldown || name === '射手' && (error.hashSample || /超时|无法连接字幕来源/.test(error.message))) service.pauseSearchSource?.(name,error.message);
                 log(error.phase === 'drive-auth' ? '网盘授权失败' : '来源失败', `${row.node.name} · ${name}：${error.message}`);
                 if (error.phase === 'drive-auth') { row.error = error.message; row.searchMessage = subtitleSearchMessage(row); throw error; }
             } finally {
@@ -4210,6 +4380,7 @@
         });
         if (!row.selectedCandidate) log('查找阶段', `${row.node.name} · 视频指纹未形成可靠候选，第二阶段：迅雷片名搜索`);
         await run('迅雷', config.thunder, true, () => service.thunderSearch(row, config, message => log('迅雷 文件列表', message), check));
+        if (config.subdl) await run('SubDL', true, config.subdlKey, () => service.subdlSearch(row, config, message => log('SubDL 文件列表',message),check));
         if (!row.selectedCandidate && !row.candidates.some(candidate => candidate.source === '迅雷' && candidate.titleMatched && !candidate.downloadFailed)) {
             log('查找阶段', `${row.node.name} · 迅雷没有可靠候选，补查 Assrt 片名搜索`);
         }
@@ -4249,7 +4420,7 @@
                 const ext = sub.name.split('.').pop().toLowerCase();
                 const {text, ...result} = subtitleValidateContent(row, bytes, ext, language, log);
                 if (language !== 'zh-cn,zh-tw,zh' && language !== 'en' && !subtitleLanguageMatch(sub.name, language)) { invalid.push(sub.name + '：正文含中文，但所选简繁标记未确认'); continue; }
-                if (review) result.work = await review(row, text, ext);
+                if (review) result.work = await review(row, text, ext, check);
                 check();
                 try { drive.verified?.remember(sub,bytes,language,result.encoding,row,result); } catch (error) { log('核验记录', '保存失败：' + error.message); }
                 if (result.work.status === 'mismatch') {
@@ -4521,6 +4692,17 @@
     function subtitleCoverageState(row) {
         return row.complete ? 'complete' : row.pendingVerification ? 'pending' : row.inspected ? 'missing' : 'unchecked';
     }
+    function subtitleSearchGroups(rows) {
+        const groups = new Map();
+        for (const row of rows) {
+            const parsed = row.parsed;
+            // A season runs sequentially so the first episode can establish shared caches.
+            const key = parsed.tv ? JSON.stringify([parsed.tmdbId || '',titleKey(parsed.query),parsed.year || '',parsed.season]) : row;
+            if (!groups.has(key)) groups.set(key, []);
+            groups.get(key).push(row);
+        }
+        return [...groups.values()];
+    }
     async function subtitleEnrichAliases(parsed, credential, check = () => {}, log = () => {}) {
         if (!credential || parsed.tmdbId && parsed.aliases?.length) return false;
         const client = tmdbClient(credential), type = parsed.tv ? 'tv' : 'movie';
@@ -4570,6 +4752,9 @@
             <div class="panel-actions"><button id="searchSubtitles" disabled>重搜未完成项</button><button id="copyMissingSubtitles" disabled>复制未补齐路径</button><button id="copySubtitleReport" disabled>复制完整报告</button></div>
             <details id="subtitleSettings"><summary>字幕来源与设置</summary>
             <label><input id="useThunder" type="checkbox" checked>迅雷 · 按片名搜索（免 Key，免费）</label>
+            <label><input id="useSubdl" type="checkbox">SubDL（需个人 API Key，可选）</label>
+            <label><span class="credential-head"><span>SubDL API Key</span><a href="https://subdl.com/api-doc" target="_blank" rel="noopener noreferrer">官网 API 说明 ↗</a></span><input id="subdlKey" type="password" autocomplete="off"></label>
+            <p>通过 API 搜索并直接下载，优先使用单文件；ZIP 包只提取通过作品、季集和语言检查的文本字幕。配额以服务返回为准，不支持 RAR。</p>
             <label><input id="useShooter" type="checkbox" checked>射手 · 视频指纹匹配（免 Key）</label>
             <p>射手仅取四段各 4KB 视频数据，不下载完整视频。网盘拒绝分段读取时跳过该来源。<a href="https://www.shooter.cn/" target="_blank" rel="noopener noreferrer">射手官网 ↗</a></p>
             <label><input id="useAssrt" type="checkbox" checked>Assrt 射手网 · 按片名搜索（需 Token）</label>
@@ -4602,9 +4787,11 @@
         ui.get('useShooter').checked = prefs.shooter !== false;
         ui.get('useAssrt').checked = prefs.assrt !== false;
         ui.get('useThunder').checked = prefs.thunder !== false;
+        ui.get('useSubdl').checked = prefs.subdl === true;
+        ui.get('subdlKey').value = prefs.subdlKey || '';
         ui.get('assrtToken').value = prefs.assrtToken || '';
         ui.get('subtitleLanguage').value = prefs.language || 'zh-cn,zh-tw,zh';
-        const settings = () => ({key:ui.get('openSubtitlesKey').value.trim(), language:ui.get('subtitleLanguage').value, open:ui.get('useOpenSubtitles').checked, shooter:ui.get('useShooter').checked, assrt:ui.get('useAssrt').checked, thunder:ui.get('useThunder').checked, assrtToken:ui.get('assrtToken').value.trim()});
+        const settings = () => ({key:ui.get('openSubtitlesKey').value.trim(), language:ui.get('subtitleLanguage').value, open:ui.get('useOpenSubtitles').checked, shooter:ui.get('useShooter').checked, assrt:ui.get('useAssrt').checked, thunder:ui.get('useThunder').checked, assrtToken:ui.get('assrtToken').value.trim(), subdl:ui.get('useSubdl').checked, subdlKey:ui.get('subdlKey').value.trim()});
         const status = text => { ui.get('subtitleProgress').textContent = text; };
         const logLines = [];
         const diag = (event, detail = '') => {
@@ -4612,7 +4799,7 @@
             let message = String(detail ?? '').replace(/https?:\/\/[^\s"'<>]+/gi, value => {
                 try { return new URL(value).origin + '/[地址已隐藏]'; } catch { return '[地址已隐藏]'; }
             });
-            for (const secret of [config.key, config.assrtToken]) if (secret) message = message.split(secret).join('[凭证已隐藏]');
+            for (const secret of [config.key, config.assrtToken, config.subdlKey]) if (secret) message = message.split(secret).join('[凭证已隐藏]');
             message = message.replace(/(token|api[-_ ]?key|authorization|signature|security[-_ ]?token)=?[^\s&,;]*/gi, '$1=[已隐藏]').replace(/Bearer\s+\S+/gi, 'Bearer [已隐藏]');
             const line = `${new Date().toLocaleTimeString()} [${event}]${message ? ' ' + message : ''}`;
             const box = ui.get('subtitleLog');
@@ -4689,15 +4876,15 @@
         };
         const lock = value => {
             busy = value; ui.busy(value);
-            for (const id of ['readSubtitles','recheckSubtitles','auditSubtitles','saveSubtitleSettings','forgetSubtitleKey','loginSubtitles','openSubtitlesKey','subtitleUsername','subtitlePassword','useOpenSubtitles','useShooter','useAssrt','useThunder','assrtToken','subtitleLanguage']) ui.get(id).disabled = value;
+            for (const id of ['readSubtitles','recheckSubtitles','auditSubtitles','saveSubtitleSettings','forgetSubtitleKey','loginSubtitles','openSubtitlesKey','subtitleUsername','subtitlePassword','useOpenSubtitles','useShooter','useAssrt','useThunder','assrtToken','subtitleLanguage','useSubdl','subdlKey']) ui.get(id).disabled = value;
             ui.get('stopSubtitles').hidden = !value; ui.get('stopSubtitles').disabled = !value; render();
         };
         const searchRows = async rows => {
             rows = rows.filter(row => !row.complete && !row.pendingVerification);
             if (!rows.length) return;
             const config = settings();
-            if (!config.thunder && !config.shooter && !(config.assrt && config.assrtToken) && !(config.open && config.key)) { ui.openSettings('subtitleSettings'); status('请启用迅雷免 Key 搜索，或配置其他字幕来源。'); return; }
-            diag('查找开始', `视频 ${rows.length}，语言 ${config.language}，启用来源：${[config.assrt && 'Assrt', config.thunder && '迅雷', config.open && config.key && 'OpenSubtitles', config.shooter && '射手'].filter(Boolean).join('、') || '无'}`);
+            if (!config.thunder && !config.shooter && !(config.assrt && config.assrtToken) && !(config.open && config.key) && !(config.subdl && config.subdlKey)) { ui.openSettings('subtitleSettings'); status('请启用迅雷免 Key 搜索，或配置其他字幕来源。'); return; }
+            diag('查找开始', `视频 ${rows.length}，语言 ${config.language}，启用来源：${[config.assrt && 'Assrt', config.thunder && '迅雷', config.subdl && 'SubDL', config.open && config.key && 'OpenSubtitles', config.shooter && '射手'].filter(Boolean).join('、') || '无'}`);
             if (!config.assrt) diag('来源跳过', 'Assrt 已关闭');
             if (!config.thunder) diag('来源跳过', '迅雷 已关闭');
             if (!config.open) diag('来源跳过', 'OpenSubtitles 已关闭');
@@ -4711,7 +4898,10 @@
             diag('查找策略', `剧集先复查已确认的整季缓存；未命中时${config.shooter ? '先按视频指纹匹配，未命中再查迅雷' : '迅雷优先'}；${ai ? '名称有歧义时交给 AI 判断' : 'AI 未启用，使用严格片名匹配'}；限流或射手超时后本批跳过该来源`);
             try {
                 drive.assertReady?.();
-                for (const row of rows) {
+                diag('并发策略', '搜索最多同时处理 2 组作品，同一季逐集复用缓存；各来源继续独立限速');
+                await forEachConcurrent(subtitleSearchGroups(rows), 2, async (group, verify) => {
+                  for (const row of group) {
+                    const check = verify;
                     const started = Date.now();
                     check(); status(`查找字幕 ${done + 1}/${rows.length}：${row.node.name}`);
                     diag('源文件', row.node.name);
@@ -4733,7 +4923,8 @@
                     diag('视频结果', `${row.node.name} · ${row.selectedCandidate ? (row.aiSuggested ? 'AI 建议 ' : '自动选择 ') + subtitleCandidateLabel(row.selectedCandidate) : row.candidates.length ? '有候选待手选' : row.sources.some(source => source.error) ? '查询失败' : '未找到'}`);
                     diag('单片耗时', `${row.node.name} · ${((Date.now() - started) / 1000).toFixed(1)} 秒`);
                     meter(++done, rows.length); render();
-                }
+                  }
+                }, check);
                 status('查找结束：' + subtitleSearchSummary(inventory) + '。展开作品可查看每个来源的结果。'); diag('查找结束', subtitleSearchSummary(inventory));
             } catch (error) { render(); status(error.message); diag(cancelled ? '已停止' : '查找中断', error.message); }
             finally { lock(false); }
@@ -4744,10 +4935,10 @@
             try {
                 const context = await mediaContext(provider); check(); drive = subtitleDrive(context);
                 const collected = await collectMediaSelection(context.selected, context.source, status, () => false, check, false); check();
-                for (const node of collected.videos) {
+                await forEachConcurrent(collected.videos, 3, async (node, check) => {
                     try { await mediaRecords.restore?.(node, context.source, check); }
                     catch (error) { check(); if (error.stop || error.phase === 'drive-auth') throw error; diag('识别记录', `${node.name} · 元数据读取失败：${error.message}`); }
-                }
+                }, check);
                 inventory = subtitleInventory(collected, context.path);
                 scope = '/' + (context.path || '').replace(/^\/+|\/+$/g, '') + ` · 勾选 ${context.selected.length} 项：` + context.selected.slice(0,3).map(node => node.name).join('、') + (context.selected.length > 3 ? '…' : '');
                 render();
@@ -4761,17 +4952,20 @@
                 const review = ai ? createSubtitleBodyReviewer(ai, diag, check) : null;
                 if (force) diag('复查范围', ai ? '格式、语言、已有时长参考及 AI 对白证据；不核对音画同步' : 'AI 未启用，仅检查格式、语言、已有时长参考；作品归属和音画同步未确认');
                 let done = 0;
-                for (const row of inventory) {
+                diag('并发策略', '目录检查最多同时处理 3 个视频；上传、写入及内容核验仍顺序执行');
+                await forEachConcurrent(inventory, 3, async (row, check) => {
                     check();
                     status(`检查目录字幕 ${done + 1}/${inventory.length}：${row.node.name}`);
                     try {
                         const recovered = await drive.reconcile(row, phase => diag('上传对账', `${row.node.name} · ${phase}`), check);
+                        check();
                         for (const sub of recovered) if (!row.subtitles.some(existing => existing.id === sub.id)) row.subtitles.push(sub);
                         await inspectExistingSubtitles(row, drive, settings().language, diag, check, {force, review});
-                    } catch (error) { check(); if (error.stop) throw error; if (!row.complete) { row.pendingVerification = true; row.error = error.message; } diag('上传待核验', `${row.node.name} · ${error.message}`); }
+                    } catch (error) { check(); if (error.stop || error.phase === 'drive-auth') throw error; if (!row.complete) { row.pendingVerification = true; row.error = error.message; } diag('上传待核验', `${row.node.name} · ${error.message}`); }
+                    check();
                     row.inspected = true;
-                    meter(++done, inventory.length);
-                }
+                    meter(++done, inventory.length); render();
+                }, check);
                 status(inventory.length ? '已检查选中范围。' : '选中范围没有正片视频。'); diag('字幕检查', inventory.length ? `完成，已有字幕确认 ${inventory.filter(row => row.complete).length}/${inventory.length}` : '选中范围没有正片视频');
             } catch (error) { inventory = []; drive = null; status('检查结束：' + error.message); diag('检查失败', error.message); }
             finally { lock(false); }
@@ -4850,7 +5044,7 @@
         ui.get('forgetSubtitleKey').onclick = () => {
             const currentDrive = drive || subtitleDrive({session:provider === '光鸭' ? {provider,token:capture.token} : recover123Session(),source:{}});
             currentDrive.verified?.clear();
-            ui.get('openSubtitlesKey').value = ''; ui.get('assrtToken').value = ''; ui.get('subtitlePassword').value = ''; service.logout(); ui.get('subtitleLoginState').textContent = '未登录'; GM_setValue('cross-drive-subtitle-settings', settings()); status('已清除凭证和当前账号的字幕核验记录。');
+            ui.get('openSubtitlesKey').value = ''; ui.get('assrtToken').value = ''; ui.get('subdlKey').value = ''; ui.get('subtitlePassword').value = ''; service.logout(); ui.get('subtitleLoginState').textContent = '未登录'; GM_setValue('cross-drive-subtitle-settings', settings()); status('已清除凭证和当前账号的字幕核验记录。');
         };
         ui.get('loginSubtitles').onclick = async () => {
             lock(true);
