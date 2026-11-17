@@ -92,7 +92,7 @@ function startup(){
   vm.runInContext(boot,ctx);assert.deepEqual(calls,expected);callbacks.forEach(fn=>fn());assert.ok(calls.includes('json'));if(hostname!=='pan.baidu.com'){assert.ok(calls.includes('media'));assert.ok(calls.includes('subtitles'))}
  }
  const names=[...script.matchAll(/^    (?:async )?function (\w+)\(/gm)].map(m=>m[1]);assert.equal(new Set(names).size,names.length,'No duplicate function declarations');
- assert.ok(script.includes('只看待选择'));assert.ok(script.includes('// @version      '+version));
+ assert.ok(script.includes('id="subtitleViewChoice" value="choice"'));assert.ok(script.includes('// @version      '+version));
  console.log('PASS complete startup: hooks before DOM ready; media/subtitle panels on 123/Guangya; JSON on all three; no duplicate declarations; choice filter and version present');
 }
 (async()=>{await hooks();await imports();await stop();await manifestUI();await guangyaExisting();startup()})().catch(e=>{console.error(e);process.exitCode=1});
