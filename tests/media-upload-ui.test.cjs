@@ -42,6 +42,61 @@ async function tmdbSearchAndEpisodeAliases() {
     console.log('PASS TMDB efficiency and episodes: unique match stops page fetches; English episode aliases augment Chinese names; English lookup failure falls back');
 }
 
+async function aiFallbackGuards() {
+    const media=load(part('    function validateMediaAIIdentity(', '    async function identifyMediaAIFiles('));
+    assert.equal(media.mediaNeedsAI({matchFailure:'unmatched'}),true);
+    assert.equal(media.mediaNeedsAI({matchFailure:'lookup-error'}),false);
+    assert.equal(media.mediaNeedsAI({matchFailure:'ambiguous'}),false);
+    assert.equal(media.mediaNeedsAI({matchFailure:'unmatched',detail:{id:1}}),false);
+    let captured;
+    const ai=load(part('    function mediaAIEndpoint(', '    function validateMediaAIIdentity('),{
+        GM_xmlhttpRequest:options=>{captured=JSON.parse(options.data);options.onload({status:200,responseText:JSON.stringify({choices:[{message:{content:'{"index":1,"confidence":0.96}'}}]})});}
+    });
+    const result=await ai.createMediaAI({base:'https://ai.example/v1',key:'secret',model:'test'}).disambiguateSubtitle({work:{title:'片名'},candidates:[{index:1,name:'subtitle.srt'}]});
+    assert.deepEqual({...result},{index:1,confidence:0.96});assert.equal(captured.max_tokens,120);assert.match(captured.messages[0].content,/只能返回输入中的候选 index/);
+    const candidate={language:'zh-cn',name:'Series.S01E01.1080p.srt',release:'Series',titleMatched:false};
+    const subtitle=load(part('    function subtitleFileInfo(', '    function subtitleSearchSummary('));
+    const row={node:{name:'Series.S01E01.1080p.mkv'},parsed:{query:'Series',tv:true,year:'2020',season:1,episode:1,tmdbId:'42'},candidates:[candidate]};
+    assert.equal(subtitle.subtitleAICandidate({index:0,confidence:.95},row,'zh-cn,zh-tw,zh'),candidate);
+    assert.equal(subtitle.subtitleAICandidate({index:0,confidence:.89},row,'zh-cn'),null);
+    assert.equal(subtitle.subtitleAICandidate({index:0,confidence:.95},row,'en'),null);
+    assert.equal(subtitle.subtitleAICandidate({index:9,confidence:1},row,'zh-cn'),null);
+    row.node.name='Series.S01E01.720p.mkv';assert.equal(subtitle.subtitleAICandidate({index:0,confidence:1},row,'zh-cn'),null);
+    row.node.name='Series.S01E01.1080p.mkv';
+    for(const name of ['Other.2021.S01E01.srt','Other.S02E01.srt','Other.S01E02.srt','Other.S01E01-E02.srt','Other.简体.srt']) {
+        candidate.name=name;assert.equal(subtitle.subtitleAICandidate({index:0,confidence:1},row,'zh-cn'),null,name);
+    }
+    candidate.name='Other.S01E01.srt';candidate.workIdentity={tv:true,tmdbId:'99',season:1,episode:1};
+    assert.equal(subtitle.subtitleAICandidate({index:0,confidence:1},row,'zh-cn'),null,'Conflicting TMDB ID cannot be overridden');
+    candidate.workIdentity={tv:true,tmdbId:'42',season:1,episode:2};
+    assert.equal(subtitle.subtitleAICandidate({index:0,confidence:1},row,'zh-cn'),null,'Conflicting API episode cannot be overridden by filename');
+    candidate.name='Other.简体.srt';candidate.workIdentity.episode=1;
+    assert.equal(subtitle.subtitleAICandidate({index:0,confidence:1},row,'zh-cn'),candidate,'Confirmed API episode permits a generic subtitle filename');
+    candidate.hardMismatch=true;assert.equal(subtitle.subtitleAICandidate({index:0,confidence:1},row,'zh-cn'),null);delete candidate.hardMismatch;
+    row.parsed={query:'Film',year:'2000',tmdbId:'42'};candidate.workIdentity={tv:false,tmdbId:'42',year:2001};
+    assert.equal(subtitle.subtitleAICandidate({index:0,confidence:1},row,'zh-cn'),null,'API year conflict survives generic filename');
+    candidate.workIdentity.year=2000;candidate.name='Other.1999.srt';
+    assert.equal(subtitle.subtitleAICandidate({index:0,confidence:1},row,'zh-cn'),null,'Filename year still checked with matching API metadata');
+    candidate.name='Other.2000.srt';assert.equal(subtitle.subtitleAICandidate({index:0,confidence:1},row,'zh-cn'),candidate);
+    assert.equal(candidate.titleMatched,false,'AI suggestions never change deterministic identity flags');
+    console.log('PASS AI fallback guards: only unmatched media rows qualify; candidate index, confidence, language, version, year, episode and TMDB conflicts checked');
+}
+
+async function mediaFallbackFlow() {
+    const calls=[],groups=new Map(['Known','Unmatched','Ambiguous','Offline',''].map((query,index)=>[index,[{node:{id:String(index),name:query||'unknown.mkv',parentId:'p'},query,sourceYear:'2000'}]]));
+    const context=load(part('    function validateMediaAIIdentity(', '    async function identifyMediaAIFiles(')+part('        async function matchGroup(', "        ui.get('scanMedia').onclick"),{
+        groups,checkStopped(){},progress(){},meter(){},log(){},key:value=>value.toLowerCase(),aiSettings:()=>({enabled:true}),mediaCandidatePreference:()=>({type:'movie'}),
+        client:{search:async query=>{calls.push('tmdb:'+query);if(query==='Offline')throw Error('HTTP 503');if(query==='Unmatched')return [];return Array.from({length:query==='Ambiguous'?2:1},(_,index)=>({id:index+1,media_type:'movie',title:query,release_date:'2000-01-01'}))}},
+        choose:async(row,match)=>{row.detail={id:match};row.match=match},validateEpisode:async()=>{},createMediaAI:()=>({}),
+        identifyMediaAIFiles:async rows=>{calls.push('ai:'+rows[0].node.name);return rows.map(()=>({title:'Recovered',type:'movie',year:'2000',episodes:[]}))}
+    });
+    vm.runInContext('async function scanGroups(){let matched=0;'+part('                for (const group of groups.values()) {', '                checkStopped();\n                mediaWorkCounts(rows);')+'}',context);
+    await context.scanGroups();
+    assert.deepEqual(calls,['tmdb:Known','tmdb:Unmatched','ai:Unmatched','tmdb:Recovered','tmdb:Ambiguous','tmdb:Offline','ai:unknown.mkv','tmdb:Recovered']);
+    assert.equal(groups.get(0)[0].aiAssisted,false);assert.equal(groups.get(1)[0].aiAssisted,true);assert.equal(groups.get(2)[0].matchFailure,'ambiguous');assert.equal(groups.get(3)[0].matchFailure,'lookup-error');assert.equal(groups.get(4)[0].aiAssisted,true);
+    console.log('PASS media scan flow: normal TMDB first; AI only for unmatched or empty titles; recovered title rechecked; ambiguity and network failures stay manual');
+}
+
 function aiProviderKey() {
     const values={mediaAIProvider:{value:'qwen'},mediaAIKey:{value:'secret'},mediaAIBase:{value:''},mediaAIModel:{value:''},mediaAIState:{textContent:''}};
     const handler=part("        ui.get('mediaAIProvider').onchange", "        ui.get('mediaAIModelSelect').onchange");
@@ -235,19 +290,19 @@ async function subtitleUI() {
     const get=id=>{assert.ok(elements.has(id),'Missing UI element '+id);return elements.get(id)};
     const video={id:'v',name:'电影.2000.mkv',size:10000,folders:[],path:'电影.2000.mkv'};
     const sub={id:'s',name:'电影.2000.zh-cn.srt'};
-    let broken=true,hasSubtitle=true,queries=0,saves=0,reads=0,aliasCalls=0,panelMarkup='',movedSettings=[];
+    let broken=true,hasSubtitle=true,queries=0,saves=0,reads=0,aliasCalls=0,panelMarkup='',movedSettings=[],aiConfig={},aiCandidates=false;
     const downloads=[];
     const ctx=load(part('    function subtitleDownloadUrl(', '    function subtitleDrive('));
-    Object.assign(ctx,{document:{createElement:element},makePanel:(_title,html)=>{
+    Object.assign(ctx,{mediaAIEndpoint:()=> 'https://ai.example/v1/chat/completions',document:{createElement:element},makePanel:(_title,html)=>{
         panelMarkup=html;
         for(const tag of html.matchAll(/<[^>]+\bid="([^"]+)"[^>]*>/g)){const el=element();el.checked=/\bchecked\b/.test(tag[0]);el.disabled=/\bdisabled\b/.test(tag[0]);elements.set(tag[1],el)}
         return {get,moveSettings(ids){movedSettings=ids},openSettings(){},busy(){}};
     },mediaContext:async()=>({selected:[video],source:{},path:'电影'}),selectedTreeCache:{stale:true},
     collectMediaSelection:async()=>({videos:[video],linked:new Map([['v',hasSubtitle?[sub]:[]]])}),
     parseMediaName:()=>({query:'电影',year:2000}),mediaBonusName:()=>false,mediaRecords:{get:()=>({query:'电影',year:2000,type:'movie',match:'movie:7'})},mediaStem:name=>name.replace(/\.[^.]+$/,''),
-    GM_getValue:(key,def)=>key==='cross-drive-tmdb-key'?'fixture-key':def,
+    GM_getValue:(key,def)=>key==='cross-drive-tmdb-key'?'fixture-key':key==='cross-drive-media-ai'?aiConfig:def,
     tmdbClient:()=>({get:async(path,params)=>{aliasCalls++;assert.equal(path,'/movie/7');assert.equal(params.append_to_response,'alternative_titles');return {id:7,title:'电影完整名',original_title:'Film',release_date:'2000-01-01',alternative_titles:{titles:[{iso_3166_1:'TW',title:'电影别名'},{iso_3166_1:'FR',title:'Un film'}]}}}}),
-    createSubtitleService:()=>({assrtSearch:async row=>{queries++;assert.equal(row.parsed.query,'电影');assert.ok(row.parsed.aliases.includes('Film'));assert.ok(row.parsed.aliases.includes('电影别名'));assert.ok(!row.parsed.aliases.includes('Un film'));return ['A1','A2','B'].map(name=>({source:'Assrt',assrtId:name[0],name,language:'zh-cn',titleMatched:true}))},shooterHash:async()=>{queries++;return []},fetchFile:async candidate=>{downloads.push(candidate.name);if(candidate.name==='A1')throw Object.assign(Error('HTTP 493'),{status:493});return {result:{url:'https://example.com/subtitle',ext:'srt'},bytes:valid}}}),
+    createSubtitleService:()=>({assrtSearch:async row=>{queries++;assert.equal(row.parsed.query,'电影');assert.ok(row.parsed.aliases.includes('Film'));assert.ok(row.parsed.aliases.includes('电影别名'));assert.ok(!row.parsed.aliases.includes('Un film'));if(aiCandidates)return [{source:'Assrt',assrtId:11,name:'Different.Translation.简体.srt',release:'First release',language:'zh-cn',titleMatched:false},{source:'Assrt',assrtId:12,name:'Another.Translation.简体.srt',release:'Second release',language:'zh-cn',titleMatched:false}];return ['A1','A2','B'].map(name=>({source:'Assrt',assrtId:name[0],name,language:'zh-cn',titleMatched:true}))},shooterHash:async()=>{queries++;return []},fetchFile:async candidate=>{downloads.push(candidate.name);if(candidate.name==='A1')throw Object.assign(Error('HTTP 493'),{status:493});return {result:{url:'https://example.com/subtitle',ext:'srt'},bytes:valid}}}),
     subtitleBinary:async()=>valid,
     subtitleDrive:()=>({sample:async()=>'',read:async()=>{reads++;if(broken)throw Error('连接失败');return valid},reconcile:async()=>[],save:async()=>{saves++;hasSubtitle=true;throw Object.assign(Error('上传已提交，核验连接失败'),{pendingUpload:true})}})
     });
@@ -263,6 +318,10 @@ async function subtitleUI() {
     assert.deepEqual(downloads,['A1','B'],'493 prioritizes another package before siblings of broken package');assert.equal(aliasCalls,1,'Old confirmed records lazily resolve trusted aliases');
     await get('searchSubtitles').onclick();assert.equal(queries,2,'Pending upload cannot be searched/refilled');
     await get('recheckSubtitles').onclick();assert.match(get('subtitleSummary').textContent,/已有\/已补齐 1/);assert.equal(saves,1);assert.equal(queries,2,'Recheck only reads drive inventory');
+    hasSubtitle=false;aiConfig={enabled:true,base:'https://ai.example',model:'test'};
+    ctx.createMediaAI=()=>({disambiguateSubtitle:async payload=>{assert.equal(payload.candidates.length,2);assert.equal(payload.work.tmdbId,'7');return {index:1,confidence:.96}}});
+    aiCandidates=true;
+    await get('readSubtitles').onclick();assert.match(get('subtitleSummary').textContent,/可补齐 1/);assert.match(get('subtitleLog').value,/AI 字幕建议.*Another\.Translation/);
     console.log('PASS subtitle UI flow: existing-read failure disables search/fill; old records resolve trusted TMDB aliases without changing search title; 493 moves to another package; pending upload recheck recovers without repeated upload');
 }
 
@@ -297,4 +356,4 @@ async function guangyaReceipts() {
     console.log('PASS Guangya: rapid upload and signed OSS byte upload; readback failure, missing task and accepted-task auth failure retain receipt; explicit rejection clears receipt; recheck recovers with one create only');
 }
 
-(async()=>{types();aiProviderKey();await tmdbSearchAndEpisodeAliases();await subtitles();await receipts();await folders();await cleanup();await subtitleUI();await guangyaReceipts();})().catch(e=>{console.error(e);process.exitCode=1;});
+(async()=>{types();aiProviderKey();await tmdbSearchAndEpisodeAliases();await aiFallbackGuards();await mediaFallbackFlow();await subtitles();await receipts();await folders();await cleanup();await subtitleUI();await guangyaReceipts();})().catch(e=>{console.error(e);process.exitCode=1;});

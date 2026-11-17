@@ -110,7 +110,7 @@
                         select.append(option);
                     });
                     select.value = row.selectedCandidate ? String(row.candidates.indexOf(row.selectedCandidate)) : '';
-                    select.onchange = () => { row.selectedCandidate = select.value === '' ? null : row.candidates[Number(select.value)]; row.error = ''; row.manualCandidate = true; row.searchMessage = subtitleSearchMessage(row); diag('手动选择', `${row.node.name} · ${row.selectedCandidate ? row.selectedCandidate.source + ' · ' + (row.selectedCandidate.name || row.selectedCandidate.release) : '跳过此视频'}`); render(); };
+                    select.onchange = () => { row.selectedCandidate = select.value === '' ? null : row.candidates[Number(select.value)]; row.error = ''; row.manualCandidate = true; row.aiSuggested = false; row.searchMessage = subtitleSearchMessage(row); diag('手动选择', `${row.node.name} · ${row.selectedCandidate ? row.selectedCandidate.source + ' · ' + (row.selectedCandidate.name || row.selectedCandidate.release) : '跳过此视频'}`); render(); };
                     box.append(select);
                 }
                 host.append(box);
@@ -132,6 +132,12 @@
             else if (!config.key) diag('来源跳过', 'OpenSubtitles 未配置 API Key');
             if (!config.shooter) diag('来源跳过', '射手已关闭');
             cancelled = false; lock(true); let done = 0;
+            const aiConfig = GM_getValue('cross-drive-media-ai', {}) || {};
+            let ai = null;
+            if (aiConfig.enabled && aiConfig.base && aiConfig.model) {
+                try { mediaAIEndpoint(aiConfig); ai = createMediaAI(aiConfig); }
+                catch (error) { diag('AI 字幕建议', 'AI 设置无效，跳过候选消歧：' + error.message); }
+            }
             try {
                 drive.assertReady?.();
                 for (const row of rows) {
@@ -151,7 +157,21 @@
                         }
                     }
                     await searchSubtitleSources(row, config, service, drive, diag, check);
-                    diag('视频结果', `${row.node.name} · ${row.selectedCandidate ? '自动选择 ' + subtitleCandidateLabel(row.selectedCandidate) : row.candidates.length ? '有候选待手选' : row.sources.some(source => source.error) ? '查询失败' : '未找到'}`);
+                    if (ai && subtitleSearchState(row) === 'choice' && row.candidates.length >= 2) {
+                        const candidates = row.candidates.slice(0, 3).map((candidate, index) => ({index, source:candidate.source, language:candidate.language, bilingual:!!candidate.bilingual, release:String(candidate.release || '').slice(0, 80), name:String(candidate.name || '').slice(0, 160)}));
+                        try {
+                            check();
+                            const result = await ai.disambiguateSubtitle({work:{title:row.parsed.query,year:row.parsed.year || '',season:row.parsed.season,episode:row.parsed.episode,tmdbId:row.parsed.tmdbId || ''},candidates});
+                            check();
+                            const candidate = subtitleAICandidate(result, row, config.language);
+                            if (candidate && candidates.some(item => item.index === row.candidates.indexOf(candidate))) {
+                                row.selectedCandidate = candidate; row.autoCandidates = [candidate]; row.aiSuggested = true; row.manualCandidate = false;
+                                row.searchMessage = subtitleSearchMessage(row);
+                                diag('AI 字幕建议', `${row.node.name} · ${subtitleCandidateLabel(candidate)} · 置信度 ${Math.round(result.confidence * 100)}%`);
+                            } else diag('AI 字幕建议', `${row.node.name} · 结果未通过作品、季集、置信度、语言或版本检查，保留待选择`);
+                        } catch (error) { check(); diag('AI 字幕建议', `${row.node.name} · 消歧失败，保留待选择：${error.message}`); }
+                    }
+                    diag('视频结果', `${row.node.name} · ${row.selectedCandidate ? (row.aiSuggested ? 'AI 建议 ' : '自动选择 ') + subtitleCandidateLabel(row.selectedCandidate) : row.candidates.length ? '有候选待手选' : row.sources.some(source => source.error) ? '查询失败' : '未找到'}`);
                     meter(++done, rows.length); render();
                 }
                 status('查找结束：' + subtitleSearchSummary(inventory) + '。展开作品可查看每个来源的结果。'); diag('查找结束', subtitleSearchSummary(inventory));

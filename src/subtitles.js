@@ -355,7 +355,7 @@
                     if (parsed.tv && (Number(feature.season_number) !== parsed.season || Number(feature.episode_number) !== parsed.episode)) continue;
                     for (const file of attrs.files || []) if (Number.isSafeInteger(file.file_id) && file.file_id > 0) {
                         const match = subtitleWorkIdentity(parsed, [feature.title, feature.movie_name], file.file_name || 'subtitle');
-                        candidates.push({source:'OpenSubtitles', fileId:file.file_id, ...subtitleFileInfo(file.file_name || attrs.release || '', attrs.language || ''), release:[feature.movie_name || feature.title, attrs.release].filter(Boolean).join(' · '), name:file.file_name || '', titleMatched:titleMatched && match.titleMatched, identityMatched:yearMatches && match.titleMatched && !!parsed.tmdbId && String(identity) === String(parsed.tmdbId), matchReason:!yearMatches ? '作品年份与视频不符' : match.matchReason});
+                        candidates.push({source:'OpenSubtitles', fileId:file.file_id, ...subtitleFileInfo(file.file_name || attrs.release || '', attrs.language || ''), release:[feature.movie_name || feature.title, attrs.release].filter(Boolean).join(' · '), name:file.file_name || '', workIdentity:{tmdbId:identity,year:feature.year,tv:parsed.tv,season:feature.season_number,episode:feature.episode_number}, hardMismatch:!yearMatches || !!match.hardMismatch, titleMatched:titleMatched && match.titleMatched, identityMatched:yearMatches && match.titleMatched && !!parsed.tmdbId && String(identity) === String(parsed.tmdbId), matchReason:!yearMatches ? '作品年份与视频不符' : match.matchReason});
                     }
                 }
                 return candidates.slice(0, 12);
@@ -492,6 +492,7 @@
         row.candidates = scored.map(item => item.candidate);
         row.autoCandidates = scored.filter(item => item.reliable).map(item => item.candidate);
         row.selectedCandidate = row.autoCandidates[0] || null;
+        row.aiSuggested = false;
     }
     function subtitleSearchState(row) {
         if (row.complete) return 'complete';
@@ -502,6 +503,32 @@
         if (!row.sources?.some(source => !source.skipped)) return 'unsearched';
         return row.sources.some(source => source.error) ? 'failed' : 'missing';
     }
+    function subtitleAICandidate(result, row, language) {
+        if (!Number.isInteger(result?.index) || !Number.isFinite(result.confidence) || result.confidence < .9 || result.confidence > 1) return null;
+        const candidate = row.candidates?.[result.index];
+        if (!candidate || candidate.hardMismatch) return null;
+        const parsed = row.parsed, identity = candidate.workIdentity;
+        if (subtitleWorkIdentity(parsed, [candidate.release], candidate.name || '').hardMismatch) return null;
+        if (identity) {
+            if (!!identity.tv !== !!parsed.tv || parsed.tmdbId && identity.tmdbId && String(parsed.tmdbId) !== String(identity.tmdbId)) return null;
+            if (!parsed.tv && parsed.year && identity.year && String(parsed.year) !== String(identity.year)) return null;
+        }
+        const episodeText = (candidate.name || '') + ' ' + (candidate.release || '');
+        const episodes = [...episodeText.matchAll(/S(\d{1,2})[ ._-]*E(\d{1,3})(?!\d)/gi)];
+        if (parsed.tv) {
+            if (parsed.season == null || parsed.episode == null || parsed.endEpisode && parsed.endEpisode !== parsed.episode) return null;
+            if (identity && (Number(identity.season) !== parsed.season || Number(identity.episode) !== parsed.episode)) return null;
+            if (!episodes.length && !identity || episodes.some(match => Number(match[1]) !== parsed.season || Number(match[2]) !== parsed.episode)
+                || /E\d+[ ._-]*[-~][ ._-]*(?:E)?\d+/i.test(episodeText)) return null;
+        } else if (episodes.length) return null;
+        const wanted = language.split(',');
+        const languageMatch = wanted.includes(candidate.language) || candidate.bilingual && wanted.some(value => value.startsWith('zh')) || wanted.some(value => subtitleLanguageMatch(candidate.name || '', value));
+        if (!languageMatch) return null;
+        const quality = value => String(value || '').match(/(?:^|[^a-z0-9])(2160p|1080p|720p)(?=$|[^a-z0-9])/i)?.[1].toLowerCase();
+        const sourceQuality = quality(row.node.name), candidateQuality = quality((candidate.release || '') + ' ' + (candidate.name || ''));
+        if (sourceQuality && candidateQuality && sourceQuality !== candidateQuality) return null;
+        return candidate;
+    }
     function subtitleSearchSummary(rows) {
         const count = {complete:0,pending:0,ready:0,choice:0,failed:0,missing:0,unsearched:0};
         for (const row of rows) count[subtitleSearchState(row)]++;
@@ -510,14 +537,14 @@
     function subtitleSearchMessage(row) {
         if (row.pendingVerification) return row.error || '字幕文件或上传结果待核验，请先重新检查目录；本次不重复上传。';
         const message = row.selectedCandidate
-            ? row.manualCandidate ? '已手动选择字幕，点击“补齐字幕”下载并写入视频目录。' : `已自动择优，${row.autoCandidates.length} 个可靠候选；点击“补齐字幕”下载并写入视频目录，下载内容不符时尝试下一份。`
+            ? row.aiSuggested ? 'AI 建议了这份字幕，请核对候选名称；可在下拉框更改后补齐。' : row.manualCandidate ? '已手动选择字幕，点击“补齐字幕”下载并写入视频目录。' : `已自动择优，${row.autoCandidates.length} 个可靠候选；点击“补齐字幕”下载并写入视频目录，下载内容不符时尝试下一份。`
             : row.manualCandidate ? '已跳过此视频；重新选择字幕后可补齐。'
             : row.candidates.length ? '找到候选，但作品或语言未确认，请展开选择。'
             : row.sources.some(source => source.error) ? '查询有失败，不能判定为没有字幕。' : !row.sources.some(source => !source.skipped) ? '尚未查询任何来源，请启用并配置字幕来源。' : '已查询的来源未收录匹配字幕。';
         return message + (row.selectedCandidate ? '\n所选字幕：' + subtitleCandidateLabel(row.selectedCandidate) : '') + '\n' + row.sources.map(source => source.name + '：' + (source.skipped ? '跳过 · ' + source.skipped : source.error ? '失败 · ' + source.error : `找到 ${source.count} 个候选`)).join('\n');
     }
     async function searchSubtitleSources(row, config, service, drive, log = () => {}, check = () => {}, resume = false) {
-        if (!resume) { row.error = ''; row.candidates = []; row.selectedCandidate = null; row.manualCandidate = false; row.sources = []; }
+        if (!resume) { row.error = ''; row.candidates = []; row.selectedCandidate = null; row.manualCandidate = false; row.aiSuggested = false; row.sources = []; }
         const title = subtitleQueryTitle(row.parsed.query, row.parsed.year);
         const run = async (name, enabled, configured, search) => {
             check();

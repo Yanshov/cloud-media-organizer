@@ -5,7 +5,7 @@
             <div class="panel-actions"><button id="saveMediaKey">保存密钥</button><button id="forgetMediaKey">清除密钥</button></div></details>
             <details id="mediaAISettings"><summary>大模型识别 · 可选</summary>
             <label><input id="enableMediaAI" type="checkbox">启用大模型识别</label>
-            <p>启用后先按作品调用大模型识别原文件名，逐文件填写含副标题的完整中文作品名，分别查询影视资料并核对季集；没有可靠中文名时保留原名。不上传视频；会发送文件名、所在文件夹名，调用可能计费。仍需 TMDB 密钥。</p>
+            <p>先解析文件名并查询 TMDB，仅对未匹配的文件调用大模型补全作品名，再核对影视资料和季集；接口失败或同名作品有歧义时保留人工确认。字幕有多个待选候选时，也可请求一次 AI 建议。不上传视频；会发送文件名、文件夹名或字幕候选名称，调用可能计费。仍需 TMDB 密钥。</p>
             <label>服务商<select id="mediaAIProvider"><option value="custom">自定义兼容接口</option><option value="deepseek">DeepSeek</option><option value="qwen">通义千问</option><option value="siliconflow">硅基流动</option><option value="openai">OpenAI</option></select></label>
             <label>API 地址<input id="mediaAIBase" type="url" placeholder="https://服务商地址/v1"></label>
             <label><span class="credential-head"><span>API Key</span><a id="mediaAIKeyLink" href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener noreferrer" hidden>获取 API ↗</a></span><input id="mediaAIKey" type="password" autocomplete="off" placeholder="服务商 API Key；本地服务可留空"></label>
@@ -136,7 +136,7 @@
             finally { lock(false); }
         };
         ui.get('saveMediaAI').onclick = () => {
-            try { const config = aiSettings(); if (config.enabled) mediaAIEndpoint(config); GM_setValue('cross-drive-media-ai',config); invalidate(); ui.get('mediaAIState').textContent = config.enabled ? '已保存并启用；下次识别选中时先用大模型识别中文搜索片名。' : '设置已保存，大模型未启用。'; }
+            try { const config = aiSettings(); if (config.enabled) mediaAIEndpoint(config); GM_setValue('cross-drive-media-ai',config); invalidate(); ui.get('mediaAIState').textContent = config.enabled ? '已保存并启用；仅在作品未匹配或字幕候选待选择时使用大模型。' : '设置已保存，大模型未启用。'; }
             catch (error) { ui.get('mediaAIState').textContent = error.message; }
         };
         ui.get('forgetMediaAI').onclick = () => { ui.get('mediaAIKey').value = ''; ui.get('enableMediaAI').checked = false; GM_setValue('cross-drive-media-ai',aiSettings()); invalidate(); ui.get('mediaAIState').textContent = '已清除大模型密钥并停用。'; };
@@ -378,7 +378,7 @@
                 }
                 return;
             }
-            for (const row of group) { row.detail = null; row.match = ''; row.error = ''; row.query = query; row.aiAssisted = false; row.aiType = ''; row.candidates = []; }
+            for (const row of group) { row.detail = null; row.match = ''; row.error = ''; row.matchFailure = ''; row.query = query; row.aiAssisted = false; row.aiType = ''; row.candidates = []; }
             try {
                 if (identified) {
                     checkStopped();
@@ -392,7 +392,7 @@
                     log('大模型填写搜索片名：' + group[0].node.name + ' → ' + query);
                 }
                 checkStopped();
-                if (!query) throw new Error('未提取到片名，请填写搜索片名后重新匹配');
+                if (!query) { group.forEach(row => { row.matchFailure = 'unmatched'; }); throw new Error('未提取到片名，请填写搜索片名后重新匹配'); }
                 let candidates = [], lookupError = '';
                 const reference = group.find(row => row.tv) || group[0];
                 const reliable = async list => {
@@ -413,6 +413,8 @@
                 const exact = await reliable(candidates);
                 for (const row of group) row.candidates = candidates;
                 if (exact.length !== 1) {
+                    const failure = exact.length > 1 ? 'ambiguous' : lookupError ? 'lookup-error' : 'unmatched';
+                    group.forEach(row => { row.matchFailure = failure; });
                     for (const row of group) row.error = exact.length > 1 ? '同名作品不唯一，请为同组选择一次' : '名称或年份无法可靠匹配，可修改搜索片名、选择候选或跳过' + (lookupError ? '；' + lookupError : '');
                     return;
                 }
@@ -431,7 +433,7 @@
                 const root = mediaClassificationRoot(source, parentPath); targetPath = root.path; targetSession = { ...session, parent: root.id };
                 ui.get('mediaTarget').textContent = '分类保存到：/' + targetPath + '（纪录片独立分类，动画电影归电影）';
                 if (ui.get('forceMedia').checked) { tmdbClients.delete(ui.get('tmdbKey').value.trim()); }
-                const collected = await collectMediaSelection(selected, source, progress, node => !aiSettings().enabled && !ui.get('forceMedia').checked && mediaAlreadyStandard(node, parentPath), checkStopped, false);
+                const collected = await collectMediaSelection(selected, source, progress, node => !ui.get('forceMedia').checked && mediaAlreadyStandard(node, parentPath), checkStopped, false);
                 if (!collected.videos.length) { meter('检查完成', collected.skipped, collected.skipped); progress(`已跳过 ${collected.skipped} 个命名和所在作品目录均规范的视频，没有需要匹配的项目。`); return; }
                 if (!ui.get('tmdbKey').value.trim()) ui.openSettings('mediaSettings');
                 client = tmdbClient(ui.get('tmdbKey').value);
@@ -441,14 +443,14 @@
                     for (const sub of collected.linked.get(node.id)) sub.originalPath = '/' + [parentPath, sub.path].filter(Boolean).join('/');
                     const originalFolder = node.folders.length ? node.folders.join('/') : parentPath;
                     const explicit = parseMediaName(node.name);
-                    const row = { node, ...parsed, recognitionFolders:[...parentPath.split('/').filter(Boolean), ...node.folders], explicitSeason:explicit.season, explicitEpisode:explicit.episode, explicitYear:explicit.year, originalFolder, sourceYear: parsed.year, title: '', candidates: [], include: true, subtitles: collected.linked.get(node.id), error: '' }; row.group = mediaRecognitionGroup(row, aiSettings().enabled); rows.push(row);
+                    const row = { node, ...parsed, recognitionFolders:[...parentPath.split('/').filter(Boolean), ...node.folders], explicitSeason:explicit.season, explicitEpisode:explicit.episode, explicitYear:explicit.year, originalFolder, sourceYear: parsed.year, title: '', candidates: [], include: true, subtitles: collected.linked.get(node.id), error: '' }; row.group = mediaRecognitionGroup(row, false); rows.push(row);
                 }
                 mediaWorkCounts(rows);
                 const groups = new Map();
                 for (const row of rows) {
                     checkStopped();
                     const saved = !ui.get('forceMedia').checked && mediaRecords.get(row.node);
-                    if (saved && (!aiSettings().enabled || saved.aiAssisted) && !mediaBonusName(row.node.name)) {
+                    if (saved && !mediaBonusName(row.node.name)) {
                         try {
                             Object.assign(row, {query:saved.query, sourceYear:saved.sourceYear, season:saved.season, episode:saved.episode, endEpisode:saved.endEpisode, aiAssisted:saved.aiAssisted});
                             await choose(row, saved.match); await validateEpisode(row);
@@ -460,7 +462,13 @@
                 }
                 let matched = 0;
                 meter('匹配作品', 0, groups.size);
-                for (const group of groups.values()) { checkStopped(); progress(`匹配作品 ${matched + 1}/${groups.size}：${group[0].query}（${group.length} 个视频）`); await matchGroup(group, group[0].query, true); meter('匹配作品', ++matched, groups.size); }
+                for (const group of groups.values()) {
+                    checkStopped(); progress(`匹配作品 ${matched + 1}/${groups.size}：${group[0].query}（${group.length} 个视频）`);
+                    await matchGroup(group, group[0].query);
+                    const failed = group.filter(mediaNeedsAI);
+                    if (failed.length && aiSettings().enabled) { checkStopped(); await matchGroup(failed, '', true); }
+                    meter('匹配作品', ++matched, groups.size);
+                }
                 checkStopped();
                 mediaWorkCounts(rows);
                 progress('核对同一作品目录中的特别篇');
