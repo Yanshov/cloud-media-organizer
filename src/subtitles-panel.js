@@ -12,7 +12,7 @@
             return { node, parsed, subtitles, complete:false, pendingVerification:false, path: '/' + [parentPath, node.path].filter(Boolean).join('/') };
         });
     }
-    async function subtitleEnrichAliases(parsed, credential, check = () => {}) {
+    async function subtitleEnrichAliases(parsed, credential, check = () => {}, log = () => {}) {
         if (!credential || parsed.tmdbId && parsed.aliases?.length) return false;
         const client = tmdbClient(credential), type = parsed.tv ? 'tv' : 'movie';
         if (parsed.tmdbId) {
@@ -26,10 +26,21 @@
             const title = subtitleQueryTitle(parsed.query, parsed.year), key = subtitleTitleKey(title);
             if (!key) return false;
             const results = await client.search(title); check();
-            const matches = results.filter(item => item.media_type === type && String(item.release_date || item.first_air_date || '').slice(0,4) === String(parsed.year)
-                && [item.title,item.name,item.original_title,item.original_name].some(value => value && subtitleTitleKey(value) === key));
+            const matches = [];
+            for (const item of results.filter(item => item.media_type === type && String(item.release_date || item.first_air_date || '').slice(0,4) === String(parsed.year))) {
+                let names = [item.title,item.name,item.original_title,item.original_name];
+                if (!names.some(value => value && subtitleTitleKey(value) === key)) {
+                    for (const language of ['zh-CN','zh-TW']) {
+                        const localized = await client.get(`/${type}/${item.id}`, {language}); check();
+                        if (String(localized.id) === String(item.id) && String(localized.release_date || localized.first_air_date || '').slice(0,4) === String(parsed.year)) names.push(localized.title, localized.name);
+                    }
+                }
+                if (names.some(value => value && subtitleTitleKey(value) === key)) matches.push(item);
+            }
             if (matches.length !== 1) return false;
-            const match = matches[0], english = await client.get(`/${type}/${match.id}`, {language:'en-US'}); check();
+            const match = matches[0];
+            log('TMDB 作品', `${type} · ${match.id} · ${match.original_title || match.original_name || ''} · ${parsed.year}`);
+            const english = await client.get(`/${type}/${match.id}`, {language:'en-US'}); check();
             if (String(english.id) !== String(match.id) || String(english.release_date || english.first_air_date || '').slice(0,4) !== String(parsed.year)) throw new Error('英文资料的编号或年份与搜索结果不一致');
             if (!parsed.tv && Number(english.runtime) > 0) parsed.runtimeSeconds = Number(english.runtime) * 60;
             parsed.aliases = [...new Set([...(parsed.aliases || []),match.original_title,match.original_name,english.title,english.name].filter(Boolean))].slice(0,40);
@@ -160,7 +171,7 @@
             if (!config.shooter) diag('来源跳过', '射手已关闭');
             cancelled = false; lock(true); let done = 0;
             const aiConfig = GM_getValue('cross-drive-media-ai', {}) || {};
-            let ai = null;
+            let ai = null, aiParseFailures = 0;
             if (aiConfig.enabled && aiConfig.base && aiConfig.model) {
                 try { mediaAIEndpoint(aiConfig); ai = createMediaAI(aiConfig); }
                 catch (error) { diag('AI 字幕建议', 'AI 设置无效，跳过候选消歧：' + error.message); }
@@ -175,7 +186,7 @@
                         if (credential) {
                             try {
                                 const parsed = row.parsed;
-                                if (await subtitleEnrichAliases(parsed, credential, check)) diag('作品别名', `已按${parsed.tmdbId ? '确认的 TMDB 编号' : '唯一同名同年结果'}读取 ${parsed.aliases.length} 个片名；搜索词仍为 ${subtitleQueryTitle(parsed.query, parsed.year)}`);
+                                if (await subtitleEnrichAliases(parsed, credential, check, diag)) diag('作品别名', `已按${parsed.tmdbId ? '确认的 TMDB 编号' : '唯一同名同年结果'}读取 ${parsed.aliases.length} 个片名；搜索词仍为 ${subtitleQueryTitle(parsed.query, parsed.year)}`);
                             } catch (error) { check(); diag('作品别名', '读取失败，继续按原片名严格匹配：' + error.message); }
                         }
                     }
@@ -186,13 +197,14 @@
                             check();
                             const result = await ai.disambiguateSubtitle({work:{title:row.parsed.query,year:row.parsed.year || '',season:row.parsed.season,episode:row.parsed.episode,tmdbId:row.parsed.tmdbId || ''},candidates});
                             check();
+                            aiParseFailures = 0;
                             const candidate = subtitleAICandidate(result, row, config.language);
                             if (candidate && candidates.some(item => item.index === row.candidates.indexOf(candidate))) {
                                 row.selectedCandidate = candidate; row.autoCandidates = [candidate]; row.aiSuggested = true; row.manualCandidate = false;
                                 row.searchMessage = subtitleSearchMessage(row);
                                 diag('AI 字幕建议', `${row.node.name} · ${subtitleCandidateLabel(candidate)} · 置信度 ${Math.round(result.confidence * 100)}%`);
                             } else diag('AI 字幕建议', `${row.node.name} · 结果未通过作品、季集、置信度、语言或版本检查，保留待选择`);
-                        } catch (error) { check(); diag('AI 字幕建议', `${row.node.name} · 消歧失败，保留待选择：${error.message}`); }
+                        } catch (error) { check(); diag('AI 字幕建议', `${row.node.name} · 消歧失败，保留待选择：${error.message}`); aiParseFailures = error.aiParse ? aiParseFailures + 1 : 0; if (aiParseFailures >= 2) { ai = null; diag('AI 字幕建议', '连续两次解析失败，本批剩余 AI 消歧已停用'); } }
                     }
                     diag('视频结果', `${row.node.name} · ${row.selectedCandidate ? (row.aiSuggested ? 'AI 建议 ' : '自动选择 ') + subtitleCandidateLabel(row.selectedCandidate) : row.candidates.length ? '有候选待手选' : row.sources.some(source => source.error) ? '查询失败' : '未找到'}`);
                     meter(++done, rows.length); render();
@@ -207,6 +219,10 @@
             try {
                 const context = await mediaContext(provider); check(); drive = subtitleDrive(context);
                 const collected = await collectMediaSelection(context.selected, context.source, status, () => false, check, false); check();
+                for (const node of collected.videos) {
+                    try { await mediaRecords.restore?.(node, context.source, check); }
+                    catch (error) { check(); if (error.stop || error.phase === 'drive-auth') throw error; diag('识别记录', `${node.name} · 元数据读取失败：${error.message}`); }
+                }
                 inventory = subtitleInventory(collected, context.path);
                 const linkedSubtitleGroups = [...collected.linked.values()].filter(subtitles => subtitles.length).length;
                 diag('检查完成', `视频 ${inventory.length}，已关联字幕 ${linkedSubtitleGroups} 组`);
