@@ -553,13 +553,14 @@
             const items = batch, writer = batchWriter; lock(true, true); batch = null; batchWriter = null;
             meter('重命名文件', 0, items.length);
             let completed = 0, failed = 0; const failedVideos = new Set();
+            const rowsById = new Map(rows.map(row => [row.node.id, row]));
             try { if (!writer) throw new Error('执行计划已失效，请重新生成预览'); checkStopped(); await writer.validate(); }
             catch (error) { progress('无法执行：' + error.message); lock(false); return; }
             for (let i = 0; i < items.length; i++) {
                 if (cancelled) break;
                 const item = items[i]; progress(`重命名 ${i + 1}/${items.length}：${item.node.name}`);
                 if (failedVideos.has(item.videoId)) { failed++; log('视频未完成，字幕保留：' + item.node.path); meter('重命名文件', completed + failed, items.length); continue; }
-                try { log(item.destination + '：' + await writer.execute(item)); completed++; const row = rows.find(row => row.node.id === item.node.id); if (row) { mediaRecords.remember(row); mediaRecords.save(); } }
+                try { log(item.destination + '：' + await writer.execute(item)); completed++; const row = rowsById.get(item.node.id); if (row) { mediaRecords.remember(row); mediaRecords.save(); } }
                 catch (error) { failed++; if (item.node.id === item.videoId) failedVideos.add(item.videoId); log(item.node.path + '：未完成；' + error.message); if (error.stop) break; }
                 meter('重命名文件', completed + failed, items.length);
             }

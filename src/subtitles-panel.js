@@ -50,7 +50,7 @@
     function initSubtitles(provider = '123') {
         const ui = makePanel(provider + ' 字幕', `
             <p>选中视频或文件夹，查找字幕后批量补齐到视频所在目录。</p>
-            <div class="panel-actions"><button id="readSubtitles">查找字幕</button><button id="recheckSubtitles" disabled>重新检查目录</button><button id="fillSubtitles" disabled>补齐字幕</button><button id="stopSubtitles" hidden>停止</button></div>
+            <div class="panel-actions"><button id="readSubtitles">查找字幕</button><button id="recheckSubtitles" disabled>重新检查目录</button><button id="auditSubtitles" disabled>强制复查已有字幕</button><button id="fillSubtitles" disabled>补齐字幕</button><button id="stopSubtitles" hidden>停止</button></div>
             <p id="subtitleProgress" role="status">先在网页勾选视频或文件夹。</p>
             <progress id="subtitleMeter" max="1" value="0" hidden style="width:100%;accent-color:#666"></progress>
             <div id="subtitleSummary" hidden class="sync-preview"></div>
@@ -73,7 +73,7 @@
             </details>
             <details id="subtitleAccountSettings"><summary>OpenSubtitles 账号（提高下载配额，可选）</summary><label>用户名<input id="subtitleUsername" autocomplete="off"></label><label>密码<input id="subtitlePassword" type="password" autocomplete="off"></label><button id="loginSubtitles">登录</button><p id="subtitleLoginState">未登录；密码不保存，令牌仅本页有效。</p></details>
             <details id="subtitleDiagnostics"><summary>字幕运行日志</summary><div class="panel-actions"><button id="copySubtitleLog">复制日志</button><button id="clearSubtitleLog">清空日志</button></div><textarea id="subtitleLog" readonly rows="8" spellcheck="false" aria-label="字幕运行日志" style="width:100%;font:12px/1.45 monospace;resize:vertical"></textarea></details>
-            <p>仅检查外置字幕，不检测内嵌字幕。保留原字幕格式；同名不同内容不覆盖。中文内容检查不区分简繁，简繁筛选依赖来源语言标注。</p>
+            <p>“已有/已补齐”表示格式、语言及可用时长参考通过基础检查，不代表作品或音画同步已确认。强制复查跳过缓存；启用 AI 时会向所配置的服务发送少量对白片段辅助判断作品。只看待选择会隐藏已有字幕，复查后可取消勾选查看。仅检查外置字幕；简繁筛选依赖语言标注。</p>
 `, 'subtitle');
         ui.moveSettings(['subtitleSettings','subtitleAccountSettings']);
         let inventory = [], drive = null, busy = false, cancelled = false, reviewCandidates = null;
@@ -94,6 +94,7 @@
         ui.get('subtitleLanguage').value = prefs.language || 'zh-cn,zh-tw,zh';
         const settings = () => ({key:ui.get('openSubtitlesKey').value.trim(), language:ui.get('subtitleLanguage').value, open:ui.get('useOpenSubtitles').checked, shooter:ui.get('useShooter').checked, assrt:ui.get('useAssrt').checked, thunder:ui.get('useThunder').checked, assrtToken:ui.get('assrtToken').value.trim()});
         const status = text => { ui.get('subtitleProgress').textContent = text; };
+        const logLines = [];
         const diag = (event, detail = '') => {
             const config = settings();
             let message = String(detail ?? '').replace(/https?:\/\/[^\s"'<>]+/gi, value => {
@@ -102,12 +103,19 @@
             for (const secret of [config.key, config.assrtToken]) if (secret) message = message.split(secret).join('[凭证已隐藏]');
             message = message.replace(/(token|api[-_ ]?key|authorization|signature|security[-_ ]?token)=?[^\s&,;]*/gi, '$1=[已隐藏]').replace(/Bearer\s+\S+/gi, 'Bearer [已隐藏]');
             const line = `${new Date().toLocaleTimeString()} [${event}]${message ? ' ' + message : ''}`;
-            const box = ui.get('subtitleLog'), lines = (box.value ? box.value.split('\n') : []);
-            lines.push(line);
-            box.value = lines.slice(-2000).join('\n');
+            const box = ui.get('subtitleLog');
+            logLines.push(line);
+            if (logLines.length > 2000) logLines.shift();
+            box.value = logLines.join('\n');
             box.scrollTop = box.scrollHeight;
         };
         const check = () => { if (cancelled) throw new Error('已停止'); };
+        const configuredAI = () => {
+            const config = GM_getValue('cross-drive-media-ai', {}) || {};
+            if (!config.enabled || !config.base || !config.model) return null;
+            try { mediaAIEndpoint(config); return createMediaAI(config); }
+            catch (error) { diag('AI 设置', '设置无效，跳过 AI：' + error.message); return null; }
+        };
         const meter = (done, total) => { const bar = ui.get('subtitleMeter'); bar.hidden = false; bar.max = total || 1; bar.value = done; };
         const render = () => {
             const missing = inventory.filter(row => !row.complete), searchable = missing.filter(row => !row.pendingVerification), ready = searchable.filter(row => row.selectedCandidate);
@@ -117,6 +125,7 @@
             ui.get('searchSubtitles').disabled = busy || !searchable.length;
             ui.get('copyMissingSubtitles').disabled = busy || !missing.length;
             ui.get('recheckSubtitles').disabled = busy || !inventory.length;
+            ui.get('auditSubtitles').disabled = busy || !inventory.some(row => row.subtitles.length);
             ui.get('fillSubtitles').disabled = busy || !ready.length;
             const host = ui.get('subtitleRows'), expanded = new Set([...host.querySelectorAll('details[open]')].map(box => box.dataset.group));
             host.replaceChildren();
@@ -155,7 +164,7 @@
         };
         const lock = value => {
             busy = value; ui.busy(value);
-            for (const id of ['readSubtitles','recheckSubtitles','saveSubtitleSettings','forgetSubtitleKey','loginSubtitles','openSubtitlesKey','subtitleUsername','subtitlePassword','useOpenSubtitles','useShooter','useAssrt','useThunder','assrtToken','subtitleLanguage']) ui.get(id).disabled = value;
+            for (const id of ['readSubtitles','recheckSubtitles','auditSubtitles','saveSubtitleSettings','forgetSubtitleKey','loginSubtitles','openSubtitlesKey','subtitleUsername','subtitlePassword','useOpenSubtitles','useShooter','useAssrt','useThunder','assrtToken','subtitleLanguage']) ui.get(id).disabled = value;
             ui.get('stopSubtitles').hidden = !value; ui.get('stopSubtitles').disabled = !value; render();
         };
         const searchRows = async rows => {
@@ -170,12 +179,7 @@
             else if (!config.key) diag('来源跳过', 'OpenSubtitles 未配置 API Key');
             if (!config.shooter) diag('来源跳过', '射手已关闭');
             cancelled = false; lock(true); let done = 0;
-            const aiConfig = GM_getValue('cross-drive-media-ai', {}) || {};
-            let ai = null;
-            if (aiConfig.enabled && aiConfig.base && aiConfig.model) {
-                try { mediaAIEndpoint(aiConfig); ai = createMediaAI(aiConfig); }
-                catch (error) { diag('AI 字幕建议', 'AI 设置无效，跳过候选消歧：' + error.message); }
-            }
+            const ai = configuredAI();
             service.resetSearchBatch?.();
             reviewCandidates = ai ? createSubtitleReviewer(ai, config.language, diag, check) : null;
             config.reviewCandidates = reviewCandidates;
@@ -205,8 +209,8 @@
             } catch (error) { render(); status(error.message); diag(cancelled ? '已停止' : '查找中断', error.message); }
             finally { lock(false); }
         };
-        const readSubtitles = async (searchAfter = true) => {
-            diag('检查开始', '读取当前选中的视频与已有字幕');
+        const readSubtitles = async (searchAfter = true, force = false) => {
+            diag('检查开始', force ? '强制复查已有字幕：跳过缓存，重读正文' : '读取当前选中的视频与已有字幕');
             cancelled = false; inventory = []; drive = null; lock(true);
             try {
                 const context = await mediaContext(provider); check(); drive = subtitleDrive(context);
@@ -222,13 +226,16 @@
                     const names = row.subtitles.map(sub => sub.name);
                     diag('现有字幕', `${row.node.name} · ${names.length ? names.join('、') : '未发现字幕文件'} · ${row.complete ? '文件名语言标记匹配' : '尚未确认语言'}`);
                 }
+                const ai = force ? configuredAI() : null;
+                const review = ai ? createSubtitleBodyReviewer(ai, diag, check) : null;
+                if (force) { ui.get('onlyChoiceSubtitles').checked = false; diag('复查范围', ai ? '格式、语言、已有时长参考及 AI 对白证据；不核对音画同步' : 'AI 未启用，仅检查格式、语言、已有时长参考；作品归属和音画同步未确认'); }
                 let done = 0;
                 for (const row of inventory) {
                     check();
-                    await inspectExistingSubtitles(row, drive, settings().language, diag, check);
                     try {
                         const recovered = await drive.reconcile(row, phase => diag('上传对账', `${row.node.name} · ${phase}`), check);
-                        if (recovered.some(sub => subtitleLanguageMatch(sub.name, settings().language))) { row.complete = true; row.pendingVerification = false; row.error = ''; row.searchMessage = '此前上传的字幕已核验，无需重复上传'; }
+                        for (const sub of recovered) if (!row.subtitles.some(existing => existing.id === sub.id)) row.subtitles.push(sub);
+                        await inspectExistingSubtitles(row, drive, settings().language, diag, check, {force, review});
                     } catch (error) { check(); if (error.stop) throw error; if (!row.complete) { row.pendingVerification = true; row.error = error.message; } diag('上传待核验', `${row.node.name} · ${error.message}`); }
                     meter(++done, inventory.length);
                 }
@@ -239,6 +246,7 @@
         };
         ui.get('readSubtitles').onclick = () => readSubtitles();
         ui.get('recheckSubtitles').onclick = () => readSubtitles(false);
+        ui.get('auditSubtitles').onclick = () => readSubtitles(false, true);
         ui.get('fillSubtitles').onclick = async () => {
             const rows = inventory.filter(row => !row.complete && !row.pendingVerification && row.selectedCandidate), config = settings();
             config.reviewCandidates = reviewCandidates;
@@ -267,10 +275,9 @@
                             try {
                                 diag('候选下载', `${row.node.name} · ${subtitleCandidateLabel(candidate)} 开始`);
                                 const {result, bytes} = await service.fetchFile(candidate, config, (phase, message) => diag(phase, `${row.node.name} · ${message}`), check); check();
-                                const text = subtitlePayload(bytes, result.ext, config.language, message => diag('字幕解码', message));
-                                subtitleCheckDuration(row, text, result.ext, diag);
+                                const {text, ...verification} = subtitleValidateContent(row, bytes, result.ext, config.language, diag);
                                 diag('正文校验', `${row.node.name} · ${candidate.source} 通过，${bytes.length} 字节，${result.ext.toUpperCase()}`);
-                                payload = {candidate, result, bytes}; break;
+                                payload = {candidate, result, bytes, verification}; break;
                             } catch (error) {
                                 candidate.downloadFailed = true;
                                 check(); if (error.stop) throw error; failures.push(candidate.source + ' · ' + (candidate.name || candidate.release) + '：' + error.message);
@@ -279,11 +286,11 @@
                             }
                         }
                         if (!payload) throw new Error('候选均未通过下载/正文检查：' + failures.join('；'));
-                        const {candidate, result, bytes} = payload;
+                        const {candidate, result, bytes, verification} = payload;
                         const language = candidate.language || (config.language === 'en' ? 'en' : 'zh');
                         const name = mediaStem(row.node.name) + '.' + language.replace(/[^a-z0-9-]/gi, '') + '.' + result.ext;
                         const target = await drive.save(row, name, bytes, phase => { status(phase + '：' + row.node.name); diag('网盘写入', `${row.node.name} · ${phase}`); }, check);
-                        row.subtitles.push(target); row.complete = true; row.searchMessage = '已补齐并核验：' + name; done++;
+                        row.subtitles.push(target); row.complete = true; row.verification = verification; row.searchMessage = '已补齐，上传内容一致：' + name + ' · ' + subtitleVerificationMessage(verification); done++;
                         diag('补齐成功', `${row.node.name} · 已核验 ${name}`);
                     } catch (error) {
                         if (error.assrtCooldown) { row.searchMessage = error.message + '；冷却后可继续补齐'; diag('下载暂停', `${row.node.name}：${error.message}`); throw error; }
@@ -302,7 +309,7 @@
         };
         ui.get('searchSubtitles').onclick = () => searchRows(inventory.filter(row => !row.complete));
         ui.get('stopSubtitles').onclick = () => { cancelled = true; ui.get('stopSubtitles').disabled = true; status('等待当前请求结束后停止…'); };
-        ui.get('clearSubtitleLog').onclick = () => { ui.get('subtitleLog').value = ''; diag('日志', '已清空'); };
+        ui.get('clearSubtitleLog').onclick = () => { logLines.length = 0; ui.get('subtitleLog').value = ''; diag('日志', '已清空'); };
         ui.get('onlyChoiceSubtitles').onchange = render;
         ui.get('openSubtitlesKey').onchange = () => { service.logout(); ui.get('subtitleLoginState').textContent = '未登录'; };
         ui.get('subtitleLanguage').onchange = () => { inventory = []; drive = null; render(); status('语言已更改，请重新查找。'); };
