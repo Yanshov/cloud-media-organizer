@@ -5,7 +5,7 @@
             <div class="panel-actions"><button id="saveMediaKey">保存密钥</button><button id="forgetMediaKey">清除密钥</button></div></details>
             <details id="mediaAISettings"><summary>大模型识别 · 可选</summary>
             <label><input id="enableMediaAI" type="checkbox">启用大模型识别</label>
-            <p>先解析文件名并查询 TMDB，仅对未匹配的文件调用大模型补全作品名，再核对影视资料和季集；接口失败或同名作品有歧义时保留人工确认。字幕有多个待选候选时，也可请求一次 AI 建议。不上传视频；会发送文件名、文件夹名或字幕候选名称，调用可能计费。仍需 TMDB 密钥。</p>
+            <p>仅补充 TMDB 未匹配项。发送文件名、目录名或字幕候选，不上传视频；调用可能计费。</p>
             <label>服务商<select id="mediaAIProvider"><option value="custom">自定义兼容接口</option><option value="deepseek">DeepSeek</option><option value="qwen">通义千问</option><option value="siliconflow">硅基流动</option><option value="openai">OpenAI</option></select></label>
             <label>API 地址<input id="mediaAIBase" type="url" placeholder="https://服务商地址/v1"></label>
             <label><span class="credential-head"><span>API Key</span><a id="mediaAIKeyLink" href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener noreferrer" hidden>获取 API ↗</a></span><input id="mediaAIKey" type="password" autocomplete="off" placeholder="粘贴 API Key；可带或不带 Bearer 前缀"></label>
@@ -24,7 +24,7 @@
             <details id="mediaCleanup"><summary>清理文件（独立操作）</summary>
             <label>清理规则<select id="cleanupMode"><option value="extras">非正片与附件</option><option value="nonstandard">所有不规范项目</option></select></label>
             <label id="cleanupSubtitleOption"><input id="cleanupSubtitles" type="checkbox">同时清理字幕及字体（默认保留）</label>
-            <p id="cleanupRule">清理选中范围内的图片、其他附件、明确标记的花絮和预告；默认保留字幕、字体、普通视频及特别篇。</p>
+            <p id="cleanupRule">清理图片、附件及已标记的花絮/预告；默认保留字幕、字体和普通视频。</p>
             <div class="panel-actions"><button id="checkCleanup">检查清理范围</button><button id="runEmpty" disabled>确认清理</button></div>
             <div id="emptyPreview" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto"></div></details><div id="log"></div>`, true);
         ui.moveSettings(['mediaSettings','mediaAISettings']);

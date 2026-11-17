@@ -1,3 +1,7 @@
+# 3.3.1
+
+- 精简 TMDB、AI、清理规则及字幕来源设置中的说明文字；接口行为和页面布局不变。
+
 # 3.3.0
 
 - 修复 DeepSeek 预设：切换后使用官方当前的 `deepseek-flash` 模型名和 API 根地址；保存过期的 `deepseek-chat`/`deepseek-reasoner` 设置时自动迁移。
