@@ -19,7 +19,7 @@
             <div id="mediaMeter" hidden><label id="mediaMeterLabel" for="mediaBar"></label><progress id="mediaBar" max="100" value="0" style="display:block;width:100%;height:12px;margin:8px 0;accent-color:gray"></progress></div><p id="mediaProgress" role="status"></p><div id="mediaSummary"></div>
             <div class="panel-actions"><button id="skipPendingMedia" disabled>跳过全部待处理</button><button id="restoreSkippedMedia" disabled>恢复已跳过</button></div>
             <details id="mediaMore"><summary>高级选项</summary><label><input id="forceMedia" type="checkbox">强制重新读取与识别（忽略本次缓存）</label><div class="panel-actions"><button id="clearMedia">清除列表</button></div></details>
-            <div id="mediaPreview" style="max-height:240px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px"></div>
+            <div id="mediaPreview" style="max-height:240px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px"></div>
             <div id="mediaRows"></div>
             <details id="mediaCleanup"><summary>清理文件（独立操作）</summary>
             <label>清理规则<select id="cleanupMode"><option value="extras">非正片与附件</option><option value="nonstandard">所有不规范项目</option></select></label>
@@ -29,7 +29,7 @@
             <div id="emptyPreview" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto"></div></details><div id="log"></div>`, true);
         ui.moveSettings(['mediaSettings','mediaAISettings']);
         ui.get('tmdbKey').value = GM_getValue('cross-drive-tmdb-key', '');
-        ui.get('mediaSettings').open = !ui.get('tmdbKey').value;
+        ui.get('mediaSettings').open = true;
         const aiSaved = GM_getValue('cross-drive-media-ai', {});
         const aiPresets = {
             deepseek: {base:'https://api.deepseek.com/v1', model:'deepseek-chat', link:'https://platform.deepseek.com/api_keys'},

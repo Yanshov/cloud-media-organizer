@@ -59,7 +59,7 @@
             <div class="panel-actions"><button id="saveSubtitleSettings">保存设置</button><button id="forgetSubtitleKey">清除凭证</button></div>
             </details>
             <details id="subtitleAccountSettings"><summary>OpenSubtitles 账号（提高下载配额，可选）</summary><label>用户名<input id="subtitleUsername" autocomplete="off"></label><label>密码<input id="subtitlePassword" type="password" autocomplete="off"></label><button id="loginSubtitles">登录</button><p id="subtitleLoginState">未登录；密码不保存，令牌仅本页有效。</p></details>
-            <details id="subtitleDiagnostics"><summary>字幕运行日志</summary><div class="panel-actions"><button id="copySubtitleLog">复制日志</button><button id="clearSubtitleLog">清空日志</button></div><textarea id="subtitleLog" readonly rows="8" spellcheck="false" aria-label="字幕运行日志" style="width:100%;font:12px/1.45 monospace;resize:vertical"></textarea></details>
+            <details id="subtitleDiagnostics"><summary>字幕运行日志</summary><div class="panel-actions"><button id="copySubtitleLog">复制日志</button><button id="clearSubtitleLog">清空日志</button></div><textarea id="subtitleLog" readonly rows="8" spellcheck="false" aria-label="字幕运行日志" style="width:100%;font:14px/1.7 Consolas,monospace;resize:vertical"></textarea></details>
             <p>缺字幕指未发现符合当前语言要求的可用外置文本字幕；读取失败、疑似错片或上传结果未确认的单列为“待核验”，不当作确定缺失。只检查最近一次勾选的范围及其子目录，不检测视频内嵌字幕。“已有/已补齐”表示通过基础检查，不代表作品或音画同步已确认。强制复查跳过缓存；启用 AI 时会发送少量对白片段辅助判断作品。</p>
 `, 'subtitle');
         ui.moveSettings(['subtitleSettings','subtitleAccountSettings']);
