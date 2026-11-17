@@ -4,7 +4,7 @@
             const saved = mediaRecords.get(node);
             if (saved) {
                 const filenameQuery = parsed.query;
-                Object.assign(parsed, {query:saved.query, aliases:saved.aliases || [], year:saved.year, tv:saved.type === 'tv', season:saved.season ?? null, episode:saved.episode ?? null, endEpisode:saved.endEpisode ?? null, tmdbId:saved.match.split(':')[1]});
+                Object.assign(parsed, {query:saved.query, aliases:saved.aliases || [], year:saved.year, tv:saved.type === 'tv', season:saved.season ?? null, episode:saved.episode ?? null, endEpisode:saved.endEpisode ?? null, tmdbId:saved.match.split(':')[1], runtimeSeconds:saved.runtimeSeconds});
                 // Repair old records which accidentally truncated a numeric title suffix.
                 if (!parsed.tv && filenameQuery.startsWith(parsed.query) && /^\s*\d{4}$/.test(filenameQuery.slice(parsed.query.length))) parsed.query = filenameQuery;
             }
@@ -18,6 +18,7 @@
         if (parsed.tmdbId) {
             const detail = await client.get(`/${type}/${parsed.tmdbId}`, {append_to_response:'alternative_titles'}); check();
             if (String(detail.id) !== String(parsed.tmdbId) || !parsed.tv && parsed.year && detail.release_date && !detail.release_date.startsWith(String(parsed.year))) throw new Error('已确认作品的编号或年份与资料不一致');
+            if (!parsed.tv && Number(detail.runtime) > 0) parsed.runtimeSeconds = Number(detail.runtime) * 60;
             parsed.aliases = [...new Set([detail.title,detail.original_title,detail.name,detail.original_name,
                 ...(detail.alternative_titles?.titles || detail.alternative_titles?.results || []).filter(item => ['CN','TW','HK','US','GB'].includes(item.iso_3166_1)).map(item => item.title)].filter(Boolean))].slice(0,40);
         } else {
@@ -30,6 +31,7 @@
             if (matches.length !== 1) return false;
             const match = matches[0], english = await client.get(`/${type}/${match.id}`, {language:'en-US'}); check();
             if (String(english.id) !== String(match.id) || String(english.release_date || english.first_air_date || '').slice(0,4) !== String(parsed.year)) throw new Error('英文资料的编号或年份与搜索结果不一致');
+            if (!parsed.tv && Number(english.runtime) > 0) parsed.runtimeSeconds = Number(english.runtime) * 60;
             parsed.aliases = [...new Set([...(parsed.aliases || []),match.original_title,match.original_name,english.title,english.name].filter(Boolean))].slice(0,40);
         }
         return true;
@@ -253,7 +255,9 @@
                             check();
                             try {
                                 diag('候选下载', `${row.node.name} · ${subtitleCandidateLabel(candidate)} 开始`);
-                                const {result, bytes} = await service.fetchFile(candidate, config, (phase, message) => diag(phase, `${row.node.name} · ${message}`), check); check(); subtitlePayload(bytes, result.ext, config.language, message => diag('字幕解码', message));
+                                const {result, bytes} = await service.fetchFile(candidate, config, (phase, message) => diag(phase, `${row.node.name} · ${message}`), check); check();
+                                const text = subtitlePayload(bytes, result.ext, config.language, message => diag('字幕解码', message));
+                                subtitleCheckDuration(row, text, result.ext, diag);
                                 diag('正文校验', `${row.node.name} · ${candidate.source} 通过，${bytes.length} 字节，${result.ext.toUpperCase()}`);
                                 payload = {candidate, result, bytes}; break;
                             } catch (error) {

@@ -31,7 +31,8 @@
         while (map.size > max) map.delete(map.keys().next().value);
     }
     function titleKey(value) {
-        return String(value || '').normalize('NFKC').toLowerCase()
+        // Strip Latin accents without removing Japanese dakuten/handakuten.
+        return String(value || '').normalize('NFD').replace(/(\p{Script=Latin})\p{M}+/gu, '$1').normalize('NFKC').toLowerCase()
             .replace(/(\p{Script=Latin})[. _-]*&[. _-]*(?=\p{Script=Latin})/gu, '$1 and ')
             .replace(/[\p{P}\p{Z}\s]/gu, '');
     }

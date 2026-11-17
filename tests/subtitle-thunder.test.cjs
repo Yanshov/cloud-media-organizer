@@ -62,7 +62,7 @@ async function searchAndDownloads() {
 
 async function episodesAndErrors() {
     const requests=[];
-    let body={code:0,data:[file('剧名.2021.S02E01.简体.srt'),file('剧名.S02E02.简体.srt'),file('剧名.S01E01.简体.srt'),file('剧名.S02E01-E02.srt'),file('剧名.简体.srt'),file('别的剧.S02E01.简体.srt')]};
+    let body={code:0,data:[file('剧名.2021.S02E01.简体.srt'),file('剧名.S02E02.简体.srt'),file('剧名.S01E01.简体.srt'),file('剧名.S02E01-E02.srt'),file('剧名.简体.srt'),file('剧名.待确认版本.S02E01.简体.srt'),file('别的剧.S02E01.简体.srt')]};
     const ctx=load({GM_xmlhttpRequest:options=>{requests.push(options);options.onload({status:200,responseText:typeof body==='string'?body:JSON.stringify(body)});return {abort(){}};}});
     const service=ctx.createSubtitleService(),r={...row(),parsed:{query:'剧名',year:2020,tv:true,season:2,episode:1}};
     const candidates=await service.thunderSearch(r,{language});

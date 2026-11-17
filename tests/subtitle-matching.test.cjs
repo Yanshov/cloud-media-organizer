@@ -98,7 +98,7 @@ async function unrelatedCandidates() {
     const found=await ctx.createSubtitleService({log:(...args)=>logs.push(args)}).assrtSearch(row(),config);
     assert.equal(found.length,60,'Unrelated resources do not consume the 60 related-uncertain slots');
     assert.ok(found.every(c=>!noise.some(name=>c.name.includes(name)) && !c.titleMatched));
-    assert.match(logs.at(-1)[1],/无关 90/);assert.match(logs.at(-1)[1],/待确认上限 5/);
+    assert.match(logs.at(-1)[1],/内容 60，无关 30/);assert.match(logs.at(-1)[1],/待确认上限 5/);
     const failed=load({subtitleRemoteJson:async raw=>new URL(raw).pathname.endsWith('/detail')?Promise.reject(Error('HTTP 509')):{status:0,sub:{subs:[{id:1,native_name:'Schmigadoon'}]}}});
     assert.equal((await failed.createSubtitleService().assrtSearch(row(),config)).length,0,'Unrelated detail errors do not become choices');
     console.log('PASS matching relevance: hentai, anime OP/ED and Schmigadoon excluded and counted before uncertain cap; unrelated detail failure excluded');

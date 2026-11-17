@@ -157,6 +157,44 @@
         const related = !!target && [...aliases].some(alias => titles.some(part => part && part.includes(alias)) || fileTitle && alias.includes(fileTitle));
         return {titleMatched:matched, related, aliases:[...aliases], matchReason:matched ? '' : '文件片名未能确认为同一作品'};
     }
+    function subtitleCandidateFilter(parsed, fields, name) {
+        const text = String(name || '').normalize('NFKC');
+        const opaque = /^[a-f0-9]{40}\.(?:srt|ass|ssa|vtt)$/i.test(text);
+        if (/(?:^|[^a-z])(?:MAD|AMV)(?=$|[^a-z])|混剪|合集|剪辑|恶搞|鬼畜|\d+帧/i.test(text)) return {excluded:'内容'};
+        if (!opaque && !parsed.tv && /\s+-\s*\d+(?=\D|$)|(?:^|[^a-z])(?:EP|E)\s*\d+|\[\d+\]|第[\d零〇一二两三四五六七八九十百]+[话話集]|[\d零〇一二两三四五六七八九十百]+之卷/i.test(text)) return {excluded:'季集'};
+        const match = subtitleWorkIdentity(parsed, fields, opaque ? '' : name);
+        if (match.hardMismatch) return {...match,excluded:'年份'};
+        if (opaque) return {...match,titleMatched:false,opaque:true,matchReason:'哈希文件名无法确认作品，需手动选择'};
+        if (!match.titleMatched && !match.related) return {...match,excluded:'无关'};
+        return match;
+    }
+    function subtitleEndTime(text, ext) {
+        const seconds = value => {
+            const parts = value.trim().replace(',', '.').split(':').map(Number);
+            return parts.length >= 2 && parts.length <= 3 && parts.every(Number.isFinite) ? parts.reduce((total,part) => total * 60 + part,0) : 0;
+        };
+        let end = 0;
+        if (/^(?:ass|ssa)$/i.test(ext)) {
+            let inEvents = false, endColumn = 2;
+            for (const line of text.split(/\r?\n/)) {
+                if (/^\s*\[/.test(line)) inEvents = /^\s*\[Events\]/i.test(line);
+                if (!inEvents) continue;
+                if (/^\s*Format\s*:/i.test(line)) {
+                    const index = line.replace(/^\s*Format\s*:/i,'').split(',').findIndex(value => value.trim().toLowerCase() === 'end');
+                    if (index >= 0) endColumn = index;
+                }
+                if (/^\s*Dialogue\s*:/i.test(line)) end = Math.max(end,seconds(line.replace(/^\s*Dialogue\s*:/i,'').split(',')[endColumn] || ''));
+            }
+        } else for (const match of text.matchAll(/-->\s*((?:\d+:)?\d{2}:\d{2}[,.]\d{2,3})/g)) end = Math.max(end,seconds(match[1]));
+        return end;
+    }
+    function subtitleCheckDuration(row, text, ext, log = () => {}) {
+        const end = subtitleEndTime(text,ext), driveSeconds = Number(row.node.durationSeconds), runtime = Number(row.parsed.runtimeSeconds);
+        const duration = driveSeconds > 0 ? driveSeconds : runtime > 0 ? runtime : 0;
+        const source = driveSeconds > 0 ? '网盘已确认时长' : runtime > 0 ? 'TMDB runtime' : '无时长参考';
+        log('字幕时长', `${row.node.name} · 字幕结束 ${end.toFixed(1)} 秒 · 目标 ${duration ? duration.toFixed(1) + ' 秒' : '未知'} · 来源 ${source}${duration ? '' : '，跳过长度检查'}`);
+        if (duration && end < duration * 0.5) throw new Error(`字幕不完整：结束 ${end.toFixed(1)} 秒，不到目标 ${duration.toFixed(1)} 秒的 50%（${source}）`);
+    }
     function createSubtitleService({wait = ms => sleep(ms), check = () => {}, log = () => {}} = {}) {
         let token = '', tokenKey = '';
         const searchCache = new Map(), seasonCache = new Map(), detailCache = new Map();
@@ -251,7 +289,7 @@
                     ...(mainTitle ? [{q:mainTitle, main:true}] : [])
                 ].map(term => ({...term,q:queryText(term.q)})).filter((term,index,all) => term.q && all.findIndex(other => other.q === term.q) === index);
                 const candidates = [], seen = new Map(), aliases = new Set(parsed.aliases || []);
-                const excluded = {年份:0,季集:0,语言:0,无关:0,待确认上限:0};
+                const excluded = {年份:0,季集:0,语言:0,内容:0,无关:0,待确认上限:0};
                 let mainSearch = false;
                 let pages = 0, rejected = 0, uncertain = 0;
                 const wanted = (config.language || 'zh-cn,zh-tw,zh').split(',');
@@ -279,14 +317,13 @@
                             if (episodeMismatch) { excluded.季集++; dropped++; continue; }
                             const info = subtitleFileInfo(name, language);
                             if (info.language && !['zh-cn','zh-tw','zh','en'].includes(info.language) && !wanted.includes(info.language)) { excluded.语言++; dropped++; continue; }
-                            const match = subtitleWorkIdentity({...parsed,aliases:[...aliases]}, [item.native_name,item.videoname,detail.native_name,detail.title], name);
-                            if (match.hardMismatch) { excluded.年份++; dropped++; continue; }
-                            if (!match.titleMatched && !match.related) { excluded.无关++; dropped++; continue; }
+                            const match = subtitleCandidateFilter({...parsed,aliases:[...aliases]}, [item.native_name,item.videoname,detail.native_name,detail.title], name);
+                            if (match.excluded) { excluded[match.excluded]++; dropped++; continue; }
                             if (mainSearch) { match.titleMatched = false; match.matchReason = '主名兜底搜索，需确认完整片名'; }
                             if (files.length === 1 && langs.langdou && info.language.startsWith('zh')) info.bilingual = true;
                             if (!match.titleMatched && ++uncertain > 60) { excluded.待确认上限++; dropped++; continue; }
                             if (match.titleMatched) { confirmed = true; for (const alias of match.aliases) aliases.add(alias); }
-                            candidates.push({...pack, ...info, name, assrtFileName:name, fileSize:file.s || '', titleMatched:match.titleMatched, mainTitleFallback:mainSearch, matchReason:match.matchReason});
+                            candidates.push({...pack, ...info, name, assrtFileName:name, fileSize:file.s || '', titleMatched:match.titleMatched, opaque:!!match.opaque, mainTitleFallback:mainSearch, matchReason:match.matchReason});
                             kept.push(name);
                         }
                         // Keep complete file lists, not another episode's selected candidate or signed URL.
@@ -368,7 +405,7 @@
                     evict(searchCache, 200);
                 }
                 const items = await searchCache.get(cacheKey); check(); verify();
-                const candidates = [], seen = new Set();
+                const candidates = [], seen = new Set(), excluded = {年份:0,季集:0,语言:0,内容:0,无关:0,待确认上限:0};
                 for (const item of items) {
                     check(); verify();
                     if (!item || typeof item.name !== 'string' || !item.name.trim()) continue;
@@ -379,17 +416,20 @@
                     if (seen.has(url)) continue;
                     seen.add(url);
                     const episodeTagged = /S\d+[ ._-]*E\d+/i.test(name);
-                    if (episodeTagged && (!parsed.tv || !assrtEpisode(name, parsed))) continue;
-                    const match = subtitleWorkIdentity(parsed, [], name);
-                    if (match.hardMismatch) continue;
+                    if (episodeTagged && (!parsed.tv || !assrtEpisode(name, parsed))) { excluded.季集++; continue; }
+                    const match = subtitleCandidateFilter(parsed, [], name);
+                    if (match.excluded) { excluded[match.excluded]++; continue; }
                     const labels = [Array.isArray(item.languages) ? item.languages.join(' ') : '', item.simple_name || ''].join(' ').replace(/\\u0026/gi, '&').replace(/英语/g, '英文');
                     const metadata = subtitleFileInfo(labels), info = subtitleFileInfo(name, metadata.language);
                     info.bilingual ||= metadata.bilingual && info.language.startsWith('zh');
                     const titleMatched = match.titleMatched && (!parsed.tv || episodeTagged);
-                    candidates.push({source:'迅雷', name, ...info, titleMatched, matchReason:parsed.tv && !episodeTagged ? '文件未标明准确季集' : match.matchReason, url, ext, release:name});
-                    if (candidates.length >= 60) break;
+                    if (info.language && !(config.language || 'zh-cn,zh-tw,zh').split(',').includes(info.language) && !info.bilingual && !info.language.startsWith('zh') && info.language !== 'en') { excluded.语言++; continue; }
+                    if (candidates.length >= 60) { excluded.待确认上限++; continue; }
+                    candidates.push({source:'迅雷', name, ...info, titleMatched, opaque:!!match.opaque, matchReason:parsed.tv && !episodeTagged ? '文件未标明准确季集' : match.matchReason, url, ext, release:name});
                 }
                 onFiles(`${query} · ${candidates.length} 份字幕文件` + (candidates.length ? '：' + candidates.slice(0, 12).map(candidate => candidate.name).join('；') + (candidates.length > 12 ? '；…' : '') : ''));
+                candidates.sort((a,b) => Number(a.opaque) - Number(b.opaque));
+                log('迅雷 筛选', `保留 ${candidates.length} 份 · 排除 ${Object.values(excluded).reduce((a,b) => a + b,0)} 份（${Object.entries(excluded).map(([reason,count]) => reason + ' ' + count).join('，')}）· 待确认 ${candidates.filter(candidate => !candidate.titleMatched).length} 份`);
                 return candidates;
             },
             logout() { token = ''; tokenKey = ''; searchCache.clear(); seasonCache.clear(); detailCache.clear(); },
@@ -559,7 +599,7 @@
             const reliable = !!candidate.hashMatched || !!identity && lang && !conflicts;
             const preference = wanted.indexOf(candidate.language);
             return {candidate, reliable, preference:subtitlePreference(candidate, language), score:(candidate.hashMatched ? 1000 : 0) + (candidate.identityMatched ? 100 : 0) + (candidate.titleMatched ? 50 : 0) + overlaps * 10 + (lang ? 5 : 0) + (preference < 0 ? 0 : (wanted.length - preference) / 10)};
-        }).sort((a,b) => Number(b.reliable) - Number(a.reliable) || b.preference - a.preference || b.score - a.score);
+        }).sort((a,b) => Number(!!a.candidate.opaque) - Number(!!b.candidate.opaque) || Number(b.reliable) - Number(a.reliable) || b.preference - a.preference || b.score - a.score);
         row.candidates = scored.map(item => item.candidate);
         row.autoCandidates = scored.filter(item => item.reliable).map(item => item.candidate);
         row.selectedCandidate = row.autoCandidates[0] || null;
@@ -577,7 +617,7 @@
     function subtitleAICandidate(result, row, language) {
         if (!Number.isInteger(result?.index) || !Number.isFinite(result.confidence) || result.confidence < .9 || result.confidence > 1) return null;
         const candidate = row.candidates?.[result.index];
-        if (!candidate || candidate.hardMismatch || candidate.mainTitleFallback) return null;
+        if (!candidate || candidate.hardMismatch || candidate.mainTitleFallback || candidate.opaque) return null;
         const parsed = row.parsed, identity = candidate.workIdentity;
         if (subtitleWorkIdentity(parsed, [candidate.release], candidate.name || '').hardMismatch) return null;
         if (identity) {

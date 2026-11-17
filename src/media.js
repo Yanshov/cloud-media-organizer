@@ -688,7 +688,8 @@
             if (!row.detail || row.error || !row.match) return;
             const id = identity(row.node);
             entries.delete(id);
-            entries.set(id, {fingerprint:fingerprint(row.node), query:row.title, aliases:[row.detail.title,row.detail.original_title,row.detail.name,row.detail.original_name].filter(Boolean), year:row.year, sourceYear:row.sourceYear, type:row.type, match:row.match, season:row.season, episode:row.episode, endEpisode:row.endEpisode, aiAssisted:row.aiAssisted});
+            const runtime = row.type === 'movie' ? row.detail.runtime : row.seasonEpisodes?.find(ep => ep.episode_number === row.episode)?.runtime;
+            entries.set(id, {fingerprint:fingerprint(row.node), query:row.title, aliases:[row.detail.title,row.detail.original_title,row.detail.name,row.detail.original_name].filter(Boolean), year:row.year, sourceYear:row.sourceYear, type:row.type, match:row.match, season:row.season, episode:row.episode, endEpisode:row.endEpisode, runtimeSeconds:Number(runtime) > 0 ? Number(runtime) * 60 : undefined, aiAssisted:row.aiAssisted});
         };
         const save = () => {
             evict(entries, 3000);
