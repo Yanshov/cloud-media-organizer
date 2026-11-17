@@ -38,7 +38,7 @@ async function searchAndTransfer() {
     await service.subdlSearch(r,config);assert.equal(requests.filter(o=>new URL(o.url).hostname==='api.subdl.com').length,1);
     const archive=candidates.find(c=>c.ext==='zip');transfer=zip([['电影.2000.繁体.srt',text],['电影.2000.简体&英文.srt',text],['电影2.2000.简体.srt',text]]);
     const unpacked=await service.fetchFile(archive,config);assert.match(unpacked.result.fileName,/简体&英文/);assert.equal(unpacked.result.ext,'srt');assert.equal(ctx.subtitlePayload(unpacked.bytes,'srt',language),text);
-    transfer=new TextEncoder().encode('<html>access denied</html>');await assert.rejects(service.fetchFile(archive,config),/ZIP/);
+    service.logout();transfer=new TextEncoder().encode('<html>access denied</html>');await assert.rejects(service.fetchFile(archive,config),/ZIP/);
     service.logout();response={status:true,totalPages:10,subtitles:Array.from({length:30},(_,i)=>sub('电影.2000.简体.srt',{url:'/same/'+i}))};
     const before=requests.length;await service.subdlSearch(movie(),config);assert.equal(requests.length-before,2,'At most two pages');
     service.logout();response={status:false,statusCode:403,error:'not_authorized'};await assert.rejects(service.subdlSearch(movie(),config),e=>e.status===403);

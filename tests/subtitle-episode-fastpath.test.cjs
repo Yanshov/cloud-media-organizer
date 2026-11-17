@@ -91,19 +91,19 @@ const packs = [101, 102].map(id => ({id, native_name: '瑞克和莫蒂 第一季
         assert.match(target.selectedCandidate.name, new RegExp(`S01E${String(episode).padStart(2, '0')}\\.`));
         assert.equal(target.sources.filter(source => source.name === '迅雷').length, 1);
     }
-    assert.equal(thunderSamples, 1); assert.equal(thunderRequests.length, 2, 'Other exact episodes in a Thunder response need neither resampling nor another title search');
+    assert.equal(thunderSamples, 1); assert.equal(thunderRequests.length, 3, 'Other exact episodes in a Thunder response need neither resampling nor another title search');
     for (const patch of [{year: 2014}, {tmdbId: 43}, {season: 2}, {query: '另一部剧'}, {query: ''}, {episode: 12}, {episode: undefined}, {endEpisode: 3}]) {
         const target = row(2); target.parsed.aliases = ['Rick and Morty']; Object.assign(target.parsed, patch);
         assert.equal((await thunderService.thunderCachedEpisode(target, config)).length, 0, JSON.stringify(patch));
     }
-    assert.equal(thunderRequests.length, 2);
+    assert.equal(thunderRequests.length, 3);
     assert.equal((await thunderService.thunderCachedEpisode(row(2), config)).length, 0, 'An earlier episode\'s confirmed English alias must not become an unverified alias for another row');
     const failedThunder = row(2); failedThunder.parsed.aliases = ['Rick and Morty'];
     const thunderDrive = {sample: async () => {thunderSamples++; return 'hash';}};
     await thunder.searchSubtitleSources(failedThunder, {...config, assrt: false}, thunderService, thunderDrive);
     failedThunder.candidates.forEach(candidate => {candidate.downloadFailed = true;});
     await thunder.searchSubtitleSources(failedThunder, {...config, assrt: false}, thunderService, thunderDrive, () => {}, () => {}, true);
-    assert.equal(thunderSamples, 2); assert.equal(thunderRequests.length, 3, 'Failed cached Thunder downloads resume the deferred hash lookup without retrying the failed files');
+    assert.equal(thunderSamples, 2); assert.equal(thunderRequests.length, 4, 'Failed cached Thunder downloads resume the deferred hash lookup without retrying the failed files');
     assert.equal(failedThunder.selectedCandidate, null);
     thunderService.logout();
     assert.equal((await thunderService.thunderCachedEpisode(row(2), config)).length, 0);

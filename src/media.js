@@ -731,13 +731,28 @@
             const id = identity(row.node);
             entries.delete(id);
             const runtime = row.type === 'movie' ? row.detail.runtime : row.seasonEpisodes?.find(ep => ep.episode_number === row.episode)?.runtime;
-            entries.set(id, {fingerprint:fingerprint(row.node), query:row.title, aliases:[row.detail.title,row.detail.original_title,row.detail.name,row.detail.original_name].filter(Boolean), year:row.year, sourceYear:row.sourceYear, type:row.type, match:row.match, season:row.season, episode:row.episode, endEpisode:row.endEpisode, runtimeSeconds:Number(runtime) > 0 ? Number(runtime) * 60 : undefined, aiAssisted:row.aiAssisted});
+            entries.set(id, {fingerprint:fingerprint(row.node), query:row.title, aliases:[...new Set([row.detail.title,row.detail.original_title,row.detail.name,row.detail.original_name,...(row.detail.workAliases || [])].filter(Boolean))], year:row.year, sourceYear:row.sourceYear, type:row.type, match:row.match, season:row.season, episode:row.episode, endEpisode:row.endEpisode, runtimeSeconds:Number(runtime) > 0 ? Number(runtime) * 60 : undefined, aiAssisted:row.aiAssisted});
         };
         const save = () => {
             evict(entries, 3000);
             GM_setValue(storageKey, [...entries]);
         };
-        return {get, restore, remember, save, count: () => [...entries.keys()].filter(id => JSON.parse(id)[0] === location.hostname).length};
+        const rememberParsed = (node,parsed) => {
+            if (!parsed.workResolved || !/^\d+$/.test(String(parsed.tmdbId))) return;
+            const type = parsed.tv ? 'tv' : 'movie';
+            remember({node,title:parsed.query,year:parsed.year,type,match:type + ':' + parsed.tmdbId,
+                season:parsed.season,episode:parsed.episode,endEpisode:parsed.endEpisode,
+                detail:{workAliases:parsed.aliases || [],runtime:type === 'movie' ? parsed.runtimeSeconds / 60 : undefined},
+                seasonEpisodes:parsed.tv ? [{episode_number:parsed.episode,runtime:parsed.runtimeSeconds / 60}] : []});
+        };
+        const explain = node => {
+            const saved = entries.get(identity(node));
+            if (!saved) return '没有该文件的识别记录，将查询共用作品资料';
+            if (get(node)) return '已复用文件识别记录';
+            const before = JSON.parse(saved.fingerprint), after = JSON.parse(fingerprint(node));
+            return '文件记录未复用：' + ['网盘','文件编号','父目录','文件名','大小','MD5'].filter((_,index) => before[index] !== after[index]).join('、') + '变化；保留身份校验，另查作品资料';
+        };
+        return {get, restore, remember, rememberParsed, explain, save, count: () => [...entries.keys()].filter(id => JSON.parse(id)[0] === location.hostname).length};
     })();
     function mediaCandidatePreference(row) {
         if (row.type && row.match) return {type:row.type, reason:'已确认作品为' + (row.type === 'movie' ? '电影' : '剧集')};

@@ -11,6 +11,7 @@
 | manifest.js | 清单记录、百度/123 协议、选中项、请求观察、清单导入导出 |
 | guangya.js | 光鸭目录与元数据、替换预览、核验和旧版清理 |
 | media.js | 影视名称、季集、TMDB/AI、目录规划和写入 |
+| works.js | 共用作品详情、地区译名、持久资料库和确认身份 |
 | media-panel.js | 影视整理界面及执行流程 |
 | subtitles.js | 字幕来源、匹配、编码、选择、下载与核验上传 |
 | subtitles-panel.js | 字幕列表、选择、日志和批量任务 |
@@ -54,3 +55,13 @@ SubDL 的 API 字段参考 Bazarr 的 [SubDL provider](https://github.com/morphe
 先执行 `npm run build` 和 `npm test`，再提交源码、成品和测试。`@version`、`core.js` 中的 VERSION 与 `package.json` 必须一致；构建脚本会检查。
 
 脚本名和 namespace 保持 v3 草稿的标识以便更新。旧 v2 脚本属于另一个标识，用户升级时需要停用它；脚本配置也属于各自的 Tampermonkey 存储。
+
+## 3.2.0 作品与整季资源
+
+影视整理选择作品时与字幕补充资料时共用 works.js。作品库以类型和 TMDB 编号索引；无编号时仅采用名称、年份、类型均吻合的唯一记录。库中不保存密钥或字幕签名链接，最多 1000 部、30 天有效，兼容旧版文件识别记录。原文件关联仍按完整指纹核验。
+
+查找阶段先解析整组身份，再 prepareSeason；迅雷与 Assrt 查询季名，SubDL 使用 season_number/full_season 而不带 episode_number。各来源的原始列表对后续集重新筛选；缓存未覆盖的集才进入原单集流程。SubDL ZIP 缓存仅驻留内存（最多 3 包，每包 16 MiB），索引后逐集解压并校验 CRC；数字集名要求可信包身份和唯一季数，API 独立文件 metadata 与文件集数冲突时拒绝。
+
+SubDL 季包、解包文件及 full_season 参数已核对 [官方 API 文档](https://subdl.com/api-doc)。本次仍未用真实账号验证授权查询或上传。
+
+新增 shared-work-library.test.cjs 和 subtitle-season-plan.test.cjs，测试使用生产函数和合成 ZIP；涵盖实际整理选择/保存后跨上下文恢复、首集缺失、只补查缺集、单次下载、数字集名、错误季/花絮、凭证隔离和停止后等待活跃请求结束。

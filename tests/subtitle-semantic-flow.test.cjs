@@ -20,7 +20,7 @@ const realName='[KRSUB][Kamen Rider Geats Movie - 4 Aces and the Black Fox][BDRI
     assert.equal(payloads.length,1);assert.equal(payloads[0].candidates.length,4,'Distinct raw names beyond the first three reach AI; duplicates collapse');
     assert.equal(ctx.subtitleCandidateFilter({query:'假面骑士龙骑剧场版 最后的篇章',year:2002,tv:false},[],"[SV-MirrorWorld] Kamen Rider Ryuki - Episode Final (Directors Cut) [E79807B6]_字幕01.ENG.ass",true).excluded,undefined,'Release checksum is not an episode number');
     assert.ok(payloads[0].work.aliases.includes('Kamen Rider Geats: 4 Aces and the Black Fox'));
-    assert.equal(r.selectedCandidate.name,realName);assert.equal(r.aiSuggested,true);assert.equal(requests.length,1,'AI confirms thunder after hash miss and before Assrt');
+    assert.equal(r.selectedCandidate.name,realName);assert.equal(r.aiSuggested,true);assert.equal(requests.length,2,'Both trusted names reach Thunder; AI confirms thunder after hash miss and before Assrt');
     assert.ok(logs.some(line=>line.includes('完整副标题一致')));
     ctx.selectSubtitleCandidate(r,language);assert.equal(r.selectedCandidate.name,realName,'AI decision survives ranking');
     r.selectedCandidate.downloadFailed=true;ctx.selectSubtitleCandidate(r,language);assert.equal(r.selectedCandidate,null,'Failed AI selection is not selected again');
@@ -54,8 +54,8 @@ const realName='[KRSUB][Kamen Rider Geats Movie - 4 Aces and the Black Fox][BDRI
     }});
     const limitedService=limited.createSubtitleService();limitedService.resetSearchBatch();
     for(const q of ['甲','乙']){const target=row();target.parsed.query=q;await limited.searchSubtitleSources(target,{thunder:true,assrt:true,assrtToken:'test',shooter:true,language},limitedService,{sample:async()=> 'hash'});}
-    assert.equal(assrtCalls,1,'First 509 pauses Assrt for remaining videos');assert.equal(thunderCalls,2);assert.equal(shooterCalls,2);
-    assert.equal(waits.length,0,'No quota sleeps in search chain');assert.ok(limitedService.searchUnavailable('Assrt 片名搜索'));
+    assert.equal(assrtCalls,1,'First 509 pauses Assrt for remaining videos');assert.equal(thunderCalls,3);assert.equal(shooterCalls,2);
+    assert.ok(waits.every(ms=>ms<=1100),'Only normal Thunder request spacing; no Assrt quota waits');assert.ok(limitedService.searchUnavailable('Assrt 片名搜索'));
     limitedService.resetSearchBatch();assert.equal(limitedService.searchUnavailable('Assrt 片名搜索'),undefined,'New search resets batch suspension; server cooldown remains enforced');
     console.log('PASS semantic flow: logged Geats name reaches AI before deferral, all batches, dedup, sequel guards, failed download exclusion, opaque fallback, AI breaker and nonblocking 509');
 })().catch(e=>{console.error(e);process.exitCode=1});

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v3.0（重构版）
 // @namespace    local.cloud-media-organizer
-// @version      3.1.0
+// @version      3.2.5
 // @description  百度/123/光鸭跨盘清单，123/光鸭影视整理、字幕搜索与核验上传
 // @match        https://pan.baidu.com/*
 // @match        https://yun.baidu.com/*
@@ -40,7 +40,7 @@
 (() => {
     'use strict';
 
-    const VERSION = '3.1.0';
+    const VERSION = '3.2.5';
     let jsonTaskStopped = false;
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
@@ -295,6 +295,90 @@
         setTimeout(() => URL.revokeObjectURL(url), 60000);
         report(`已触发下载：${filename}；请检查浏览器下载列表`);
     }
+    // Keep existing controls and handlers; only arrange their presentation.
+    function arrangeToolPane(pane, id) {
+        const create = (tag, className, text) => {
+            const node = document.createElement(tag); node.className = className;
+            if (text) node.textContent = text;
+            return node;
+        };
+        const take = (parent, selector) => { const node = pane.querySelector(selector); if (node) parent.append(node); };
+        const intro = create('div', 'tool-intro');
+        take(intro, 'h3');
+        const description = pane.querySelector(':scope > p:not([id]), #scope');
+        if (description) intro.append(description);
+        const commands = create('div', 'tool-commandbar');
+        const firstAction = pane.querySelector(':scope > .panel-actions');
+        if (firstAction) commands.append(firstAction);
+        if (id === 'json') take(commands, '#stopJson');
+        const layout = create('div', 'tool-layout');
+        const main = create('div', 'tool-main'), side = create('aside', 'tool-sidebar');
+        const status = create('section', 'tool-card tool-status');
+        status.append(create('h4', '', '当前状态'));
+        const statusIds = id === 'subtitle' ? ['subtitleProgress','subtitleMeter','subtitleCoverage','subtitleSummary']
+            : id === 'media' ? ['mediaTarget','mediaProgress','mediaMeter','mediaSummary','mediaRecordState'] : ['status','target','progress'];
+        for (const name of statusIds) take(status, '#' + name);
+        side.append(status);
+        const heading = create('div', 'tool-list-heading');
+        heading.append(create('h4', '', id === 'subtitle' ? '字幕检查结果' : id === 'media' ? '作品确认与整理预览' : 'JSON 文件清单'));
+        if (id === 'subtitle') {
+            const filter = pane.querySelector('#subtitleView')?.closest('label');
+            if (filter) heading.append(filter);
+        }
+        main.append(heading);
+        if (id === 'json') {
+            take(main, '#syncPreview'); take(main, '#json');
+            const editor = main.querySelector('#json');
+            editor?.setAttribute('aria-label', 'JSON 文件清单');
+        } else {
+            main.append(create('p', 'tool-list-hint', '按作品查看，点击条目展开详情；操作会应用于全部符合条件的项目。'));
+            if (id === 'subtitle') take(main, '#subtitleEmpty');
+            take(main, id === 'subtitle' ? '#subtitleRows' : '#mediaRows');
+            if (id === 'media') {
+                const empty = create('p', 'media-empty', '先在网盘勾选视频或文件夹，点击“识别并预览”。识别后的待处理作品会显示在这里。');
+                main.append(empty);
+                const preview = create('details', 'tool-preview');
+                preview.append(create('summary', '', '查看整理目标路径'));
+                take(preview, '#mediaPreview'); main.append(preview);
+            }
+        }
+        const utilities = create('div', 'tool-utilities');
+        const auxiliary = id === 'json' ? side : utilities;
+        const actions = create(id === 'json' ? 'section' : 'details', 'tool-card tool-secondary');
+        actions.append(create(id === 'json' ? 'h4' : 'summary', '', id === 'json' ? '文件与导入选项' : '批量与辅助操作'));
+        for (const node of [...pane.querySelectorAll(':scope > .panel-actions, :scope > .export-options')]) actions.append(node);
+        auxiliary.append(actions);
+        // Settings are moved to the shared settings page by each feature after setup.
+        for (const node of [...pane.children]) {
+            if (node.id.endsWith('Settings') || (node.tagName === 'INPUT' && node.hidden)) continue;
+            if (node.tagName === 'P') {
+                const help = create('details', 'tool-card'); help.append(create('summary', '', '检查范围说明'), node); auxiliary.append(help);
+            } else { node.classList.add('tool-card'); auxiliary.append(node); }
+        }
+        if (id !== 'json') main.append(utilities);
+        layout.append(main, side); pane.append(intro, commands, layout);
+        const rows = main.querySelector('#subtitleRows, #mediaRows');
+        if (rows) {
+            rows.classList.add('tool-results');
+            const pager = create('nav', 'tool-pagination'); pager.setAttribute('aria-label', '作品列表分页');
+            const previous = create('button', '', '上一页'), next = create('button', '', '下一页'), label = create('span', '');
+            previous.type = next.type = 'button'; label.setAttribute('aria-live', 'polite'); pager.append(previous, label, next); rows.after(pager);
+            let current = 0;
+            const render = () => {
+                const items = [...rows.children], pages = Math.max(1, Math.ceil(items.length / 4));
+                current = Math.min(current, pages - 1);
+                items.forEach((node, index) => node.classList.toggle('outside-page', Math.floor(index / 4) !== current));
+                pager.hidden = items.length <= 4;
+                label.textContent = `${current + 1} / ${pages} 页 · 共 ${items.length} 项`;
+                previous.disabled = current === 0; next.disabled = current === pages - 1;
+            };
+            previous.onclick = () => { current--; render(); };
+            next.onclick = () => { current++; render(); };
+            new MutationObserver(render).observe(rows, {childList:true});
+            pane.querySelector('#subtitleView')?.addEventListener('change', () => { current = 0; render(); });
+            render();
+        }
+    }
     let toolWorkspace = null;
     function makePanel(title, html, media = false) {
         if (!toolWorkspace) {
@@ -309,7 +393,7 @@
             button{cursor:pointer;border:1px solid var(--border);border-radius:6px;padding:10px 14px;background:var(--button);color:var(--button-text);font:inherit}
             a{color:inherit;text-underline-offset:3px}.credential-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.credential-head a{font-size:12px;flex-shrink:0}.source-result{margin:12px 0;padding:12px;border:1px solid var(--border);border-radius:8px}.source-result button{margin:8px 8px 0 0;padding:7px 10px;font-size:12px}
             button:hover:not(:disabled){filter:brightness(.85)} button:active:not(:disabled){filter:brightness(.7)}
-            button:disabled{opacity:.55;cursor:wait} .box{display:flex;flex-direction:column;position:fixed;pointer-events:auto;width:560px;max-width:calc(100vw - 32px);height:720px;max-height:calc(100vh - 48px);max-height:calc(100dvh - 48px);overflow:hidden;border:1px solid var(--border);border-radius:18px;background:var(--panel);box-shadow:0 24px 80px #0005;outline:none}
+            button:disabled{opacity:.55;cursor:wait} .box{display:flex;flex-direction:column;position:fixed;pointer-events:auto;width:1280px;max-width:calc(100vw - 24px);height:800px;max-height:calc(100vh - 24px);max-height:calc(100dvh - 24px);overflow:hidden;border:1px solid var(--border);border-radius:18px;background:var(--panel);box-shadow:0 24px 80px #0005;outline:none}
             textarea,input,select{width:100%;padding:10px 12px;min-height:42px;font:inherit;border:1px solid var(--border);border-radius:6px;margin:8px 0 0;color:var(--text);background:var(--field)}
             textarea{height:82px;min-height:82px;max-height:82px;resize:none;font:12px/1.5 monospace} p{margin:12px 0;font-size:13px;line-height:1.7;overflow-wrap:anywhere}
             .panel-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:18px 0;padding-top:16px;border-top:1px solid var(--border)}
@@ -335,27 +419,135 @@
             #toggle{display:grid;place-items:center;width:56px;height:56px;min-width:56px;padding:0;border-radius:50%;box-shadow:0 4px 18px #0003}
             #toggle svg{width:25px;height:25px;pointer-events:none}
             .workspace-overlay{position:fixed;inset:0;pointer-events:none}
-            .workspace-header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 20px 14px;cursor:grab;touch-action:none;user-select:none}
+            .workspace-header{display:flex;flex-shrink:0;align-items:center;justify-content:space-between;gap:16px;padding:18px 20px 14px;cursor:grab;touch-action:none;user-select:none}.workspace-header>div:first-child{min-width:0}
             .workspace-header h2{font-size:19px;line-height:1.4;margin:0}.workspace-header p{margin:3px 0 0;opacity:.65;font-size:12px}
             .workspace-header.dragging{cursor:grabbing}.workspace-header.pinned{cursor:default}.workspace-window-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
             #settingsWorkspace,#pinWorkspace{min-height:36px;padding:6px 10px;background:transparent;color:var(--text);font-size:12px}#pinWorkspace[aria-pressed=true]{background:var(--button);color:var(--button-text)}
             #closeWorkspace{width:36px;height:36px;min-height:36px;padding:0;background:transparent;color:var(--text);font-size:24px;line-height:1}
-            .workspace-toolbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;padding:0 24px 18px;border-bottom:1px solid var(--border)}
+            .workspace-toolbar{display:flex;flex-shrink:0;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;padding:0 24px 18px;border-bottom:1px solid var(--border)}
             .workspace-tabs{display:flex;gap:6px;padding:4px;border:1px solid var(--border);border-radius:10px;background:var(--field)}
             .workspace-tabs button{padding:8px 18px;border:0;background:transparent;color:var(--text);border-radius:7px;min-height:38px}
             .workspace-tabs button[aria-selected=true]{background:var(--button);color:var(--button-text)}
             .workspace-tabs button:disabled{cursor:not-allowed}.workspace-toolbar .theme-row{margin:0;padding:0;border:0;gap:10px}
-            .workspace-body{display:flex;flex:1;min-height:0}.tool-pane{width:100%;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;padding:22px 24px 28px}
+            .workspace-body{display:flex;flex:1;min-height:0;min-width:0}.tool-pane{width:100%;min-width:0;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;padding:22px 24px 28px}
             button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visible,textarea:focus-visible{outline:2px solid var(--text);outline-offset:3px}
             #mediaMeter{margin:18px 0} #mediaMeterLabel{margin:0;font-size:12px}
             #mediaSummary:not(:empty){padding:12px;border:1px solid var(--border);border-radius:6px;margin:16px 0}
             #mediaPreview:not(:empty),#emptyPreview:not(:empty){padding:12px;margin:16px 0;border:1px solid var(--border);border-radius:6px;line-height:1.8}
             #log:empty{display:none} #log>div+div{margin-top:8px}
+            .box{container-type:inline-size}
+            .workspace-header{padding:12px 20px 10px}.workspace-toolbar{padding:0 20px 12px;gap:10px}
+            .tool-pane{padding:16px 20px;scrollbar-gutter:auto}
+            .tool-intro h3{margin:0;font-size:16px}.tool-intro p{margin:4px 0 0;opacity:.75}
+            .tool-commandbar{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:12px 0 16px}
+            .tool-commandbar .panel-actions{display:flex;flex-wrap:wrap;gap:8px;margin:0;padding:0;border:0}
+            .tool-commandbar button{min-height:36px;padding:8px 16px}
+            .tool-commandbar button:not(#scanMedia):not(#runMedia):not(#recheckSubtitles):not(#fillSubtitles):not(#generate):not(#exportManifest):not(#transfer):not(#start){background:var(--field);color:var(--text)}
+            .tool-layout{display:grid;grid-template-columns:minmax(0,1fr) 290px;gap:18px;align-items:start}
+            .tool-main,.tool-sidebar{min-width:0}.tool-sidebar{display:grid;gap:12px}
+            .tool-utilities{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px;align-items:start}
+            .tool-utilities>details[open]{grid-column:1/-1}
+            .tool-card{padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--field);margin:0}
+            .tool-card h4,.tool-list-heading h4{margin:0;font-size:14px}
+            .tool-card p{margin:8px 0;font-size:12px}.tool-card p:empty{display:none}
+            .tool-card>:last-child{margin-bottom:0}.tool-card .export-options{margin:10px 0}.tool-card .export-options label{margin:0;font-size:12px}
+            .tool-card .panel-actions{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 0;padding:0;border:0}
+            .tool-card button{background:var(--panel);color:var(--text);min-height:34px;padding:7px 10px;font-size:12px}
+            .tool-card summary{padding:0;font-size:13px;font-weight:600}
+            .tool-card .sync-preview,#mediaSummary:not(:empty){padding:10px 0 0;margin:10px 0 0;border:0;border-top:1px solid var(--border);border-radius:0;font-size:12px;background:transparent}
+            .tool-status #mediaMeter{margin:10px 0}.tool-status #mediaRecordState{opacity:.75}
+            .tool-list-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:36px}
+            .tool-list-heading label{display:flex;align-items:center;gap:8px;margin:0;font-size:12px;white-space:nowrap}
+            .tool-list-heading select{width:auto;max-width:190px;margin:0;min-height:34px;padding:5px 8px;font-size:12px}
+            .tool-list-hint{margin:4px 0 10px;font-size:12px;opacity:.7}
+            .tool-results{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:start}
+            .tool-results>.sync-item{margin:0;padding:12px;font-size:12px;min-width:0}
+            .tool-results>details[open]{grid-column:1/-1}
+            .tool-results summary{font-size:13px;padding:0}
+            .tool-results .panel-actions{display:flex;flex-wrap:wrap;margin:10px 0;padding-top:10px}
+            .tool-results .outside-page{display:none!important}
+            .tool-pagination{display:flex;align-items:center;justify-content:center;gap:12px;margin:12px 0;font-size:12px}
+            .tool-pagination button{padding:5px 10px;min-height:32px;background:var(--field);color:var(--text)}
+            .tool-pagination button:disabled{cursor:default}
+            #subtitleEmpty,.media-empty{padding:40px 20px;text-align:center;border:1px dashed var(--border);border-radius:10px;opacity:.75}
+            .tool-main:has(#mediaRows:not(:empty))>.media-empty,.tool-main:has(#mediaPreview:not(:empty))>.media-empty{display:none}
+            .tool-preview{margin-top:12px}.tool-preview:not(:has(#mediaPreview:not(:empty))){display:none}
+            #mediaPreview:not(:empty),#emptyPreview:not(:empty){max-height:none!important;overflow:visible!important;margin:10px 0}
+            .tool-main>#json{height:330px;min-height:200px;max-height:none;resize:vertical;margin-top:10px}
+            .tool-main:has(#syncPreview:not([hidden]))>#json{height:120px;min-height:100px}
+            #syncList{max-height:none;overflow:visible}
+            #log{max-height:none;overflow:visible;margin-top:10px;padding:0}
+            #subtitleLog{height:200px;max-height:none;min-height:120px}
+            #settingsSections{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}
+            #settingsSections>.sync-item{margin:0}#backToTools{margin-top:16px}
+            @container(min-width:1051px){
+                .workspace-header{padding:18px 28px 14px}.workspace-header h2{font-size:21px}
+                .workspace-toolbar{padding:0 28px 18px;gap:24px;justify-content:flex-start}
+                .workspace-toolbar .theme-row:has(#workspaceSize){margin-left:auto}
+                .workspace-tabs button{padding:10px 22px;font-size:14px}
+                .tool-pane{padding:24px 28px 28px}
+                .tool-pane[role=tabpanel]{display:flex;flex-direction:column}
+                .tool-intro,.tool-commandbar{flex-shrink:0}
+                .tool-intro h3{font-size:18px}.tool-intro p{margin-top:8px;font-size:14px}
+                .tool-commandbar{margin:18px 0 24px;gap:12px}
+                .tool-commandbar .panel-actions{gap:12px}
+                .tool-commandbar button{min-height:42px;padding:10px 20px;font-size:14px}
+                .tool-layout{flex:1;grid-template-columns:minmax(0,1fr) 340px;gap:24px}
+                .tool-sidebar{grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+                .tool-sidebar>*{grid-column:1/-1}.tool-sidebar>details:not([open]){grid-column:auto}
+                .tool-card{padding:18px 20px;border-radius:12px}
+                .tool-card h4,.tool-list-heading h4{font-size:15px}
+                .tool-card p{font-size:14px;line-height:1.8;margin:12px 0}
+                .tool-card summary{font-size:14px;line-height:1.8}
+                .tool-card .panel-actions{gap:12px;margin-top:16px}
+                .tool-card button{font-size:13px;min-height:38px;padding:9px 14px}
+                .tool-card .export-options{margin:16px 0}.tool-card .export-options label{font-size:14px;line-height:1.8}
+                .tool-card .sync-preview,#mediaSummary:not(:empty){font-size:14px;line-height:1.8;padding-top:14px;margin-top:14px}
+                .tool-list-heading{min-height:40px}.tool-list-heading label,.tool-list-heading select{font-size:14px}
+                .tool-list-hint{font-size:13px;margin:8px 0 16px}
+                .tool-results{gap:16px}.tool-results>.sync-item{padding:18px;font-size:14px}
+                .tool-results summary{font-size:14px;line-height:1.8}
+                .tool-utilities{gap:12px;margin-top:20px}
+                .tool-pagination{margin:18px 0;font-size:14px;gap:16px}
+                #subtitleEmpty,.media-empty{padding:64px 24px;font-size:14px}
+                #jsonPane .tool-layout{align-items:stretch}
+                #jsonPane .tool-main{display:flex;flex-direction:column;min-height:360px}
+                #jsonPane .tool-main>:not(#json){flex-shrink:0}
+                #jsonPane .tool-sidebar{align-self:start}
+                #jsonPane .tool-main>#json{flex:1;height:auto;min-height:260px;margin-top:16px;padding:18px;font-size:14px;line-height:1.8;resize:none}
+                #jsonPane .tool-main:has(#syncPreview:not([hidden]))>#json{flex:0 0 140px;min-height:140px}
+            }
+            @container(max-width:1050px){
+                .tool-layout{grid-template-columns:minmax(0,1fr) 250px;gap:12px}
+                .tool-card{padding:10px}.tool-sidebar{gap:8px}
+                .tool-pane{padding:12px 16px}.tool-intro p{font-size:12px}
+                .tool-commandbar{margin:10px 0}.tool-commandbar button{padding:7px 10px;font-size:12px}
+                .tool-main>#json{height:240px}
+            }
+            @container(max-width:760px){
+                .tool-layout,#settingsSections{grid-template-columns:minmax(0,1fr)}
+                .tool-results{grid-template-columns:minmax(0,1fr)}
+                .tool-utilities{grid-template-columns:minmax(0,1fr)}
+                .tool-main{order:1}.tool-sidebar{display:contents}.tool-status{order:0}
+                .tool-sidebar>:not(.tool-status){order:2}
+                .tool-commandbar .panel-actions{display:flex}.tool-commandbar button{flex:1 1 auto}
+                .tool-intro p{margin-top:6px}.tool-list-heading{flex-wrap:wrap;gap:6px}
+                .tool-pagination{gap:8px}.workspace-toolbar .theme-row{font-size:12px}
+            }
+            @media(max-width:760px){
+                .box{border-radius:12px}.workspace-header{flex-wrap:wrap;gap:8px;padding:12px}
+                .workspace-header h2{font-size:17px}.workspace-window-actions{margin-left:auto;gap:4px}
+                .workspace-toolbar{padding:0 12px 12px;gap:8px}.workspace-tabs{width:100%;max-width:100%;flex-wrap:wrap}
+                .workspace-tabs button{flex:1;padding:8px 6px;white-space:nowrap}.tool-pane{padding:16px 12px 20px}
+                .panel-actions{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+                .sync-location{grid-template-columns:minmax(0,1fr);gap:2px}
+            }
 
         </style><button id="toggle" type="button" title="打开云盘工具" aria-label="打开云盘工具" aria-haspopup="dialog" aria-expanded="false" aria-controls="toolDialog"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 12h4M8 16h3M16 12v6m-2-2 2 2 2-2"/></svg></button>
         <div class="workspace-overlay" hidden><div class="box" id="toolDialog" role="dialog" aria-modal="false" aria-labelledby="workspaceTitle" tabindex="-1">
         <header class="workspace-header"><div><h2 id="workspaceTitle">云盘工具</h2><p id="windowHint">拖动标题栏移动 · 可同时操作网页</p></div><div class="workspace-window-actions"><button id="settingsWorkspace" type="button">设置</button><button id="pinWorkspace" type="button" aria-pressed="false" title="锁定窗口位置">固定位置</button><button id="closeWorkspace" type="button" aria-label="关闭面板" title="关闭">×</button></div></header>
         <div class="workspace-toolbar"><div class="workspace-tabs" role="tablist" aria-label="功能分类"><button id="jsonTab" type="button" role="tab" aria-selected="false" aria-controls="jsonPane" tabindex="-1" disabled>跨盘 JSON</button><button id="mediaTab" type="button" role="tab" aria-selected="false" aria-controls="mediaPane" tabindex="-1" disabled title="当前网盘暂不支持影视整理">影视整理</button><button id="subtitleTab" type="button" role="tab" aria-selected="false" aria-controls="subtitlePane" tabindex="-1" disabled title="当前网盘暂不支持字幕检查">字幕</button></div>
+        <label class="theme-row">窗口尺寸<select id="workspaceSize" aria-label="窗口尺寸"><option value="960x600">960 × 600</option><option value="1280x800" selected>1280 × 800（默认）</option><option value="1440x900">1440 × 900</option><option value="1600x1000">1600 × 1000</option></select></label>
         <label class="theme-row">外观<select id="theme"><option value="auto">跟随页面</option><option value="light">浅色</option><option value="dark">深色</option></select></label></div>
         <div class="workspace-body"><section id="workspaceSettings" class="tool-pane" hidden><h3>设置</h3><p>影视资料、大模型和字幕来源统一在这里配置；凭证只保存在本地脚本设置。</p><div id="settingsSections"></div><button id="backToTools">返回工具</button></section></div></div></div>`;
             const overlay = root.querySelector('.workspace-overlay'), dialog = root.querySelector('.box'), toggle = root.querySelector('#toggle');
@@ -363,18 +555,39 @@
             let active = null, returnFocus = null;
             const layoutKey = 'cross-drive-window-layout';
             const saved = GM_getValue(layoutKey, {});
+            const sizes = new Map([['960x600',[960,600]],['1280x800',[1280,800]],['1440x900',[1440,900]],['1600x1000',[1600,1000]]]);
+            let windowSize = sizes.has(saved?.size) ? saved.size : '1280x800';
             let position = Number.isFinite(saved?.left) && Number.isFinite(saved?.top) ? { left: saved.left, top: saved.top } : null;
             let pinned = saved?.pinned === true, drag = null;
             const header = root.querySelector('.workspace-header'), pin = root.querySelector('#pinWorkspace');
             const place = point => {
-                const rect = dialog.getBoundingClientRect(), width = page.innerWidth, height = page.innerHeight;
-                const left = Math.max(12, Math.min(point?.left ?? width - rect.width - 24, width - rect.width - 12));
-                const top = Math.max(12, Math.min(point?.top ?? Math.round((height - rect.height) / 2), height - rect.height - 12));
+                const width = page.innerWidth, height = page.innerHeight;
+                // Size presets describe screenshot/device pixels, including OS scaling and browser zoom.
+                const ratio = Number.isFinite(page.devicePixelRatio) && page.devicePixelRatio > 0 ? page.devicePixelRatio : 1;
+                const narrow = width * ratio <= 760, margin = (narrow ? 12 : 24) / ratio;
+                const [baseWidth,baseHeight] = sizes.get(windowSize);
+                const scale = Math.max(0,Math.min(1,(width - margin * 2) * ratio / baseWidth,(height - margin * 2) * ratio / baseHeight));
+                dialog.style.transformOrigin = 'top left'; dialog.style.transform = `scale(${1 / ratio})`;
+                dialog.style.maxWidth = dialog.style.maxHeight = 'none';
+                dialog.style.width = Math.max(1,narrow ? Math.min(baseWidth,(width - margin * 2) * ratio) : Math.round(baseWidth * scale)) + 'px';
+                dialog.style.height = Math.max(1,narrow ? Math.min(baseHeight,(height - margin * 2) * ratio) : Math.round(baseHeight * scale)) + 'px';
+                const rect = dialog.getBoundingClientRect();
+                const left = Math.max(margin, Math.min(point?.left ?? Math.round((width - rect.width) / 2), width - rect.width - margin));
+                const top = Math.max(margin, Math.min(point?.top ?? Math.round((height - rect.height) / 2), height - rect.height - margin));
                 dialog.style.left = left + 'px'; dialog.style.top = top + 'px';
+                sizeSelect.title = `窗口外框：${Math.round(rect.width * ratio)} × ${Math.round(rect.height * ratio)} 像素（不含阴影）${scale < 1 ? '；可用空间不足，已缩小' : ''}`;
                 return { left, top };
             };
             const saveLayout = () => {
-                GM_setValue(layoutKey, { ...position, pinned });
+                GM_setValue(layoutKey, { ...position, pinned, size:windowSize });
+            };
+            const sizeSelect = root.querySelector('#workspaceSize');
+            sizeSelect.value = windowSize;
+            sizeSelect.onchange = () => {
+                if (!sizes.has(sizeSelect.value)) { sizeSelect.value = windowSize; return; }
+                windowSize = sizeSelect.value;
+                if (!pinned) position = null;
+                place(position); saveLayout();
             };
             const renderPin = () => {
                 pin.textContent = pinned ? '解除固定' : '固定位置';
@@ -454,7 +667,7 @@
         if (tabs.has(id)) return tabs.get(id).ui;
         const pane = document.createElement('section');
         pane.id = id + 'Pane'; pane.className = 'tool-pane'; pane.setAttribute('role', 'tabpanel'); pane.setAttribute('aria-labelledby', id + 'Tab'); pane.tabIndex = 0; pane.hidden = true;
-        pane.innerHTML = `<h3></h3>${media ? '' : `<details id="exportHistory"><summary>导出记录（续传加速）</summary><div class="export-options"><label><input id="incremental" type="checkbox" checked>复用旧记录，加快读取</label></div><p id="historySummary" style="padding:8px;border:1px solid var(--border);border-radius:4px"></p><div class="export-options"><button id="importHistory">导入旧清单</button><button id="resetHistory">重置导出记录</button><input id="historyFile" type="file" accept=".json,application/json" hidden></div></details>`}${html}`;
+        pane.innerHTML = `<h3></h3>${media ? '' : `<details id="exportHistory"><summary title="复用导出记录，加快读取与续传">导出记录</summary><div class="export-options"><label><input id="incremental" type="checkbox" checked>复用旧记录，加快读取</label></div><p id="historySummary" style="padding:8px;border:1px solid var(--border);border-radius:4px"></p><div class="export-options"><button id="importHistory">导入旧清单</button><button id="resetHistory">重置导出记录</button><input id="historyFile" type="file" accept=".json,application/json" hidden></div></details>`}${html}`;
         pane.querySelector('h3').textContent = title;
         let stopJson;
         if (id === 'json') {
@@ -470,6 +683,7 @@
         }
         const log = pane.querySelector('#log');
         if (log) { const detail = document.createElement('details'), summary = document.createElement('summary'); summary.textContent = '详细日志'; log.before(detail); detail.append(summary, log); }
+        arrangeToolPane(pane, id);
         root.querySelector('.workspace-body').appendChild(pane);
         const button = root.querySelector('#' + id + 'Tab'), elements = new Map();
         button.disabled = false; button.removeAttribute('title'); button.onclick = () => activate(id);
@@ -2712,13 +2926,28 @@
             const id = identity(row.node);
             entries.delete(id);
             const runtime = row.type === 'movie' ? row.detail.runtime : row.seasonEpisodes?.find(ep => ep.episode_number === row.episode)?.runtime;
-            entries.set(id, {fingerprint:fingerprint(row.node), query:row.title, aliases:[row.detail.title,row.detail.original_title,row.detail.name,row.detail.original_name].filter(Boolean), year:row.year, sourceYear:row.sourceYear, type:row.type, match:row.match, season:row.season, episode:row.episode, endEpisode:row.endEpisode, runtimeSeconds:Number(runtime) > 0 ? Number(runtime) * 60 : undefined, aiAssisted:row.aiAssisted});
+            entries.set(id, {fingerprint:fingerprint(row.node), query:row.title, aliases:[...new Set([row.detail.title,row.detail.original_title,row.detail.name,row.detail.original_name,...(row.detail.workAliases || [])].filter(Boolean))], year:row.year, sourceYear:row.sourceYear, type:row.type, match:row.match, season:row.season, episode:row.episode, endEpisode:row.endEpisode, runtimeSeconds:Number(runtime) > 0 ? Number(runtime) * 60 : undefined, aiAssisted:row.aiAssisted});
         };
         const save = () => {
             evict(entries, 3000);
             GM_setValue(storageKey, [...entries]);
         };
-        return {get, restore, remember, save, count: () => [...entries.keys()].filter(id => JSON.parse(id)[0] === location.hostname).length};
+        const rememberParsed = (node,parsed) => {
+            if (!parsed.workResolved || !/^\d+$/.test(String(parsed.tmdbId))) return;
+            const type = parsed.tv ? 'tv' : 'movie';
+            remember({node,title:parsed.query,year:parsed.year,type,match:type + ':' + parsed.tmdbId,
+                season:parsed.season,episode:parsed.episode,endEpisode:parsed.endEpisode,
+                detail:{workAliases:parsed.aliases || [],runtime:type === 'movie' ? parsed.runtimeSeconds / 60 : undefined},
+                seasonEpisodes:parsed.tv ? [{episode_number:parsed.episode,runtime:parsed.runtimeSeconds / 60}] : []});
+        };
+        const explain = node => {
+            const saved = entries.get(identity(node));
+            if (!saved) return '没有该文件的识别记录，将查询共用作品资料';
+            if (get(node)) return '已复用文件识别记录';
+            const before = JSON.parse(saved.fingerprint), after = JSON.parse(fingerprint(node));
+            return '文件记录未复用：' + ['网盘','文件编号','父目录','文件名','大小','MD5'].filter((_,index) => before[index] !== after[index]).join('、') + '变化；保留身份校验，另查作品资料';
+        };
+        return {get, restore, remember, rememberParsed, explain, save, count: () => [...entries.keys()].filter(id => JSON.parse(id)[0] === location.hostname).length};
     })();
     function mediaCandidatePreference(row) {
         if (row.type && row.match) return {type:row.type, reason:'已确认作品为' + (row.type === 'movie' ? '电影' : '剧集')};
@@ -2744,6 +2973,104 @@
         // Isolate movies before asking AI; never apply one movie title to siblings.
         if (aiEnabled && (!row.tv || row.standalone)) return 'file:' + row.node.id;
         return JSON.stringify([titleKey(row.query) || row.node.id, row.node.parentId, aiEnabled ? '' : row.sourceYear, row.standalone ? row.node.id : '']);
+    }
+
+    // Shared, persistent work metadata. File associations remain separately fingerprinted.
+    function mediaWorkNames(detail) {
+        return [...new Set([detail.title, detail.name, detail.original_title, detail.original_name,
+            ...(detail.workAliases || []),
+            ...(detail.alternative_titles?.titles || detail.alternative_titles?.results || [])
+                .filter(item => ['CN','TW','HK','JP','US','GB'].includes(item.iso_3166_1)).map(item => item.title)]
+            .filter(value => typeof value === 'string' && value.trim()).map(value => value.trim()))].slice(0,40);
+    }
+    function mediaWorkLibrary() {
+        if (mediaWorkLibrary.instance) return mediaWorkLibrary.instance;
+        const key = 'cross-drive-work-library-v1', entries = new Map(GM_getValue(key, []));
+        // Migrate trusted identification records without reusing their file association.
+        for (const [,saved] of GM_getValue('cross-drive-media-records-v2', [])) {
+            const match = String(saved?.match || '').match(/^(movie|tv):(\d+)$/);
+            if (!match || !saved.query || !saved.year || entries.has(saved.match)) continue;
+            entries.set(saved.match,{type:match[1],id:match[2],title:saved.query,year:saved.year,
+                aliases:[...new Set([saved.query,...(saved.aliases || [])])],
+                runtimeSeconds:match[1] === 'movie' ? saved.runtimeSeconds : undefined,updatedAt:Date.now(),partial:true});
+        }
+        evict(entries,1000);
+        const valid = work => work && ['movie','tv'].includes(work.type) && /^\d+$/.test(String(work.id))
+            && Array.isArray(work.aliases) && Date.now() - work.updatedAt < 30 * 86400000;
+        const get = (type,id) => { const work = entries.get(type + ':' + id); return valid(work) ? {...work,aliases:[...work.aliases]} : null; };
+        return mediaWorkLibrary.instance = {
+            get,
+            find(parsed) {
+                if (!parsed.year || !parsed.query) return null;
+                const matches = [...entries.values()].filter(work => valid(work) && work.type === (parsed.tv ? 'tv' : 'movie')
+                    && String(work.year) === String(parsed.year) && work.aliases.some(name => titleKey(name) === titleKey(parsed.query)));
+                return matches.length === 1 ? get(matches[0].type,matches[0].id) : null;
+            },
+            remember(type,detail) {
+                if (!['movie','tv'].includes(type) || !/^\d+$/.test(String(detail.id))) return;
+                const identity = type + ':' + detail.id;
+                entries.delete(identity);
+                entries.set(identity,{type,id:String(detail.id),title:detail.title || detail.name,
+                    year:(detail.release_date || detail.first_air_date || '').slice(0,4), aliases:mediaWorkNames(detail),
+                    runtimeSeconds:type === 'movie' && Number(detail.runtime) > 0 ? Number(detail.runtime) * 60 : undefined,
+                    updatedAt:Date.now()});
+                evict(entries,1000); GM_setValue(key,[...entries]);
+            }
+        };
+    }
+    async function mediaWorkDetail(client,type,id,check = () => {}) {
+        check();
+        const detail = await client.get(`/${type}/${id}`,{append_to_response:'alternative_titles'}); check();
+        if (String(detail.id) !== String(id)) throw new Error('作品资料编号与目标不一致');
+        const result = {...detail,workAliases:mediaWorkNames(detail)};
+        // Original titles already include Japanese. English is an optional extra, never a prerequisite.
+        try {
+            const english = await client.get(`/${type}/${id}`,{language:'en-US'}); check();
+            if (String(english.id) !== String(id) || (detail.release_date || detail.first_air_date || '').slice(0,4)
+                !== (english.release_date || english.first_air_date || '').slice(0,4)) throw new Error('英文资料的编号或年份与作品不一致');
+            result.workAliases = mediaWorkNames({...result,workAliases:[...result.workAliases,english.title,english.name]});
+        } catch (error) { check(); if (error.stop || /编号或年份/.test(error.message)) throw error; }
+        check(); mediaWorkLibrary().remember(type,result);
+        return result;
+    }
+    async function resolveMediaWork(parsed,credential,check = () => {},log = () => {}) {
+        const type = parsed.tv ? 'tv' : 'movie', library = mediaWorkLibrary();
+        const apply = work => {
+            if (!parsed.tv && parsed.year && work.year && String(parsed.year) !== String(work.year)) throw new Error('作品资料年份与目标不一致');
+            parsed.tmdbId = String(work.id);
+            parsed.aliases = [...new Set([...(parsed.aliases || []),...work.aliases])].slice(0,40);
+            parsed.year ||= work.year;
+            if (work.runtimeSeconds) parsed.runtimeSeconds = work.runtimeSeconds;
+            parsed.workResolved = true;
+            return true;
+        };
+        check();
+        const cached = parsed.tmdbId ? library.get(type,parsed.tmdbId) : library.find(parsed);
+        if (cached && (!cached.partial || !credential)) { log('作品资料复用', `${parsed.query} · ${type}:${cached.id} · ${cached.aliases.length} 个名称`); return apply(cached); }
+        if (!credential) return false;
+        const client = tmdbClient(credential);
+        let id = parsed.tmdbId || cached?.id;
+        if (!id) {
+            if (!parsed.year || !parsed.query) return false;
+            const results = await client.search(parsed.query); check();
+            const matches = [];
+            for (const item of results.filter(item => item.media_type === type
+                && (item.release_date || item.first_air_date || '').slice(0,4) === String(parsed.year))) {
+                let names = mediaWorkNames(item);
+                if (!names.some(name => titleKey(name) === titleKey(parsed.query))) {
+                    for (const language of ['zh-CN','zh-TW']) {
+                        const local = await client.get(`/${type}/${item.id}`,{language}); check();
+                        if (String(local.id) === String(item.id) && (local.release_date || local.first_air_date || '').slice(0,4) === String(parsed.year)) names.push(...mediaWorkNames(local));
+                    }
+                }
+                if (names.some(name => titleKey(name) === titleKey(parsed.query))) matches.push(item);
+            }
+            if (matches.length !== 1) return false;
+            id = matches[0].id;
+        }
+        const detail = await mediaWorkDetail(client,type,id,check);
+        return apply({id:detail.id,aliases:mediaWorkNames(detail),year:(detail.release_date || detail.first_air_date || '').slice(0,4),
+            runtimeSeconds:type === 'movie' && Number(detail.runtime) > 0 ? Number(detail.runtime) * 60 : undefined});
     }
 
     function initMediaOrganizer(provider = '123') {
@@ -2991,6 +3318,7 @@
             box.appendChild(toggle); update(); return select;
         };
         const render = () => {
+            const expanded = new Map([...ui.get('mediaRows').querySelectorAll('details[data-layout-key]')].map(box => [box.dataset.layoutKey,box.open]));
             ui.get('mediaRows').textContent = '';
             let ready = 0;
             const groups = new Map(), pendingGroups = new Map();
@@ -3010,7 +3338,7 @@
             for (const pending of pendingGroups.values()) {
                 const row = pending[0], group = groups.get(row.group);
                 const matchedGroup = pending.every(item => item.detail);
-                const box = document.createElement('details'); box.className = 'sync-item'; box.open = !matchedGroup;
+                const box = document.createElement('details'); box.className = 'sync-item'; box.dataset.layoutKey = 'group:' + row.group; box.open = expanded.get(box.dataset.layoutKey) || false;
                 const originalNames = [...new Set(group.map(item => group.length === 1 ? item.node.name : item.originalFolder || item.query || '未识别作品'))];
                 const title = document.createElement('summary'); title.textContent = `原：${originalNames.join(' / ')} · ${group.length} 个视频（${pending.length} 个待处理）${matchedGroup ? (pending.some(item => /季号|集号|季集/.test(item.error)) ? ' · 已匹配，需补季集' : ' · 已匹配，需处理异常') : ''}`; box.appendChild(title);
                 const matched = document.createElement('p'); matched.textContent = '匹配为：' + (row.detail ? `${row.title}（${row.year}） · ${row.detail.source || 'TMDB'}` : '尚未确定'); box.appendChild(matched);
@@ -3040,7 +3368,7 @@
                 if (!matchedGroup) box.appendChild(files);
                 ui.get('mediaRows').appendChild(box);
                 if (matchedGroup) for (const item of pending) {
-                    const card = document.createElement('details'); card.className = 'sync-item media-file-issue'; card.open = true;
+                    const card = document.createElement('details'); card.className = 'sync-item media-file-issue'; card.dataset.layoutKey = 'file:' + item.node.id; card.open = expanded.get(card.dataset.layoutKey) || false;
                     const heading = document.createElement('summary'); heading.textContent = '待处理文件：' + item.node.name; card.appendChild(heading);
                     const original = document.createElement('p'); original.textContent = '原位置：' + (item.node.originalPath || item.node.path); card.appendChild(original);
                     const issue = document.createElement('p'); issue.textContent = item.error || '请检查文件信息'; card.appendChild(issue);
@@ -3071,7 +3399,7 @@
             if (row.episodeInferred) { row.episode = null; row.episodeInferred = false; }
             row.match = match; row.detail = null; row.error = ''; row.title = ''; row.seasonEpisodes = [];
             if (!match) return;
-            const [type, id] = match.split(':'); const detail = await client.get('/' + type + '/' + id);
+            const [type, id] = match.split(':'); const detail = await mediaWorkDetail(client,type,id,checkStopped);
             row.detail = detail; row.type = type; row.title = detail.title || detail.name; row.year = (detail.release_date || detail.first_air_date || '').slice(0, 4); row.category = mediaCategory(detail, type); row.error = '';
         }
         async function validateEpisode(row) {
@@ -3529,12 +3857,53 @@
         if (duration && end < duration * 0.5) throw Object.assign(new Error(`字幕不完整：结束 ${end.toFixed(1)} 秒，不到目标 ${duration.toFixed(1)} 秒的 50%（${source}）`), {subtitleIncomplete:true});
         return {end, duration, source};
     }
+    function subtitleSearchNames(parsed) {
+        const names = [parsed.query,...(parsed.aliases || [])].map(name => subtitleQueryTitle(name,parsed.year)).filter(Boolean);
+        const unique = names.filter((name,index) => names.findIndex(other => subtitleTitleKey(other) === subtitleTitleKey(name)) === index);
+        // Include an original Japanese title before spending the budget on regional Chinese variants.
+        const japanese = unique.find(name => /[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(name));
+        const latin = unique.find(name => /\p{Script=Latin}/u.test(name) && !/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(name));
+        return [...new Set([unique[0],japanese,latin,...unique].filter(Boolean))].slice(0,3);
+    }
+    function subtitleRequestPool(interval, limit, request) {
+        let queue = Promise.resolve(), last = 0;
+        const active = new Set();
+        return async (...args) => {
+            const start = queue.then(async () => {
+                while (active.size >= limit) await Promise.race(active);
+                const delay = interval - (Date.now() - last);
+                if (delay > 0) await sleep(delay);
+                last = Date.now();
+                const running = Promise.resolve().then(() => request(...args));
+                const done = running.then(() => active.delete(done), () => active.delete(done));
+                active.add(done);
+                return {running};
+            });
+            queue = start.then(() => {}, () => {});
+            return (await start).running;
+        };
+    }
+    function subtitlePackSeason(fields, metadata) {
+        const seasons = new Set(Number(metadata) > 0 ? [Number(metadata)] : []);
+        for (const text of fields) for (const match of String(text).matchAll(/(?:^|[^a-z])(?:S|Season[ ._-]*)(\d{1,2})(?!\d)|第\s*(\d{1,2})\s*季/gi)) seasons.add(Number(match[1] || match[2]));
+        return seasons.size === 1 ? [...seasons][0] : null;
+    }
     function createSubtitleService({wait = ms => sleep(ms), check = () => {}, log = () => {}} = {}) {
         let token = '', tokenKey = '';
         const failedAssrtPackages = new Set();
         const unavailableSources = new Map();
         let assrtDownloadBlocked = false;
         const searchCache = new Map(), seasonCache = new Map(), detailCache = new Map(), pendingDetails = new Map();
+        const seasonPreparations = new Map(), archiveCache = new Map();
+        const archiveData = async (url,verify) => {
+            check(); verify();
+            if (!archiveCache.has(url)) {
+                const entry = subtitleBinary(url).then(bytes => ({bytes,index:subtitleArchiveIndex(bytes,verify)}))
+                    .catch(error => { archiveCache.delete(url); throw error; });
+                archiveCache.set(url,entry); evict(archiveCache,3); // At most three 16 MiB archives.
+            }
+            const data = await archiveCache.get(url); check(); verify(); return data;
+        };
         const subdlRequest = paced(1100, async (params, config, verify) => {
             check(); verify();
             const paused = unavailableSources.get('SubDL');
@@ -3547,7 +3916,7 @@
             }
             return result;
         });
-        const thunderRequest = paced(1100, (title, verify) => {
+        const thunderRequest = subtitleRequestPool(1100, 2, (title, verify) => {
             check(); verify();
             if (unavailableSources.has('迅雷')) throw new Error('迅雷本批已暂停');
             return subtitleRemoteJson('https://api-shoulei-ssl.xunlei.com/oracle/subtitle?' + new URLSearchParams({name:title}), {
@@ -3633,7 +4002,51 @@
             return found.length === 1 && Number(found[0][1]) === parsed.season && Number(found[0][2]) === parsed.episode && !/E\d+[ ._-]*[-~][ ._-]*(?:E)?\d+/i.test(name);
         };
         return {
-            resetSearchBatch() { unavailableSources.clear(); },
+            async prepareSeason(rows,config,verify = () => {}) {
+                const row = rows.find(row => row.parsed.episode != null && (!row.parsed.endEpisode || row.parsed.endEpisode === row.parsed.episode)), parsed = row?.parsed;
+                if (!parsed?.tv || parsed.season == null || !parsed.query) return;
+                const key = JSON.stringify([parsed.tmdbId || '',parsed.query,parsed.year,parsed.season,subtitleSearchNames(parsed),config.language,
+                    config.thunder,config.assrt,config.assrtToken,config.subdl,config.subdlKey]);
+                if (!seasonPreparations.has(key)) {
+                    const task = (async () => {
+                        log('整季搜索', `${parsed.query} · S${String(parsed.season).padStart(2,'0')} · 优先取得整季文件列表，逐集复核，缺集再补查`);
+                        const sources = [
+                            ['迅雷',config.thunder,() => this.thunderSearch(row,{...config,seasonSearch:true},() => {},verify)],
+                            ['Assrt 片名搜索',config.assrt && config.assrtToken,() => this.assrtSearch(row,{...config,seasonSearch:true,nonBlockingSearch:true},() => {},verify)],
+                            ['SubDL',config.subdl && config.subdlKey,async () => {
+                                const found = await this.subdlSearch(row,{...config,seasonSearch:true},() => {},verify);
+                                // Index archives once so missing episodes are found before selecting a pack.
+                                const missing = new Set(rows.filter(target => target.parsed.episode != null).map(target => target.parsed.episode));
+                                for (const candidate of found.filter(item => item.ext === 'zip' && item.titleMatched).slice(0,3)) {
+                                    verify();
+                                    try {
+                                        const archive = await archiveData(candidate.url,verify);
+                                        for (const target of rows) if (subtitleArchiveChoices(archive.index,{...candidate,parsed:target.parsed},config.language).length) missing.delete(target.parsed.episode);
+                                        log('整季覆盖', `${candidate.name} · 当前缺集 ${missing.size} 集${missing.size ? '，继续补查' : '，停止下载其他整季包'}`);
+                                        if (!missing.size) break;
+                                    }
+                                    catch (error) { verify(); if (error.stop) throw error; log('整季压缩包', `${candidate.name} · ${error.message}；保留其他候选`); }
+                                }
+                            }]
+                        ].filter(([name,enabled]) => enabled && !unavailableSources.has(name));
+                        const results = await Promise.allSettled(sources.map(async ([name,,run]) => {
+                            try { await run(); }
+                            catch (error) {
+                                check(); verify(); if (error.stop) throw error;
+                                if ([429,509].includes(error.status) || name === 'SubDL' && [401,403].includes(error.status)) unavailableSources.set(name,error.message);
+                                log('整季来源失败', `${name} · ${error.message}；单集仍可补查其他来源`);
+                            }
+                        }));
+                        check(); verify();
+                        const failed = results.find(result => result.status === 'rejected');
+                        if (failed) throw failed.reason;
+                    })();
+                    seasonPreparations.set(key,task); evict(seasonPreparations,24);
+                    task.catch(() => seasonPreparations.delete(key));
+                }
+                await seasonPreparations.get(key); check(); verify();
+            },
+            resetSearchBatch() { unavailableSources.clear(); seasonPreparations.clear(); },
             searchUnavailable(name) { return unavailableSources.get(name); },
             pauseSearchSource(name, reason) { unavailableSources.set(name, reason); },
             resetDownloadBatch() { failedAssrtPackages.clear(); assrtDownloadBlocked = false; },
@@ -3654,8 +4067,8 @@
                 const queryText = value => String(value).normalize('NFKC').replace(/[!:"“”()|@~^/<>=*]/g, ' ').replace(/\s+/g, ' ').trim();
                 const mainTitle = title.includes(':') ? title.slice(0,title.indexOf(':')).trim() : '';
                 const terms = [
-                    {q:title + (episode ? ' ' + episode : ''), main:false}, {q:title, main:false},
-                    ...(allowFallback ? parsed.aliases || [] : []).filter(value => /\p{Script=Latin}/u.test(value) && !/\p{Script=Han}/u.test(value)).map(value => ({q:subtitleQueryTitle(value, parsed.year), main:false})),
+                    {q:title + (config.seasonSearch && parsed.tv ? ' S' + String(parsed.season).padStart(2,'0') : episode ? ' ' + episode : ''), main:false}, {q:title, main:false},
+                    ...(allowFallback ? subtitleSearchNames(parsed).slice(1) : []).map(value => ({q:value + (config.seasonSearch && parsed.tv ? ' S' + String(parsed.season).padStart(2,'0') : ''), main:false})),
                     ...(allowFallback && mainTitle ? [{q:mainTitle, main:true}] : [])
                 ].map(term => ({...term,q:queryText(term.q)})).filter((term,index,all) => term.q && all.findIndex(other => other.q === term.q) === index);
                 const candidates = [], seen = new Map(), aliases = new Set(parsed.aliases || []);
@@ -3700,7 +4113,7 @@
                             kept.push(name);
                         }
                         // Keep complete file lists, not another episode's selected candidate or signed URL.
-                        if (seasonKey && confirmed) {
+                        if (seasonKey && (confirmed || config.seasonSearch && subtitleWorkIdentity(parsed,[item.native_name,item.videoname,detail.native_name,detail.title],'').titleMatched)) {
                             const packs = seasonCache.get(seasonKey) || new Map();
                             packs.set(String(item.id), {id:item.id, native_name:[...new Set([item.native_name,detail.native_name].filter(Boolean))].join('/'),
                                 videoname:item.videoname || detail.videoname, title:detail.title, lang:item.lang, filelist:files.map(file => ({f:file.f,s:file.s}))});
@@ -3778,19 +4191,42 @@
                 if (!title) throw new Error('缺少可搜索的作品名');
                 if (parsed.tv && (parsed.season == null || parsed.episode == null)) throw new Error('缺少明确季集，未按片名搜索');
                 if (parsed.endEpisode && parsed.endEpisode !== parsed.episode) throw new Error('合并多集视频需单独选字幕');
-                const query = title + (parsed.tv ? ' S' + String(parsed.season).padStart(2,'0') + 'E' + String(parsed.episode).padStart(2,'0') : '');
                 const seasonKey = parsed.tv ? JSON.stringify(['thunder-season',titleKey(title),parsed.year || '',parsed.tmdbId || '',parsed.season]) : '';
-                const cacheKey = config.thunderCacheOnly ? seasonKey : JSON.stringify(['thunder', query]);
-                if (config.thunderCacheOnly && !searchCache.has(cacheKey)) return [];
-                log('迅雷 查询', `实际搜索词：${query} · ${searchCache.has(cacheKey) ? '使用缓存' : '请求来源'}`);
-                if (!searchCache.has(cacheKey)) {
-                    searchCache.set(cacheKey, thunderRequest(query, verify).then(result => {
-                        if (Number(result?.code) !== 0 || !Array.isArray(result?.data)) throw new Error('迅雷字幕接口返回异常：' + String(result?.result || result?.code || '格式错误').slice(0, 120));
-                        return result.data;
-                    }).catch(error => { searchCache.delete(cacheKey); throw error; }));
-                    evict(searchCache, 200);
+                let items;
+                const suffix = parsed.tv ? ' S' + String(parsed.season).padStart(2,'0') + (config.seasonSearch ? '' : 'E' + String(parsed.episode).padStart(2,'0')) : '';
+                const queries = subtitleSearchNames(parsed).map(name => name + suffix);
+                if (config.thunderCacheOnly) {
+                    if (!searchCache.has(seasonKey)) return [];
+                    items = await searchCache.get(seasonKey);
+                } else {
+                    const results = await Promise.allSettled(queries.map(async query => {
+                        check(); verify();
+                        const cacheKey = JSON.stringify(['thunder',query]);
+                        log('迅雷 查询', `实际搜索词：${query} · ${searchCache.has(cacheKey) ? '使用缓存' : '请求来源'}`);
+                        if (!searchCache.has(cacheKey)) {
+                            searchCache.set(cacheKey, thunderRequest(query,verify).then(result => {
+                                if (Number(result?.code) !== 0 || !Array.isArray(result?.data)) throw new Error('迅雷字幕接口返回异常：' + String(result?.result || result?.code || '格式错误').slice(0,120));
+                                return result.data.map(item => ({...item,searchTerms:[query]}));
+                            }).catch(error => { searchCache.delete(cacheKey); throw error; }));
+                            evict(searchCache,200);
+                        }
+                        return await searchCache.get(cacheKey);
+                    }));
+                    check(); verify();
+                    const successes = results.filter(result => result.status === 'fulfilled');
+                    if (!successes.length) throw results[0].reason;
+                    for (const result of results.filter(result => result.status === 'rejected')) {
+                        if (result.reason.stop) throw result.reason;
+                        if ([429,509].includes(result.reason.status)) unavailableSources.set('迅雷',result.reason.message);
+                        log('迅雷 别名查询失败', result.reason.message + '；保留其他搜索词的结果');
+                    }
+                    items = successes.flatMap(result => result.value);
+                    if (seasonKey) {
+                        const previous = await searchCache.get(seasonKey) || [];
+                        searchCache.set(seasonKey,[...new Map([...previous,...items].map(item => [item.url || item.name,item])).values()]); evict(searchCache,200);
+                    }
                 }
-                const items = await searchCache.get(cacheKey); check(); verify();
+                check(); verify();
                 const candidates = [], seen = new Set(), excluded = {年份:0,季集:0,语言:0,内容:0,无关:0,待确认上限:0}, rejectionSamples = [];
                 const sampleRejection = (name, reason) => { if (rejectionSamples.length < 8) rejectionSamples.push(`${name}（${reason}）`); };
                 log('迅雷 响应', `返回 ${items.length} 条原始结果`);
@@ -3812,14 +4248,16 @@
                     info.bilingual ||= metadata.bilingual && info.language.startsWith('zh');
                     const titleMatched = match.titleMatched && (!parsed.tv || episodeTagged);
                     if (info.language && !(config.language || 'zh-cn,zh-tw,zh').split(',').includes(info.language) && !info.bilingual && !info.language.startsWith('zh') && info.language !== 'en') { excluded.语言++; sampleRejection(name, '语言 ' + info.language); continue; }
-                    if (candidates.length >= 60) { excluded.待确认上限++; continue; }
-                    candidates.push({source:'迅雷', name, ...info, titleMatched, opaque:!!match.opaque, matchReason:parsed.tv && !episodeTagged ? '文件未标明准确季集' : match.matchReason, url, ext, release:name});
+                    if (candidates.length >= 60) {
+                        const uncertain = titleMatched ? candidates.findIndex(candidate => !candidate.titleMatched) : -1;
+                        excluded.待确认上限++;
+                        if (uncertain < 0) continue;
+                        candidates.splice(uncertain,1);
+                    }
+                    candidates.push({source:'迅雷', name, ...info, titleMatched, opaque:!!match.opaque, matchReason:parsed.tv && !episodeTagged ? '文件未标明准确季集' : match.matchReason, url, ext, release:name, searchTerms:item.searchTerms || []});
                 }
-                onFiles(`${query} · ${candidates.length} 份字幕文件` + (candidates.length ? '：' + candidates.slice(0, 12).map(candidate => candidate.name).join('；') + (candidates.length > 12 ? '；…' : '') : ''));
+                onFiles(`搜索词：${queries.join(' / ')} · 筛选后 ${candidates.length} 份字幕文件` + (candidates.length ? '：' + candidates.slice(0, 12).map(candidate => candidate.name).join('；') + (candidates.length > 12 ? '；…' : '') : ''));
                 candidates.sort((a,b) => Number(a.opaque) - Number(b.opaque));
-                if (seasonKey && !config.thunderCacheOnly && candidates.some(candidate => candidate.titleMatched)) {
-                    searchCache.set(seasonKey,items); evict(searchCache,200);
-                }
                 if (rejectionSamples.length) log('迅雷 排除样例', rejectionSamples.join('；'));
                 log('迅雷 筛选', `保留 ${candidates.length} 份 · 排除 ${Object.values(excluded).reduce((a,b) => a + b,0)} 份（${Object.entries(excluded).map(([reason,count]) => reason + ' ' + count).join('，')}）· 待确认 ${candidates.filter(candidate => !candidate.titleMatched).length} 份`);
                 return candidates;
@@ -3834,7 +4272,7 @@
                 const params = {type:parsed.tv ? 'tv' : 'movie',languages,releases:1,unpack:1,subs_per_page:30};
                 if (parsed.tmdbId) params.tmdb_id = parsed.tmdbId;
                 else params.film_name = title;
-                if (parsed.tv) { params.season_number = parsed.season; params.episode_number = parsed.episode; }
+                if (parsed.tv) { params.season_number = parsed.season; if (config.seasonSearch) params.full_season = 1; else params.episode_number = parsed.episode; }
                 const candidates = [], seen = new Set(), excluded = {年份:0,季集:0,语言:0,内容:0,无关:0,格式:0}, samples = [];
                 const reject = (reason, name) => { excluded[reason]++; if (samples.length < 8) samples.push(`${name}（${reason}）`); };
                 log('SubDL 查询', `${parsed.tmdbId ? 'TMDB #' + parsed.tmdbId : title} · ${params.type} · ${languages}`);
@@ -3842,6 +4280,7 @@
                     check(); verify();
                     const query = {...params,page}, key = JSON.stringify(['subdl',config.subdlKey,query]);
                     if (!searchCache.has(key)) {
+                        if (config.subdlCacheOnly) break;
                         searchCache.set(key,subdlRequest(query,config,verify).catch(error => { searchCache.delete(key); throw error; })); evict(searchCache,200);
                     }
                     const result = await searchCache.get(key); check(); verify();
@@ -3853,7 +4292,7 @@
                         if (!item || item.ai_translated) continue;
                         const fallback = ({ZH:'zh',ZH_BG:'zh-tw',EN:'en'})[item.language];
                         if (!fallback) { reject('语言',item.name); continue; }
-                        const fields = [...(Array.isArray(item.releases) ? item.releases.filter(value => typeof value === 'string') : []),String(item.name || '').replace(/\.zip$/i,'')];
+                        const fields = [...(Array.isArray(item.releases) ? item.releases.filter(value => typeof value === 'string') : []),item.release_name || '',String(item.name || '').replace(/\.zip$/i,'')];
                         const unpacked = Array.isArray(item.unpack_files) ? item.unpack_files.filter(file => file?.url && /\.(srt|ass|ssa|vtt)$/i.test(file.name || '')) : [];
                         const files = unpacked.length ? unpacked : [{name:item.name,url:item.url,season:item.season,episode:item.episode}];
                         for (const file of files) {
@@ -3864,19 +4303,22 @@
                             if (seen.has(url)) continue;
                             seen.add(url);
                             const tagged = /S\d+[ ._-]*E\d+/i.test(name);
-                            const exactEpisode = tagged ? assrtEpisode(name,parsed) : Number(file.season) === parsed.season && Number(file.episode) === parsed.episode && !item.full_season && !(Number(item.episode_end) > Number(item.episode_from));
+                            const exactEpisode = tagged ? assrtEpisode(name,parsed) : Number(file.season) === parsed.season && Number(file.episode) === parsed.episode && (unpacked.length > 0 || !item.full_season && !(Number(item.episode_end) > Number(item.episode_from)));
                             // SubDL uses season=0 for unknown metadata; an explicit SxxExx filename still identifies the episode.
-                            if ((!parsed.tv && tagged) || parsed.tv && (tagged && !exactEpisode || !exactEpisode && ext !== 'zip' || Number(file.season) > 0 && Number(file.season) !== parsed.season)) { reject('季集',name); continue; }
+                            if ((!parsed.tv && tagged) || parsed.tv && (tagged && !exactEpisode || !exactEpisode && ext !== 'zip' || Number(file.season) > 0 && Number(file.season) !== parsed.season
+                                || unpacked.length > 0 && Number(file.episode) > 0 && Number(file.episode) !== parsed.episode)) { reject('季集',name); continue; }
                             const archiveTitle = name.replace(/\.zip$/i,'');
                             const archiveIdentity = ext === 'zip' && subtitleWorkIdentity(parsed,[],archiveTitle);
                             if (archiveIdentity?.hardMismatch) { reject('年份',name); continue; }
                             const matchName = ext === 'zip' ? fields.find(value => subtitleWorkIdentity(parsed,[],value).titleMatched) || archiveTitle : name;
-                            const match = subtitleCandidateFilter(parsed,fields,matchName,!!config.reviewCandidates);
+                            const numberedFile = parsed.tv && exactEpisode && unpacked.length && /^(?:E(?:P)?[ ._-]*)?\d{1,3}(?:[ ._-](?:chs|cht|zh|zh-cn|zh-tw|简体|繁体|简中|繁中))?\.(?:srt|ass|ssa|vtt)$/i.test(name);
+                            if (numberedFile && Number(name.match(/\d+/)[0]) !== parsed.episode) { reject('季集',name); continue; }
+                            const match = subtitleCandidateFilter(parsed,fields,numberedFile ? '' : matchName,!!config.reviewCandidates);
                             if (match.excluded) { reject(match.excluded,name); continue; }
                             const info = subtitleFileInfo(name,fallback);
                             if (!info.language.startsWith('zh') && info.language !== 'en') { reject('语言',name); continue; }
                             if (candidates.length >= 60) break;
-                            candidates.push({source:'SubDL',name,...info,...match,titleMatched:match.titleMatched && (!parsed.tv || exactEpisode || ext === 'zip'),url,ext,release:fields.join(' · '),subdlFields:fields,parsed:{...parsed}});
+                            candidates.push({source:'SubDL',name,...info,...match,titleMatched:match.titleMatched && (!parsed.tv || exactEpisode || ext === 'zip'),url,ext,release:fields.join(' · '),subdlFields:fields,archiveSeason:subtitlePackSeason(fields,item.season),parsed:{...parsed}});
                         }
                     }
                     if (page >= Number(result.totalPages || 1) || result.subtitles.length < 30) break;
@@ -3884,9 +4326,24 @@
                 onFiles(`${title} · ${candidates.length} 份字幕资源：${candidates.slice(0,12).map(candidate => candidate.name).join('；')}`);
                 if (samples.length) log('SubDL 排除样例',samples.join('；'));
                 log('SubDL 筛选',`保留 ${candidates.length} 份 · 排除 ${Object.values(excluded).reduce((a,b) => a+b,0)} 份（${Object.entries(excluded).map(([reason,count]) => reason + ' ' + count).join('，')}）`);
-                return candidates.sort((a,b) => Number(a.opaque) - Number(b.opaque));
+                const covered = [];
+                for (const candidate of candidates) {
+                    if (candidate.ext === 'zip' && config.subdlCacheOnly && !archiveCache.has(candidate.url)) continue;
+                    if (candidate.ext === 'zip' && archiveCache.has(candidate.url)) {
+                        try {
+                            const archive = await archiveData(candidate.url,verify);
+                            if (!subtitleArchiveChoices(archive.index,candidate,config.language).length) continue;
+                        } catch (error) { check(); verify(); if (error.stop) throw error; continue; }
+                    }
+                    covered.push(candidate);
+                }
+                return covered.sort((a,b) => Number(a.opaque) - Number(b.opaque));
             },
-            logout() { token = ''; tokenKey = ''; searchCache.clear(); seasonCache.clear(); detailCache.clear(); },
+            subdlCachedEpisode(row,config,onFiles = () => {},verify = () => {}) {
+                if (!row.parsed.tv || row.parsed.season == null || row.parsed.episode == null || row.parsed.endEpisode && row.parsed.endEpisode !== row.parsed.episode) return [];
+                return this.subdlSearch(row,{...config,seasonSearch:true,subdlCacheOnly:true},onFiles,verify);
+            },
+            logout() { token = ''; tokenKey = ''; searchCache.clear(); seasonCache.clear(); detailCache.clear(); seasonPreparations.clear(); archiveCache.clear(); },
             async login(username, password, config) {
                 token = ''; tokenKey = '';
                 if (!username || !password) throw new Error('请输入 OpenSubtitles 用户名和密码');
@@ -3938,9 +4395,10 @@
                     try {
                         result = await this.download(candidate, config); verify();
                         if (result.fileName) progress('文件选择', `${candidate.assrtId || candidate.source} · ${result.fileName}`);
-                        let bytes = await subtitleBinary(result.url, {allowHttp:result.allowHttp === true}); verify();
-                        if (candidate.source === 'SubDL' && result.ext === 'zip') {
-                            const file = await subtitleSubdlArchive(bytes,candidate,config.language,verify);
+                        const archive = candidate.source === 'SubDL' && result.ext === 'zip' ? await archiveData(result.url,verify) : null;
+                        let bytes = archive ? archive.bytes : await subtitleBinary(result.url, {allowHttp:result.allowHttp === true}); verify();
+                        if (archive) {
+                            const file = await subtitleSubdlArchive(bytes,candidate,config.language,verify,archive.index);
                             bytes = file.bytes; result.ext = file.ext; result.fileName = file.name;
                             progress('SubDL 压缩包选择',file.name);
                         }
@@ -3958,6 +4416,7 @@
                         if (attempt || error.phase !== 'transfer' || !([401,403,408,429,500,502,503,504].includes(error.status) || error.retryable)) throw error;
                         progress('下载重试', `${candidate.source} · ${new URL(result.url).hostname} · ${error.message}；刷新下载地址后重试一次`);
                         if (candidate.source === 'Assrt') detailCache.delete(detailKey(candidate.assrtId,config));
+                        if (candidate.source === 'SubDL') archiveCache.delete(candidate.url);
                         await pause(1500);
                     }
                 }
@@ -3992,8 +4451,8 @@
     }
 
     const SUBTITLE_LIMIT = 16 * 1024 * 1024;
-    async function subtitleSubdlArchive(bytes, candidate, language, check = () => {}) {
-        // Read the ZIP directory first; inflate only the selected text subtitle.
+    function subtitleArchiveIndex(bytes, check = () => {}) {
+        // Parse the central directory once; do not inflate unrelated files.
         const invalid = () => new Error('SubDL ZIP 格式不支持或数据不完整（不支持加密、ZIP64、多卷及 RAR）');
         const view = new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
         let end = bytes.length - 22;
@@ -4017,17 +4476,41 @@
             offset = next;
             if (!['srt','ass','ssa','vtt'].includes(ext) || path.startsWith('__MACOSX/') || name.startsWith('._')) continue;
             if (flags & 1 || ![0,8].includes(method) || !length || length > SUBTITLE_LIMIT || compressed > SUBTITLE_LIMIT) continue;
-            if (candidate.parsed.tv) {
-                const episodes = [...name.matchAll(/S(\d{1,2})[ ._-]*E(\d{1,3})(?!\d)/gi)];
-                if (episodes.length !== 1 || Number(episodes[0][1]) !== candidate.parsed.season || Number(episodes[0][2]) !== candidate.parsed.episode || /E\d+[ ._-]*[-~][ ._-]*(?:E)?\d+/i.test(name)) continue;
-            }
-            const match = subtitleCandidateFilter(candidate.parsed,candidate.subdlFields || [],name);
-            const info = subtitleFileInfo(name,candidate.language);
-            if (match.excluded || !match.titleMatched || !subtitleLanguageMatch(name,language) && !language.split(',').some(wanted => wanted === info.language || wanted.startsWith('zh') && info.language === 'zh')) continue;
-            files.push({name,ext,method,crc,compressed,length,local,flags,score:subtitlePreference({...info,name},language)});
+            files.push({name,path,ext,method,crc,compressed,length,local,flags});
         }
         if (offset !== end) throw invalid();
-        files.sort((a,b) => b.score-a.score || a.name.localeCompare(b.name));
+        return {files,start};
+    }
+    function subtitleArchiveChoices(index,candidate,language) {
+        const parsed = candidate.parsed;
+        if (parsed.tv && (parsed.season == null || parsed.episode == null || parsed.endEpisode && parsed.endEpisode !== parsed.episode)) return [];
+        const files = [];
+        for (const file of index.files) {
+            const {name} = file;
+            let identityName = name;
+            if (parsed.tv) {
+                const episodes = [...name.matchAll(/S(\d{1,2})[ ._-]*E(\d{1,3})(?!\d)/gi)];
+                const bare = name.match(/^(?:E(?:P)?[ ._-]*)?(\d{1,3})(?:[ ._-](?:chs|cht|zh|zh-cn|zh-tw|简体|繁体|简中|繁中))?\.(?:srt|ass|ssa|vtt)$/i);
+                if (bare && candidate.titleMatched && candidate.archiveSeason === parsed.season) {
+                    const folders = file.path.replace(/\\/g,'/').split('/').slice(0,-1);
+                    const seasons = folders.flatMap(folder => [...folder.matchAll(/(?:^|[^a-z])(?:Season[ ._-]*|S)(\d{1,2})(?!\d)/gi)].map(match => Number(match[1])));
+                    if (Number(bare[1]) !== parsed.episode || seasons.some(season => season !== parsed.season)
+                        || folders.some(folder => /^(?:extras?|specials?|bonus|特典|花絮)$/i.test(folder))) continue;
+                    identityName = parsed.query + '.S' + String(parsed.season).padStart(2,'0') + 'E' + String(parsed.episode).padStart(2,'0') + '.' + file.ext;
+                } else if (episodes.length !== 1 || Number(episodes[0][1]) !== parsed.season || Number(episodes[0][2]) !== parsed.episode || /E\d+[ ._-]*[-~][ ._-]*(?:E)?\d+/i.test(name)) continue;
+            }
+            const match = subtitleCandidateFilter(parsed,candidate.subdlFields || [],identityName);
+            const info = subtitleFileInfo(name,candidate.language);
+            if (match.excluded || !match.titleMatched || !subtitleLanguageMatch(name,language) && !language.split(',').some(wanted => wanted === info.language || wanted.startsWith('zh') && info.language.startsWith('zh'))) continue;
+            files.push({...file,score:subtitlePreference({...info,name},language)});
+        }
+        return files.sort((a,b) => b.score-a.score || a.name.localeCompare(b.name));
+    }
+    async function subtitleSubdlArchive(bytes, candidate, language, check = () => {}, index = subtitleArchiveIndex(bytes,check)) {
+        const invalid = () => new Error('SubDL ZIP 格式不支持或数据不完整');
+        check();
+        const view = new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength), start = index.start;
+        const files = subtitleArchiveChoices(index,candidate,language);
         if (!files.length) throw new Error('SubDL 压缩包没有通过片名、年份、季集及语言检查的文本字幕');
         const file = files[0], local = file.local;
         if (local + 30 > start || view.getUint32(local,true) !== 0x04034b50 || view.getUint16(local+6,true) !== file.flags || view.getUint16(local+8,true) !== file.method) throw invalid();
@@ -4316,7 +4799,7 @@
         if (!resume) { row.error = ''; row.candidates = []; row.selectedCandidate = null; row.manualCandidate = false; row.aiSuggested = false; row.sources = []; }
         const title = subtitleQueryTitle(row.parsed.query, row.parsed.year);
         if (!resume && row.parsed.tv) {
-            for (const [name,enabled,method] of [['迅雷',config.thunder,'thunderCachedEpisode'],['Assrt 片名搜索',config.assrt && config.assrtToken && !service.assrtDownloadUnavailable?.(),'assrtCachedEpisode']]) {
+            for (const [name,enabled,method] of [['SubDL',config.subdl && config.subdlKey,'subdlCachedEpisode'],['迅雷',config.thunder,'thunderCachedEpisode'],['Assrt 片名搜索',config.assrt && config.assrtToken && !service.assrtDownloadUnavailable?.(),'assrtCachedEpisode']]) {
                 if (!enabled || !service[method] || service.searchUnavailable?.(name)) continue;
                 check();
                 const cached = await service[method](row, config, message => log(name + ' 缓存文件列表', message), check);
@@ -4704,39 +5187,7 @@
         return [...groups.values()];
     }
     async function subtitleEnrichAliases(parsed, credential, check = () => {}, log = () => {}) {
-        if (!credential || parsed.tmdbId && parsed.aliases?.length) return false;
-        const client = tmdbClient(credential), type = parsed.tv ? 'tv' : 'movie';
-        if (parsed.tmdbId) {
-            const detail = await client.get(`/${type}/${parsed.tmdbId}`, {append_to_response:'alternative_titles'}); check();
-            if (String(detail.id) !== String(parsed.tmdbId) || !parsed.tv && parsed.year && detail.release_date && !detail.release_date.startsWith(String(parsed.year))) throw new Error('已确认作品的编号或年份与资料不一致');
-            if (!parsed.tv && Number(detail.runtime) > 0) parsed.runtimeSeconds = Number(detail.runtime) * 60;
-            parsed.aliases = [...new Set([detail.title,detail.original_title,detail.name,detail.original_name,
-                ...(detail.alternative_titles?.titles || detail.alternative_titles?.results || []).filter(item => ['CN','TW','HK','US','GB'].includes(item.iso_3166_1)).map(item => item.title)].filter(Boolean))].slice(0,40);
-        } else {
-            if (!parsed.year) return false;
-            const title = subtitleQueryTitle(parsed.query, parsed.year), key = subtitleTitleKey(title);
-            if (!key) return false;
-            const results = await client.search(title); check();
-            const matches = [];
-            for (const item of results.filter(item => item.media_type === type && String(item.release_date || item.first_air_date || '').slice(0,4) === String(parsed.year))) {
-                let names = [item.title,item.name,item.original_title,item.original_name];
-                if (!names.some(value => value && subtitleTitleKey(value) === key)) {
-                    for (const language of ['zh-CN','zh-TW']) {
-                        const localized = await client.get(`/${type}/${item.id}`, {language}); check();
-                        if (String(localized.id) === String(item.id) && String(localized.release_date || localized.first_air_date || '').slice(0,4) === String(parsed.year)) names.push(localized.title, localized.name);
-                    }
-                }
-                if (names.some(value => value && subtitleTitleKey(value) === key)) matches.push(item);
-            }
-            if (matches.length !== 1) return false;
-            const match = matches[0];
-            log('TMDB 作品', `${type} · ${match.id} · ${match.original_title || match.original_name || ''} · ${parsed.year}`);
-            const english = await client.get(`/${type}/${match.id}`, {language:'en-US'}); check();
-            if (String(english.id) !== String(match.id) || String(english.release_date || english.first_air_date || '').slice(0,4) !== String(parsed.year)) throw new Error('英文资料的编号或年份与搜索结果不一致');
-            if (!parsed.tv && Number(english.runtime) > 0) parsed.runtimeSeconds = Number(english.runtime) * 60;
-            parsed.aliases = [...new Set([...(parsed.aliases || []),match.original_title,match.original_name,english.title,english.name].filter(Boolean))].slice(0,40);
-        }
-        return true;
+        return resolveMediaWork(parsed,credential,check,log);
     }
     function initSubtitles(provider = '123') {
         const ui = makePanel(provider + ' 字幕', `
@@ -4847,9 +5298,11 @@
                 if (!shown.length) continue;
                 visible += shown.length;
                 const box = document.createElement('details'); box.className = 'sync-item'; box.dataset.group = key;
-                box.open = !resetGroups && expanded.has(key) ? expanded.get(key) : ['incomplete','pending','choice'].includes(view) || rows.some(row => subtitleSearchState(row) === 'failed');
+                box.open = !resetGroups && expanded.has(key) ? expanded.get(key) : false;
                 const summary = document.createElement('summary'), first = rows[0];
-                summary.textContent = `${first.parsed.query || first.node.name}${first.parsed.season != null ? ' · 第 ' + first.parsed.season + ' 季' : ''} · 待补齐 ${rows.filter(row => !row.complete).length}/${rows.length} · 可补齐 ${rows.filter(row => subtitleSearchState(row) === 'ready').length} · 待核验 ${rows.filter(row => subtitleSearchState(row) === 'pending').length} · 待选择 ${rows.filter(row => subtitleSearchState(row) === 'choice').length} · 未找到 ${rows.filter(row => subtitleSearchState(row) === 'missing').length} · 失败 ${rows.filter(row => subtitleSearchState(row) === 'failed').length}`;
+                const counts = [['ready','可补齐'],['pending','待核验'],['choice','待选择'],['missing','未找到'],['failed','失败']]
+                    .map(([state,label]) => { const count = rows.filter(row => subtitleSearchState(row) === state).length; return count ? `${label} ${count}` : ''; }).filter(Boolean);
+                summary.textContent = `${first.parsed.query || first.node.name}${first.parsed.season != null ? ' · 第 ' + first.parsed.season + ' 季' : ''} · 待补齐 ${rows.filter(row => !row.complete).length}/${rows.length}` + (counts.length ? ' · ' + counts.join(' · ') : '');
                 box.append(summary);
                 for (const row of shown) {
                     const text = document.createElement('p'); text.style.whiteSpace = 'pre-wrap';
@@ -4895,28 +5348,34 @@
             service.resetSearchBatch?.();
             reviewCandidates = ai ? createSubtitleReviewer(ai, config.language, diag, check) : null;
             config.reviewCandidates = reviewCandidates;
-            diag('查找策略', `剧集先复查已确认的整季缓存；未命中时${config.shooter ? '先按视频指纹匹配，未命中再查迅雷' : '迅雷优先'}；${ai ? '名称有歧义时交给 AI 判断' : 'AI 未启用，使用严格片名匹配'}；限流或射手超时后本批跳过该来源`);
+            diag('查找策略', `剧集先按季搜索并建立文件索引；缺集再复查缓存，未命中时${config.shooter ? '先按视频指纹匹配，未命中再查迅雷' : '迅雷优先'}；${ai ? '名称有歧义时交给 AI 判断' : 'AI 未启用，使用严格片名匹配'}；限流或射手超时后本批跳过该来源`);
             try {
                 drive.assertReady?.();
                 diag('并发策略', '搜索最多同时处理 2 组作品，同一季逐集复用缓存；各来源继续独立限速');
                 await forEachConcurrent(subtitleSearchGroups(rows), 2, async (group, verify) => {
                   for (const row of group) {
                     const check = verify;
+                    if (!row.parsed.workResolved) {
+                        status('读取作品资料：' + row.node.name);
+                        const credential = GM_getValue('cross-drive-tmdb-key', ''), aliasStarted = Date.now();
+                        try {
+                            const parsed = row.parsed;
+                            if (await subtitleEnrichAliases(parsed, credential, check, diag)) {
+                                mediaRecords.rememberParsed?.(row.node,parsed); mediaRecords.save?.();
+                                diag('作品别名', `已复用或确认作品资料，取得 ${parsed.aliases.length} 个片名用于搜索`);
+                            }
+                        } catch (error) { check(); if (error.stop) throw error; diag('作品别名', '读取失败，继续按原片名严格匹配：' + error.message); }
+                        finally { diag('别名耗时', `${row.node.name} · ${((Date.now() - aliasStarted) / 1000).toFixed(1)} 秒`); }
+                    }
+                  }
+                  verify();
+                  if (group[0]?.parsed.tv) { status('查找整季字幕：' + group[0].parsed.query); await service.prepareSeason?.(group,config,verify); }
+                  for (const row of group) {
+                    const check = verify;
                     const started = Date.now();
                     check(); status(`查找字幕 ${done + 1}/${rows.length}：${row.node.name}`);
                     diag('源文件', row.node.name);
                     diag('作品解析', `片名：${row.parsed.query || '空'} · 年份：${row.parsed.year || '未知'} · 类型：${row.parsed.tv ? '剧集' : '电影/特别篇'} · 季：${row.parsed.season ?? '未知'} · 集：${row.parsed.episode ?? '未知'} · TMDB：${row.parsed.tmdbId || '无记录'}`);
-                    if (!row.parsed.tmdbId || !row.parsed.aliases?.length) {
-                        const credential = GM_getValue('cross-drive-tmdb-key', '');
-                        if (credential) {
-                            const aliasStarted = Date.now();
-                            try {
-                                const parsed = row.parsed;
-                                if (await subtitleEnrichAliases(parsed, credential, check, diag)) diag('作品别名', `已按${parsed.tmdbId ? '确认的 TMDB 编号' : '唯一同名同年结果'}读取 ${parsed.aliases.length} 个片名；搜索词仍为 ${subtitleQueryTitle(parsed.query, parsed.year)}`);
-                            } catch (error) { check(); diag('作品别名', '读取失败，继续按原片名严格匹配：' + error.message); }
-                            finally { diag('别名耗时', `${row.node.name} · ${((Date.now() - aliasStarted) / 1000).toFixed(1)} 秒`); }
-                        }
-                    }
                     diag('作品别名', row.parsed.aliases?.length ? row.parsed.aliases.join('；') : '无');
                     await searchSubtitleSources(row, config, service, drive, diag, check);
                     if (!row.selectedCandidate && row.candidates.length) diag('待选样例', row.candidates.slice(0, 8).map(candidate => subtitleCandidateLabel(candidate) + (candidate.matchReason ? '' : ' · 待确认：未满足自动选择条件')).join('；'));
@@ -4945,6 +5404,7 @@
                 const linkedSubtitleGroups = [...collected.linked.values()].filter(subtitles => subtitles.length).length;
                 diag('检查完成', `视频 ${inventory.length}，已关联字幕 ${linkedSubtitleGroups} 组`);
                 for (const row of inventory) {
+                    if (mediaRecords.explain) diag('识别记录', `${row.node.name} · ${mediaRecords.explain(row.node)}`);
                     const names = row.subtitles.map(sub => sub.name);
                     diag('现有字幕', `${row.node.name} · ${names.length ? names.join('、') : '未发现字幕文件'} · ${row.complete ? '文件名语言标记匹配' : '尚未确认语言'}`);
                 }

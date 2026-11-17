@@ -304,12 +304,12 @@ async function subtitleUI() {
     collectMediaSelection:async()=>({videos:[video],linked:new Map([['v',hasSubtitle?[sub]:[]]])}),
     parseMediaName:()=>({query:'电影',year:2000}),mediaBonusName:()=>false,mediaRecords:{get:()=>({query:'电影',year:2000,type:'movie',match:'movie:7'})},mediaStem:name=>name.replace(/\.[^.]+$/,''),
     GM_getValue:(key,def)=>key==='cross-drive-tmdb-key'?'fixture-key':key==='cross-drive-media-ai'?aiConfig:def,
-    tmdbClient:()=>({get:async(path,params)=>{aliasCalls++;assert.equal(path,'/movie/7');assert.equal(params.append_to_response,'alternative_titles');return {id:7,title:'电影完整名',original_title:'Film',release_date:'2000-01-01',alternative_titles:{titles:[{iso_3166_1:'TW',title:'电影别名'},{iso_3166_1:'FR',title:'Un film'}]}}}}),
+    tmdbClient:()=>({get:async(path,params)=>{aliasCalls++;assert.equal(path,'/movie/7');assert.ok(params.append_to_response === 'alternative_titles' || params.language === 'en-US');return {id:7,title:'电影完整名',original_title:'Film',release_date:'2000-01-01',alternative_titles:{titles:[{iso_3166_1:'TW',title:'电影别名'},{iso_3166_1:'FR',title:'Un film'}]}}}}),
     createSubtitleService:()=>({assrtSearch:async row=>{queries++;assert.equal(row.parsed.query,'电影');assert.ok(row.parsed.aliases.includes('Film'));assert.ok(row.parsed.aliases.includes('电影别名'));assert.ok(!row.parsed.aliases.includes('Un film'));if(aiCandidates)return [{source:'Assrt',assrtId:11,name:'Different.Translation.简体.srt',release:'First release',language:'zh-cn',titleMatched:false},{source:'Assrt',assrtId:12,name:'Another.Translation.简体.srt',release:'Second release',language:'zh-cn',titleMatched:false}];return ['A1','A2','B'].map(name=>({source:'Assrt',assrtId:name[0],name,language:'zh-cn',titleMatched:true}))},shooterHash:async()=>{queries++;return []},fetchFile:async candidate=>{downloads.push(candidate.name);if(candidate.name==='A1')throw Object.assign(Error('HTTP 493'),{status:493});return {result:{url:'https://example.com/subtitle',ext:'srt'},bytes:valid}}}),
     subtitleBinary:async()=>valid,
     subtitleDrive:()=>({sample:async()=>'',read:async()=>{reads++;if(broken)throw Error('连接失败');return readBytes},reconcile:async()=>recovered,save:async()=>{saves++;hasSubtitle=true;throw Object.assign(Error('上传已提交，核验连接失败'),{pendingUpload:true})}})
     });
-    vm.runInContext(part('    function subtitleInventory(', '    if (location.hostname'),ctx);
+    vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'../src/works.js'),'utf8')+part('    function subtitleInventory(', '    if (location.hostname'),ctx);
     ctx.initSubtitles();get('assrtToken').value='test';get('useThunder').checked=false;
     assert.match(panelMarkup,/复制完整报告/);assert.match(panelMarkup,/复制未补齐路径/);assert.match(panelMarkup,/OpenSubtitles 账号（提高下载配额，可选）/);
     assert.deepEqual(Array.from(movedSettings),['subtitleSettings','subtitleAccountSettings']);
@@ -325,7 +325,7 @@ async function subtitleUI() {
     recovered=[];readBytes=valid;
     hasSubtitle=false;await get('readSubtitles').onclick();assert.equal(queries,2);assert.equal(get('fillSubtitles').disabled,false);
     await get('fillSubtitles').onclick();assert.equal(saves,1);assert.match(get('subtitleProgress').textContent,/待核验 1，失败 0/);assert.equal(get('fillSubtitles').disabled,true);
-    assert.deepEqual(downloads,['A1','B'],'493 prioritizes another package before siblings of broken package');assert.equal(aliasCalls,1,'Old confirmed records lazily resolve trusted aliases');
+    assert.deepEqual(downloads,['A1','B'],'493 prioritizes another package before siblings of broken package');assert.equal(aliasCalls,2,'Shared work detail and English aliases are fetched once then persisted');
     await get('searchSubtitles').onclick();assert.equal(queries,2,'Pending upload cannot be searched/refilled');
     await get('recheckSubtitles').onclick();assert.match(get('subtitleSummary').textContent,/已有\/已补齐 1/);assert.equal(saves,1);assert.equal(queries,2,'Recheck only reads drive inventory');
     hasSubtitle=false;aiConfig={enabled:true,base:'https://ai.example',model:'test'};

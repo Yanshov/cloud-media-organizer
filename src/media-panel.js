@@ -243,6 +243,7 @@
             box.appendChild(toggle); update(); return select;
         };
         const render = () => {
+            const expanded = new Map([...ui.get('mediaRows').querySelectorAll('details[data-layout-key]')].map(box => [box.dataset.layoutKey,box.open]));
             ui.get('mediaRows').textContent = '';
             let ready = 0;
             const groups = new Map(), pendingGroups = new Map();
@@ -262,7 +263,7 @@
             for (const pending of pendingGroups.values()) {
                 const row = pending[0], group = groups.get(row.group);
                 const matchedGroup = pending.every(item => item.detail);
-                const box = document.createElement('details'); box.className = 'sync-item'; box.open = !matchedGroup;
+                const box = document.createElement('details'); box.className = 'sync-item'; box.dataset.layoutKey = 'group:' + row.group; box.open = expanded.get(box.dataset.layoutKey) || false;
                 const originalNames = [...new Set(group.map(item => group.length === 1 ? item.node.name : item.originalFolder || item.query || '未识别作品'))];
                 const title = document.createElement('summary'); title.textContent = `原：${originalNames.join(' / ')} · ${group.length} 个视频（${pending.length} 个待处理）${matchedGroup ? (pending.some(item => /季号|集号|季集/.test(item.error)) ? ' · 已匹配，需补季集' : ' · 已匹配，需处理异常') : ''}`; box.appendChild(title);
                 const matched = document.createElement('p'); matched.textContent = '匹配为：' + (row.detail ? `${row.title}（${row.year}） · ${row.detail.source || 'TMDB'}` : '尚未确定'); box.appendChild(matched);
@@ -292,7 +293,7 @@
                 if (!matchedGroup) box.appendChild(files);
                 ui.get('mediaRows').appendChild(box);
                 if (matchedGroup) for (const item of pending) {
-                    const card = document.createElement('details'); card.className = 'sync-item media-file-issue'; card.open = true;
+                    const card = document.createElement('details'); card.className = 'sync-item media-file-issue'; card.dataset.layoutKey = 'file:' + item.node.id; card.open = expanded.get(card.dataset.layoutKey) || false;
                     const heading = document.createElement('summary'); heading.textContent = '待处理文件：' + item.node.name; card.appendChild(heading);
                     const original = document.createElement('p'); original.textContent = '原位置：' + (item.node.originalPath || item.node.path); card.appendChild(original);
                     const issue = document.createElement('p'); issue.textContent = item.error || '请检查文件信息'; card.appendChild(issue);
@@ -323,7 +324,7 @@
             if (row.episodeInferred) { row.episode = null; row.episodeInferred = false; }
             row.match = match; row.detail = null; row.error = ''; row.title = ''; row.seasonEpisodes = [];
             if (!match) return;
-            const [type, id] = match.split(':'); const detail = await client.get('/' + type + '/' + id);
+            const [type, id] = match.split(':'); const detail = await mediaWorkDetail(client,type,id,checkStopped);
             row.detail = detail; row.type = type; row.title = detail.title || detail.name; row.year = (detail.release_date || detail.first_air_date || '').slice(0, 4); row.category = mediaCategory(detail, type); row.error = '';
         }
         async function validateEpisode(row) {

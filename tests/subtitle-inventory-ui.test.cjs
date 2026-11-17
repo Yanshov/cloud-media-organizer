@@ -63,7 +63,7 @@ const view = value => {get('subtitleView').value = value; get('subtitleView').on
     assert.match(get('subtitleCoverage').textContent,/视频 5 · 已有可用字幕 1 · 缺字幕 3 · 待核验 1/);
     assert.doesNotMatch(get('subtitleCoverage').textContent,/尚未检查/);
     assert.equal(get('subtitleView').value,'incomplete'); assert.equal(get('subtitleRows').children.length,4);
-    assert.ok(get('subtitleRows').children.every(group => group.open),'Default missing groups expose filenames without expansion');
+    assert.ok(get('subtitleRows').children.every(group => !group.open),'Default groups show compact summaries; details expand on demand');
     assert.doesNotMatch(shown(),/\/目录0\//); assert.match(shown(),/缺字幕 · 未查询/); assert.match(shown(),/待核验/);
     for (let i = 1; i < 5; i++) assert.ok(shown().includes('/影视库/目录' + i + '/同名影片.2020.mkv'),'Full paths distinguish duplicate filenames');
     const collapsed = get('subtitleRows').children[0]; collapsed.open = false;
