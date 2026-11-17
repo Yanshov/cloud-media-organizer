@@ -181,6 +181,7 @@
                 for (const row of rows) {
                     check(); status(`查找字幕 ${done + 1}/${rows.length}：${row.node.name}`);
                     diag('源文件', row.node.name);
+                    diag('作品解析', `片名：${row.parsed.query || '空'} · 年份：${row.parsed.year || '未知'} · 类型：${row.parsed.tv ? '剧集' : '电影/特别篇'} · 季：${row.parsed.season ?? '未知'} · 集：${row.parsed.episode ?? '未知'} · TMDB：${row.parsed.tmdbId || '无记录'}`);
                     if (!row.parsed.tmdbId || !row.parsed.aliases?.length) {
                         const credential = GM_getValue('cross-drive-tmdb-key', '');
                         if (credential) {
@@ -190,6 +191,7 @@
                             } catch (error) { check(); diag('作品别名', '读取失败，继续按原片名严格匹配：' + error.message); }
                         }
                     }
+                    diag('作品别名', row.parsed.aliases?.length ? row.parsed.aliases.join('；') : '无');
                     await searchSubtitleSources(row, config, service, drive, diag, check);
                     if (ai && subtitleSearchState(row) === 'choice' && row.candidates.length >= 2) {
                         const candidates = row.candidates.slice(0, 3).map((candidate, index) => ({index, source:candidate.source, language:candidate.language, bilingual:!!candidate.bilingual, release:String(candidate.release || '').slice(0, 80), name:String(candidate.name || '').slice(0, 160)}));
@@ -206,6 +208,7 @@
                             } else diag('AI 字幕建议', `${row.node.name} · 结果未通过作品、季集、置信度、语言或版本检查，保留待选择`);
                         } catch (error) { check(); diag('AI 字幕建议', `${row.node.name} · 消歧失败，保留待选择：${error.message}`); aiParseFailures = error.aiParse ? aiParseFailures + 1 : 0; if (aiParseFailures >= 2) { ai = null; diag('AI 字幕建议', '连续两次解析失败，本批剩余 AI 消歧已停用'); } }
                     }
+                    if (!row.selectedCandidate && row.candidates.length) diag('待选样例', row.candidates.slice(0, 8).map(candidate => `${subtitleCandidateLabel(candidate)}（${candidate.matchReason || '未满足自动选择条件'}）`).join('；'));
                     diag('视频结果', `${row.node.name} · ${row.selectedCandidate ? (row.aiSuggested ? 'AI 建议 ' : '自动选择 ') + subtitleCandidateLabel(row.selectedCandidate) : row.candidates.length ? '有候选待手选' : row.sources.some(source => source.error) ? '查询失败' : '未找到'}`);
                     meter(++done, rows.length); render();
                 }

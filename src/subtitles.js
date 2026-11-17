@@ -296,6 +296,8 @@
                 const excluded = {年份:0,季集:0,语言:0,内容:0,无关:0,待确认上限:0};
                 let mainSearch = false;
                 let pages = 0, rejected = 0, uncertain = 0;
+                const rejectionSamples = [];
+                const sampleRejection = (name, reason) => { if (rejectionSamples.length < 8) rejectionSamples.push(`${name}（${reason}）`); };
                 const wanted = (config.language || 'zh-cn,zh-tw,zh').split(',');
                 const preferred = candidate => candidate.titleMatched && (wanted.includes(candidate.language) || candidate.bilingual && wanted.includes('en'));
                 const seasonKey = parsed.tv ? JSON.stringify([config.assrtToken,title.toLowerCase(),parsed.year || '',parsed.tmdbId || '',parsed.season]) : '';
@@ -318,11 +320,11 @@
                         for (const file of files) {
                             const name = String(file.f), identity = release + ' ' + name;
                             const episodeMismatch = parsed.tv ? !(assrtEpisode(name, parsed) || !/S\d+[ ._-]*E\d+/i.test(name) && assrtEpisode(release, parsed)) : /S\d+[ ._-]*E\d+/i.test(identity);
-                            if (episodeMismatch) { excluded.季集++; dropped++; continue; }
+                            if (episodeMismatch) { excluded.季集++; dropped++; sampleRejection(name, '季集不符'); continue; }
                             const info = subtitleFileInfo(name, language);
-                            if (info.language && !['zh-cn','zh-tw','zh','en'].includes(info.language) && !wanted.includes(info.language)) { excluded.语言++; dropped++; continue; }
+                            if (info.language && !['zh-cn','zh-tw','zh','en'].includes(info.language) && !wanted.includes(info.language)) { excluded.语言++; dropped++; sampleRejection(name, '语言 ' + info.language); continue; }
                             const match = subtitleCandidateFilter({...parsed,aliases:[...aliases]}, [item.native_name,item.videoname,detail.native_name,detail.title], name);
-                            if (match.excluded) { excluded[match.excluded]++; dropped++; continue; }
+                            if (match.excluded) { excluded[match.excluded]++; dropped++; sampleRejection(name, match.matchReason || match.excluded); continue; }
                             if (mainSearch) { match.titleMatched = false; match.matchReason = '主名兜底搜索，需确认完整片名'; }
                             if (files.length === 1 && langs.langdou && info.language.startsWith('zh')) info.bilingual = true;
                             if (!match.titleMatched && ++uncertain > 60) { excluded.待确认上限++; dropped++; continue; }
@@ -366,7 +368,8 @@
                     for (let pos = 0; pos < 75; pos += 15) {
                         check(); pages++;
                         const key = JSON.stringify(['assrt',config.assrtToken,q,pos]);
-                        if (!searchCache.has(key)) {
+                        const cachedSearch = searchCache.has(key);
+                        if (!cachedSearch) {
                             searchCache.set(key, assrtRequest('search',config,{q,cnt:15,pos,filelist:1}).catch(error => {searchCache.delete(key); throw error;}));
                             evict(searchCache, 200);
                         }
@@ -380,7 +383,7 @@
                         if (Array.isArray(result.sub?.subs)) items = result.sub.subs;
                         else if (result.sub && result.sub.subs != null && !Object.keys(result.sub.subs).length) items = [];
                         else throw new Error('Assrt 搜索返回格式异常');
-                        log('Assrt 搜索页', `搜索片名：${q} · 起始 ${pos} · 返回 ${items.length} 组资源`);
+                        log('Assrt 搜索页', `搜索片名：${q} · 起始 ${pos} · 返回 ${items.length} 组资源 · ${cachedSearch ? '使用缓存' : '请求来源'}`);
                         let fresh = 0;
                         for (const item of items) if (await collect(item)) fresh++;
                         const reliable = candidates.filter(preferred);
@@ -390,6 +393,7 @@
                     if (candidates.some(candidate => candidate.titleMatched)) break;
                 }
                 for (const candidate of candidates) candidate.parsed.aliases = [...aliases];
+                if (rejectionSamples.length) log('Assrt 排除样例', rejectionSamples.join('；'));
                 log('Assrt 筛选', `查询 ${pages} 页 · 保留 ${candidates.length} 份 · 排除 ${rejected} 份（${Object.entries(excluded).map(([reason,count]) => reason + ' ' + count).join('，')}）· 待确认 ${candidates.filter(candidate => !candidate.titleMatched).length} 份`);
                 return candidates;
             },
@@ -401,6 +405,7 @@
                 if (parsed.endEpisode && parsed.endEpisode !== parsed.episode) throw new Error('合并多集视频需单独选字幕');
                 const query = title + (parsed.tv ? ' S' + String(parsed.season).padStart(2,'0') + 'E' + String(parsed.episode).padStart(2,'0') : '');
                 const cacheKey = JSON.stringify(['thunder', query]);
+                log('迅雷 查询', `实际搜索词：${query} · ${searchCache.has(cacheKey) ? '使用缓存' : '请求来源'}`);
                 if (!searchCache.has(cacheKey)) {
                     searchCache.set(cacheKey, thunderRequest(query, verify).then(result => {
                         if (Number(result?.code) !== 0 || !Array.isArray(result?.data)) throw new Error('迅雷字幕接口返回异常：' + String(result?.result || result?.code || '格式错误').slice(0, 120));
@@ -409,7 +414,9 @@
                     evict(searchCache, 200);
                 }
                 const items = await searchCache.get(cacheKey); check(); verify();
-                const candidates = [], seen = new Set(), excluded = {年份:0,季集:0,语言:0,内容:0,无关:0,待确认上限:0};
+                const candidates = [], seen = new Set(), excluded = {年份:0,季集:0,语言:0,内容:0,无关:0,待确认上限:0}, rejectionSamples = [];
+                const sampleRejection = (name, reason) => { if (rejectionSamples.length < 8) rejectionSamples.push(`${name}（${reason}）`); };
+                log('迅雷 响应', `返回 ${items.length} 条原始结果`);
                 for (const item of items) {
                     check(); verify();
                     if (!item || typeof item.name !== 'string' || !item.name.trim()) continue;
@@ -420,19 +427,20 @@
                     if (seen.has(url)) continue;
                     seen.add(url);
                     const episodeTagged = /S\d+[ ._-]*E\d+/i.test(name);
-                    if (episodeTagged && (!parsed.tv || !assrtEpisode(name, parsed))) { excluded.季集++; continue; }
+                    if (episodeTagged && (!parsed.tv || !assrtEpisode(name, parsed))) { excluded.季集++; sampleRejection(name, '季集不符'); continue; }
                     const match = subtitleCandidateFilter(parsed, [], name);
-                    if (match.excluded) { excluded[match.excluded]++; continue; }
+                    if (match.excluded) { excluded[match.excluded]++; sampleRejection(name, match.matchReason || match.excluded); continue; }
                     const labels = [Array.isArray(item.languages) ? item.languages.join(' ') : '', item.simple_name || ''].join(' ').replace(/\\u0026/gi, '&').replace(/英语/g, '英文');
                     const metadata = subtitleFileInfo(labels), info = subtitleFileInfo(name, metadata.language);
                     info.bilingual ||= metadata.bilingual && info.language.startsWith('zh');
                     const titleMatched = match.titleMatched && (!parsed.tv || episodeTagged);
-                    if (info.language && !(config.language || 'zh-cn,zh-tw,zh').split(',').includes(info.language) && !info.bilingual && !info.language.startsWith('zh') && info.language !== 'en') { excluded.语言++; continue; }
+                    if (info.language && !(config.language || 'zh-cn,zh-tw,zh').split(',').includes(info.language) && !info.bilingual && !info.language.startsWith('zh') && info.language !== 'en') { excluded.语言++; sampleRejection(name, '语言 ' + info.language); continue; }
                     if (candidates.length >= 60) { excluded.待确认上限++; continue; }
                     candidates.push({source:'迅雷', name, ...info, titleMatched, opaque:!!match.opaque, matchReason:parsed.tv && !episodeTagged ? '文件未标明准确季集' : match.matchReason, url, ext, release:name});
                 }
                 onFiles(`${query} · ${candidates.length} 份字幕文件` + (candidates.length ? '：' + candidates.slice(0, 12).map(candidate => candidate.name).join('；') + (candidates.length > 12 ? '；…' : '') : ''));
                 candidates.sort((a,b) => Number(a.opaque) - Number(b.opaque));
+                if (rejectionSamples.length) log('迅雷 排除样例', rejectionSamples.join('；'));
                 log('迅雷 筛选', `保留 ${candidates.length} 份 · 排除 ${Object.values(excluded).reduce((a,b) => a + b,0)} 份（${Object.entries(excluded).map(([reason,count]) => reason + ' ' + count).join('，')}）· 待确认 ${candidates.filter(candidate => !candidate.titleMatched).length} 份`);
                 return candidates;
             },
