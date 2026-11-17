@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v3.0（重构版）
 // @namespace    local.cloud-media-organizer
-// @version      3.3.2
+// @version      3.3.3
 // @description  百度/123/光鸭跨盘清单，123/光鸭影视整理、字幕搜索与核验上传
 // @match        https://pan.baidu.com/*
 // @match        https://yun.baidu.com/*
@@ -38,7 +38,7 @@
 (() => {
     'use strict';
 
-    const VERSION = '3.3.2';
+    const VERSION = '3.3.3';
     let jsonTaskStopped = false;
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
@@ -322,7 +322,7 @@
         const main = create('div', 'tool-main'), side = create('aside', 'tool-sidebar');
         const status = create('section', 'tool-card tool-status');
         status.append(create('h4', '', '当前状态'));
-        const statusIds = id === 'subtitle' ? ['subtitleProgress','subtitleMeter','subtitleCoverage','subtitleSummary']
+        const statusIds = id === 'subtitle' ? ['subtitleProgress','subtitleMeter','subtitleSummary']
             : id === 'media' ? ['mediaTarget','mediaProgress','mediaMeter','mediaSummary','mediaRecordState'] : ['status','target','progress'];
         for (const name of statusIds) take(status, '#' + name);
         side.append(status);
@@ -374,7 +374,7 @@
         }
         // A single work surface with a persistent status area, rather than a second sidebar.
         const overview = create('div', 'tool-overview');
-        for (const selector of ['#subtitleCoverage','#subtitleSummary','#mediaSummary']) {
+        for (const selector of ['#subtitleSummary','#mediaSummary']) {
             const node = status.querySelector(selector); if (node) overview.append(node);
         }
         if (overview.children.length) main.prepend(overview);
@@ -391,12 +391,13 @@
             const pager = create('nav', 'tool-pagination'); pager.setAttribute('aria-label', '作品列表分页');
             const previous = create('button', '', '上一页'), next = create('button', '', '下一页'), label = create('span', '');
             previous.type = next.type = 'button'; label.setAttribute('aria-live', 'polite'); pager.append(previous, label, next); rows.after(pager);
+            const pageSize = id === 'subtitle' ? 2 : 4;
             let current = 0;
             const render = () => {
-                const items = [...rows.children], pages = Math.max(1, Math.ceil(items.length / 4));
+                const items = [...rows.children], pages = Math.max(1, Math.ceil(items.length / pageSize));
                 current = Math.min(current, pages - 1);
-                items.forEach((node, index) => node.classList.toggle('outside-page', Math.floor(index / 4) !== current));
-                pager.hidden = items.length <= 4;
+                items.forEach((node, index) => node.classList.toggle('outside-page', Math.floor(index / pageSize) !== current));
+                pager.hidden = items.length <= pageSize;
                 label.textContent = `${current + 1} / ${pages} 页 · 共 ${items.length} 项`;
                 previous.disabled = current === 0; next.disabled = current === pages - 1;
             };
@@ -5125,7 +5126,6 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             <div class="panel-actions"><button id="recheckSubtitles">检查目录字幕</button><button id="readSubtitles">查找字幕</button><button id="auditSubtitles" disabled>强制复查已有字幕</button><button id="fillSubtitles" disabled>补齐字幕</button><button id="stopSubtitles" hidden>停止</button></div>
             <p id="subtitleProgress" role="status">先在网页勾选视频或文件夹。</p>
             <progress id="subtitleMeter" max="1" value="0" hidden style="width:100%;accent-color:#666"></progress>
-            <div id="subtitleCoverage" hidden class="sync-preview" style="white-space:pre-wrap" role="status"></div>
             <div id="subtitleSummary" hidden class="sync-preview"></div>
             <label>显示<select id="subtitleView"><option id="subtitleViewIncomplete" value="incomplete">未补齐</option><option id="subtitleViewChoice" value="choice">待选择</option><option id="subtitleViewPending" value="pending">待核验</option><option id="subtitleViewComplete" value="complete">已有字幕</option><option id="subtitleViewAll" value="all">全部</option></select></label>
             <p id="subtitleEmpty">先勾选目录或视频，再点击“检查目录字幕”。</p>
@@ -5154,7 +5154,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             <p>缺字幕指未发现符合当前语言要求的可用外置文本字幕；读取失败、疑似错片或上传结果未确认的单列为“待核验”，不当作确定缺失。只检查最近一次勾选的范围及其子目录，不检测视频内嵌字幕。“已有/已补齐”表示通过基础检查，不代表作品或音画同步已确认。强制复查跳过缓存；启用 AI 时会发送少量对白片段辅助判断作品。</p>
 `, 'subtitle');
         ui.moveSettings(['subtitleSettings']);
-        let inventory = [], drive = null, subtitleContext = null, deletePlan = null, busy = false, cancelled = false, reviewCandidates = null, scope = '';
+        let inventory = [], drive = null, subtitleContext = null, deletePlan = null, busy = false, cancelled = false, reviewCandidates = null, scope = '', coverageText = '';
         const deleteSelection = new Set();
         ui.get('subtitleView').value = 'incomplete';
         const service = createSubtitleService({check:() => check(), log:(event, detail) => diag(event, detail)});
@@ -5199,8 +5199,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             for (const row of inventory) coverage[subtitleCoverageState(row)]++;
             const view = ui.get('subtitleView').value;
             const choices = inventory.filter(row => subtitleSearchState(row) === 'choice').length;
-            ui.get('subtitleCoverage').hidden = !inventory.length;
-            ui.get('subtitleCoverage').textContent = `检查范围：${scope}（最近一次勾选范围及其子目录）\n视频 ${inventory.length} · 已有可用字幕 ${coverage.complete} · 缺字幕 ${coverage.missing} · 待核验 ${coverage.pending}` + (coverage.unchecked ? ` · 尚未检查 ${coverage.unchecked}` : '');
+            coverageText = `检查范围：${scope}（最近一次勾选范围及其子目录）\n视频 ${inventory.length} · 已有可用字幕 ${coverage.complete} · 缺字幕 ${coverage.missing} · 待核验 ${coverage.pending}` + (coverage.unchecked ? ` · 尚未检查 ${coverage.unchecked}` : '');
             for (const [id,label,count] of [['Incomplete','未补齐',missing.length],['Choice','待选择',choices],['Pending','待核验',coverage.pending],['Complete','已有字幕',coverage.complete],['All','全部',inventory.length]]) ui.get('subtitleView' + id).textContent = `${label}（${count}）`;
             ui.get('subtitleSummary').hidden = !inventory.some(row => row.sources?.length);
             ui.get('subtitleSummary').textContent = subtitleSearchSummary(inventory);
@@ -5488,7 +5487,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             finally { ui.get('subtitlePassword').value = ''; lock(false); }
         };
         ui.get('copySubtitleReport').onclick = async () => {
-            const report = ui.get('subtitleCoverage').textContent + '\n' + subtitleSearchSummary(inventory) + '\n\n' + inventory.map(row => row.path + '\n' + (row.error || row.searchMessage || '未查询')).join('\n\n');
+            const report = coverageText + '\n' + subtitleSearchSummary(inventory) + '\n\n' + inventory.map(row => row.path + '\n' + (row.error || row.searchMessage || '未查询')).join('\n\n');
             try { await navigator.clipboard.writeText(report); status('查询结果已复制，不包含密钥和下载地址。'); }
             catch (error) { status('复制失败：' + error.message); }
         };

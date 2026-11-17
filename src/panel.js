@@ -47,7 +47,7 @@
         const main = create('div', 'tool-main'), side = create('aside', 'tool-sidebar');
         const status = create('section', 'tool-card tool-status');
         status.append(create('h4', '', '当前状态'));
-        const statusIds = id === 'subtitle' ? ['subtitleProgress','subtitleMeter','subtitleCoverage','subtitleSummary']
+        const statusIds = id === 'subtitle' ? ['subtitleProgress','subtitleMeter','subtitleSummary']
             : id === 'media' ? ['mediaTarget','mediaProgress','mediaMeter','mediaSummary','mediaRecordState'] : ['status','target','progress'];
         for (const name of statusIds) take(status, '#' + name);
         side.append(status);
@@ -99,7 +99,7 @@
         }
         // A single work surface with a persistent status area, rather than a second sidebar.
         const overview = create('div', 'tool-overview');
-        for (const selector of ['#subtitleCoverage','#subtitleSummary','#mediaSummary']) {
+        for (const selector of ['#subtitleSummary','#mediaSummary']) {
             const node = status.querySelector(selector); if (node) overview.append(node);
         }
         if (overview.children.length) main.prepend(overview);
@@ -116,12 +116,13 @@
             const pager = create('nav', 'tool-pagination'); pager.setAttribute('aria-label', '作品列表分页');
             const previous = create('button', '', '上一页'), next = create('button', '', '下一页'), label = create('span', '');
             previous.type = next.type = 'button'; label.setAttribute('aria-live', 'polite'); pager.append(previous, label, next); rows.after(pager);
+            const pageSize = id === 'subtitle' ? 2 : 4;
             let current = 0;
             const render = () => {
-                const items = [...rows.children], pages = Math.max(1, Math.ceil(items.length / 4));
+                const items = [...rows.children], pages = Math.max(1, Math.ceil(items.length / pageSize));
                 current = Math.min(current, pages - 1);
-                items.forEach((node, index) => node.classList.toggle('outside-page', Math.floor(index / 4) !== current));
-                pager.hidden = items.length <= 4;
+                items.forEach((node, index) => node.classList.toggle('outside-page', Math.floor(index / pageSize) !== current));
+                pager.hidden = items.length <= pageSize;
                 label.textContent = `${current + 1} / ${pages} 页 · 共 ${items.length} 项`;
                 previous.disabled = current === 0; next.disabled = current === pages - 1;
             };

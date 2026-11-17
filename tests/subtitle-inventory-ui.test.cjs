@@ -51,6 +51,7 @@ const shown = () => get('subtitleRows').querySelectorAll('p').map(row => row.tex
 const view = value => {get('subtitleView').value = value; get('subtitleView').onchange();};
 
 (async () => {
+    assert.match(source,/const pageSize = id === 'subtitle' \? 2 : 4/,'Subtitle cards show two per page; media pages retain four');
     ctx.initSubtitles();
     assert.equal(get('recheckSubtitles').disabled,false,'Directory inventory is available without first searching providers');
     let releaseRead;
@@ -58,15 +59,12 @@ const view = value => {get('subtitleView').value = value; get('subtitleView').on
     const checking = get('recheckSubtitles').onclick();
     // Three existing-subtitle reads may overlap; rows without files finish first.
     for (let i = 0; i < 100 && reads < 3; i++) await Promise.resolve();
-    assert.equal(reads,3,'Directory UI overlaps up to three subtitle reads: ' + get('subtitleProgress').textContent + ' / ' + get('subtitleCoverage').textContent + ' / ' + shown() + ' / ' + get('subtitleLog').value);
-    assert.match(get('subtitleCoverage').textContent,/缺字幕 2 · 待核验 0 · 尚未检查 3/);
+    assert.equal(reads,3,'Directory UI overlaps up to three subtitle reads: ' + get('subtitleProgress').textContent + ' / ' + shown() + ' / ' + get('subtitleLog').value);
+    assert.equal(elements.has('subtitleCoverage'),false,'The redundant coverage card is removed from the UI');
     assert.match(shown(),/尚未检查/);
     pauseRead = null; releaseRead(); await checking;
     assert.equal(reads,3); assert.equal(queried.length,0); assert.equal(saves,0);
     assert.equal(get('subtitleSummary').hidden,true,'Inventory alone shows coverage rather than empty provider statistics');
-    assert.match(get('subtitleCoverage').textContent,/影视库.*本次所选文件夹/);
-    assert.match(get('subtitleCoverage').textContent,/视频 5 · 已有可用字幕 1 · 缺字幕 3 · 待核验 1/);
-    assert.doesNotMatch(get('subtitleCoverage').textContent,/尚未检查/);
     assert.equal(get('subtitleView').value,'incomplete'); assert.equal(get('subtitleRows').children.length,4);
     assert.ok(get('subtitleRows').children.every(group => !group.open),'Default groups show compact summaries; details expand on demand');
     assert.doesNotMatch(shown(),/\/目录0\//); assert.match(shown(),/缺字幕 · 未查询/); assert.match(shown(),/待核验/);
@@ -76,7 +74,6 @@ const view = value => {get('subtitleView').value = value; get('subtitleView').on
     assert.deepEqual(queried,['ready','failure','invalid'],'Neither complete nor pending files are searched');
     assert.equal(get('subtitleSummary').hidden,false);
     assert.equal(get('subtitleRows').children[0].open,false,'Rerender preserves an explicitly collapsed group');
-    assert.match(get('subtitleCoverage').textContent,/缺字幕 3 · 待核验 1/,'Search failure and search success both remain missing until upload succeeds');
     assert.match(shown(),/缺字幕 · 可补齐/); assert.match(shown(),/缺字幕 · 失败/); assert.match(shown(),/缺字幕 · 未找到/);
     view('choice'); assert.equal(get('subtitleRows').children.length,0); assert.equal(get('subtitleEmpty').hidden,false); assert.match(get('subtitleEmpty').textContent,/切换到“未补齐”/);
     await get('copyMissingSubtitles').onclick();
@@ -87,14 +84,14 @@ const view = value => {get('subtitleView').value = value; get('subtitleView').on
     view('complete'); assert.equal(get('subtitleRows').children.length,1); assert.match(shown(),/\/目录0\//);
     view('all'); assert.equal(get('subtitleRows').children.length,5);
     view('incomplete'); await get('fillSubtitles').onclick();
-    assert.equal(saves,1); assert.match(get('subtitleCoverage').textContent,/已有可用字幕 2 · 缺字幕 2 · 待核验 1/);
+    assert.equal(saves,1);
     assert.doesNotMatch(shown(),/\/目录1\//); assert.equal(get('subtitleRows').children.length,3);
     await get('copyMissingSubtitles').onclick(); assert.equal(copies.at(-1).split('\n').length,3); assert.doesNotMatch(copies.at(-1),/\/目录1\//);
     view('choice'); await get('recheckSubtitles').onclick(); assert.equal(get('subtitleView').value,'incomplete','A new directory check exposes unresolved files even after choosing the choice-only filter');
     empty = true; await get('recheckSubtitles').onclick();
-    assert.equal(get('subtitleCoverage').hidden,true); assert.equal(get('copyMissingSubtitles').disabled,true); assert.doesNotMatch(get('subtitleEmpty').textContent,/均已有/);
+    assert.equal(elements.has('subtitleCoverage'),false); assert.equal(get('copyMissingSubtitles').disabled,true); assert.doesNotMatch(get('subtitleEmpty').textContent,/均已有/);
     empty = false; collectionError = true; await get('recheckSubtitles').onclick();
-    assert.equal(get('subtitleCoverage').hidden,true); assert.equal(get('subtitleRows').children.length,0); assert.match(get('subtitleProgress').textContent,/目录读取失败/);
+    assert.equal(elements.has('subtitleCoverage'),false); assert.equal(get('subtitleRows').children.length,0); assert.match(get('subtitleProgress').textContent,/目录读取失败/);
     collectionError = false; await get('recheckSubtitles').onclick(); view('all');
     const checkboxes=()=>get('subtitleRows').querySelectorAll('input');
     assert.equal(checkboxes().length,3,'Only subtitle files linked to a unique video are offered for deletion');
@@ -102,6 +99,6 @@ const view = value => {get('subtitleView').value = value; get('subtitleView').on
     get('reviewSubtitleDeletes').onclick();assert.match(get('subtitleDeleteList').textContent,/目录0\/同名影片\.2020\.zh-cn\.srt/);assert.equal(get('subtitleDeletePreview').open,true);
     const original=siblings.get('folder-complete')[1];original.name='其他影片.zh-cn.srt';await get('confirmSubtitleDeletes').onclick();assert.equal(deleted.length,0,'Stale subtitle name blocks deletion');assert.match(get('subtitleProgress').textContent,/失败 1 个/);
     original.name='同名影片.2020.zh-cn.srt';siblings.get('folder-complete')[0].name='另一个作品.mkv';get('reviewSubtitleDeletes').onclick();await get('confirmSubtitleDeletes').onclick();assert.equal(deleted.length,0,'Changed associated video blocks deletion');
-    siblings.get('folder-complete')[0].name='同名影片.2020.mkv';get('reviewSubtitleDeletes').onclick();await get('confirmSubtitleDeletes').onclick();assert.deepEqual(deleted,['s-complete']);assert.match(get('subtitleCoverage').textContent,/已有可用字幕 0/,'Deletion triggers a fresh subtitle status check');
+    siblings.get('folder-complete')[0].name='同名影片.2020.mkv';get('reviewSubtitleDeletes').onclick();await get('confirmSubtitleDeletes').onclick();assert.deepEqual(deleted,['s-complete']);assert.match(get('subtitleProgress').textContent,/已移入回收站 1 个/,'Deletion triggers a fresh subtitle status check');
     console.log('PASS subtitle directory inventory: scan makes no provider/write calls; incomplete vs pending vs unchecked states, full paths, filters/empty states, collapse preservation, copy scope, fill updates, stale-scan clearing and previewed safe batch deletion (mocked API/DOM)');
 })().catch(error => {console.error(error); process.exitCode = 1;});
