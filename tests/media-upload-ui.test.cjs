@@ -307,7 +307,7 @@ async function subtitleUI() {
     subtitleDrive:()=>({sample:async()=>'',read:async()=>{reads++;if(broken)throw Error('连接失败');return valid},reconcile:async()=>[],save:async()=>{saves++;hasSubtitle=true;throw Object.assign(Error('上传已提交，核验连接失败'),{pendingUpload:true})}})
     });
     vm.runInContext(part('    function subtitleInventory(', '    if (location.hostname'),ctx);
-    ctx.initSubtitles();get('assrtToken').value='test';
+    ctx.initSubtitles();get('assrtToken').value='test';get('useThunder').checked=false;
     assert.match(panelMarkup,/复制完整报告/);assert.match(panelMarkup,/复制未补齐路径/);assert.match(panelMarkup,/OpenSubtitles 账号（提高下载配额，可选）/);
     assert.deepEqual(Array.from(movedSettings),['subtitleSettings','subtitleAccountSettings']);
     await get('readSubtitles').onclick();

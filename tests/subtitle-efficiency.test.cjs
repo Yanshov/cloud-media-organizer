@@ -102,7 +102,7 @@ async function fillFallback() {
  collectMediaSelection:async()=>({videos:[video],linked:new Map()}),parseMediaName:()=>row().parsed,mediaBonusName:()=>false,mediaRecords:{get:()=>null},mediaStem:name=>name.replace(/\.[^.]+$/,''),
  subtitleDrive:()=>({sample:async()=>{calls.push('sample');return 'hash'},reconcile:async()=>[],save:async(_row,name)=>{saves++;calls.push('save');return {id:'s',name}}})});
  ctx.createSubtitleService=()=>({assrtSearch:async()=>{calls.push('assrt');return [bi]},shooterHash:async()=>{calls.push('shooter');return [{...bi,source:'射手',hashMatched:true}]},fetchFile:async c=>{calls.push('download-'+c.source);if(c.source==='Assrt')throw Error('正文无效');return {result:{ext:'srt'},bytes:valid}}});
- vm.runInContext(part('    function subtitleInventory(', '    if (location.hostname'),ctx);ctx.initSubtitles();elements.get('assrtToken').value='test';
+ vm.runInContext(part('    function subtitleInventory(', '    if (location.hostname'),ctx);ctx.initSubtitles();elements.get('assrtToken').value='test';elements.get('useThunder').checked=false;
  await elements.get('readSubtitles').onclick();assert.deepEqual(calls,['assrt']);
  await elements.get('fillSubtitles').onclick();assert.deepEqual(calls,['assrt','download-Assrt','sample','shooter','download-射手','save']);assert.equal(saves,1);assert.match(elements.get('subtitleSummary').textContent,/已有\/已补齐 1/);
  assert.match(elements.get('subtitleLog').value,/来源补查/);

@@ -27,6 +27,7 @@
             <label><input id="useAssrt" type="checkbox" checked>Assrt 射手网 · 按片名搜索</label>
             <label><span class="credential-head"><span>Assrt API Token</span><a href="https://assrt.net/api/user/token" target="_blank" rel="noopener noreferrer">获取 Token ↗</a></span><input id="assrtToken" type="password" autocomplete="off"></label>
             <p>电影按不带年份的片名搜索；剧集先按片名＋季集搜索，没结果再按片名搜索。需要个人 Token，额度以服务返回为准；未配置不算作“未找到”。获取页面不可用时，无法在脚本内代办 Token。</p>
+            <label><input id="useThunder" type="checkbox" checked>迅雷 · 按片名搜索（免 Key，免费）</label>
             <label><input id="useOpenSubtitles" type="checkbox">OpenSubtitles（可选，受账号额度限制）</label>
             <label><span class="credential-head"><span>OpenSubtitles API Key</span><a href="https://www.opensubtitles.com/en/consumers" target="_blank" rel="noopener noreferrer">获取 API ↗</a></span><input id="openSubtitlesKey" type="password" autocomplete="off"></label>
             <p>注册并登录官网 → API Consumers → 创建应用 → 复制 API Key。下载配额以账号返回为准。</p>
@@ -53,9 +54,10 @@
         ui.get('useOpenSubtitles').checked = prefs.open === true;
         ui.get('useShooter').checked = prefs.shooter !== false;
         ui.get('useAssrt').checked = prefs.assrt !== false;
+        ui.get('useThunder').checked = prefs.thunder !== false;
         ui.get('assrtToken').value = prefs.assrtToken || '';
         ui.get('subtitleLanguage').value = prefs.language || 'zh-cn,zh-tw,zh';
-        const settings = () => ({key:ui.get('openSubtitlesKey').value.trim(), language:ui.get('subtitleLanguage').value, open:ui.get('useOpenSubtitles').checked, shooter:ui.get('useShooter').checked, assrt:ui.get('useAssrt').checked, assrtToken:ui.get('assrtToken').value.trim()});
+        const settings = () => ({key:ui.get('openSubtitlesKey').value.trim(), language:ui.get('subtitleLanguage').value, open:ui.get('useOpenSubtitles').checked, shooter:ui.get('useShooter').checked, assrt:ui.get('useAssrt').checked, thunder:ui.get('useThunder').checked, assrtToken:ui.get('assrtToken').value.trim()});
         const status = text => { ui.get('subtitleProgress').textContent = text; };
         const diag = (event, detail = '') => {
             const config = settings();
@@ -118,16 +120,17 @@
         };
         const lock = value => {
             busy = value; ui.busy(value);
-            for (const id of ['readSubtitles','recheckSubtitles','clearSubtitles','saveSubtitleSettings','forgetSubtitleKey','loginSubtitles','openSubtitlesKey','subtitleUsername','subtitlePassword','useOpenSubtitles','useShooter','useAssrt','assrtToken','subtitleLanguage']) ui.get(id).disabled = value;
+            for (const id of ['readSubtitles','recheckSubtitles','clearSubtitles','saveSubtitleSettings','forgetSubtitleKey','loginSubtitles','openSubtitlesKey','subtitleUsername','subtitlePassword','useOpenSubtitles','useShooter','useAssrt','useThunder','assrtToken','subtitleLanguage']) ui.get(id).disabled = value;
             ui.get('stopSubtitles').hidden = !value; ui.get('stopSubtitles').disabled = !value; render();
         };
         const searchRows = async rows => {
             rows = rows.filter(row => !row.complete && !row.pendingVerification);
             if (!rows.length) return;
             const config = settings();
-            if (!config.shooter && !(config.assrt && config.assrtToken) && !(config.open && config.key)) { ui.openSettings('subtitleSettings'); status('请填写 Assrt Token 以按片名搜索；也可配置其他来源。'); return; }
-            diag('查找开始', `视频 ${rows.length}，语言 ${config.language}，启用来源：${[config.assrt && 'Assrt', config.open && config.key && 'OpenSubtitles', config.shooter && '射手'].filter(Boolean).join('、') || '无'}`);
+            if (!config.thunder && !config.shooter && !(config.assrt && config.assrtToken) && !(config.open && config.key)) { ui.openSettings('subtitleSettings'); status('请启用迅雷免 Key 搜索，或配置其他字幕来源。'); return; }
+            diag('查找开始', `视频 ${rows.length}，语言 ${config.language}，启用来源：${[config.assrt && 'Assrt', config.thunder && '迅雷', config.open && config.key && 'OpenSubtitles', config.shooter && '射手'].filter(Boolean).join('、') || '无'}`);
             if (!config.assrt) diag('来源跳过', 'Assrt 已关闭');
+            if (!config.thunder) diag('来源跳过', '迅雷 已关闭');
             if (!config.open) diag('来源跳过', 'OpenSubtitles 已关闭');
             else if (!config.key) diag('来源跳过', 'OpenSubtitles 未配置 API Key');
             if (!config.shooter) diag('来源跳过', '射手已关闭');

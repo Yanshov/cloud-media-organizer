@@ -20,6 +20,8 @@
 // @grant        GM_xmlhttpRequest
 // @connect      api.opensubtitles.com
 // @connect      api.assrt.net
+// @connect      api-shoulei-ssl.xunlei.com
+// @connect      subtitle.v.geilijiasu.com
 // @connect      www.shooter.cn
 // @connect      shooter.cn
 // @connect      *
