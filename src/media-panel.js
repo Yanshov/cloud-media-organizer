@@ -15,7 +15,7 @@
             <div class="panel-actions"><button id="saveMediaAI">保存设置</button><button id="testMediaAI">测试连接</button><button id="forgetMediaAI">清除密钥</button></div>
             <p id="mediaAIState" role="status"></p></details>
             <p id="mediaTarget"></p><p id="mediaRecordState" role="status"></p>
-            <div class="panel-actions"><button id="scanMedia">识别并预览</button><button id="previewMedia" hidden>更新预览</button><button id="runMedia" disabled>确认执行</button><button id="stopMedia" hidden disabled>停止</button></div>
+            <div class="panel-actions"><button id="scanMedia">识别并预览</button><button id="runMedia" disabled>确认执行</button><button id="stopMedia" hidden disabled>停止</button></div>
             <div id="mediaMeter" hidden><label id="mediaMeterLabel" for="mediaBar"></label><progress id="mediaBar" max="100" value="0" style="display:block;width:100%;height:12px;margin:8px 0;accent-color:gray"></progress></div><p id="mediaProgress" role="status"></p><div id="mediaSummary"></div>
             <div class="panel-actions"><button id="skipPendingMedia" disabled>跳过全部待处理</button><button id="restoreSkippedMedia" disabled>恢复已跳过</button></div>
             <details id="mediaMore"><summary>高级选项</summary><label><input id="forceMedia" type="checkbox">强制重新读取与识别（忽略本次缓存）</label><div class="panel-actions"><button id="clearMedia">清除列表</button></div></details>
@@ -78,8 +78,8 @@
             ui.get('mediaMeterLabel').textContent = '本阶段未完成，请查看下方原因';
         };
         const log = message => appendLog(ui, message);
-        const invalidate = () => { ui.get('previewMedia').hidden = true; batch = null; batchWriter = null; ui.get('runMedia').disabled = true; ui.get('mediaPreview').textContent = ''; };
-        const lock = (busy, stoppable = false) => { ui.busy(busy); ui.get('stopMedia').hidden = !busy || !stoppable; if (busy) cancelled = false; ui.get('stopMedia').disabled = !busy || !stoppable || cancelled; for (const id of ['scanMedia', 'previewMedia', 'clearMedia', 'saveMediaKey', 'forgetMediaKey', 'tmdbKey', 'forceMedia', 'checkCleanup', 'cleanupMode', 'cleanupSubtitles', 'enableMediaAI', 'mediaAIProvider', 'mediaAIBase', 'mediaAIKey', 'mediaAIModel', 'mediaAIModelSelect', 'fetchMediaAIModels', 'saveMediaAI', 'testMediaAI', 'forgetMediaAI']) ui.get(id).disabled = busy; for (const control of ui.get('mediaRows').querySelectorAll('input,select,button')) control.disabled = busy; ui.get('skipPendingMedia').disabled = busy || !rows.some(row => row.include && !readyRow(row)); ui.get('restoreSkippedMedia').disabled = busy || !rows.some(row => !row.include); ui.get('runMedia').disabled = busy || !batch; ui.get('runEmpty').disabled = busy || !emptyPlan.length; };
+        const invalidate = () => { batch = null; batchWriter = null; ui.get('runMedia').disabled = true; ui.get('mediaPreview').textContent = ''; };
+        const lock = (busy, stoppable = false) => { ui.busy(busy); ui.get('stopMedia').hidden = !busy || !stoppable; if (busy) cancelled = false; ui.get('stopMedia').disabled = !busy || !stoppable || cancelled; for (const id of ['scanMedia', 'clearMedia', 'saveMediaKey', 'forgetMediaKey', 'tmdbKey', 'forceMedia', 'checkCleanup', 'cleanupMode', 'cleanupSubtitles', 'enableMediaAI', 'mediaAIProvider', 'mediaAIBase', 'mediaAIKey', 'mediaAIModel', 'mediaAIModelSelect', 'fetchMediaAIModels', 'saveMediaAI', 'testMediaAI', 'forgetMediaAI']) ui.get(id).disabled = busy; for (const control of ui.get('mediaRows').querySelectorAll('input,select,button')) control.disabled = busy; ui.get('skipPendingMedia').disabled = busy || !rows.some(row => row.include && !readyRow(row)); ui.get('restoreSkippedMedia').disabled = busy || !rows.some(row => !row.include); ui.get('runMedia').disabled = busy || !batch; ui.get('runEmpty').disabled = busy || !emptyPlan.length; };
         const previewCleanup = async (extras = false) => {
             emptyPlan = []; ui.get('emptyPreview').textContent = ''; lock(true, true); meter(extras ? '检查非正片与附件' : '检查不规范项目');
             try {
@@ -149,7 +149,7 @@
         };
         ui.get('saveMediaKey').onclick = () => { GM_setValue('cross-drive-tmdb-key', ui.get('tmdbKey').value.trim()); progress('TMDB 密钥已保存在脚本设置中'); };
         ui.get('forgetMediaKey').onclick = () => { GM_setValue('cross-drive-tmdb-key', ''); ui.get('tmdbKey').value = ''; progress('已清除密钥'); };
-        const refreshPreview = async () => { mediaWorkCounts(rows); if (rows.some(row => row.include && readyRow(row)) && !cancelled) await ui.get('previewMedia').onclick(); };
+        const refreshPreview = async () => { mediaWorkCounts(rows); if (rows.some(row => row.include && readyRow(row)) && !cancelled) await generatePreview(); };
         const field = (box, label, value, change, type = 'text') => {
             const wrapper = document.createElement('label'), input = document.createElement('input'); wrapper.textContent = label; input.type = type; input.value = value ?? ''; wrapper.appendChild(input); box.appendChild(wrapper);
             input.oninput = () => { change(input.value); invalidate(); };
@@ -484,9 +484,9 @@
                 progress(`已跳过 ${collected.skipped} 个规范视频；待处理 ${rows.length} 个视频，按 ${groups.size} 组识别；已匹配 ${rows.filter(readyRow).length} 个。正在自动生成预览，待确认项跳过。`);
             } catch (error) { stopMeter(); progress('识别失败：' + error.message); }
             finally { render(); lock(false); }
-            if (shouldPreview && !cancelled) await ui.get('previewMedia').onclick();
+            if (shouldPreview && !cancelled) await generatePreview();
         };
-        ui.get('previewMedia').onclick = async () => {
+        async function generatePreview() {
             cancelled = false;
             invalidate(); lock(true, true);
             meter('检查命名', 0, rows.filter(r => r.include).length);
@@ -540,12 +540,12 @@
                 const writer = mediaOrganizerWriter(targetSession, source);
                 const directoryPlans = await writer.prepare(accepted, checkStopped); checkStopped();
                 const directoryPreview = directoryPlans.map(plan => `文件夹整体改名/移动：${plan.folder.path || plan.folder.name}\n目标：/${[targetPath,plan.destination].filter(Boolean).join('/')}\n随文件夹保留并移动的内容（${plan.contents.length} 项）：\n${plan.contents.map(node => '  ' + node.path + (node.directory ? '/' : '')).join('\n')}`).join('\n\n');
-                batch = accepted; batchWriter = writer; ui.get('previewMedia').hidden = true; ui.get('mediaPreview').textContent = (directoryPreview ? directoryPreview + '\n\n逐文件目标：\n' : '') + accepted.map(item => `原：${item.node.originalPath || item.node.path}\n新：/${[targetPath, item.destination].filter(Boolean).join('/')}`).join('\n\n');
+                batch = accepted; batchWriter = writer; ui.get('mediaPreview').textContent = (directoryPreview ? directoryPreview + '\n\n逐文件目标：\n' : '') + accepted.map(item => `原：${item.node.originalPath || item.node.path}\n新：/${[targetPath, item.destination].filter(Boolean).join('/')}`).join('\n\n');
                 meter('预览就绪', items.length, items.length);
                 progress(`预览 ${accepted.length} 个文件（含字幕），跳过 ${rows.filter(r => r.include && (!readyRow(r) || conflicts.has(r.node.id))).length} 个待确认视频。点击确认执行即可整批处理。`);
             } catch (error) { stopMeter(); progress('无法生成预览：' + error.message); }
             finally { render(); lock(false); }
-        };
+        }
         ui.get('runMedia').onclick = async () => {
             if (!batch) return;
             cancelled = false;
