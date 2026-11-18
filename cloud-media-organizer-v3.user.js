@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v3.0（重构版）
 // @namespace    local.cloud-media-organizer
-// @version      3.0.0
+// @version      3.0.1
 // @description  面向百度网盘、123 云盘和光鸭网盘的浏览器脚本，支持跨盘 JSON 清单、影视整理与字幕补齐。
 // @match        https://pan.baidu.com/*
 // @match        https://yun.baidu.com/*
@@ -40,7 +40,7 @@
     if (typeof navigator !== 'undefined' && (navigator.userAgentData?.mobile || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
         navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) return;
 
-    const VERSION = '3.0.0';
+    const VERSION = '3.0.1';
     let jsonTaskStopped = false;
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
@@ -79,7 +79,8 @@
             try {
                 while (next < items.length) {
                     verify();
-                    await run(items[next++], verify);
+                    const index = next++;
+                    await run(items[index],verify,index);
                 }
             } catch (error) { failure ||= error; }
         };
@@ -87,29 +88,128 @@
         await Promise.all(Array.from({length:Math.min(limit, items.length)}, worker));
         verify();
     }
-    async function walkTree(roots, keyOf, visit, check) {
-        const stack = roots.slice().reverse(), seen = new Set();
-        let visited = 0;
-        while (stack.length) {
-            check();
-            const node = stack.pop(), key = keyOf(node);
-            if (seen.has(key)) continue;
-            seen.add(key);
-            const children = await visit(node);
-            for (let i = (children?.length ?? 0) - 1; i >= 0; i--) stack.push(children[i]);
-            if (++visited % 128 === 0) await sleep(0);
+
+    async function batchStage(items, label, log, run, check = () => {}, limit = 8, reason = '') {
+        const started = Date.now();
+        let active = 0, peak = 0, success = 0, failed = 0, skipped = 0, timeout = 0, limited = 0;
+        const seen = new WeakSet();
+        const observe = error => {
+            if (!error) return;
+            if (typeof error === 'object') {
+                if (seen.has(error)) return;
+                seen.add(error);
+            }
+            if ([408,504].includes(error.status) || /超时|timed? ?out|timeout/i.test(error.message || error)) timeout++;
+            if ([429,509].includes(error.status) || /限流|请求过频|HTTP (?:429|509)|返回码 (?:429|509)/i.test(error.message || error)) limited++;
+        };
+        try {
+            await forEachConcurrent(items,limit,async (item,verify,index) => {
+                active++;
+                peak = Math.max(peak,active);
+                try {
+                    const state = await run(item,verify,index,observe);
+                    if (state === 'skipped') skipped++;
+                    else if (state === 'failed') failed++;
+                    else success++;
+                } catch (error) {
+                    observe(error);
+                    failed++;
+                    throw error;
+                } finally { active--; }
+            },check);
+        } finally {
+            log?.(label + ' · 总量 ' + items.length + ' · 上限 ' + limit + ' · 峰值 ' + peak + ' · 耗时 '
+                + ((Date.now() - started) / 1000).toFixed(2) + ' 秒 · 成功 ' + success + ' · 失败 ' + failed
+                + ' · 跳过 ' + skipped + ' · 未派发 ' + (items.length - success - failed - skipped)
+                + ' · 超时 ' + timeout + ' · 限流 ' + limited + (reason ? ' · ' + reason : ''));
         }
+    }
+    function groupBatch(items, keyOf) {
+        const groups = new Map();
+        for (const item of items) {
+            const key = keyOf(item);
+            if (!groups.has(key)) groups.set(key,[]);
+            groups.get(key).push(item);
+        }
+        return [...groups.values()];
+    }
+    function connectedBatch(items, keysOf) {
+        const groups = [], byKey = new Map();
+        const root = group => group.parent ? (group.parent = root(group.parent)) : group;
+        for (const item of items) {
+            const group = {item, parent:null};
+            groups.push(group);
+            for (const key of keysOf(item)) {
+                if (byKey.has(key)) {
+                    const other = root(byKey.get(key)), first = root(group);
+                    if (other !== first) other.parent = first;
+                } else byKey.set(key,group);
+            }
+        }
+        return groupBatch(groups,root).map(group => group.map(record => record.item));
+    }
+    function enqueueByKey(queues, key, run) {
+        const previous = queues.get(key) || Promise.resolve();
+        const task = previous.then(run);
+        const tail = task.catch(() => {});
+        queues.set(key,tail);
+        tail.then(() => { if (queues.get(key) === tail) queues.delete(key); });
+        return task;
+    }
+    async function walkTree(roots, keyOf, visit, check, log, label = '目录遍历（目录/文件）') {
         check();
+        let pending = roots.map((node,index) => ({node,order:[index]}));
+        const seen = new Set();
+        const started = Date.now();
+        let total = 0, peak = 0, completed = 0, failed = 0, timeout = 0, limited = 0;
+        try {
+            while (pending.length) {
+                const layer = pending.filter(({node}) => {
+                    const key = keyOf(node);
+                    if (seen.has(key)) return false;
+                    seen.add(key);
+                    return true;
+                });
+                const next = [];
+                total += layer.length;
+                let active = 0;
+                await forEachConcurrent(layer,8,async ({node,order},verify,index) => {
+                    peak = Math.max(peak,++active);
+                    try {
+                        const children = await visit(node,verify,order);
+                        verify();
+                        next[index] = (children || []).map((node,childIndex) => ({node,order:[...order,childIndex]}));
+                        completed++;
+                    } catch (error) {
+                        failed++;
+                        if ([408,504].includes(error.status) || /超时|timeout/i.test(error.message)) timeout++;
+                        if ([429,509].includes(error.status) || /限流|请求过频|HTTP (?:429|509)/i.test(error.message)) limited++;
+                        throw error;
+                    } finally { active--; }
+                },check);
+                pending = next.flat();
+            }
+        } finally {
+            log?.(label + ' · 总量 ' + total + ' · 上限 8 · 峰值 ' + peak + ' · 耗时 '
+                + ((Date.now() - started) / 1000).toFixed(2) + ' 秒 · 成功 ' + completed + ' · 失败 ' + failed
+                + ' · 跳过 0 · 未派发 ' + (total - completed - failed) + ' · 超时 ' + timeout + ' · 限流 ' + limited);
+        }
+    }
+    function compareTreeOrder(a, b) {
+        for (let i = 0; i < Math.min(a.length,b.length); i++) if (a[i] !== b[i]) return a[i] - b[i];
+        return a.length - b.length;
     }
     function cachedDriveChildren(source, cache = new Map(), check) {
         return async id => {
             check?.();
             if (!cache.has(id)) {
-                const nodes = await source.children({id});
-                check?.();
-                cache.set(id, nodes);
+                const loading = Promise.resolve().then(() => { check?.(); return source.children({id}); });
+                cache.set(id,loading);
+                loading.catch(() => { if (cache.get(id) === loading) cache.delete(id); });
             }
-            return cache.get(id);
+            const nodes = await cache.get(id);
+            check?.();
+            return nodes;
         };
     }
     function titleKey(value) {
@@ -734,7 +834,20 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             pane.appendChild(stopJson);
         }
         const log = pane.querySelector('#log');
-        if (log) { const detail = document.createElement('details'), summary = document.createElement('summary'); summary.textContent = '详细日志'; log.before(detail); detail.append(summary, log); }
+        if (log) {
+            const detail = document.createElement('details'), summary = document.createElement('summary');
+            const copy = document.createElement('button');
+            summary.textContent = '详细日志';
+            copy.type = 'button';
+            copy.textContent = '复制日志';
+            copy.onclick = async () => {
+                const output = [...log.children].map(line => line.textContent).join('\n');
+                try { await navigator.clipboard.writeText(output); copy.textContent = '已复制'; }
+                catch { copy.textContent = '复制失败'; }
+            };
+            log.before(detail);
+            detail.append(summary,copy,log);
+        }
         arrangeToolPane(pane, id);
         root.querySelector('.workspace-body').appendChild(pane);
         const button = root.querySelector('#' + id + 'Tab'), elements = new Map();
@@ -794,7 +907,10 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         line.textContent = message;
         const box = ui.get('log');
         box.appendChild(line);
-        if (box.childElementCount > 200) box.firstElementChild.remove();
+        if (box.childElementCount > 600) {
+            const oldest = [...box.children].find(entry => !entry.textContent.includes(' · 上限 '));
+            (oldest || box.firstElementChild).remove();
+        }
         box.scrollTop = box.scrollHeight;
     }
     async function copyManifest(ui) {
@@ -943,7 +1059,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         if (nonNegativeInteger(data.errno) === 0 && typeof data.result?.bdstoken === 'string' && data.result.bdstoken) return data.result.bdstoken;
         throw new Error('没有获取到 bdstoken，请确认已登录百度网盘');
     }
-    async function collectTree(roots, source, progress = () => {}, parentPath = '', check = () => {}) {
+    async function collectTree(roots, source, progress = () => {}, parentPath = '', check = () => {}, log) {
         const start = roots.map(node => ({ node, path: relativeParts(node.exportPath || (parentPath ? parentPath + '/' + node.name : node.name)).join('/') }));
         const paths = new Map(), entries = [], skipped = [];
         let files = 0, directories = 0, lastProgress = 0, lastPath = '', reportedPath = '';
@@ -955,30 +1071,32 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             if (relativeParts(node.name).length !== 1) throw new Error('云盘返回了包含路径分隔符的文件名');
             if (!node.key) throw new Error('文件列表缺少项目 ID');
             return node.key;
-        }, async ({node, path}) => {
+        }, async ({node, path}, verify, order) => {
             if (paths.has(path) && paths.get(path) !== node.key) throw new Error(`不同项目导出为同一路径：${path}；请分开导出`);
             paths.set(path, node.key);
             let children;
             if (node.directory) {
-                entries.push({ path, type: 'directory' });
+                entries.push({ order, entry:{ path, type:'directory' } });
                 directories++;
                 children = (await source.children(node)).map(child => ({ node: child, path: path + '/' + child.name }));
             } else {
                 const file = hasFileMetadata(node) ? node : await source.metadata?.(node);
-                if (!hasFileMetadata(file)) skipped.push(path);
+                if (!hasFileMetadata(file)) skipped.push({order,path});
                 else {
                     const entry = { path, md5: file.md5.toLowerCase(), size: file.size };
                     if (typeof file.gcid === 'string' && typeof file.cid === 'string' && /^[a-f0-9]{40}$/i.test(file.gcid) && /^[a-f0-9]{40}$/i.test(file.cid)) Object.assign(entry, { gcid: file.gcid.toUpperCase(), cid: file.cid.toUpperCase() });
-                    entries.push(entry); files++;
+                    entries.push({order,entry}); files++;
                 }
             }
-            check();
+            verify();
             lastPath = path;
             if (Date.now() - lastProgress >= 100) report(path);
             return children;
-        }, check);
+        }, check, log, '清单扫描与导出（目录/文件，分页按服务顺序）');
         if (lastPath !== reportedPath) report(lastPath);
-        return { entries, files, directories, skipped };
+        entries.sort((a,b) => compareTreeOrder(a.order,b.order));
+        skipped.sort((a,b) => compareTreeOrder(a.order,b.order));
+        return { entries:entries.map(item => item.entry), files, directories, skipped:skipped.map(item => item.path) };
     }
     async function readPages(load, keyOf) {
         const items = [], seen = new Set();
@@ -1305,7 +1423,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 if (!roots.length) throw new Error('当前目录没有可导出的项目');
                 const result = await collectTree(roots, source, state => {
                     ui.get('status').textContent = `范围：${scope}；已读 ${state.files} 个文件、${state.directories} 个目录，跳过 ${state.skipped} 项；正在处理：${state.path}`;
-                }, parentPath, checkJsonTask);
+                }, parentPath, checkJsonTask, message => appendLog(ui,message));
                 if (!result.entries.length) throw new Error('没有可导出的文件信息');
                 const summary = exportManifestJson(ui, provider, result);
                 ui.get('status').textContent = `完成（${scope}）：${summary}。` + (!ui.get('json').value ? '没有可导出的内容。' : '请下载 JSON，到目标盘导入。') + (result.skipped.length ? ` 缺少有效 MD5/大小，已跳过 ${result.skipped.length} 项：${result.skipped.slice(0, 5).join('、')}` : '');
@@ -1370,79 +1488,59 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 if (provider === '123') {
                     const session = recover123Session(), { base, headers } = session;
                     const post = paced(750, (path, body) => requestJson(`${base}${path}`, { method: 'POST', credentials: 'omit', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(body) }));
-                    const folders = new Map([['', target.id]]), childLists = new Map(), source = pan123Source(session);
-                    const unresolvedFolders = new Map();
-                    const children = cachedDriveChildren(source, childLists);
-                    await children(target.id);
-                    const locateDirectory = async (parent, name, path) => {
-                        try {
+                    const source = pan123Source(session), children = cachedDriveChildren(source,new Map(),checkJsonTask);
+                    const dirs = new Map([['',target.id]]);
+                    const ensure = path => {
+                        const key = path.toLowerCase();
+                        if (!dirs.has(key)) dirs.set(key,(async () => {
+                            const parts = relativeParts(path), name = parts.pop(), parent = await ensure(parts.join('/'));
+                            checkJsonTask();
+                            const find = nodes => {
+                                const matches = nodes.filter(item => item.name.toLowerCase() === name.toLowerCase());
+                                if (matches.length > 1 || matches.length && (!matches[0].directory || matches[0].id === '0' || matches[0].id === parent))
+                                    throw new Error('同名项目挡住目标目录：' + path);
+                                return matches[0]?.id;
+                            };
+                            const existing = find(await children(parent));
+                            if (existing) return existing;
+                            checkJsonTask();
+                            const result = await post('/file/upload_request',{driveId:0,parentFileId:parent,fileName:name,type:1,size:0,duplicate:0});
+                            if (![0,200,5060].includes(apiCode(result))) throw apiError('123 创建目录',result);
+                            const created = decimalId(result.data?.FileId ?? result.data?.fileId);
+                            if (created && created !== '0' && created !== parent) return created;
                             for (let attempt = 0; attempt < 3; attempt++) {
                                 if (attempt) await sleep(350);
-                                childLists.delete(parent);
-                                const matches = (await children(parent)).filter(item => item.name === name);
-                                if (matches.length === 1 && matches[0].directory && matches[0].id !== '0' && matches[0].id !== parent) return matches[0].id;
-                                if (matches.length) throw new Error(`目录 ${path} 存在同名冲突或异常 ID`);
+                                checkJsonTask();
+                                const confirmed = find(await source.children({id:parent}));
+                                if (confirmed) return confirmed;
                             }
-                            throw new Error(`创建后未能在父目录 ID ${parent} 中确认 ${path}；本次跳过该目录及其内容，避免重复创建或放错位置`);
-                        } catch (error) { unresolvedFolders.set(path, error); throw error; }
+                            throw new Error('目录创建结果待核对，未重复提交：' + path);
+                        })());
+                        return dirs.get(key);
                     };
                     let saved = 0, missed = 0, skipped = 0, failed = 0, pending = 0, processed = 0;
-                    for (let i = 0; i < files.length; i++) {
-                        const file = files[i];
-                        processed++;
-                        ui.get('progress').textContent = `导入进度：${i + 1}/${files.length}（已处理 ${Math.floor(i * 100 / files.length)}%） ${file.path}`;
+                    const names = new Map();
+                    try { await batchStage(files,'123 导入预检、转存与验证（清单项目）',log,async (file,verify,_index,observe) => {
                         try {
+                          return await enqueueByKey(names,file.path.toLowerCase(),async () => {
+                            verify();
                             const parts = relativeParts(file.path), name = parts.pop();
-                            let parent = target.id, relative = '';
-                            const folderParts = file.type === 'directory' ? [...parts, name] : parts;
-                            for (const part of folderParts) {
-                                relative = relative ? `${relative}/${part}` : part;
-                                if (unresolvedFolders.has(relative)) throw unresolvedFolders.get(relative);
-                                if (folders.has(relative)) { parent = folders.get(relative); continue; }
-                                const parentChildren = await children(parent);
-                                const matches = parentChildren.filter(item => item.name === part);
-                                if (matches.length > 1) throw new Error('多个同名项目，无法确认目录：' + relative);
-                                const old = matches[0];
-                                if (old) {
-                                    if (!old.directory || old.id === '0' || old.id === parent) throw new Error(`同名文件或异常目录挡住路径：${relative}`);
-                                    parent = old.id;
-                                } else {
-                                    let made;
-                                    try { made = await post('/file/upload_request', { driveId: 0, parentFileId: parent, fileName: part, type: 1, size: 0, duplicate: 0 }); }
-                                    catch (error) { unresolvedFolders.set(relative, error); throw error; }
-                                    if ([0, 200].includes(apiCode(made))) {
-                                        const createdId = decimalId(made.data?.FileId ?? made.data?.fileId);
-                                        if (!createdId || createdId === '0' || createdId === parent) {
-                                            const actualId = await locateDirectory(parent, part, relative);
-                                            log(`目录已确认：${relative}；父目录 ID ${parent} → 目录 ID ${actualId}`);
-                                            parent = actualId;
-                                        } else {
-                                            log(`目录：${relative}；父目录 ID ${parent} → 新目录 ID ${createdId}`);
-                                            parent = createdId;
-                                            parentChildren.push({ id: parent, name: part, directory: true });
-                                            childLists.set(parent, []);
-                                        }
-                                    } else if (apiCode(made) === 5060) {
-                                        parent = await locateDirectory(parent, part, relative);
-                                    } else throw apiError('123 创建目录', made);
-                                }
-                                folders.set(relative, parent);
-                            }
-                            if (file.type === 'directory') continue;
-                            const parentChildren = await children(parent);
-                            const sameName = parentChildren.filter(item => item.name === name);
+                            const parent = await ensure(file.type === 'directory' ? file.path : parts.join('/'));
+                            if (file.type === 'directory') return;
+                            verify();
+                            const sameName = (await source.children({id:parent})).filter(item => item.name.toLowerCase() === name.toLowerCase());
                             if (sameName.length > 1) throw new Error('目标存在多个同名项目，无法确认：' + file.path);
                             const old = sameName[0];
-                            if (old) { const message = existingFileMessage(old, file); skipped++; log(`${file.path}：${message}`); continue; }
+                            if (old) { const message = existingFileMessage(old, file); skipped++; log(`${file.path}：${message}`); return 'skipped'; }
+                            verify();
                             const response = await post('/file/upload_request', { driveId: 0, parentFileId: parent, fileName: name, type: 0, size: file.size, etag: file.md5, duplicate: 0 });
                             if (apiCode(response) === 5060) {
-                                childLists.delete(parent);
-                                const refreshed = await children(parent);
+                                const refreshed = await source.children({id:parent});
                                 const matches = refreshed.filter(item => item.name === name);
                                 if (matches.length > 1) throw new Error('目标存在多个同名项目，无法确认：' + file.path);
                                 const existing = matches[0];
                                 if (existing) {
-                                    const message = existingFileMessage(existing, file); skipped++; log(`${file.path}：${message}`); continue;
+                                    const message = existingFileMessage(existing, file); skipped++; log(`${file.path}：${message}`); return 'skipped';
                                 }
                             }
                             if (![0, 200].includes(apiCode(response))) throw apiError('123 秒传', response);
@@ -1450,69 +1548,79 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                                 let verified = false;
                                 for (let attempt = 0; attempt < 5; attempt++) {
                                     if (attempt) await sleep(500);
-                                    childLists.delete(parent);
-                                    const matches = (await children(parent)).filter(item => item.name === name);
+                                    verify();
+                                    const matches = (await source.children({id:parent})).filter(item => item.name === name);
                                     if (!matches.length) continue;
                                     if (matches.length !== 1) throw new Error('目标存在多个同名项目，无法验证：' + file.path);
                                     existingFileMessage(matches[0], file);
                                     if (hasFileMetadata(matches[0])) { verified = true; break; }
                                 }
                                 if (verified) saved++;
-                                else { pending++; log(`${file.path}：接口报告复用，但尚未在目标目录验证到完整文件信息，结果待确认`); }
-                            } else { missed++; log(`${file.path}：哈希未命中，需文件本体，未上传`); }
+                                else { pending++; log(`${file.path}：接口报告复用，但尚未在目标目录验证到完整文件信息，结果待确认`); return 'failed'; }
+                            } else { missed++; log(`${file.path}：哈希未命中，需文件本体，未上传`); return 'failed'; }
+                          });
                         } catch (error) {
-                            failed++;
-                            log(`${file.path}：单项失败，已跳过；${error.message}`);
-                            if (error.stop) { log('登录或权限异常，已停止后续项目'); break; }
+                            failed++; observe(error);
+                            log(file.path+'：单项失败；'+error.message);
+                            if (error.stop) throw error;
+                            return 'failed';
+                        } finally {
+                            processed++;
+                            ui.get('progress').textContent = '导入进度：'+processed+'/'+files.length;
                         }
-                    }
+                    },checkJsonTask,8,'123 写入沿用 750ms 节流，共享路径复用在途建目录'); }
+                    catch (error) { log('导入中断：'+error.message); }
                     ui.get('status').textContent = processed < files.length ? '导入已停止' : missed + failed + pending ? '导入结束，含未完成项' : '导入完成';
                     ui.get('progress').textContent = `导入结束：已处理 ${processed}/${files.length} 项；确认复用 ${saved}，未完成 ${missed}，待确认 ${pending}，同名跳过 ${skipped}，单项失败 ${failed}，未处理 ${files.length - processed}`;
                 } else {
                     const token = await getBdstoken();
                     const source = baiduSource(token), rootPath = target.id;
-                    const dirs = new Map([['', rootPath]]), cached = new Map();
-                    const children = async path => {
-                        if (!cached.has(path)) cached.set(path, await source.children({ key: path || '/', directory: true }));
-                        return cached.get(path);
-                    };
                     const create = async body => {
                         const response = await requestJson(`${location.origin}/api/create?${new URLSearchParams({ channel: 'chunlei', web: '1', app_id: '250528', bdstoken: token })}`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
                         if (nonNegativeInteger(response.errno) !== 0) throw new Error(`百度创建失败：${response.errno ?? '未知错误'}`);
                     };
-                    let saved = 0, missed = 0, skipped = 0;
-                    for (let i = 0; i < files.length; i++) {
-                        const file = files[i];
-                        ui.get('progress').textContent = `导入进度：${i + 1}/${files.length}（已处理 ${Math.floor(i * 100 / files.length)}%） ${file.path}`;
+                    const folders = new Map([['',rootPath]]);
+                    const children = path => source.children({key:path || '/',directory:true});
+                    const ensure = path => {
+                        if (!folders.has(path)) folders.set(path,(async () => {
+                            const parts = relativeParts(path), name = parts.pop(), parent = await ensure(parts.join('/'));
+                            checkJsonTask();
+                            const matches = (await children(parent)).filter(item => item.name === name);
+                            if (matches.length > 1 || matches.length && !matches[0].directory) throw new Error('同名项目挡住目录：'+path);
+                            if (matches.length) return matches[0].key;
+                            const fullPath = parent.replace(/\/$/,'') + '/' + name;
+                            checkJsonTask();
+                            await create({path:fullPath,isdir:1,size:0,block_list:'[]'});
+                            return fullPath;
+                        })());
+                        return folders.get(path);
+                    };
+                    let saved = 0, missed = 0, skipped = 0, failed = 0, processed = 0;
+                    try { await batchStage(files,'百度导入预检与转存（清单项目）',log,async (file,verify,_index,observe) => {
+                      try {
                         const parts = relativeParts(file.path), name = parts.pop();
-                        let parent = rootPath, relative = '';
-                        const folderParts = file.type === 'directory' ? [...parts, name] : parts;
-                        for (const part of folderParts) {
-                            relative = relative ? `${relative}/${part}` : part;
-                            if (dirs.has(relative)) { parent = dirs.get(relative); continue; }
-                            const fullPath = `${parent.replace(/\/$/, '')}/${part}` || `/${part}`;
-                            const entries = await children(parent);
-                            let folder = entries.find(item => item.directory && item.name === part);
-                            if (!folder) {
-                                if (entries.some(item => item.name === part)) throw new Error(`同名文件挡住目录：${relative}`);
-                                await create({ path: fullPath, isdir: 1, size: 0, block_list: '[]' });
-                                folder = { key: fullPath, name: part, directory: true };
-                                cached.delete(parent);
-                            }
-                            parent = folder.key; dirs.set(relative, parent);
-                        }
-                        if (file.type === 'directory') continue;
+                        const parent = await ensure(file.type === 'directory' ? file.path : parts.join('/'));
+                        if (file.type === 'directory') return;
+                        verify();
                         const entries = await children(parent);
-                        if (entries.some(item => item.name === name)) { skipped++; log(`${file.path}：目标已有同名项目，跳过`); continue; }
-                        if (file.size > 256 * 1024) { missed++; log(`${file.path}：百度需要前 256 KB 分片哈希；清单不含原文件，未提交`); continue; }
+                        if (entries.some(item => item.name === name)) { skipped++; log(`${file.path}：目标已有同名项目，跳过`); return 'skipped'; }
+                        if (file.size > 256 * 1024) { missed++; log(`${file.path}：百度需要前 256 KB 分片哈希；清单不含原文件，未提交`); return 'skipped'; }
                         const path = `${parent.replace(/\/$/, '')}/${name}` || `/${name}`;
                         const params = new URLSearchParams({ channel: 'chunlei', web: '1', app_id: '250528', bdstoken: token, clienttype: '0', async: '2' });
+                        verify();
                         const response = await requestJson(`${location.origin}/api/rapidupload?${params}`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' }, body: new URLSearchParams({ path, 'content-md5': file.md5, 'slice-md5': file.md5, 'content-length': String(file.size), isdir: '0', rtype: '3' }).toString() });
-                        if (nonNegativeInteger(response.errno) === 0) { saved++; cached.delete(parent); log(`${file.path}：百度秒传接口已接受`); }
-                        else { missed++; log(`${file.path}：百度未命中秒传（${response.errno ?? '未知错误'}），需要原文件`); }
-                    }
-                    ui.get('status').textContent = '导入完成';
-                    ui.get('progress').textContent = `导入完成：${files.length}/${files.length} 项；百度接口接受 ${saved}，未完成 ${missed}，同名跳过 ${skipped}；大于 256 KB 的项目需原文件分片哈希`;
+                        if (nonNegativeInteger(response.errno) === 0) { saved++; log(`${file.path}：百度秒传接口已接受`); }
+                        else { missed++; log(`${file.path}：百度未命中秒传（${response.errno ?? '未知错误'}），需要原文件`); return 'failed'; }
+                      } catch (error) {
+                        failed++; observe(error);
+                        log(file.path+'：单项失败；'+error.message);
+                        if (error.stop) throw error;
+                        return 'failed';
+                      } finally { processed++; ui.get('progress').textContent = '导入进度：'+processed+'/'+files.length; }
+                    },checkJsonTask,8,'共享路径复用在途建目录，百度分页顺序读取'); }
+                    catch (error) { log('导入中断：'+error.message); }
+                    ui.get('status').textContent = processed < files.length ? '导入已停止' : failed ? '导入结束，含失败项' : '导入完成';
+                    ui.get('progress').textContent = `导入结束：${processed}/${files.length} 项；失败 ${failed}，百度接口接受 ${saved}，未完成 ${missed}，同名跳过 ${skipped}；大于 256 KB 的项目需原文件分片哈希`;
                 }
             } catch (error) { ui.get('status').textContent = '失败：' + error.message; ui.get('progress').textContent = '导入失败：' + error.message; }
             finally { ui.get('manifest').value = ''; controls.forEach(control => { control.disabled = false; }); ui.busy(false); }
@@ -1691,7 +1799,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         GM_setValue(key, journal);
     }
     const replacementKey = file => JSON.stringify([file.path, file.md5, file.size]);
-    async function buildGuangyaReplacementPlan(files, target, source, progress = () => {}, history = readExportHistory('光鸭'), journal = readReplacementJournal(target)) {
+    async function buildGuangyaReplacementPlan(files, target, source, progress = () => {}, history = readExportHistory('光鸭'), journal = readReplacementJournal(target), check = () => {}, log) {
         const byPath = new Map(), byContent = new Map(), seen = new Set(), unverified = [];
         const contentKey = file => file.md5.toLowerCase() + ':' + file.size;
         const neededDirectories = new Set(['']), fileParents = new Set();
@@ -1726,11 +1834,13 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         const directoryKey = path => path.split('/').map(name => name.normalize('NFKC').toLowerCase().replace(/[\p{P}\p{Z}\s]/gu, '') || name).join('/');
         const directoryKeys = new Set([...neededDirectories].map(directoryKey));
         const fileParentKeys = new Set([...fileParents].map(directoryKey));
-        const stack = [{ id: target.id, path: '' }];
-        while (stack.length) {
-            const folder = stack.pop();
+        const root = {id:target.id,path:''};
+        const metadataFiles = [];
+        await walkTree([root],folder => folder.id,async (folder,verify) => {
+            const descendants = [];
             progress('正在核对 JSON 对应目录：' + (folder.path || target.path));
             for (const node of await source.children(folder)) {
+                verify();
                 if (!node.id || node.id === '0' || relativeParts(node.name).length !== 1 || seen.has(node.id)) throw new Error('目标目录结构异常，请刷新后重新预览');
                 seen.add(node.id);
                 const path = folder.path ? folder.path + '/' + node.name : node.name;
@@ -1738,21 +1848,26 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 const entry = { ...node, path, parentId: folder.id };
                 byPath.set(path, entry);
                 if (entry.directory) {
-                    if (directoryKeys.has(directoryKey(path))) stack.push(entry);
+                    if (directoryKeys.has(directoryKey(path))) descendants.push(entry);
                     continue;
                 }
                 if (!fileParentKeys.has(directoryKey(folder.path))) continue;
                 if (entry.size != null && !wantedSizes.has(entry.size)) continue;
+                metadataFiles.push(entry);
+            }
+            return descendants;
+        },check,log,'光鸭替换目录预览（目录）');
+        await batchStage(metadataFiles,'光鸭替换内容预检（文件）',log,async (entry,verify,_index,observe) => {
                 let metadata;
                 try { metadata = hasFileMetadata(entry) ? entry : await source.metadata(entry); }
-                catch (error) { if (error.stop) throw error; unverified.push(entry); continue; }
-                if (!hasFileMetadata(metadata)) { unverified.push(entry); continue; }
+                catch (error) { observe(error); verify(); if (error.stop) throw error; unverified.push(entry); return 'failed'; }
+                verify();
+                if (!hasFileMetadata(metadata)) { unverified.push(entry); return 'skipped'; }
                 Object.assign(entry, { md5: metadata.md5.toLowerCase(), size: metadata.size });
                 const key = contentKey(entry);
                 if (!byContent.has(key)) byContent.set(key, []);
                 byContent.get(key).push(entry);
-            }
-        }
+        },check,8,'文件详情沿用光鸭节流');
         // Every requested destination is protected from old-file cleanup.
         const requestedPaths = new Set(files.map(file => file.path));
         const demand = new Map();
@@ -1902,7 +2017,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         }
         throw Object.assign(new Error('删除请求已提交，但旧项目仍存在；ID：' + node.id), { terminal: true });
     }
-    async function replaceGuangyaFile(file, action, target, plan, source, post, ensureDirectory, journal, progress, wait = sleep) {
+    async function replaceGuangyaFile(file,action,target,plan,source,post,ensureDirectory,journal,progress,wait = sleep,check = () => {}) {
         const key = replacementKey(file), old = action.old;
         let original = null;
         if (old) {
@@ -1924,7 +2039,9 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 if (/^[a-f0-9]{40}$/i.test(metadata.gcid || '') && /^[a-f0-9]{40}$/i.test(metadata.cid || '')) input = { ...file, gcid: metadata.gcid.toUpperCase(), cid: metadata.cid.toUpperCase() };
             }
             progress('导入中：' + file.path);
-            const parent = await ensureDirectory(relativeParts(file.path).slice(0, -1).join('/'));
+            check();
+            const parent = await ensureDirectory(relativeParts(file.path).slice(0,-1).join('/'));
+            check();
             const result = await importFile(input, parent || '0', post, wait);
             if (result.status !== 'saved') return { status: result.status, message: result.message + '；旧版保留', stop: result.stop };
             progress('验证中：' + file.path);
@@ -1943,7 +2060,8 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             }
             return { status: 'done', reused, message: '新版已在目标路径验证，未删除其他文件' };
         }
-        const directories = new Map((journal[key]?.directories || []).map(node => [node.id, node]));
+        check();
+        const directories = new Map((journal[key]?.directories || []).map(node => [node.id,node]));
         const parts = relativeParts(old.path);
         for (let i = 1; i < parts.length; i++) {
             const path = parts.slice(0, i).join('/'), node = plan.directories.get(path);
@@ -1961,7 +2079,8 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             const current = (await source.children({ id: old.parentId })).find(node => node.id === old.id);
             if (current) {
                 if (current.name !== old.name) throw new Error('旧文件名称已变化，未删除');
-                await checkedGuangyaContent({ ...current, path: old.path }, file, source);
+                await checkedGuangyaContent({...current,path:old.path},file,source);
+                check();
                 progress('清理旧版：' + old.path);
                 await removeGuangyaNode(old, source, post, wait, taskId => {
                     record.taskId = taskId; record.stage = 'delete-pending'; writeReplacementJournal(target, journal);
@@ -1976,12 +2095,13 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             return { status: 'cleanup-failed', reused, message: '新版已就绪，旧版清理失败：' + error.message, stop: error.stop };
         }
     }
-    async function cleanupGuangyaOldDirectories(keys, target, plan, source, post, journal, progress, log, wait = sleep) {
+    async function cleanupGuangyaOldDirectories(keys, target, plan, source, post, journal, progress, log, wait = sleep, check = () => {}) {
         const candidates = new Map(), failed = new Set(), retained = new Set();
-        for (const key of keys) {
+        try { await batchStage([...keys],'旧目录清理前核验（新版文件）',log,async (key,verify,_index,observe) => {
             const record = journal[key];
             try {
                 const destination = await readGuangyaDestination(record.file, target, source);
+                verify();
                 if (!destination || destination.id !== record.newFileId) throw new Error('新版已变化，保留旧目录待核对');
                 for (const node of record.directories) if (!plan.protectedDirectories.has(node.path) && node.id !== target.id) {
                     if (!candidates.has(node.id)) candidates.set(node.id, { node, keys: [] });
@@ -1989,26 +2109,37 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 }
             } catch (error) {
                 failed.add(key); log(record.file.path + '：新版已就绪，旧目录清理失败：' + error.message);
-                if (error.stop) { writeReplacementJournal(target, journal); return { removed: 0, failed: keys.size }; }
+                observe(error);
+                if (error.stop) throw error;
+                return 'failed';
             }
+        },check); } catch (error) {
+            log('旧目录核验中断：' + error.message);
+            writeReplacementJournal(target,journal);
+            return {removed:0,failed:keys.size};
         }
         let removed = 0;
-        for (const { node, keys: related } of [...candidates.values()].sort((a, b) => b.node.path.split('/').length - a.node.path.split('/').length)) {
-            if (related.some(key => failed.has(key))) continue;
+        const layers = groupBatch([...candidates.values()].sort((a,b) => relativeParts(b.node.path).length - relativeParts(a.node.path).length),entry => relativeParts(entry.node.path).length);
+        try { for (const layer of layers) {
+          await batchStage(layer,'空旧目录清理（同层目录）',log,async ({node,keys:related},verify,_index,observe) => {
+            if (related.some(key => failed.has(key))) return 'skipped';
             try {
                 const current = (await source.children({ id: node.parentId })).find(item => item.id === node.id);
-                if (!current) continue;
+                verify();
+                if (!current) return 'skipped';
                 if (!current.directory || current.name !== node.name) throw new Error('旧目录已变化，保留待核对：' + node.path);
                 let children = await source.children({ id: node.id });
                 for (let attempt = 0; children.length && attempt < 3; attempt++) {
                     await wait(500);
-                    children = await source.children({ id: node.id });
+                    verify();
+                    children = await source.children({id:node.id});
                 }
                 if (children.length) {
                     for (const key of related) retained.add(key);
-                    log('旧目录仍有内容，保留并记录待清理：' + node.path); continue;
+                    log('旧目录仍有内容，保留并记录待清理：' + node.path); return 'skipped';
                 }
                 progress('清理空旧目录：' + node.path);
+                verify();
                 const first = journal[related[0]], taskId = first.directoryTasks?.[node.id] || '';
                 await removeGuangyaNode(node, source, post, wait, taskId => {
                     for (const key of related) (journal[key].directoryTasks ||= {})[node.id] = taskId;
@@ -2019,14 +2150,21 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 for (const key of related) failed.add(key);
                 if (error.terminal) for (const key of related) delete journal[key].directoryTasks?.[node.id];
                 log('旧目录清理失败：' + node.path + '；' + error.message);
-                if (error.stop) { writeReplacementJournal(target, journal); return { removed, failed: keys.size }; }
+                observe(error);
+                if (error.stop) throw error;
+                return 'failed';
             }
+          },check,8,'先处理深层目录，清理前重新确认当前目录为空');
+        } } catch (error) {
+            log('旧目录清理中断：' + error.message);
+            writeReplacementJournal(target,journal);
+            return {removed,failed:keys.size};
         }
         for (const key of keys) if (!failed.has(key) && !retained.has(key)) delete journal[key];
         writeReplacementJournal(target, journal);
         return { removed, failed: failed.size };
     }
-    async function runGuangyaReplacement(files, target, plan, source, post, ensureDirectory, progress, log, wait = sleep) {
+    async function runGuangyaReplacement(files,target,plan,source,post,ensureDirectory,progress,log,wait = sleep,check = () => {}) {
         const journal = readReplacementJournal(target), cleanupKeys = new Set();
         const verifiedEntries = [], fileDirectories = new Set();
         let stopped = false;
@@ -2035,17 +2173,17 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             for (let i = 1; i < parts.length; i++) fileDirectories.add(parts.slice(0, i).join('/'));
         }
         const counts = { processed: 0, verified: 0, imported: 0, reused: 0, deleted: 0, pending: 0, missed: 0, failed: 0, skipped: 0, cleanupFailed: 0, directories: 0 };
-        for (let i = 0; i < files.length; i++) {
-            const file = files[i], action = plan.actions.get(file.path), label = `[${i + 1}/${files.length}] ${file.path}`;
-            counts.processed++;
+        try { await batchStage(files,'光鸭替换与验证（清单项目）',log,async (file,verify,i,observe) => {
+            const action = plan.actions.get(file.path), label = `[${i + 1}/${files.length}] ${file.path}`;
             try {
-                if (action.kind === 'conflict') { counts.skipped++; log(label + '：跳过；' + action.reason); continue; }
+                verify();
+                if (action.kind === 'conflict') { counts.skipped++; log(label + '：跳过；' + action.reason); return 'skipped'; }
                 if (file.type === 'directory') {
                     if (!fileDirectories.has(file.path)) await ensureDirectory(file.path);
-                    continue;
+                    return;
                 }
                 const result = await replaceGuangyaFile(file, action, target, plan, source, post, ensureDirectory, journal,
-                    message => progress(`[${i + 1}/${files.length}] ${message}`), wait);
+                    message => progress(`[${i + 1}/${files.length}] ${message}`),wait,verify);
                 log(label + '：' + result.message);
                 if (result.status === 'done' || result.status === 'cleanup-failed') {
                     counts.verified++; counts[result.reused ? 'reused' : 'imported']++;
@@ -2054,10 +2192,18 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     if (result.cleanupKey) cleanupKeys.add(result.cleanupKey);
                     if (result.status === 'cleanup-failed') counts.cleanupFailed++;
                 } else counts[result.status === 'miss' ? 'missed' : 'pending']++;
-                if (result.stop) { stopped = true; break; }
-            } catch (error) { counts.failed++; log(label + '：未完成；' + error.message); if (error.stop) { stopped = true; break; } }
-        }
-        const cleanup = stopped ? { removed: 0, failed: cleanupKeys.size } : await cleanupGuangyaOldDirectories(cleanupKeys, target, plan, source, post, journal, progress, log, wait);
+                if (result.stop) throw Object.assign(new Error(result.message),{stop:true,recorded:true});
+                return result.status === 'done' ? undefined : 'failed';
+            } catch (error) {
+                observe(error);
+                if (!error.recorded) counts.failed++;
+                log(label + '：未完成；' + error.message);
+                if (error.stop || error.cancelled) throw error;
+                return 'failed';
+            } finally { counts.processed++; }
+        },check,8,'同一项先转存和验证，新旧版本任务记录逐项保存'); }
+        catch (error) { stopped = true; log('替换中断：' + error.message); }
+        const cleanup = stopped ? { removed: 0, failed: cleanupKeys.size } : await cleanupGuangyaOldDirectories(cleanupKeys,target,plan,source,post,journal,progress,log,wait,check);
         if (stopped) log('任务已停止，不再执行后续替换和旧目录清理；保留任务记录供下次核对');
         counts.directories = cleanup.removed; counts.cleanupFailed += cleanup.failed;
         if (verifiedEntries.length) {
@@ -2069,57 +2215,72 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
     }
     async function runGuangyaImportFiles(files, targetId, post, ensureDirectory, existingSource, log, check) {
         const counts = { saved: 0, pending: 0, missed: 0, failed: 0, directories: 0, skipped: 0, processed: 0 };
-        let listing = null, reads = 0, reused = 0;
-        for (let i = 0; i < files.length; i++) {
-            const file = files[i], label = `[${i + 1}/${files.length}] ${file.path}`;
-            counts.processed++;
+        const listings = new Map(), paths = new Map();
+        let reads = 0, reused = 0;
+        const list = parentId => {
+            const promise = (async () => {
+                reads++;
+                const names = new Map();
+                for (const node of await existingSource.children({id:parentId})) {
+                    const name = node.name.toLowerCase();
+                    names.set(name,names.has(name) ? null : node);
+                }
+                return names;
+            })();
+            listings.set(parentId,promise);
+            promise.catch(() => { if (listings.get(parentId) === promise) listings.delete(parentId); });
+            return promise;
+        };
+        try { await batchStage(files,'光鸭导入预检、转存与核验（清单项目）',log,async (file,verify,i,observe) => {
+            const label = `[${i + 1}/${files.length}] ${file.path}`;
             try {
-                check();
+              return await enqueueByKey(paths,file.path.toLowerCase(),async () => {
+                verify();
                 log(label, { index: i + 1, total: files.length, path: file.path });
                 if (file.type === 'directory') {
-                    listing = null;
                     await ensureDirectory(file.path);
                     counts.directories++;
                     log(label + '：目录已就绪');
                 } else {
                     const parent = await ensureDirectory(relativeParts(file.path).slice(0, -1).join('/'));
-                    check();
+                    verify();
                     const parentId = parent || (targetId === '0' ? '' : targetId);
-                    let names = listing?.parentId === parentId ? listing.names : null;
+                    const name = file.name.toLowerCase();
+                    const cached = listings.get(parentId);
+                    let names = await (cached || list(parentId));
                     // Reuse only positive lookups. Absence must be checked on a fresh listing before submitting.
-                    if (!names?.has(file.name)) {
-                        listing = null; reads++;
-                        const nodes = await existingSource.children({ id: parentId });
-                        check();
-                        names = new Map();
-                        for (const node of nodes) names.set(node.name, names.has(node.name) ? null : node);
-                        listing = { parentId, names };
-                    } else reused++;
-                    if (names.has(file.name)) {
-                        const existing = names.get(file.name);
+                    if (cached && !names.has(name)) names = await list(parentId);
+                    else if (cached) reused++;
+                    verify();
+                    if (names.has(name)) {
+                        const existing = names.get(name);
                         if (!existing) throw new Error('目标存在多个同名项目，未上传');
                         const message = existingFileMessage(existing, file);
                         counts.skipped++;
                         log(label + '：' + message);
+                        return 'skipped';
                     } else {
-                        check();
-                        listing = null;
+                        verify();
+                        listings.delete(parentId);
                         const result = await importFile(file, parent || targetId, post);
                         if (result.status === 'saved') counts.saved++;
                         else if (result.status === 'pending') counts.pending++;
                         else counts.missed++;
                         log(label + '：' + result.message);
-                        if (result.stop) { log('任务已停止，不再处理后续项目'); break; }
+                        if (result.stop) throw Object.assign(new Error(result.message),{stop:true,recorded:true});
+                        return result.status === 'saved' ? undefined : 'failed';
                     }
                 }
+              });
             } catch (error) {
-                listing = null;
-                counts.failed++;
+                observe(error);
+                if (!error.recorded) counts.failed++;
                 log(label + '：失败，' + error.message);
-                if (error.stop || error.cancelled) { log('任务已停止，不再处理后续项目'); break; }
-            }
-            if ((i + 1) % 128 === 0) await sleep(0);
-        }
+                if (error.stop || error.cancelled) throw error;
+                return 'failed';
+            } finally { counts.processed++; }
+        },check,8,'同目录同名串行，光鸭写入与任务轮询沿用 650ms 节流'); }
+        catch (error) { log('导入中断：' + error.message); }
         log(`目录检查：读取 ${reads} 次，复用已有项 ${reused} 次；新提交前仍读取最新目录`);
         return counts;
     }
@@ -2169,7 +2330,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 if (!roots.length) throw new Error('选中项目不在当前目录中，请重新选择');
                 const result = await collectTree(roots, source, state => {
                     ui.get('status').textContent = `正在导出：${state.path}；文件 ${state.files}，目录 ${state.directories}`;
-                }, target.exportPath, checkJsonTask);
+                },target.exportPath,checkJsonTask,log);
                 if (!result.entries.length) throw new Error('没有可导出的项目');
                 const summary = exportManifestJson(ui, '光鸭', result);
                 ui.get('status').textContent = `导出完成：选中 ${roots.length} 项，${summary}；缺少有效 MD5 的文件 ${result.skipped.length} 个。` + (!ui.get('json').value ? '没有可导出的内容。' : '');
@@ -2219,11 +2380,11 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             ui.get('progress').textContent = `准备导入 ${files.length} 项…`;
             try {
                 if (replaceExisting) {
-                    const plan = await buildGuangyaReplacementPlan(files, target, existingSource, message => { ui.get('progress').textContent = message; });
+                    const plan = await buildGuangyaReplacementPlan(files,target,existingSource,message => { ui.get('progress').textContent = message; },undefined,undefined,checkJsonTask,log);
                     ui.get('progress').textContent = '预览已生成，等待确认；尚未修改网盘文件';
                     if (!await confirmGuangyaReplacement(ui, plan, target)) { cancelled = true; return; }
                     replacementCounts = await runGuangyaReplacement(files, target, plan, existingSource, post, ensureDirectory,
-                        message => { ui.get('progress').textContent = message; }, log);
+                        message => { ui.get('progress').textContent = message; },log,sleep,checkJsonTask);
                     refreshHistorySummary(ui, '光鸭');
                     return;
                 }
@@ -2322,7 +2483,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
     }
     // A special episode is still part of the programme; only explicit bonus labels count.
     const mediaBonusName = name => /花絮|幕后|幕後|预告|預告|制作特辑|製作特輯|拍摄特辑|拍攝特輯|(?:^|[^a-z0-9])(?:extras?|featurettes?|trailers?|teasers?|bloopers?|outtakes?|sample|behind[ ._-]+the[ ._-]+scenes|special[ ._-]+features)(?=$|[^a-z0-9])/i.test(mediaStem(name));
-    async function resolveMediaSpecials(rows, client, parentPath = '') {
+    async function resolveMediaSpecials(rows,client,parentPath = '',check = () => {},log) {
         const key = titleKey;
         const scopes = row => [...parentPath.split('/').filter(Boolean).map((name, i, parts) => ({ id: 'path:' + parts.slice(0, i + 1).join('/'), name })), ...(row.node.ancestors || []).map(a => ({ id: 'id:' + a.id, name: a.name }))];
         const contexts = new Map(), changed = [];
@@ -2345,22 +2506,24 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             })());
             return cache.get(detail.id);
         };
-        for (const row of rows) {
+        await batchStage(rows,'特别篇归属检查（视频）',log,async (row,verify,index,observe) => {
             // A confirmed per-file AI identity must not be replaced by folder-based special inference.
-            if (row.aiAssisted && row.detail && !row.error) continue;
+            if (row.aiAssisted && row.detail && !row.error) return 'skipped';
             const parsed = parseMediaName(row.node.name);
-            if (parsed.episode != null || mediaBonusName(row.node.name)) continue;
+            if (parsed.episode != null || mediaBonusName(row.node.name)) return 'skipped';
             const scope = scopes(row).reverse().find(s => contexts.has(s.id));
-            if (!scope) continue;
+            if (!scope) return 'skipped';
             const candidates = [...contexts.get(scope.id).values()];
             const explicit = /christmas[ ._-]+special|圣诞特别篇|聖誕特別篇/i.test(row.node.name);
             if (candidates.length !== 1) {
                 if (explicit) { row.detail = null; row.error = '此目录包含多个版本的同名剧集，特别篇归属不唯一'; }
-                continue;
+                return 'skipped';
             }
             const detail = candidates[0];
             try {
-                const episodes = await episodesOf(detail), original = key(mediaStem(row.node.name));
+                const episodes = await episodesOf(detail);
+                verify();
+                const original = key(mediaStem(row.node.name));
                 let matches = episodes.filter(ep => ep.aliases.some(title => key(title).length >= 4 && original.includes(key(title))));
                 if (!matches.length && explicit) {
                     // The year AFTER Christmas.Special is the episode year, not Doctor.Who.2005.
@@ -2369,14 +2532,20 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 }
                 if (matches.length === 1) {
                     Object.assign(row, { detail, match: 'tv:' + detail.id, type: 'tv', title: detail.name, year: (detail.first_air_date || '').slice(0, 4), category: mediaCategory(detail, 'tv'), season: 0, episode: matches[0].episode_number, endEpisode: null, episodeInferred: true, error: '' });
-                    changed.push(row);
+                    changed[index] = row;
                 } else if (explicit) {
                     Object.assign(row, { detail, match: 'tv:' + detail.id, type: 'tv', title: detail.name, year: (detail.first_air_date || '').slice(0, 4), season: 0, episode: null, error: '已定位特别篇；标题或播出日期无法唯一对应，请下拉选择集名' });
-                    changed.push(row);
+                    changed[index] = row;
                 }
-            } catch (error) { if (explicit) { row.detail = null; row.error = '特别篇信息查询失败：' + error.message; } }
-        }
-        return changed;
+            } catch (error) {
+                observe(error);
+                verify();
+                if (error.stop) throw error;
+                if (explicit) { row.detail = null; row.error = '特别篇信息查询失败：' + error.message; }
+                return 'failed';
+            }
+        },check,8,'相同作品的特别篇季资料复用请求');
+        return changed.filter(Boolean);
     }
     function mediaCategory(detail, type) {
         const genres = new Set((detail.genres || []).map(g => g.id));
@@ -2420,11 +2589,11 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         const info = await source.metadata(node);
         return { ...node, md5: info.md5, size: info.size };
     }
-    async function collectSelectedTree(selected, source, progress = () => {}, check = () => {}) {
+    async function collectSelectedTree(selected, source, progress = () => {}, check = () => {}, log) {
         if (!selected.length) throw new Error('请先勾选文件或文件夹');
         const nodes = [], children = cachedDriveChildren(source, new Map(), check);
         const roots = matchSelected(await children(source.parentId), selected);
-        await walkTree(roots.map(node => ({node, parentId: source.parentId, folders: [], ancestors: []})), entry => entry.node.id, async ({node, parentId, folders, ancestors}) => {
+        await walkTree(roots.map(node => ({node, parentId: source.parentId, folders: [], ancestors: []})), entry => entry.node.id, async ({node, parentId, folders, ancestors}, verify, order) => {
             const path = [...folders, node.name].join('/');
             progress('读取选中内容：' + path);
             if (node.directory) {
@@ -2432,9 +2601,11 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 const childAncestors = [...ancestors, { id: node.id, parentId, name: node.name, path, depth: ancestors.length }];
                 return (await children(node.id)).map(child => ({node: child, parentId: node.id, folders: childFolders, ancestors: childAncestors}));
             }
-            nodes.push({ ...node, parentId, folders, path, ancestors });
-        }, check);
-        return { nodes, children };
+            verify();
+            nodes.push({order,node:{...node,parentId,folders,path,ancestors}});
+        }, check, log, '选区扫描（目录/文件，分页按服务顺序）');
+        nodes.sort((a,b) => compareTreeOrder(a.order,b.order));
+        return {nodes:nodes.map(entry => entry.node),children};
     }
     function mediaFileHistory(session) {
         if (!session?.token) return null;
@@ -2500,8 +2671,8 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         }
         return {linked,unmatched};
     }
-    async function collectMediaSelection(selected, source, progress = () => {}, skip = () => false, check = () => {}, enrich = true, history) {
-        const { nodes, children } = await collectSelectedTree(selected, source, progress, check);
+    async function collectMediaSelection(selected, source, progress = () => {}, skip = () => false, check = () => {}, enrich = true, history, log) {
+        const { nodes, children } = await collectSelectedTree(selected, source, progress, check, log);
         const videos = nodes.filter(node => MEDIA_VIDEO.test(node.name)), videosByParent = new Map();
         for (const video of videos) {
             if (!videosByParent.has(video.parentId)) videosByParent.set(video.parentId, []);
@@ -2525,14 +2696,13 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         const pending = videos.filter(video => !skip(video) || linked.get(video.id).some(sub => sub.language
             && !mediaSubtitleSuffix(video.name,sub.name)));
         // Standard entries need neither metadata enrichment nor TMDB matching.
-        for (const video of enrich ? pending : []) {
-            check();
-            Object.assign(video, await mediaFileMetadata(video, source));
+        if (enrich) await batchStage(pending,'读取元数据（视频组）',log,async (video,verify) => {
+            Object.assign(video,await mediaFileMetadata(video,source));
             for (const subtitle of linked.get(video.id)) {
-                check();
-                Object.assign(subtitle, await mediaFileMetadata(subtitle, source));
+                verify();
+                Object.assign(subtitle,await mediaFileMetadata(subtitle,source));
             }
-        }
+        },check);
         check();
         const pendingParents = new Set(pending.map(video => video.parentId));
         return { videos: pending, linked, namesByParent, unmatched: unmatched.filter(sub => pendingParents.has(sub.parentId)), skipped: videos.length - pending.length };
@@ -2642,7 +2812,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         };
         const scopeKey = nodes => JSON.stringify(nodes.map(node => [node.id,node.parentId,node.name,node.directory,node.size,node.md5]).sort((a,b) => a[0].localeCompare(b[0])));
         const subtitleScopeKey = files => scopeKey(files.map(file => ({...file,id:String(file.id),name:file.name + '\0' + file.suffix})));
-        async function prepare(items, check = () => {}) {
+        async function prepare(items,check = () => {},log) {
             checkPlan = check;
             bindings.clear(); scopeSnapshots.clear();
             const videos = items.filter(item => item.node.id === item.videoId), candidates = new Map();
@@ -2660,8 +2830,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     candidates.get(folder.id).paths.add(path);
                 }
             }
-            const lists = new Map();
-            const children = async id => { check(); if (!lists.has(id)) lists.set(id, await source.children({ id })); return lists.get(id); };
+            const children = cachedDriveChildren(source,new Map(),check);
             const byId = new Map(videos.map(item => [String(item.node.id), item]));
             subtitleSnapshots.clear();
             const planned = new Map();
@@ -2670,20 +2839,24 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 if (!planned.has(id)) planned.set(id,new Set());
                 planned.get(id).add(String(item.node.id));
             }
-            if (typeof MEDIA_SUB !== 'undefined') for (const {node} of videos) {
+            if (typeof MEDIA_SUB !== 'undefined') await batchStage(videos,'预览字幕关联（视频）',log,async ({node}) => {
                 const id = String(node.id);
                 const found = mediaSubtitleLinks(await children(node.parentId),node.parentId,history).linked.get(id) || [];
                 if (found.some(sub => !planned.get(id)?.has(String(sub.id))) || found.length !== (planned.get(id)?.size || 0))
                     throw new Error('关联字幕已变化，请重新生成预览：' + node.name);
                 subtitleSnapshots.set(node,subtitleScopeKey(found));
-            }
-            for (const { folder, paths } of candidates.values()) {
-                check();
-                if (paths.size !== 1) continue;
+            },check);
+            const proposed = [];
+            await batchStage([...candidates.values()],'整体目录方案预检（候选目录）',log,async ({folder,paths},verify,index) => {
+                if (paths.size !== 1) return 'skipped';
                 const path = [...paths][0], contents = await scanScope(folder.id, children), ids = contents.filter(node => !node.directory && MEDIA_VIDEO.test(node.name)).map(node => node.id);
-                if (!ids.length || ids.some(id => !byId.has(id) || !byId.get(id).destination.startsWith(path + '/'))) continue;
+                if (!ids.length || ids.some(id => !byId.has(id) || !byId.get(id).destination.startsWith(path + '/'))) return 'skipped';
                 if (typeof MEDIA_SUB !== 'undefined' && contents.some(node => !node.directory && MEDIA_SUB.test(node.name)
-                    && !ids.some(id => planned.get(id)?.has(node.id)))) continue;
+                    && !ids.some(id => planned.get(id)?.has(node.id)))) return 'skipped';
+                verify();
+                proposed[index] = {folder,path,contents};
+            },check,8,'同一目录内按顺序读子树，绑定按原顺序合并');
+            for (const {folder,path,contents} of proposed.filter(Boolean)) {
                 // Multiple source folders for one work share one destination; files keep their IDs.
                 const previous = bindings.get(path), name = relativeParts(path).at(-1);
                 if (!previous || previous.name !== name && folder.name === name) { bindings.set(path, folder); scopeSnapshots.set(String(folder.id), contents); }
@@ -2703,20 +2876,18 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             for (const path of [...bindings.keys()].sort((a,b) => relativeParts(a).length - relativeParts(b).length)) { check(); await resolve(path); }
             return [...bindings].map(([destination, folder]) => ({folder, destination, contents:scopeSnapshots.get(String(folder.id))}));
         }
-        async function validate() {
+        async function validate(log) {
             const children = subtitleSnapshots.size ? cachedDriveChildren(source,new Map(),checkPlan) : null;
-            for (const [node,expected] of subtitleSnapshots) {
+            await batchStage([...subtitleSnapshots],'执行前复核字幕（视频）',log,async ([node,expected]) => {
                 const found = mediaSubtitleLinks(await children(node.parentId),node.parentId,history).linked.get(String(node.id)) || [];
                 if (subtitleScopeKey(found) !== expected) throw new Error('关联字幕在预览后变化，请重新生成预览：' + node.name);
-            }
-            for (const folder of bindings.values()) {
-                checkPlan();
+            },checkPlan);
+            await batchStage([...bindings.values()],'执行前复核目录（目录）',log,async folder => {
                 const current = (await source.children({id:folder.parentId})).find(node => node.id === folder.id);
                 if (!current || !current.directory || current.name !== folder.name || scopeKey(await scanScope(folder.id, id => source.children({id}))) !== scopeKey(scopeSnapshots.get(String(folder.id)))) throw new Error('文件夹或内容在预览后发生变化，请重新生成预览：' + folder.path);
-            }
-            checkPlan();
+            },checkPlan);
         }
-        async function relocateDirectory(folder, parentId, name) {
+        async function relocateDirectory(folder,parentId,name,verify) {
             let current = (await source.children({ id: folder.parentId })).find(n => n.id === folder.id);
             if (!current || !current.directory || current.name !== folder.name) throw new Error('原文件夹已变化，预览会自动更新：' + folder.path);
             const expectedScope = scopeSnapshots.get(String(folder.id));
@@ -2732,48 +2903,64 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             const siblings = await source.children({ id: currentParent });
             if (siblings.some(n => n.name === name && n.id !== folder.id)) throw new Error('原目录有同名项目，未覆盖：' + name);
             if (current.name !== name) {
+                verify();
                 await post(guangya ? '/userres/v1/file/rename' : '/file/rename', guangya ? { fileId: folder.id, newName: name } : { driveId: 0, fileId: folder.id, fileName: name });
                 await confirm(name);
             }
             if (currentParent !== parentId) {
+                verify();
                 const result = await post(guangya ? '/userres/v1/file/move_file' : '/file/mod_pid', guangya ? { fileIds: [folder.id], parentId: parentId === '0' ? '' : parentId } : { fileIdList: [{ FileId: folder.id }], parentFileId: parentId });
                 if (guangya && taskIdOf(result.data)) await waitGuangyaDelete(taskIdOf(result.data), post, sleep, '移动文件夹');
                 currentParent = parentId; await confirm(name);
             }
             return folder.id;
         }
-        const ensure = async path => {
-            if (directories.has(path)) return directories.get(path);
-            const parts = relativeParts(path), name = parts.pop(), parentId = await ensure(parts.join('/'));
+        const createDirectory = async (path,verify) => {
+            const parts = relativeParts(path), name = parts.pop(), parentId = await ensure(parts.join('/'),verify);
+            verify();
             let matches = (await source.children({ id: parentId })).filter(node => node.name === name);
             const original = bindings.get(path);
             if (original) {
                 if (matches.some(node => node.id !== original.id)) {
                     throw new Error('目标目录在预览后出现同名项目，请重新生成预览：' + path);
                 }
-                const id = await relocateDirectory(original, parentId, name);
-                directories.set(path, id); return id;
+                return relocateDirectory(original,parentId,name,verify);
             }
             if (!matches.length) {
+                verify();
                 if (guangya) await post(API.mkdir, { parentId: parentId === '0' ? '' : parentId, dirName: name, failIfNameExist: true });
                 else await post('/file/upload_request', { driveId: 0, parentFileId: parentId, fileName: name, type: 1, size: 0, duplicate: 0 });
                 for (let i = 0; i < 3; i++) { if (i) await sleep(400); matches = (await source.children({ id: parentId })).filter(node => node.name === name); if (matches.length) break; }
             }
             if (matches.length !== 1 || !matches[0].directory || (matches[0].id === '0' || matches[0].id === parentId)) throw new Error('无法确认目标目录：' + path);
-            directories.set(path, matches[0].id); return matches[0].id;
+            return matches[0].id;
         };
-        async function execute(item) {
-            checkPlan();
+        const ensure = (path,verify) => {
+            const key = path.normalize('NFKC').toLowerCase();
+            if (!directories.has(key)) directories.set(key,createDirectory(path,verify));
+            return directories.get(key);
+        };
+        const executionKeys = item => {
+            const {node,destination} = item, name = relativeParts(destination).at(-1).toLowerCase();
+            const bound = new Set([...bindings.values()].map(folder => String(folder.id)));
+            return ['源:' + node.parentId + ':' + node.name.toLowerCase(), '源:' + node.parentId + ':' + name,
+                ...((node.ancestors || []).filter(folder => bound.has(String(folder.id))).map(folder => '目录:' + folder.id))];
+        };
+        async function execute(item, verify = checkPlan) {
+            verify();
             const original = item.node, parts = relativeParts(item.destination), name = parts.pop();
             if (!hasFileMetadata(original)) throw new Error('原文件缺少可验证的 MD5 或大小，保留原状');
             const oldNodes = await source.children({ id: original.parentId });
+            verify();
             let current = oldNodes.find(node => node.id === original.id);
             if (current) current = await mediaFileMetadata(current, source);
             if (!current || current.name !== original.name || current.directory || current.size !== original.size || current.md5?.toLowerCase() !== original.md5?.toLowerCase()) throw new Error('预览后原文件发生变化，请重新识别');
             let parentId = original.parentId;
-            const targetId = await ensure(parts.join('/'));
+            verify();
+            const targetId = await ensure(parts.join('/'),verify);
             const destNodes = targetId === parentId ? oldNodes : await source.children({ id: targetId });
-            const occupied = (list, n) => list.some(node => node.name === n && node.id !== original.id);
+            verify();
+            const occupied = (list, n) => list.some(node => node.name.toLowerCase() === n.toLowerCase() && node.id !== original.id);
             if (occupied(destNodes, name)) throw new Error('目标已有同名项目，未覆盖');
             const rename = name !== current.name, move = targetId !== parentId;
             const renameFirst = !move || !occupied(oldNodes, name);
@@ -2795,11 +2982,12 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 catch (error) { historyError = error; }
             };
             const changeName = async () => {
+                verify();
                 await post(guangya ? '/userres/v1/file/rename' : '/file/rename', guangya ? { fileId: original.id, newName: name } : { driveId: 0, fileId: original.id, fileName: name });
                 await confirm(name);
                 rememberCurrent();
             };
-            const changeParent = async () => { const result = await post(guangya ? '/userres/v1/file/move_file' : '/file/mod_pid', guangya ? { fileIds: [original.id], parentId: targetId === '0' ? '' : targetId } : { fileIdList: [{ FileId: original.id }], parentFileId: targetId });
+            const changeParent = async () => { verify(); const result = await post(guangya ? '/userres/v1/file/move_file' : '/file/mod_pid', guangya ? { fileIds: [original.id], parentId: targetId === '0' ? '' : targetId } : { fileIdList: [{ FileId: original.id }], parentFileId: targetId });
                 if (guangya && taskIdOf(result.data)) await waitGuangyaDelete(taskIdOf(result.data), post, sleep, '移动');
                 parentId = targetId; await confirm(current.name); rememberCurrent(); };
             if (rename && renameFirst) await changeName();
@@ -2808,7 +2996,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             if (historyError) return '已整理，原名记录保存失败：' + historyError.message;
             return rename || move ? '已整理' : '已是标准名称与位置';
         }
-        return { prepare, validate, execute };
+        return { prepare, validate, execute, executionKeys };
     }
 
     const mediaStandardFolder = name => (/^.+\.(?:19|20)\d{2}$/.test(name) || /^Season \d{2}$/.test(name) || !!mediaExistingCategory([name])) && mediaClean(name) === name;
@@ -2882,7 +3070,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         };
     }
     const mediaPlaybackAttachment = name => MEDIA_SUB.test(name) || /\.(?:ttf|otf|ttc|woff2?)$/i.test(name) || /(?:字体|字體|fonts?).*\.(?:zip|rar|7z)$/i.test(name);
-    async function planMediaCleanup(selected, source, progress = () => {}, {extras = false, includeSubtitles = false, resolveCanonical, parentPath = '', check = () => {}} = {}) {
+    async function planMediaCleanup(selected, source, progress = () => {}, {extras = false, includeSubtitles = false, resolveCanonical, parentPath = '', check = () => {}, log} = {}) {
         if (!selected.length) throw new Error('请先勾选要清理的文件或文件夹');
         const plan = [], {parentId} = source;
         check();
@@ -2890,7 +3078,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         check();
         const label = extras ? '检查非正片：' : '识别并检查命名：';
         const baseFolders = parentPath.split('/').filter(Boolean);
-        await walkTree(roots.map(node => ({node, parentId, path:node.name})), entry => entry.node.id, async entry => {
+        await walkTree(roots.map(node => ({node, parentId, path:node.name})), entry => entry.node.id, async (entry,verify,order) => {
             const {node, parentId, path} = entry;
             let {extraScope = null} = entry;
             progress(label + path);
@@ -2902,7 +3090,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     } else if (extraScope) extraScope = {ancestors:[...extraScope.ancestors, folder]};
                 } else if (includeSubtitles || !mediaPlaybackAttachment(node.name)) {
                     const reason = !MEDIA_VIDEO.test(node.name) ? '非视频附件' : mediaBonusName(node.name) ? '花絮、预告等附加视频' : extraScope ? '附加内容目录内的视频' : '';
-                    if (reason) plan.push({id:node.id, parentId, name:node.name, path, directory:false, cleanup:'extras', extraScope, reason});
+                    if (reason) plan.push({order,item:{id:node.id,parentId,name:node.name,path,directory:false,cleanup:'extras',extraScope,reason}});
                 }
             } else {
                 const needsIdentity = node.directory || MEDIA_VIDEO.test(node.name) || MEDIA_SUB.test(node.name);
@@ -2910,9 +3098,9 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 if (resolveCanonical && needsIdentity) {
                     const folders = [...baseFolders,...path.split('/').slice(0,-1)];
                     let reason = '';
-                    try { expectedName = await resolveCanonical(node,folders); check(); }
+                    try { expectedName = await resolveCanonical(node,folders); verify(); }
                     catch (error) {
-                        check();
+                        verify();
                         if (error.stop) throw error;
                         reason = error.message;
                     }
@@ -2923,15 +3111,15 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     ? expectedName && expectedName !== node.name
                     : !mediaStandardNode(node);
                 if (nonstandard) {
-                    plan.push({id:node.id, name:node.name, parentId, path, directory:!!node.directory, expectedName});
+                    plan.push({order,item:{id:node.id,name:node.name,parentId,path,directory:!!node.directory,expectedName}});
                     return; // The whole directory is one deletion, including its contents.
                 }
             }
             if (node.directory) return (await source.children({id:node.id})).map(child => ({node:child, parentId:node.id, path:path + '/' + child.name, extraScope}));
-        }, check);
-        return plan;
+        }, check, log, '清理扫描与候选识别（目录/文件）');
+        return plan.sort((a,b) => compareTreeOrder(a.order,b.order)).map(entry => entry.item);
     }
-    async function removeMediaNonstandard(item, session, source) {
+    async function removeMediaNonstandard(item,session,source,check = () => {}) {
         const old = (await source.children({ id: item.parentId })).find(n => n.id === item.id);
         if (!old) return '项目已不存在';
         if (item.cleanup === 'extras') {
@@ -2942,11 +3130,13 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             }
             if (old.directory || old.name !== item.name || item.id === '0' || item.id === session.parent || MEDIA_VIDEO.test(old.name) && !mediaBonusName(old.name) && !scopeValid)
                 throw Object.assign(new Error('项目已变化或不再属于非正片，本次未删除'), { retained: true });
+            check();
             await recycleMedia(item, session, source);
             return '非正片文件已移入回收站';
         }
         if (!!old.directory !== item.directory || old.name !== item.name || item.id === '0' || item.id === session.parent || mediaStandardNode(old) && (!item.expectedName || item.expectedName === old.name))
             throw Object.assign(new Error('项目已变化或已符合标准，本次未删除'), { retained: true });
+        check();
         await recycleMedia(item, session, source);
         return item.directory ? '整个文件夹及内容已移入回收站' : '文件已移入回收站';
     }
@@ -3356,7 +3546,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         ui.get('mediaAIState').textContent = aiSaved.enabled ? '大模型识别已启用。' : '未启用，不会发送大模型请求。';
         let rows = [], batch = null, batchWriter = null, session = null, source = null, client = null, targetSession = null, targetPath = '', emptyPlan = [], emptySession = null, emptySource = null;
         let cancelled = false, reused = 0, history = null, previewRevision = '';
-        const checkStopped = () => { if (cancelled) throw new Error('已停止；已完成的操作保留，未处理项目不再执行'); };
+        const checkStopped = () => { if (cancelled) throw Object.assign(new Error('已停止，已完成的操作保留'),{stop:true,cancelled:true}); };
         ui.get('stopMedia').onclick = () => { cancelled = true; ui.get('stopMedia').disabled = true; progress('正在停止，等待当前文件操作或请求结束…'); };
         ui.get('mediaRecordState').textContent = `已保存 ${mediaRecords.count()} 个本盘视频的识别记录；未变化的内容可复用。`;
         const progress = message => { ui.get('mediaProgress').textContent = message; };
@@ -3381,7 +3571,10 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         const clearLog = () => { logLines.length = 0; logBox.value = ''; };
         const log = message => {
             logLines.push(message);
-            if (logLines.length > 200) logLines.shift();
+            if (logLines.length > 600) {
+                const oldest = logLines.findIndex(line => !line.includes(' · 上限 '));
+                logLines.splice(Math.max(0,oldest),1);
+            }
             logBox.value = logLines.join('\n');
             logBox.scrollTop = logBox.scrollHeight;
         };
@@ -3417,7 +3610,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 const plan = await planMediaCleanup(context.selected, emptySource, message => {
                     checkStopped(); progress(message);
                     if (message.startsWith('保留，未确认')) log(message);
-                }, {extras, includeSubtitles:extras && ui.get('cleanupSubtitles').checked, resolveCanonical:canonical, parentPath:context.path, check:checkStopped});
+                }, {extras, includeSubtitles:extras && ui.get('cleanupSubtitles').checked, resolveCanonical:canonical, parentPath:context.path, check:checkStopped, log});
                 checkStopped();
                 ui.get('emptyPreview').textContent = plan.map(item => `${item.directory ? '删除整个文件夹及全部内容' : '删除文件'}：${item.path}${item.reason ? '\n原因：' + item.reason : ''}${item.expectedName ? '\n应为标准名称：' + item.expectedName : ''}`).join('\n\n') || (extras ? '未发现非正片文件。' : '没有已确认命名不规范的项目。未确认的作品已保留，详见日志。');
                 emptyPlan = plan;
@@ -3443,12 +3636,15 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             if (!emptyPlan.length) return;
 
             const plan = emptyPlan; emptyPlan = []; invalidate(); let deleted = 0, retained = 0, failed = 0, pending = 0;
-            for (const item of plan) {
-                if (cancelled) break;
-                try { log(item.path + '：' + await removeMediaNonstandard(item, emptySession, emptySource)); deleted++; }
-                catch (error) { if (error.retained) { retained++; log(item.path + '：保留；' + error.message); } else if (error.pending) { pending++; log(item.path + '：删除结果待确认；' + error.message); } else { failed++; log(item.path + '：删除失败；' + error.message); } if (error.stop) { log('登录或权限异常，停止后续清理'); break; } }
+            try { await batchStage(plan,'回收站清理（文件或独立目录）',log,async (item,verify,_index,observe) => {
+                let outcome;
+                verify();
+                try { log(item.path + '：' + await removeMediaNonstandard(item,emptySession,emptySource,verify)); deleted++; }
+                catch (error) { observe(error); outcome = error.retained ? 'skipped' : 'failed'; if (error.retained) { retained++; log(item.path + '：保留；' + error.message); } else if (error.pending) { pending++; log(item.path + '：删除结果待确认；' + error.message); } else { failed++; log(item.path + '：删除失败；' + error.message); } if (error.stop) { log('登录或权限异常，停止后续清理'); throw error; } }
                 meter('清理所选项目', deleted + retained + failed + pending, plan.length);
-            }
+                return outcome;
+            },checkStopped,8,'整目录回收项已排除其子项'); }
+            catch (error) { log('清理中断：' + error.message); }
 
             progress(`清理结束：已清理 ${deleted}，保留 ${retained}，删除失败 ${failed}，结果待确认 ${pending}，未处理 ${plan.length - deleted - retained - failed - pending}。具体原因见日志。`);
         }, true);
@@ -3533,7 +3729,12 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 const season = Number(select.value);
                 const targets = wholeGroup ? peers(row).filter(item => item.include && item.type === 'tv' && item.detail?.id === row.detail.id && item.season == null) : [row];
                 return editRows(async () => {
-                    for (const item of targets) { if (item.episodeInferred) { item.episode = null; item.episodeInferred = false; } item.season = season; await validateEpisode(item); }
+                    await batchStage(targets,'核对新季号（视频）',log,async item => {
+                        if (item.episodeInferred) { item.episode = null; item.episodeInferred = false; }
+                        item.season = season;
+                        await validateEpisode(item);
+                        return item.error ? 'failed' : undefined;
+                    },checkStopped,8,'复用同一季资料，TMDB 保持节流');
                     const ready = targets.filter(readyRow).length;
                     progress('已应用第 ' + season + ' 季：' + ready + ' 个文件就绪，' + (targets.length - ready) + ' 个仍需处理；集号已自动提取或按标题匹配，无法对应的可直接下拉选集');
                 });
@@ -3681,7 +3882,12 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     if (!select.value) return;
                     return editRows(async () => {
                         try {
-                            for (const row of included) { await choose(row,select.value); await validateEpisode(row); }
+                            await batchStage(included,'核对手选作品与季集（视频）',log,async (row,verify) => {
+                                await choose(row,select.value);
+                                verify();
+                                await validateEpisode(row);
+                                return row.error ? 'failed' : undefined;
+                            },checkStopped,8,'TMDB 详情和季集复用请求');
                         } catch (error) { progress('读取作品失败：' + error.message); }
                     });
                 };
@@ -3825,8 +4031,8 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 mediaPath(row);
             } catch (e) { row.error = e.message; }
         }
-        async function matchGroup(group, query, identifyFirst = false, identified = null) {
-            checkStopped();
+        async function matchGroup(group, query, identifyFirst = false, identified = null, verify = checkStopped) {
+            verify();
             if (identifyFirst && aiSettings().enabled) {
                 for (let offset = 0; offset < group.length; offset += 12) {
                     checkStopped();
@@ -3840,7 +4046,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                             checkStopped();
                             const row = chunk[index], result = results[index];
                             if (result.error) { row.error = result.error; continue; }
-                            await matchGroup([row], result.title, false, result);
+                            await matchGroup([row],result.title,false,result,verify);
                         }
                     } catch (error) { checkStopped(); for (const row of chunk) row.error = error.message; }
                 }
@@ -3886,8 +4092,13 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     for (const row of group) row.error = exact.length > 1 ? '同名作品不唯一，请为同组选择一次' : '名称或年份无法可靠匹配，可修改搜索片名、选择候选或跳过' + (lookupError ? '；' + lookupError : '');
                     return;
                 }
-                for (const row of group) { await choose(row, exact[0].media_type + ':' + exact[0].id); await validateEpisode(row); }
-            } catch (error) { for (const row of group) row.error = error.message; }
+                for (const row of group) {
+                    verify();
+                    await choose(row,exact[0].media_type + ':' + exact[0].id);
+                    verify();
+                    await validateEpisode(row);
+                }
+            } catch (error) { if (error.stop) throw error; verify(); for (const row of group) row.error = error.message; }
         }
         ui.get('scanMedia').onclick = async () => {
             const shouldPreview = await runTask(scan, true);
@@ -3909,7 +4120,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 const target = ui.get('mediaTarget');
                 target.title = target.textContent = '分类保存到：/' + targetPath + '（纪录片独立分类，动画电影归电影）';
                 history = mediaFileHistory(session);
-                const collected = await collectMediaSelection(selected, source, progress, node => mediaAlreadyStandard(node, parentPath), checkStopped, false, history);
+                const collected = await collectMediaSelection(selected, source, progress, node => mediaAlreadyStandard(node, parentPath), checkStopped,false,history,log);
                 if (!collected.videos.length) { meter('检查完成', collected.skipped, collected.skipped); progress(`已跳过 ${collected.skipped} 个命名和所在作品目录均规范的视频，没有需要匹配的项目。`); return; }
                 if (!ui.get('tmdbKey').value.trim()) ui.openSettings('mediaSettings');
                 client = tmdbClient(ui.get('tmdbKey').value);
@@ -3923,32 +4134,41 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 }
                 mediaWorkCounts(rows);
                 const groups = new Map();
-                for (const row of rows) {
-                    checkStopped();
+                await batchStage(rows,'复用整理记录与核对季集（视频）',log,async (row,verify) => {
                     const saved = mediaRecords.get(row.node);
                     if (saved && !mediaBonusName(row.node.name)) {
                         try {
                             Object.assign(row, {query:saved.query, sourceYear:saved.sourceYear, season:saved.season, episode:saved.episode, endEpisode:saved.endEpisode, aiAssisted:saved.aiAssisted});
                             await choose(row, saved.match); await validateEpisode(row);
-                            if (readyRow(row)) { row.group = JSON.stringify([row.node.parentId, row.type, row.title, row.type === 'tv' ? '' : row.node.id]); row.reusedRecord = true; reused++; continue; }
-                        } catch (error) { checkStopped(); }
+                            if (readyRow(row)) { row.group = JSON.stringify([row.node.parentId, row.type, row.title, row.type === 'tv' ? '' : row.node.id]); row.reusedRecord = true; reused++; return; }
+                        } catch (error) { verify(); if (error.stop) throw error; }
                     }
+                    return 'skipped';
+                },checkStopped,8,'已保存记录优先，同一作品与季集读同一份 TMDB 结果');
+                for (const row of rows) {
+                    if (row.reusedRecord) continue;
                     if (mediaBonusName(row.node.name)) { row.include = false; row.error = '非正片附加视频，未参与匹配；可在清理文件中检查非正片'; continue; }
                     if (!groups.has(row.group)) groups.set(row.group, []); groups.get(row.group).push(row);
                 }
                 let matched = 0;
                 meter('匹配作品', 0, groups.size);
-                for (const group of groups.values()) {
-                    checkStopped(); progress(`匹配作品 ${matched + 1}/${groups.size}：${group[0].query}（${group.length} 个视频）`);
-                    await matchGroup(group, group[0].query);
+                const aiQueue = new Map();
+                await batchStage([...groups.values()],'作品识别与季集核对（作品组）',log,async (group,verify) => {
+                    verify(); progress(`匹配作品 ${matched + 1}/${groups.size}：${group[0].query}（${group.length} 个视频）`);
+                    await matchGroup(group,group[0].query,false,null,verify);
                     const failed = group.filter(mediaNeedsAI);
-                    if (failed.length && aiSettings().enabled) { checkStopped(); await matchGroup(failed, '', true); }
+                    if (failed.length && aiSettings().enabled) await enqueueByKey(aiQueue,'ai',() => matchGroup(failed,'',true,null,verify));
                     meter('匹配作品', ++matched, groups.size);
-                }
+                    return group.every(row => !readyRow(row)) ? 'failed' : undefined;
+                },checkStopped,8,'TMDB 请求沿用节流，同组季集及 AI 回退顺序检查');
                 checkStopped();
                 mediaWorkCounts(rows);
                 progress('核对同一作品目录中的特别篇');
-                for (const row of await resolveMediaSpecials(rows.filter(row => !row.reusedRecord), client, parentPath)) await validateEpisode(row);
+                const specials = await resolveMediaSpecials(rows.filter(row => !row.reusedRecord),client,parentPath,checkStopped,log);
+                await batchStage(specials,'特别篇季集核对（视频）',log,async row => {
+                    await validateEpisode(row);
+                    return row.error ? 'failed' : undefined;
+                },checkStopped,8,'特别篇归属先比对已有作品，再读取相同季资料');
                 checkStopped();
                 for (const row of rows) if (readyRow(row)) mediaRecords.remember(row);
                 mediaRecords.save();
@@ -3967,37 +4187,40 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 if (!rows.length) throw new Error('请先识别选中的视频');
                 const items = [], paths = new Map(), conflicts = new Set();
                 const included = rows.filter(r => r.include), sourceLists = cachedDriveChildren(source,new Map(),checkStopped); let checked = 0;
-                for (const row of included) {
-                    checkStopped();
+                const planned = [];
+                await batchStage(included,'元数据与文件名预览（视频组）',log,async (row,verify,index) => {
                     await validateEpisode(row);
                     meter('检查命名', ++checked, included.length);
-                    if (!readyRow(row)) { log('待确认，已跳过：' + row.node.path + '；' + (row.error || '未匹配作品')); continue; }
+                    if (!readyRow(row)) { log('待确认，已跳过：' + row.node.path + '；' + (row.error || '未匹配作品')); return 'skipped'; }
                     Object.assign(row.node, await mediaFileMetadata(row.node, source));
                     const fresh = mediaSubtitleLinks(await sourceLists(row.node.parentId),row.node.parentId,history);
                     row.subtitles = (fresh.linked.get(String(row.node.id)) || []).map(sub => ({...sub,
                         originalPath:row.node.originalPath?.replace(/[^/]+$/,() => sub.name),path:sub.name}));
                     mediaRecords.remember(row);
-                    for (const sub of row.subtitles) { checkStopped(); Object.assign(sub, await mediaFileMetadata(sub, source)); }
+                    for (const sub of row.subtitles) { verify(); Object.assign(sub, await mediaFileMetadata(sub, source)); }
                     const destination = mediaPath(row);
                     const group = [{ node: row.node, destination, videoId: row.node.id }];
                     for (const sub of row.subtitles) group.push({ node: sub, destination: mediaStem(destination) + sub.suffix + sub.name.slice(sub.name.lastIndexOf('.')), videoId: row.node.id });
-                    for (const item of group) {
-                        const previous = paths.get(item.destination);
+                    planned[index] = group;
+                },checkStopped,8,'同组字幕依次读取');
+                for (const item of planned.flat()) {
+                        const pathKey = item.destination.normalize('NFKC').toLowerCase();
+                        const previous = paths.get(pathKey);
                         if (previous && previous.node.id !== item.node.id) {
                             conflicts.add(previous.videoId); conflicts.add(item.videoId);
                             log('同名冲突，两组均跳过：' + item.destination);
                         }
-                        paths.set(item.destination, item); items.push(item);
-                    }
+                        paths.set(pathKey,item); items.push(item);
                 }
                 if (!items.length) throw new Error('没有可执行的已匹配视频，请处理待确认项');
                 const children = cachedDriveChildren(source, new Map(), checkStopped);
                 let checkedPaths = 0; meter('检查目标路径', 0, items.length);
-                for (const item of items) {
+                await batchStage(items,'目标路径预检（文件）',log,async (item,verify) => {
                     let parentId = targetSession.parent;
                     const parts = relativeParts(item.destination);
                     for (let i = 0; i < parts.length; i++) {
-                        const matches = (await children(parentId)).filter(node => node.name === parts[i]);
+                        verify();
+                        const matches = (await children(parentId)).filter(node => node.name.toLowerCase() === parts[i].toLowerCase());
                         if (!matches.length) break;
                         if (matches.length > 1 || i < parts.length - 1 && !matches[0].directory || i === parts.length - 1 && matches[0].id !== item.node.id) {
                             conflicts.add(item.videoId); log('目标同名冲突，视频及字幕已跳过：' + item.destination); break;
@@ -4005,7 +4228,8 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                         parentId = matches[0].id;
                     }
                     meter('检查目标路径', ++checkedPaths, items.length);
-                }
+                    return conflicts.has(item.videoId) ? 'failed' : undefined;
+                },checkStopped,8,'共享目录列表合并读取，按完整预览判定冲突');
                 for (const row of rows) if (conflicts.has(row.node.id)) row.error = '目标同名冲突，请修改名称或取消此项；本次已跳过';
                 const accepted = items.filter(item => !conflicts.has(item.videoId));
                 if (!accepted.length) throw new Error('所有已匹配项目存在同名冲突，请调整后重试');
@@ -4013,7 +4237,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 mediaRecords.save();
                 ui.get('mediaRecordState').textContent = `已保存 ${mediaRecords.count()} 个本盘视频的识别记录；本次复用 ${reused} 个。`;
                 const writer = mediaOrganizerWriter(targetSession, source);
-                const directoryPlans = await writer.prepare(accepted, checkStopped); checkStopped();
+                const directoryPlans = await writer.prepare(accepted,checkStopped,log); checkStopped();
                 const directoryPreview = directoryPlans.map(plan => `文件夹整体改名/移动：${plan.folder.path || plan.folder.name}\n目标：/${[targetPath,plan.destination].filter(Boolean).join('/')}\n随文件夹保留并移动的内容（${plan.contents.length} 项）：\n${plan.contents.map(node => '  ' + node.path + (node.directory ? '/' : '')).join('\n')}`).join('\n\n');
                 previewRevision = history?.revision(accepted.map(item => item.videoId)) || '';
                 batch = accepted; batchWriter = writer; ui.get('mediaPreview').textContent = (directoryPreview ? directoryPreview + '\n\n逐文件目标：\n' : '') + accepted.map(item => `原：${item.node.originalPath || item.node.path}\n新：/${[targetPath, item.destination].filter(Boolean).join('/')}`).join('\n\n');
@@ -4038,16 +4262,23 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             meter('重命名文件', 0, items.length);
             let completed = 0, failed = 0; const failedVideos = new Set();
             const rowsById = new Map(rows.map(row => [row.node.id, row]));
-            try { if (!writer) throw new Error('执行计划已失效，请重新生成预览'); checkStopped(); await writer.validate(); }
+            try { if (!writer) throw new Error('执行计划已失效，请重新生成预览'); checkStopped(); await writer.validate(log); }
             catch (error) { progress('无法执行：' + error.message); return; }
-            for (let i = 0; i < items.length; i++) {
-                if (cancelled) break;
-                const item = items[i]; progress(`重命名 ${i + 1}/${items.length}：${item.node.name}`);
+            const units = groupBatch(items,item => item.videoId);
+            const groups = connectedBatch(units,unit => unit.flatMap(item => writer.executionKeys?.(item) || []));
+            try { await batchStage(groups,'改名与移动（独立视频组）',log,async (group,verify,_index,observe) => {
+              let outcome;
+              for (const unit of group) for (const item of unit) {
+                verify();
+                progress(`重命名 ${completed + failed + 1}/${items.length}：${item.node.name}`);
                 if (failedVideos.has(item.videoId)) { failed++; log('视频未完成，字幕保留：' + item.node.path); meter('重命名文件', completed + failed, items.length); continue; }
-                try { log(item.destination + '：' + await writer.execute(item)); completed++; const row = rowsById.get(item.node.id); if (row) { mediaRecords.remember(row); mediaRecords.save(); } }
-                catch (error) { failed++; if (item.node.id === item.videoId) failedVideos.add(item.videoId); log(item.node.path + '：未完成；' + error.message); if (error.stop) break; }
-                meter('重命名文件', completed + failed, items.length);
-            }
+                try { log(item.destination + '：' + await writer.execute(item,verify)); completed++; const row = rowsById.get(item.node.id); if (row) { mediaRecords.remember(row); mediaRecords.save(); } }
+                catch (error) { observe(error); outcome = 'failed'; failed++; if (item.node.id === item.videoId) failedVideos.add(item.videoId); log(item.node.path + '：未完成；' + error.message); if (error.stop) throw error; }
+                meter('重命名文件',completed + failed,items.length);
+              }
+              return outcome;
+            },checkStopped,8,'同组先视频后字幕，共享移动目录和文件冲突顺序执行'); }
+            catch (error) { log('整理中断：' + error.message); }
             meter(failed || completed + failed < items.length ? '处理结束（含未完成项）' : '整理完成', completed + failed, items.length);
 
             progress(`整理结束：已确认 ${completed}，未完成 ${failed}，未处理 ${items.length - completed - failed}。原文件夹直接改名，分类时整体移动；本次未自动删除任何项目。`);
@@ -4393,7 +4624,19 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         let token = '', tokenKey = '';
         const unavailableSources = new Map(), workConflicts = new Map();
         const searchCache = new Map();
-        const seasonPreparations = new Map(), archiveCache = new Map();
+        const seasonPreparations = new Map(), archiveCache = new Map(), transfers = new Map();
+        const archiveWork = paced(0,async (work,verify) => { check(); verify(); return work(); });
+        const transfer = (result,verify) => {
+            check(); verify();
+            const key = result.url;
+            if (!transfers.has(key)) {
+                const pending = subtitleBinary(key,{allowHttp:result.allowHttp === true});
+                transfers.set(key,pending);
+                const clear = () => { if (transfers.get(key) === pending) transfers.delete(key); };
+                pending.then(clear,clear);
+            }
+            return transfers.get(key);
+        };
         const archiveData = async (url,verify) => {
             check(); verify();
             if (!archiveCache.has(url)) {
@@ -4454,8 +4697,10 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                                 for (const candidate of found.filter(item => item.ext === 'zip' && item.titleMatched).slice(0,3)) {
                                     verify();
                                     try {
-                                        const archive = await archiveData(candidate.url,verify);
-                                        for (const target of rows) if (subtitleArchiveChoices(archive.index,{...candidate,parsed:target.parsed},config.language).length) missing.delete(target.parsed.episode);
+                                        await archiveWork(async () => {
+                                            const archive = await archiveData(candidate.url,verify);
+                                            for (const target of rows) if (subtitleArchiveChoices(archive.index,{...candidate,parsed:target.parsed},config.language).length) missing.delete(target.parsed.episode);
+                                        },verify);
                                         log('整季覆盖', `${candidate.name} · 当前缺集 ${missing.size} 集${missing.size ? '，继续补查' : '，停止下载其他整季包'}`);
                                         if (!missing.size) break;
                                     }
@@ -4463,17 +4708,15 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                                 }
                             }]
                         ].filter(([name,enabled]) => enabled && !unavailableSources.has(name));
-                        const results = await Promise.allSettled(sources.map(async ([name,,run]) => {
+                        for (const [name,,run] of sources) {
                             try { await run(); }
                             catch (error) {
                                 check(); verify(); if (!isSubtitleSourceError(error)) throw error;
                                 if (subtitleSourcePaused(name,error)) unavailableSources.set(name,error.message);
                                 log('整季来源失败', `${parsed.query} · ${name} · ${error.message}；单集仍可补查其他来源`);
                             }
-                        }));
+                        }
                         check(); verify();
-                        const failed = results.find(result => result.status === 'rejected');
-                        if (failed) throw failed.reason;
                     })();
                     seasonPreparations.set(key,task); evict(seasonPreparations,24);
                     task.catch(() => seasonPreparations.delete(key));
@@ -4789,14 +5032,16 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     try {
                         result = await this.download(candidate, config); verify();
                         if (result.fileName) progress('文件选择', `${candidate.source} · ${result.fileName}`);
-                        const archive = candidate.source === 'SubDL' && result.ext === 'zip' ? await archiveData(result.url,verify) : null;
-                        let bytes = archive ? archive.bytes : await subtitleBinary(result.url, {allowHttp:result.allowHttp === true}); verify();
-                        if (archive) {
-                            const file = await subtitleSubdlArchive(bytes,candidate,config.language,verify,archive.index);
-                            bytes = file.bytes; result.ext = file.ext; result.fileName = file.name;
+                        if (candidate.source === 'SubDL' && result.ext === 'zip') return await archiveWork(async () => {
+                            const archive = await archiveData(result.url,verify);
+                            const file = await subtitleSubdlArchive(archive.bytes,candidate,config.language,verify,archive.index);
+                            result.ext = file.ext; result.fileName = file.name;
                             progress('SubDL 压缩包选择',file.name);
-                        }
-                        return {result, bytes};
+                            return {result,bytes:file.bytes};
+                        },verify);
+                        const bytes = await transfer(result,verify);
+                        verify();
+                        return {result,bytes};
                     } catch (error) {
                         verify();
                         if (attempt || error.phase !== 'transfer' || !([401,403,408,429,500,502,503,504].includes(error.status) || error.retryable)) throw error;
@@ -5471,7 +5716,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         return JSON.stringify([4, String(node.id), String(node.parentId ?? ''), node.name, node.size, (node.md5 || '').toLowerCase(),
             parsed.query, parsed.year, !!parsed.tv, parsed.tmdbId, parsed.season, parsed.episode, parsed.endEpisode, node.durationSeconds, parsed.runtimeSeconds, !!parsed.standalone]);
     }
-    async function inspectExistingSubtitles(row, drive, language, log = () => {}, check = () => {}, {force = false, review = null} = {}) {
+    async function inspectExistingSubtitles(row, drive, language, log = () => {}, check = () => {}, {force = false, review = null, observe = () => {}} = {}) {
         row.complete = false; row.verification = null; row.coverageUnconfirmed = false;
         const rejected = [];
         for (const sub of row.subtitles.filter(sub => /\.(srt|ass|ssa|vtt)$/i.test(sub.name))) {
@@ -5490,7 +5735,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             log('正文检查', `${row.node.name} · 读取现有字幕 ${sub.name}`);
             let bytes;
             try { bytes = await drive.read(sub, message => log('核验重试', message), check); check(); }
-            catch (error) { check(); if (error.stop) throw error; row.coverageUnconfirmed = true; rejected.push(sub.name + '：读取失败 · ' + error.message); log('现有字幕读取失败', `${sub.name}：${error.message}`); continue; }
+            catch (error) { observe(error); check(); if (error.stop) throw error; row.coverageUnconfirmed = true; rejected.push(sub.name + '：读取失败 · ' + error.message); log('现有字幕读取失败', `${sub.name}：${error.message}`); continue; }
             try {
                 const ext = sub.name.split('.').pop().toLowerCase();
                 const {text, ...result} = subtitleValidateContent(row, bytes, ext, language, log);
@@ -5893,13 +6138,12 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         }
         return [...groups.values()];
     }
-    async function readSubtitleImport(files, check) {
+    async function readSubtitleImport(files, check, log) {
         if (files.length > 200) throw new Error('一次最多选择 200 个本地文件');
         const limit = 4 * 1024 * 1024, batchLimit = 32 * 1024 * 1024;
         let totalBytes = 0, inputBytes = 0, totalEntries = 0;
         const entries = [];
-        for (const file of files) {
-            check();
+        await batchStage(files,'本地导入读取与解压（文件/ZIP）',log,async (file,verify,index,observe) => {
             const name = file.name;
             const ext = name.split('.').pop().toLowerCase();
             try {
@@ -5909,29 +6153,32 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 if (inputBytes + file.size > 64 * 1024 * 1024) throw new Error('本批读取的本地文件合计超过 64 MiB');
                 inputBytes += file.size;
                 const bytes = new Uint8Array(await file.arrayBuffer());
-                check();
+                verify();
                 if (bytes.length !== file.size) throw new Error('本地文件大小已变化，请重新选择');
-                const index = ext === 'zip' ? subtitleArchiveIndex(bytes,check,true) : null;
-                if (index && !index.files.length) throw new Error('ZIP 内没有支持的字幕');
-                const count = index ? index.files.length : 1;
-                const expanded = index ? index.files.reduce((sum,entry) => sum + entry.length,0) : bytes.length;
+                const archive = ext === 'zip' ? subtitleArchiveIndex(bytes,verify,true) : null;
+                if (archive && !archive.files.length) throw new Error('ZIP 内没有支持的字幕');
+                const count = archive ? archive.files.length : 1;
+                const expanded = archive ? archive.files.reduce((sum,entry) => sum + entry.length,0) : bytes.length;
                 if (totalEntries + count > 200 || totalBytes + expanded > batchLimit)
                     throw new Error('本批最多检测 200 个条目和 32 MiB 字幕');
                 totalEntries += count;
                 totalBytes += expanded;
                 const loaded = [];
-                if (index) for (const entry of index.files) {
-                    const subtitle = await subtitleArchiveExtract(bytes,index,entry,check);
+                if (archive) for (const entry of archive.files) {
+                    verify();
+                    const subtitle = await subtitleArchiveExtract(bytes,archive,entry,verify);
                     loaded.push({...subtitle, label:name + ' / ' + entry.path});
                 }
                 else loaded.push({name,label:name,ext,bytes});
-                entries.push(...loaded);
+                entries[index] = loaded;
             } catch (error) {
-                check();
-                entries.push({name,label:name,error:error.message});
+                observe(error);
+                verify();
+                entries[index] = [{name,label:name,error:error.message}];
+                return 'failed';
             }
-        }
-        return entries;
+        },check,8,'单 ZIP 顺序解压，输入和解压字节使用整批共用上限');
+        return entries.flat();
     }
     function matchSubtitleImport(name, rows) {
         const stem = mediaStem(name).normalize('NFKC');
@@ -6093,7 +6340,10 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             const line = `${new Date().toLocaleTimeString()} [${event}]${message ? ' ' + message : ''}`;
             const box = ui.get('subtitleLog');
             logLines.push(line);
-            if (logLines.length > 2000) logLines.shift();
+            if (logLines.length > 2000) {
+                const oldest = logLines.findIndex(line => !/\[(批量统计|检查开始|字幕检查|检查复用)\]/.test(line));
+                logLines.splice(Math.max(0,oldest),1);
+            }
             box.value = logLines.join('\n');
             box.scrollTop = box.scrollHeight;
         };
@@ -6503,7 +6753,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 meter(0,0);
                 status('正在读取本地字幕…');
                 try {
-                    const entries = await readSubtitleImport(files,check);
+                    const entries = await readSubtitleImport(files,check,batchLog);
                     check();
                     if (draft.scan !== scan || draft.drive !== drive) throw new Error('检查范围已改变，请重新选择本地文件');
                     clearDeletePreview();
@@ -6535,16 +6785,18 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 if (draft.scan !== scan || draft.drive !== drive || checkedScope === null)
                     throw Object.assign(new Error('检查范围已改变，请重新检查目录'), {stop:true});
             };
-            for (const {row,name,bytes,verification,label,language} of targets) {
+            const writes = new Map();
+            try {
+              await batchStage(targets,'本地字幕上传与核验（视频）',batchLog,async ({row,name,bytes,verification,label,language},verify,_index,observe) => {
+                let outcome;
                 try {
-                    verify();
                     if (!inventory.includes(row) || covered(row) || row.writeBlocked) throw new Error('目标状态已变，请重新检查目录');
                     status('正在导入 · ' + row.node.name);
                     diag('导入开始',label + ' → ' + row.path);
-                    const target = await draft.drive.save(row,name,bytes,phase => {
+                    const target = await enqueueByKey(writes,JSON.stringify([row.node.parentId,name.toLowerCase()]),() => draft.drive.save(row,name,bytes,phase => {
                         status(phase + ' · ' + row.node.name);
                         diag('导入网盘',row.node.name + ' · ' + phase);
-                    },verify,{language,beforeWrite:nodes => checkSubtitleImportDirectory(row,name,nodes)});
+                    },verify,{language,beforeWrite:nodes => checkSubtitleImportDirectory(row,name,nodes)}));
                     row.subtitles.push(target);
                     row.siblingNames?.add(name.toLowerCase());
                     row.complete = true;
@@ -6554,6 +6806,8 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     done++;
                     diag('导入成功',row.path + ' · 上传字节一致 · 未核对播放同步');
                 } catch (error) {
+                    observe(error);
+                    outcome = 'failed';
                     row.error = error.message;
                     if (error.pendingUpload) {
                         row.writeBlocked = true;
@@ -6561,13 +6815,14 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     } else if (!cancelled && !error.stop && error.phase !== 'drive-auth') failed++;
                     diag(error.pendingUpload ? '导入待对账' : '导入未完成',row.path + ' · ' + error.message);
                     if (cancelled || error.stop || error.phase === 'drive-auth' || [401,403].includes(error.status)) {
-                        interrupted = error.message;
-                        break;
+                        throw error;
                     }
                 }
                 meter(done + failed + pending,targets.length);
                 render();
-            }
+                return outcome;
+              },verify,8,'同目录同名写入串行，上传、读回和回执按顺序');
+            } catch (error) { interrupted = error.message; }
             const summary = '已处理 ' + (done + failed + pending) + '/' + targets.length + ' · 已导入 ' + done
                 + ' · 失败 ' + failed + ' · 待对账 ' + pending + (interrupted ? ' · ' + interrupted : '');
             meter(done + failed + pending,targets.length);
@@ -6597,10 +6852,9 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             diag('查找策略', `剧集先按季搜索并建立文件索引；缺集再搜索迅雷、SubDL、OpenSubtitles；${ai ? '名称有歧义时交给 AI 判断' : 'AI 未启用，使用严格片名匹配'}；来源限流后本批跳过该来源`);
             try {
                 drive.assertReady?.();
-                diag('并发策略', '搜索最多同时处理 2 组作品，同一季逐集复用缓存；各来源继续独立限速');
-                await forEachConcurrent(subtitleSearchGroups(rows), 2, async (group, verify) => {
+                diag('并发策略','整季准备完成后再查单集，各阶段上限 8，复用同季结果，各来源保持原限速');
+                await batchStage(subtitleSearchGroups(rows),'作品资料准备（作品/季）',batchLog,async (group,check,_index,observe) => {
                   for (const row of group) {
-                    const check = verify;
                     if (!row.parsed.workResolved) {
                         status('读取作品资料：' + row.node.name);
                         const aliasStarted = Date.now();
@@ -6611,14 +6865,17 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                                 mediaRecords.rememberParsed?.(row.node,parsed); mediaRecords.save?.();
                                 diag('作品别名', `已复用或确认作品资料，取得 ${parsed.aliases.length} 个片名用于搜索`);
                             }
-                        } catch (error) { check(); if (error.stop) throw error; row.workLookupFailed = true; diag('作品别名', '读取失败，继续按原片名严格匹配：' + error.message); }
+                        } catch (error) { observe(error); check(); if (error.stop) throw error; row.workLookupFailed = true; diag('作品别名', '读取失败，继续按原片名严格匹配：' + error.message); }
                         finally { diag('别名耗时', `${row.node.name} · ${((Date.now() - aliasStarted) / 1000).toFixed(1)} 秒`); }
                     }
                   }
-                  verify();
-                  if (group[0]?.parsed.tv) { status('查找整季字幕：' + group[0].parsed.query); await service.prepareSeason?.(group,config,verify); }
-                  for (const row of group) {
-                    const check = verify;
+                },check,8,'同季别名顺序复用 TMDB 资料');
+                const seasons = subtitleSearchGroups(rows).filter(group => group[0]?.parsed.tv);
+                await batchStage(seasons,'整季字幕准备（季）',batchLog,async (group,verify) => {
+                    status('查找整季字幕：' + group[0].parsed.query);
+                    await service.prepareSeason?.(group,config,verify);
+                },check,8,'同季合并请求，各来源保持原节流，整季 ZIP 顺序处理');
+                await batchStage(rows,'单集及电影查找（视频）',batchLog,async (row,check,_index,observe) => {
                     const started = Date.now();
                     check(); status(`查找字幕 ${done + 1}/${rows.length}：${row.node.name}`);
                     diag('源文件', row.node.name);
@@ -6626,14 +6883,15 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     diag('作品别名', row.parsed.aliases?.length ? row.parsed.aliases.join('；') : '无');
                     await searchSubtitleSources(row, config, service, drive, diag, check);
                     await applySubtitleWorkCorrection(row, correctWork, config, service, drive, diag, check);
+                    for (const source of row.sources || []) for (const query of source.queries || []) observe(query.error);
                     if (row.candidates.length) diag('字幕候选', row.node.name + ' · ' + row.candidates.map(candidate =>
                         subtitleCandidateLabel(candidate) + (!candidate.titleMatched && !candidate.identityMatched && !candidate.aiAccepted
                             ? ' · ' + (candidate.matchReason || '需确认作品或语言') : '')).join('；'));
                     diag('视频结果', `${row.node.name} · ${subtitleSearchLabels[subtitleSearchState(row)]}${row.selectedCandidate ? ' · ' + subtitleCandidateLabel(row.selectedCandidate) : ''}`);
                     diag('单片耗时', `${row.node.name} · ${((Date.now() - started) / 1000).toFixed(1)} 秒`);
                     meter(++done, rows.length); render();
-                  }
-                }, check);
+                    return subtitleSearchState(row) === 'failed' ? 'failed' : undefined;
+                },check,8,'复用整季缓存，迅雷、SubDL、OpenSubtitles 和 AI 保持各自限速');
                 const sourceFailures = rows.filter(row => row.sources?.some(source => source.error || source.paused || source.cacheError
                     || source.queries?.some(query => query.error))).length;
                 const message = '已处理 ' + done + '/' + rows.length + ' · ' + (sourceFailures ? sourceFailures + ' 项遇到来源错误 · ' : '')
@@ -6657,8 +6915,11 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 if (deletePlan?.some(entry => entry.row === row)) clearDeletePreview();
             }
         };
+        const batchLog = message => diag('批量统计',message);
         const checkDirectory = async captured => {
-            diag('检查开始','读取当前选中的视频与已有字幕');
+            const started = Date.now();
+            const limit = 8;
+            diag('检查开始','读取当前选中的视频与已有字幕 · 并发上限 ' + limit);
             searching = false; seasonView = null; seasonChoices.clear();
             const batch = scan = {scope:'', interrupted:false};
             let framePending = false;
@@ -6689,7 +6950,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 context.history = mediaFileHistory(context.session);
                 const currentDrive = subtitleDrive(context);
                 const collected = await collectMediaSelection(context.selected, context.source,
-                    message => { verifyScan(); status('正在读取目录 · ' + message); }, () => false, verifyScan, false, context.history);
+                    message => { verifyScan(); status('正在读取目录 · ' + message); }, () => false, verifyScan, false, context.history,batchLog);
                 verifyScan();
                 const names = context.selected.slice(0, 3).map(item => item.name).filter(Boolean);
                 const selection = names.length ? '（' + names.join('、') + (context.selected.length > names.length ? '等' : '') + '）' : '';
@@ -6705,7 +6966,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 const language = settings().language;
                 diag('目录扫描', '视频 ' + rows.length + '，已关联字幕 ' + rows.filter(row => row.subtitles.length).length + ' 组');
                 const fatal = error => error.stop || error.phase === 'drive-auth' || [401,403].includes(error.status);
-                await forEachConcurrent(rows, 3, async (row, verify) => {
+                await batchStage(rows,'目录字幕检查（视频）',batchLog,async (row,verify,_index,observe) => {
                     verify();
                     row.checkState = 'checking';
                     refresh();
@@ -6717,6 +6978,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                         subtitleRowIdentity(row, context.path);
                     } catch (error) {
                         verify();
+                        observe(error);
                         if (fatal(error)) throw error;
                         diag('识别记录', node.name + ' · 元数据读取失败：' + error.message);
                     }
@@ -6727,15 +6989,19 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                         const recovered = await currentDrive.reconcile(row, phase => diag('上传对账', node.name + ' · ' + phase), verify);
                         verify();
                         for (const sub of recovered) if (!row.subtitles.some(existing => existing.id === sub.id)) row.subtitles.push(sub);
-                        await inspectExistingSubtitles(row, currentDrive, language, diag, verify);
+                        await inspectExistingSubtitles(row,currentDrive,language,diag,verify,{observe});
                     } catch (error) {
+                        observe(error);
                         verify();
                         if (fatal(error)) throw error;
                         row.writeBlocked = true; row.error = error.message;
                         diag('上传对账失败', node.name + ' · ' + error.message);
                     }
-                    try { await inspectEmbedded(row, verify, currentDrive); }
-                    catch (error) {
+                    try {
+                        await inspectEmbedded(row,verify,currentDrive);
+                        if (row.embedded?.unconfirmed) observe(row.embedded.message);
+                    } catch (error) {
+                        observe(error);
                         verify();
                         if (fatal(error)) throw error;
                         row.coverageUnconfirmed = true;
@@ -6746,7 +7012,8 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     row.checkState = 'done';
                     meter(++done, rows.length);
                     refresh();
-                }, verifyScan);
+                    return subtitleCoverageState(row) === 'unconfirmed' ? 'failed' : undefined;
+                }, verifyScan,limit,'网盘目录、详情与正文请求沿用服务节流');
                 verifyScan();
                 pendingDeletes.clear();
                 drive = currentDrive;
@@ -6755,7 +7022,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 const unconfirmed = rows.filter(row => subtitleCoverageState(row) === 'unconfirmed').length;
                 const message = rows.length ? '已检查 ' + done + '/' + total + ' · 有字幕 ' + rows.filter(covered).length
                     + (unconfirmed ? ' · 检查未确认 ' + unconfirmed : '') : '选中范围没有正片视频';
-                status(message); diag('字幕检查',message);
+                status(message); diag('字幕检查',message + ' · 耗时 ' + ((Date.now() - started) / 1000).toFixed(2) + ' 秒');
             } catch (error) {
                 if (scan !== batch) return false;
                 batch.interrupted = true;
@@ -6792,7 +7059,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             try {
                 const current = await mediaContext(provider, subtitleContext); check();
                 if (sameCheckedSelection(current)) {
-                    try { drive.assertReady?.(); return true; }
+                    try { drive.assertReady?.(); diag('检查复用','同一选区已完成目录检查，本轮直接复用'); return true; }
                     catch (error) { diag('重新检查',error.message); }
                 }
                 return await checkDirectory(current);
@@ -6817,10 +7084,9 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             try {
                 await requireCheckedSelection();
                 seasonChoices.delete(rows[0].groupKey);
-                for (const row of rows) {
-                    check();
+                await batchStage(rows,'已有字幕复查（视频）',batchLog,async (row,verify,_index,observe) => {
                     const {node} = row;
-                    const siblings = await children(node.parentId); check();
+                    const siblings = await children(node.parentId); verify();
                     const fresh = siblings.find(file => !file.directory && String(file.id) === String(node.id));
                     if (!fresh || fresh.name !== node.name || fresh.size !== node.size || node.md5 && fresh.md5 && node.md5 !== fresh.md5) {
                         checkedScope = null;
@@ -6829,15 +7095,16 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     if (!links.has(node.parentId)) links.set(node.parentId,mediaSubtitleLinks(siblings,node.parentId,context.history).linked);
                     const next = {...row,subtitles:[...(links.get(node.parentId).get(String(node.id)) || [])],embedded:undefined,
                         siblingNames:new Set(siblings.map(file => file.name.toLowerCase())),error:''};
-                    const recovered = await currentDrive.reconcile(next, phase => diag('上传对账',phase),check);
+                    const recovered = await currentDrive.reconcile(next, phase => diag('上传对账',phase),verify);
                     for (const sub of recovered) if (!next.subtitles.some(item => String(item.id) === String(sub.id))) next.subtitles.push(sub);
                     next.writeBlocked = false;
-                    await inspectExistingSubtitles(next,currentDrive,language,diag,check,{force:true,review});
-                    await inspectEmbedded(next,check,currentDrive); check();
+                    await inspectExistingSubtitles(next,currentDrive,language,diag,verify,{force:true,review,observe});
+                    await inspectEmbedded(next,verify,currentDrive); verify();
                     for (const sub of row.subtitles) { deleteSelection.delete(String(sub.id)); pendingDeletes.delete(String(sub.id)); }
                     Object.assign(row,next,{selectedCandidate:null,candidates:[],autoCandidates:[],sources:[]});
                     meter(++done,rows.length); render();
-                }
+                    return subtitleCoverageState(next) === 'unconfirmed' ? 'failed' : undefined;
+                },check,8,'网盘正文沿用原节流，AI 正文复查保持排队');
                 status('重新检测完成 · ' + done + '/' + rows.length);
             } catch (error) {
                 if (error.pendingUpload || error.stop || error.phase === 'drive-auth') checkedScope = null;
@@ -6860,10 +7127,13 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             let deleted = 0; const touched = new Set(), failures = [];
             try {
                 await requireCheckedSelection();
-                for (const {row,sub} of targets) {
-                    check(); status(`删除字幕 ${deleted + failures.length + 1}/${targets.length}：${sub.name}`);
+                const groups = groupBatch(targets,entry => entry.row);
+                await batchStage(groups,'删除外置字幕（视频组）',batchLog,async (group,verify,_index,observe) => {
+                    let failedGroup = false;
+                    for (const {row,sub} of group) {
+                    verify(); status(`删除字幕 ${deleted + failures.length + 1}/${targets.length}：${sub.name}`);
                     try {
-                        const siblings = await subtitleContext.source.children({id:row.node.parentId}); check();
+                        const siblings = await subtitleContext.source.children({id:row.node.parentId}); verify();
                         const current = siblings.find(node => String(node.id) === String(sub.id));
                         const video = siblings.find(node => String(node.id) === String(row.node.id));
                         const sameFile = (now, before) => now && !now.directory && String(now.id) === String(before.id) && now.name === before.name && now.size === before.size && String(now.md5 || '').toLowerCase() === String(before.md5 || '').toLowerCase();
@@ -6871,6 +7141,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                         if (!sameFile(current,sub) || !sameFile(video,row.node) || !linked.some(item => String(item.id) === String(sub.id)) || !MEDIA_SUB.test(current.name))
                             throw new Error('字幕或关联视频已变化，未删除；请重新检查目录');
                         if (!canDelete(row, sub)) continue;
+                        verify();
                         await recycleMedia({...current,parentId:row.node.parentId},subtitleContext.session,subtitleContext.source);
                         try { drive.verified?.forget(sub); } catch (error) { diag('核验缓存清理失败', `${sub.name} · ${error.message}`); }
                         row.subtitles = row.subtitles.filter(item => String(item.id) !== String(sub.id)); row.siblingNames?.delete(sub.name.toLowerCase()); deleteSelection.delete(String(sub.id)); touched.add(row); deleted++;
@@ -6880,12 +7151,20 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                             pendingDeletes.add(String(sub.id)); deleteSelection.delete(String(sub.id));
                             row.writeBlocked = true; row.complete = false; row.error = '字幕删除结果不明，请重新检查目录：' + error.message;
                         }
-                        check();
+                        observe(error);
+                        verify();
                         if (error.stop || [401,403].includes(error.status)) throw error;
+                        failedGroup = true;
                         failures.push(`${sub.name}：${error.message}`); diag('字幕删除失败', `${row.node.name} · ${sub.name} · ${error.message}`);
                     }
-                }
-                for (const row of touched) { check(); if (row.writeBlocked) continue; await inspectExistingSubtitles(row,drive,settings().language,(event,detail)=>diag(event,`${row.node.name} · ${detail}`),check); await inspectEmbedded(row,check); }
+                    }
+                    return failedGroup ? 'failed' : undefined;
+                },check,8,'同一视频的字幕按顺序重新验证并处理');
+                await batchStage([...touched],'删除后复查（视频）',batchLog,async (row,verify,_index,observe) => {
+                    if (row.writeBlocked) return 'skipped';
+                    await inspectExistingSubtitles(row,drive,settings().language,(event,detail) => diag(event,`${row.node.name} · ${detail}`),verify,{observe});
+                    await inspectEmbedded(row,verify);
+                },check);
                 status(`批量删除结束：已移入回收站 ${deleted} 个，失败 ${failures.length} 个。` + (failures.length ? ` ${failures.slice(0,5).join('；')}` : ''));
             } catch (error) {
                 if (cancelled) for (const row of touched) if (!row.writeBlocked) {
@@ -6906,8 +7185,10 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             const pausedDownloads = new Set();
             try {
                 await requireCheckedSelection();
-                for (const row of rows) {
-                    check(); row.error = '';
+                const writes = new Map();
+                await batchStage(rows,'下载检测及补齐核验（视频）',batchLog,async (row,check,_index,observe) => {
+                    row.error = '';
+                    let outcome;
                     try {
                         status(`下载字幕 ${done + failed + 1}/${rows.length}：${row.node.name}`);
                         const candidates = row.manualCandidate ? [row.selectedCandidate] : [row.selectedCandidate, ...(row.autoCandidates || []).filter(item => item !== row.selectedCandidate)];
@@ -6941,6 +7222,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                                 const language = detected || candidate.language || (config.language === 'en' ? 'en' : 'zh');
                                 payload = {name, bytes, verification, language}; break;
                             } catch (error) {
+                                observe(error);
                                 check();
                                 if (error.phase === 'drive-auth' || error.stop && !isSubtitleSourceError(error)) throw error;
                                 candidate.downloadFailed = true;
@@ -6966,19 +7248,22 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                             throw new Error((suspicious ? '字幕可疑，待确认：' : '候选均未通过下载/正文检查：') + failures.join('；'));
                         }
                         const {name, bytes, verification, language} = payload;
-                        const target = await drive.save(row, name, bytes, phase => { status(phase + '：' + row.node.name); diag('网盘写入', `${row.node.name} · ${phase}`); }, check,
-                            {language,beforeWrite:nodes => checkSubtitleImportDirectory(row,name,nodes)});
+                        const target = await enqueueByKey(writes,JSON.stringify([row.node.parentId,name.toLowerCase()]),() => drive.save(row,name,bytes,phase => { status(phase + '：' + row.node.name); diag('网盘写入', `${row.node.name} · ${phase}`); }, check,
+                            {language,beforeWrite:nodes => checkSubtitleImportDirectory(row,name,nodes)}));
                         row.subtitles.push(target); row.siblingNames?.add(name.toLowerCase()); row.complete = true; row.verification = verification; row.searchMessage = '已补齐，上传内容一致：' + name + ' · ' + subtitleVerificationMessage(verification); done++;
                         diag('补齐成功', `${row.node.name} · 上传字节已核验 ${name}`);
                     } catch (error) {
+                        observe(error);
                         row.error = error.message;
                         if (error.pendingUpload) row.writeBlocked = true;
                         diag(cancelled ? '已停止' : '未补齐', `${row.node.name}：${error.message}`);
                         if (cancelled || error.stop || error.phase === 'drive-auth') throw error;
                         failed++;
+                        outcome = 'failed';
                     }
                     meter(done + failed, rows.length); render();
-                }
+                    return outcome;
+                },check,8,'单视频依优先级回退，同目录同名写入串行，网盘与来源沿用原节流');
                 const message = `已处理 ${done + failed}/${rows.length} · 已补齐 ${done} · 未补齐 ${failed}`;
                 status('补齐结束 · ' + message); diag('补齐结束',message);
             } catch (error) {

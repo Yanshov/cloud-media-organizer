@@ -1,7 +1,7 @@
     if (typeof navigator !== 'undefined' && (navigator.userAgentData?.mobile || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
         navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) return;
 
-    const VERSION = '3.0.0';
+    const VERSION = '3.0.1';
     let jsonTaskStopped = false;
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
@@ -40,7 +40,8 @@
             try {
                 while (next < items.length) {
                     verify();
-                    await run(items[next++], verify);
+                    const index = next++;
+                    await run(items[index],verify,index);
                 }
             } catch (error) { failure ||= error; }
         };
@@ -48,29 +49,128 @@
         await Promise.all(Array.from({length:Math.min(limit, items.length)}, worker));
         verify();
     }
-    async function walkTree(roots, keyOf, visit, check) {
-        const stack = roots.slice().reverse(), seen = new Set();
-        let visited = 0;
-        while (stack.length) {
-            check();
-            const node = stack.pop(), key = keyOf(node);
-            if (seen.has(key)) continue;
-            seen.add(key);
-            const children = await visit(node);
-            for (let i = (children?.length ?? 0) - 1; i >= 0; i--) stack.push(children[i]);
-            if (++visited % 128 === 0) await sleep(0);
+
+    async function batchStage(items, label, log, run, check = () => {}, limit = 8, reason = '') {
+        const started = Date.now();
+        let active = 0, peak = 0, success = 0, failed = 0, skipped = 0, timeout = 0, limited = 0;
+        const seen = new WeakSet();
+        const observe = error => {
+            if (!error) return;
+            if (typeof error === 'object') {
+                if (seen.has(error)) return;
+                seen.add(error);
+            }
+            if ([408,504].includes(error.status) || /超时|timed? ?out|timeout/i.test(error.message || error)) timeout++;
+            if ([429,509].includes(error.status) || /限流|请求过频|HTTP (?:429|509)|返回码 (?:429|509)/i.test(error.message || error)) limited++;
+        };
+        try {
+            await forEachConcurrent(items,limit,async (item,verify,index) => {
+                active++;
+                peak = Math.max(peak,active);
+                try {
+                    const state = await run(item,verify,index,observe);
+                    if (state === 'skipped') skipped++;
+                    else if (state === 'failed') failed++;
+                    else success++;
+                } catch (error) {
+                    observe(error);
+                    failed++;
+                    throw error;
+                } finally { active--; }
+            },check);
+        } finally {
+            log?.(label + ' · 总量 ' + items.length + ' · 上限 ' + limit + ' · 峰值 ' + peak + ' · 耗时 '
+                + ((Date.now() - started) / 1000).toFixed(2) + ' 秒 · 成功 ' + success + ' · 失败 ' + failed
+                + ' · 跳过 ' + skipped + ' · 未派发 ' + (items.length - success - failed - skipped)
+                + ' · 超时 ' + timeout + ' · 限流 ' + limited + (reason ? ' · ' + reason : ''));
         }
+    }
+    function groupBatch(items, keyOf) {
+        const groups = new Map();
+        for (const item of items) {
+            const key = keyOf(item);
+            if (!groups.has(key)) groups.set(key,[]);
+            groups.get(key).push(item);
+        }
+        return [...groups.values()];
+    }
+    function connectedBatch(items, keysOf) {
+        const groups = [], byKey = new Map();
+        const root = group => group.parent ? (group.parent = root(group.parent)) : group;
+        for (const item of items) {
+            const group = {item, parent:null};
+            groups.push(group);
+            for (const key of keysOf(item)) {
+                if (byKey.has(key)) {
+                    const other = root(byKey.get(key)), first = root(group);
+                    if (other !== first) other.parent = first;
+                } else byKey.set(key,group);
+            }
+        }
+        return groupBatch(groups,root).map(group => group.map(record => record.item));
+    }
+    function enqueueByKey(queues, key, run) {
+        const previous = queues.get(key) || Promise.resolve();
+        const task = previous.then(run);
+        const tail = task.catch(() => {});
+        queues.set(key,tail);
+        tail.then(() => { if (queues.get(key) === tail) queues.delete(key); });
+        return task;
+    }
+    async function walkTree(roots, keyOf, visit, check, log, label = '目录遍历（目录/文件）') {
         check();
+        let pending = roots.map((node,index) => ({node,order:[index]}));
+        const seen = new Set();
+        const started = Date.now();
+        let total = 0, peak = 0, completed = 0, failed = 0, timeout = 0, limited = 0;
+        try {
+            while (pending.length) {
+                const layer = pending.filter(({node}) => {
+                    const key = keyOf(node);
+                    if (seen.has(key)) return false;
+                    seen.add(key);
+                    return true;
+                });
+                const next = [];
+                total += layer.length;
+                let active = 0;
+                await forEachConcurrent(layer,8,async ({node,order},verify,index) => {
+                    peak = Math.max(peak,++active);
+                    try {
+                        const children = await visit(node,verify,order);
+                        verify();
+                        next[index] = (children || []).map((node,childIndex) => ({node,order:[...order,childIndex]}));
+                        completed++;
+                    } catch (error) {
+                        failed++;
+                        if ([408,504].includes(error.status) || /超时|timeout/i.test(error.message)) timeout++;
+                        if ([429,509].includes(error.status) || /限流|请求过频|HTTP (?:429|509)/i.test(error.message)) limited++;
+                        throw error;
+                    } finally { active--; }
+                },check);
+                pending = next.flat();
+            }
+        } finally {
+            log?.(label + ' · 总量 ' + total + ' · 上限 8 · 峰值 ' + peak + ' · 耗时 '
+                + ((Date.now() - started) / 1000).toFixed(2) + ' 秒 · 成功 ' + completed + ' · 失败 ' + failed
+                + ' · 跳过 0 · 未派发 ' + (total - completed - failed) + ' · 超时 ' + timeout + ' · 限流 ' + limited);
+        }
+    }
+    function compareTreeOrder(a, b) {
+        for (let i = 0; i < Math.min(a.length,b.length); i++) if (a[i] !== b[i]) return a[i] - b[i];
+        return a.length - b.length;
     }
     function cachedDriveChildren(source, cache = new Map(), check) {
         return async id => {
             check?.();
             if (!cache.has(id)) {
-                const nodes = await source.children({id});
-                check?.();
-                cache.set(id, nodes);
+                const loading = Promise.resolve().then(() => { check?.(); return source.children({id}); });
+                cache.set(id,loading);
+                loading.catch(() => { if (cache.get(id) === loading) cache.delete(id); });
             }
-            return cache.get(id);
+            const nodes = await cache.get(id);
+            check?.();
+            return nodes;
         };
     }
     function titleKey(value) {

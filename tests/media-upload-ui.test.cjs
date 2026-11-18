@@ -94,14 +94,15 @@ async function aiFallbackGuards() {
 async function mediaFallbackFlow() {
     const calls=[],groups=new Map(['Known','Unmatched','Ambiguous','Offline',''].map((query,index)=>[index,[{node:{id:String(index),name:query||'unknown.mkv',parentId:'p'},query,sourceYear:'2000'}]]));
     const context=load(part('    function validateMediaAIIdentity(', '    async function identifyMediaAIFiles(')+part('        async function matchGroup(', "        ui.get('scanMedia').onclick"),{
-        groups,checkStopped(){},progress(){},meter(){},log(){},key:value=>value.toLowerCase(),aiSettings:()=>({enabled:true}),mediaCandidatePreference:()=>({type:'movie'}),
+        groups,checkStopped(){},progress(){},meter(){},log(){},readyRow:row=>!!row.detail,key:value=>value.toLowerCase(),aiSettings:()=>({enabled:true}),mediaCandidatePreference:()=>({type:'movie'}),
         client:{search:async query=>{calls.push('tmdb:'+query);if(query==='Offline')throw Error('HTTP 503');if(query==='Unmatched')return [];return Array.from({length:query==='Ambiguous'?2:1},(_,index)=>({id:index+1,media_type:'movie',title:query,release_date:'2000-01-01'}))}},
         choose:async(row,match)=>{row.detail={id:match};row.match=match},validateEpisode:async()=>{},createMediaAI:()=>({}),
         identifyMediaAIFiles:async rows=>{calls.push('ai:'+rows[0].node.name);return rows.map(()=>({title:'Recovered',type:'movie',year:'2000',episodes:[]}))}
     });
-    vm.runInContext('async function scanGroups(){let matched=0;'+part('                for (const group of groups.values()) {', '                checkStopped();\n                mediaWorkCounts(rows);')+'}',context);
+    vm.runInContext('async function scanGroups(){let matched=0;'+part('                const aiQueue = new Map();', '                checkStopped();\n                mediaWorkCounts(rows);')+'}',context);
     await context.scanGroups();
-    assert.deepEqual(calls,['tmdb:Known','tmdb:Unmatched','ai:Unmatched','tmdb:Recovered','tmdb:Ambiguous','tmdb:Offline','ai:unknown.mkv','tmdb:Recovered']);
+    assert.deepEqual(calls.slice().sort(),['tmdb:Known','tmdb:Unmatched','ai:Unmatched','tmdb:Recovered','tmdb:Ambiguous','tmdb:Offline','ai:unknown.mkv','tmdb:Recovered'].sort());
+    assert.ok(calls.indexOf('tmdb:Unmatched') < calls.indexOf('ai:Unmatched'));
     assert.equal(groups.get(0)[0].aiAssisted,false);assert.equal(groups.get(1)[0].aiAssisted,true);assert.equal(groups.get(2)[0].matchFailure,'ambiguous');assert.equal(groups.get(3)[0].matchFailure,'lookup-error');assert.equal(groups.get(4)[0].aiAssisted,true);
     console.log('PASS media scan flow: normal TMDB first; AI only for unmatched or empty titles; recovered title rechecked; ambiguity and network failures stay manual');
 }
@@ -274,7 +275,23 @@ async function folders() {
     await assert.rejects(late.writer.execute(late.item),/预览后出现同名项目/);assert.equal(late.mutations.length,0);
     const stopped=treeFixture();let cancel=false;await stopped.writer.prepare([stopped.item],()=>{if(cancel)throw Error('已停止')});cancel=true;
     await assert.rejects(stopped.writer.validate(),/已停止/);assert.equal(stopped.mutations.length,0);
-    console.log('PASS folder plans: complete attachment preview; numeric/string IDs; work plus season folder moves; added/renamed/changed/removed descendants block before mutation; unselected video prevents folder binding; cancellation');
+    const parallel = treeFixture();
+    const items = Array.from({length:12},(_,i) => {
+        const node = {...parallel.video,id:'parallel-'+i,name:'old-'+i+'.mkv',ancestors:[]};
+        parallel.nodes.push(node);
+        return {node:{...node},videoId:node.id,destination:'电影/并发.2000/new-'+i+'.mkv'};
+    });
+    await parallel.writer.prepare(items);
+    await parallel.writer.validate();
+    const ctx = load('');
+    await ctx.forEachConcurrent(items,8,item => parallel.writer.execute(item));
+    for (const folder of ['电影','并发.2000']) {
+        const creates = parallel.mutations.filter(([url,body]) => url.endsWith('/file/upload_request') && body.fileName === folder);
+        assert.equal(creates.length,1,'Concurrent files share one creation for '+folder);
+    }
+    const folder = parallel.nodes.find(node => node.name === '并发.2000');
+    assert.equal(parallel.nodes.filter(node => node.parentId === folder.id).length,12);
+    console.log('PASS folder plans: twelve concurrent files share directory creation; complete attachment preview; numeric/string IDs; work plus season folder moves; added/renamed/changed/removed descendants block before mutation; unselected video prevents folder binding; cancellation');
 }
 
 async function cleanup() {
@@ -287,11 +304,11 @@ async function cleanup() {
     const handler = part("        ui.get('runEmpty').onclick =", "        ui.get('mediaAIProvider').onchange");
     const lifecycle = part('    function createPanelTask(', '    function panelControls(');
     const locks = [];
-    const run=load(lifecycle + '\nconst runTask = createPanelTask(ui, () => {});\n' + handler,{ui:{get:()=>button,busy: value => locks.push(value)},emptyPlan:[{path:'a'},{path:'b'}],emptySession:{},emptySource:{},cancelled:false,
+    const run=load(lifecycle + '\nconst runTask = createPanelTask(ui, () => {});\n' + handler,{ui:{get:()=>button,busy: value => locks.push(value)},emptyPlan:[{path:'a'},{path:'b'}],emptySession:{},emptySource:{},cancelled:false,checkStopped(){},
         invalidate(){},meter(){},log:m=>messages.push(m),progress:m=>messages.push(m),
         removeMediaNonstandard:async()=>{deletes++;throw Object.assign(Error('HTTP 403'),{stop:true})}
     });
-    await button.onclick();assert.equal(deletes,1);assert.ok(messages.some(m=>m.includes('未处理 1')));
+    await button.onclick();assert.equal(deletes,2);assert.ok(messages.some(m=>m.includes('清理中断')));
     run.emptyPlan = [{path:'c'}];
     run.progress = () => {throw Error('render failed');};
     await assert.rejects(button.onclick(), /render failed/);

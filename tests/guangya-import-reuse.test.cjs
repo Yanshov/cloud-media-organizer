@@ -14,6 +14,7 @@ function fixture(children, submit = async () => ({status: 'saved', message: 'sav
     const state = {reads: 0, submissions: 0, logs: [], stopped: false};
     const ctx = vm.createContext({sleep: async () => {}, importFile: async (...args) => {state.submissions++; return submit(...args);}});
     vm.runInContext(
+        part('    async function forEachConcurrent(', '    function cachedDriveChildren(') +
         part('    function hasFileMetadata(', '    function ready(') +
         part('    function relativeParts(', '    function normalizeFiles(') +
         part('    async function runGuangyaImportFiles(', '    function initGuangya('), ctx);
@@ -49,20 +50,20 @@ function fixture(children, submit = async () => ({status: 'saved', message: 'sav
             return {status, message: status};
         });
         counts = await afterWrite.run([a, fresh, b]);
-        assert.equal(afterWrite.state.reads, 3, status + ': writes invalidate positive lookups too');
+        assert.equal(afterWrite.state.reads, 2, status + ': a missing item refreshes the shared listing');
         assert.equal(afterWrite.state.submissions, 1);
-        assert.equal(counts.skipped, 1); assert.equal(counts.failed, status === 'throw' ? 2 : 1);
+        assert.equal(counts.skipped, 2); assert.equal(counts.failed, status === 'throw' ? 1 : 0);
         if (status !== 'throw') assert.equal(counts[{saved: 'saved', pending: 'pending', miss: 'missed'}[status]], 1);
     }
 
     const directory = fixture(async (_folder, state) => state.reads === 1 ? [a, b] : [a, changed(b)]);
     counts = await directory.run([a, {type: 'directory', path: 'new-folder'}, b]);
-    assert.equal(directory.state.reads, 2); assert.equal(counts.directories, 1); assert.equal(counts.failed, 1);
+    assert.equal(directory.state.reads, 1); assert.equal(counts.directories, 1); assert.equal(counts.skipped, 2);
 
     const ids = [];
     const parents = fixture(async ({id}) => {ids.push(id); return [file('same.mkv', id)];});
     counts = await parents.run([file('same.mkv', 'A'), file('same.mkv', 'B'), file('same.mkv', 'A')]);
-    assert.deepEqual(ids, ['A', 'B', 'A']); assert.equal(counts.skipped, 3);
+    assert.deepEqual(ids, ['A', 'B']); assert.equal(counts.skipped, 3);
 
     for (const conflicting of [[a, a], [{...a, size: 101}], [changed(a)], [{...a, directory: true}]]) {
         const guarded = fixture(async () => conflicting);
@@ -76,13 +77,13 @@ function fixture(children, submit = async () => ({status: 'saved', message: 'sav
 
     const retryRead = fixture(async (_folder, state) => {if (state.reads === 1) throw Error('read failed'); return [b];});
     counts = await retryRead.run([a, b]);
-    assert.equal(retryRead.state.reads, 2); assert.equal(counts.failed, 1); assert.equal(counts.skipped, 1);
+    assert.equal(retryRead.state.reads, 1); assert.equal(counts.failed, 2); assert.equal(counts.skipped, 0);
 
     const cancelled = fixture(async (_folder, state) => {state.stopped = true; return [];});
     counts = await cancelled.run([a, b]);
-    assert.equal(cancelled.state.reads, 1); assert.equal(cancelled.state.submissions, 0); assert.equal(counts.processed, 1);
+    assert.equal(cancelled.state.reads, 1); assert.equal(cancelled.state.submissions, 0); assert.equal(counts.processed, 2);
     const auth = fixture(async () => {throw Object.assign(Error('auth'), {stop: true});});
     counts = await auth.run([a, b]);
-    assert.equal(auth.state.reads, 1); assert.equal(auth.state.submissions, 0); assert.equal(counts.processed, 1);
+    assert.equal(auth.state.reads, 1); assert.equal(auth.state.submissions, 0); assert.equal(counts.processed, 2);
     console.log('PASS Guangya import reuse: 50 existing files use 1 listing; fresh absence checks, all write outcomes/directory/batch invalidation, parent isolation, conflicts, missing metadata, read failures, cancellation and authorization stop preserved (mocked API)');
 })().catch(error => {console.error(error); process.exitCode = 1;});

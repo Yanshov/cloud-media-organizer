@@ -34,13 +34,12 @@
         }
         return [...groups.values()];
     }
-    async function readSubtitleImport(files, check) {
+    async function readSubtitleImport(files, check, log) {
         if (files.length > 200) throw new Error('一次最多选择 200 个本地文件');
         const limit = 4 * 1024 * 1024, batchLimit = 32 * 1024 * 1024;
         let totalBytes = 0, inputBytes = 0, totalEntries = 0;
         const entries = [];
-        for (const file of files) {
-            check();
+        await batchStage(files,'本地导入读取与解压（文件/ZIP）',log,async (file,verify,index,observe) => {
             const name = file.name;
             const ext = name.split('.').pop().toLowerCase();
             try {
@@ -50,29 +49,32 @@
                 if (inputBytes + file.size > 64 * 1024 * 1024) throw new Error('本批读取的本地文件合计超过 64 MiB');
                 inputBytes += file.size;
                 const bytes = new Uint8Array(await file.arrayBuffer());
-                check();
+                verify();
                 if (bytes.length !== file.size) throw new Error('本地文件大小已变化，请重新选择');
-                const index = ext === 'zip' ? subtitleArchiveIndex(bytes,check,true) : null;
-                if (index && !index.files.length) throw new Error('ZIP 内没有支持的字幕');
-                const count = index ? index.files.length : 1;
-                const expanded = index ? index.files.reduce((sum,entry) => sum + entry.length,0) : bytes.length;
+                const archive = ext === 'zip' ? subtitleArchiveIndex(bytes,verify,true) : null;
+                if (archive && !archive.files.length) throw new Error('ZIP 内没有支持的字幕');
+                const count = archive ? archive.files.length : 1;
+                const expanded = archive ? archive.files.reduce((sum,entry) => sum + entry.length,0) : bytes.length;
                 if (totalEntries + count > 200 || totalBytes + expanded > batchLimit)
                     throw new Error('本批最多检测 200 个条目和 32 MiB 字幕');
                 totalEntries += count;
                 totalBytes += expanded;
                 const loaded = [];
-                if (index) for (const entry of index.files) {
-                    const subtitle = await subtitleArchiveExtract(bytes,index,entry,check);
+                if (archive) for (const entry of archive.files) {
+                    verify();
+                    const subtitle = await subtitleArchiveExtract(bytes,archive,entry,verify);
                     loaded.push({...subtitle, label:name + ' / ' + entry.path});
                 }
                 else loaded.push({name,label:name,ext,bytes});
-                entries.push(...loaded);
+                entries[index] = loaded;
             } catch (error) {
-                check();
-                entries.push({name,label:name,error:error.message});
+                observe(error);
+                verify();
+                entries[index] = [{name,label:name,error:error.message}];
+                return 'failed';
             }
-        }
-        return entries;
+        },check,8,'单 ZIP 顺序解压，输入和解压字节使用整批共用上限');
+        return entries.flat();
     }
     function matchSubtitleImport(name, rows) {
         const stem = mediaStem(name).normalize('NFKC');
@@ -234,7 +236,10 @@
             const line = `${new Date().toLocaleTimeString()} [${event}]${message ? ' ' + message : ''}`;
             const box = ui.get('subtitleLog');
             logLines.push(line);
-            if (logLines.length > 2000) logLines.shift();
+            if (logLines.length > 2000) {
+                const oldest = logLines.findIndex(line => !/\[(批量统计|检查开始|字幕检查|检查复用)\]/.test(line));
+                logLines.splice(Math.max(0,oldest),1);
+            }
             box.value = logLines.join('\n');
             box.scrollTop = box.scrollHeight;
         };
@@ -644,7 +649,7 @@
                 meter(0,0);
                 status('正在读取本地字幕…');
                 try {
-                    const entries = await readSubtitleImport(files,check);
+                    const entries = await readSubtitleImport(files,check,batchLog);
                     check();
                     if (draft.scan !== scan || draft.drive !== drive) throw new Error('检查范围已改变，请重新选择本地文件');
                     clearDeletePreview();
@@ -676,16 +681,18 @@
                 if (draft.scan !== scan || draft.drive !== drive || checkedScope === null)
                     throw Object.assign(new Error('检查范围已改变，请重新检查目录'), {stop:true});
             };
-            for (const {row,name,bytes,verification,label,language} of targets) {
+            const writes = new Map();
+            try {
+              await batchStage(targets,'本地字幕上传与核验（视频）',batchLog,async ({row,name,bytes,verification,label,language},verify,_index,observe) => {
+                let outcome;
                 try {
-                    verify();
                     if (!inventory.includes(row) || covered(row) || row.writeBlocked) throw new Error('目标状态已变，请重新检查目录');
                     status('正在导入 · ' + row.node.name);
                     diag('导入开始',label + ' → ' + row.path);
-                    const target = await draft.drive.save(row,name,bytes,phase => {
+                    const target = await enqueueByKey(writes,JSON.stringify([row.node.parentId,name.toLowerCase()]),() => draft.drive.save(row,name,bytes,phase => {
                         status(phase + ' · ' + row.node.name);
                         diag('导入网盘',row.node.name + ' · ' + phase);
-                    },verify,{language,beforeWrite:nodes => checkSubtitleImportDirectory(row,name,nodes)});
+                    },verify,{language,beforeWrite:nodes => checkSubtitleImportDirectory(row,name,nodes)}));
                     row.subtitles.push(target);
                     row.siblingNames?.add(name.toLowerCase());
                     row.complete = true;
@@ -695,6 +702,8 @@
                     done++;
                     diag('导入成功',row.path + ' · 上传字节一致 · 未核对播放同步');
                 } catch (error) {
+                    observe(error);
+                    outcome = 'failed';
                     row.error = error.message;
                     if (error.pendingUpload) {
                         row.writeBlocked = true;
@@ -702,13 +711,14 @@
                     } else if (!cancelled && !error.stop && error.phase !== 'drive-auth') failed++;
                     diag(error.pendingUpload ? '导入待对账' : '导入未完成',row.path + ' · ' + error.message);
                     if (cancelled || error.stop || error.phase === 'drive-auth' || [401,403].includes(error.status)) {
-                        interrupted = error.message;
-                        break;
+                        throw error;
                     }
                 }
                 meter(done + failed + pending,targets.length);
                 render();
-            }
+                return outcome;
+              },verify,8,'同目录同名写入串行，上传、读回和回执按顺序');
+            } catch (error) { interrupted = error.message; }
             const summary = '已处理 ' + (done + failed + pending) + '/' + targets.length + ' · 已导入 ' + done
                 + ' · 失败 ' + failed + ' · 待对账 ' + pending + (interrupted ? ' · ' + interrupted : '');
             meter(done + failed + pending,targets.length);
@@ -738,10 +748,9 @@
             diag('查找策略', `剧集先按季搜索并建立文件索引；缺集再搜索迅雷、SubDL、OpenSubtitles；${ai ? '名称有歧义时交给 AI 判断' : 'AI 未启用，使用严格片名匹配'}；来源限流后本批跳过该来源`);
             try {
                 drive.assertReady?.();
-                diag('并发策略', '搜索最多同时处理 2 组作品，同一季逐集复用缓存；各来源继续独立限速');
-                await forEachConcurrent(subtitleSearchGroups(rows), 2, async (group, verify) => {
+                diag('并发策略','整季准备完成后再查单集，各阶段上限 8，复用同季结果，各来源保持原限速');
+                await batchStage(subtitleSearchGroups(rows),'作品资料准备（作品/季）',batchLog,async (group,check,_index,observe) => {
                   for (const row of group) {
-                    const check = verify;
                     if (!row.parsed.workResolved) {
                         status('读取作品资料：' + row.node.name);
                         const aliasStarted = Date.now();
@@ -752,14 +761,17 @@
                                 mediaRecords.rememberParsed?.(row.node,parsed); mediaRecords.save?.();
                                 diag('作品别名', `已复用或确认作品资料，取得 ${parsed.aliases.length} 个片名用于搜索`);
                             }
-                        } catch (error) { check(); if (error.stop) throw error; row.workLookupFailed = true; diag('作品别名', '读取失败，继续按原片名严格匹配：' + error.message); }
+                        } catch (error) { observe(error); check(); if (error.stop) throw error; row.workLookupFailed = true; diag('作品别名', '读取失败，继续按原片名严格匹配：' + error.message); }
                         finally { diag('别名耗时', `${row.node.name} · ${((Date.now() - aliasStarted) / 1000).toFixed(1)} 秒`); }
                     }
                   }
-                  verify();
-                  if (group[0]?.parsed.tv) { status('查找整季字幕：' + group[0].parsed.query); await service.prepareSeason?.(group,config,verify); }
-                  for (const row of group) {
-                    const check = verify;
+                },check,8,'同季别名顺序复用 TMDB 资料');
+                const seasons = subtitleSearchGroups(rows).filter(group => group[0]?.parsed.tv);
+                await batchStage(seasons,'整季字幕准备（季）',batchLog,async (group,verify) => {
+                    status('查找整季字幕：' + group[0].parsed.query);
+                    await service.prepareSeason?.(group,config,verify);
+                },check,8,'同季合并请求，各来源保持原节流，整季 ZIP 顺序处理');
+                await batchStage(rows,'单集及电影查找（视频）',batchLog,async (row,check,_index,observe) => {
                     const started = Date.now();
                     check(); status(`查找字幕 ${done + 1}/${rows.length}：${row.node.name}`);
                     diag('源文件', row.node.name);
@@ -767,14 +779,15 @@
                     diag('作品别名', row.parsed.aliases?.length ? row.parsed.aliases.join('；') : '无');
                     await searchSubtitleSources(row, config, service, drive, diag, check);
                     await applySubtitleWorkCorrection(row, correctWork, config, service, drive, diag, check);
+                    for (const source of row.sources || []) for (const query of source.queries || []) observe(query.error);
                     if (row.candidates.length) diag('字幕候选', row.node.name + ' · ' + row.candidates.map(candidate =>
                         subtitleCandidateLabel(candidate) + (!candidate.titleMatched && !candidate.identityMatched && !candidate.aiAccepted
                             ? ' · ' + (candidate.matchReason || '需确认作品或语言') : '')).join('；'));
                     diag('视频结果', `${row.node.name} · ${subtitleSearchLabels[subtitleSearchState(row)]}${row.selectedCandidate ? ' · ' + subtitleCandidateLabel(row.selectedCandidate) : ''}`);
                     diag('单片耗时', `${row.node.name} · ${((Date.now() - started) / 1000).toFixed(1)} 秒`);
                     meter(++done, rows.length); render();
-                  }
-                }, check);
+                    return subtitleSearchState(row) === 'failed' ? 'failed' : undefined;
+                },check,8,'复用整季缓存，迅雷、SubDL、OpenSubtitles 和 AI 保持各自限速');
                 const sourceFailures = rows.filter(row => row.sources?.some(source => source.error || source.paused || source.cacheError
                     || source.queries?.some(query => query.error))).length;
                 const message = '已处理 ' + done + '/' + rows.length + ' · ' + (sourceFailures ? sourceFailures + ' 项遇到来源错误 · ' : '')
@@ -798,8 +811,11 @@
                 if (deletePlan?.some(entry => entry.row === row)) clearDeletePreview();
             }
         };
+        const batchLog = message => diag('批量统计',message);
         const checkDirectory = async captured => {
-            diag('检查开始','读取当前选中的视频与已有字幕');
+            const started = Date.now();
+            const limit = 8;
+            diag('检查开始','读取当前选中的视频与已有字幕 · 并发上限 ' + limit);
             searching = false; seasonView = null; seasonChoices.clear();
             const batch = scan = {scope:'', interrupted:false};
             let framePending = false;
@@ -830,7 +846,7 @@
                 context.history = mediaFileHistory(context.session);
                 const currentDrive = subtitleDrive(context);
                 const collected = await collectMediaSelection(context.selected, context.source,
-                    message => { verifyScan(); status('正在读取目录 · ' + message); }, () => false, verifyScan, false, context.history);
+                    message => { verifyScan(); status('正在读取目录 · ' + message); }, () => false, verifyScan, false, context.history,batchLog);
                 verifyScan();
                 const names = context.selected.slice(0, 3).map(item => item.name).filter(Boolean);
                 const selection = names.length ? '（' + names.join('、') + (context.selected.length > names.length ? '等' : '') + '）' : '';
@@ -846,7 +862,7 @@
                 const language = settings().language;
                 diag('目录扫描', '视频 ' + rows.length + '，已关联字幕 ' + rows.filter(row => row.subtitles.length).length + ' 组');
                 const fatal = error => error.stop || error.phase === 'drive-auth' || [401,403].includes(error.status);
-                await forEachConcurrent(rows, 3, async (row, verify) => {
+                await batchStage(rows,'目录字幕检查（视频）',batchLog,async (row,verify,_index,observe) => {
                     verify();
                     row.checkState = 'checking';
                     refresh();
@@ -858,6 +874,7 @@
                         subtitleRowIdentity(row, context.path);
                     } catch (error) {
                         verify();
+                        observe(error);
                         if (fatal(error)) throw error;
                         diag('识别记录', node.name + ' · 元数据读取失败：' + error.message);
                     }
@@ -868,15 +885,19 @@
                         const recovered = await currentDrive.reconcile(row, phase => diag('上传对账', node.name + ' · ' + phase), verify);
                         verify();
                         for (const sub of recovered) if (!row.subtitles.some(existing => existing.id === sub.id)) row.subtitles.push(sub);
-                        await inspectExistingSubtitles(row, currentDrive, language, diag, verify);
+                        await inspectExistingSubtitles(row,currentDrive,language,diag,verify,{observe});
                     } catch (error) {
+                        observe(error);
                         verify();
                         if (fatal(error)) throw error;
                         row.writeBlocked = true; row.error = error.message;
                         diag('上传对账失败', node.name + ' · ' + error.message);
                     }
-                    try { await inspectEmbedded(row, verify, currentDrive); }
-                    catch (error) {
+                    try {
+                        await inspectEmbedded(row,verify,currentDrive);
+                        if (row.embedded?.unconfirmed) observe(row.embedded.message);
+                    } catch (error) {
+                        observe(error);
                         verify();
                         if (fatal(error)) throw error;
                         row.coverageUnconfirmed = true;
@@ -887,7 +908,8 @@
                     row.checkState = 'done';
                     meter(++done, rows.length);
                     refresh();
-                }, verifyScan);
+                    return subtitleCoverageState(row) === 'unconfirmed' ? 'failed' : undefined;
+                }, verifyScan,limit,'网盘目录、详情与正文请求沿用服务节流');
                 verifyScan();
                 pendingDeletes.clear();
                 drive = currentDrive;
@@ -896,7 +918,7 @@
                 const unconfirmed = rows.filter(row => subtitleCoverageState(row) === 'unconfirmed').length;
                 const message = rows.length ? '已检查 ' + done + '/' + total + ' · 有字幕 ' + rows.filter(covered).length
                     + (unconfirmed ? ' · 检查未确认 ' + unconfirmed : '') : '选中范围没有正片视频';
-                status(message); diag('字幕检查',message);
+                status(message); diag('字幕检查',message + ' · 耗时 ' + ((Date.now() - started) / 1000).toFixed(2) + ' 秒');
             } catch (error) {
                 if (scan !== batch) return false;
                 batch.interrupted = true;
@@ -933,7 +955,7 @@
             try {
                 const current = await mediaContext(provider, subtitleContext); check();
                 if (sameCheckedSelection(current)) {
-                    try { drive.assertReady?.(); return true; }
+                    try { drive.assertReady?.(); diag('检查复用','同一选区已完成目录检查，本轮直接复用'); return true; }
                     catch (error) { diag('重新检查',error.message); }
                 }
                 return await checkDirectory(current);
@@ -958,10 +980,9 @@
             try {
                 await requireCheckedSelection();
                 seasonChoices.delete(rows[0].groupKey);
-                for (const row of rows) {
-                    check();
+                await batchStage(rows,'已有字幕复查（视频）',batchLog,async (row,verify,_index,observe) => {
                     const {node} = row;
-                    const siblings = await children(node.parentId); check();
+                    const siblings = await children(node.parentId); verify();
                     const fresh = siblings.find(file => !file.directory && String(file.id) === String(node.id));
                     if (!fresh || fresh.name !== node.name || fresh.size !== node.size || node.md5 && fresh.md5 && node.md5 !== fresh.md5) {
                         checkedScope = null;
@@ -970,15 +991,16 @@
                     if (!links.has(node.parentId)) links.set(node.parentId,mediaSubtitleLinks(siblings,node.parentId,context.history).linked);
                     const next = {...row,subtitles:[...(links.get(node.parentId).get(String(node.id)) || [])],embedded:undefined,
                         siblingNames:new Set(siblings.map(file => file.name.toLowerCase())),error:''};
-                    const recovered = await currentDrive.reconcile(next, phase => diag('上传对账',phase),check);
+                    const recovered = await currentDrive.reconcile(next, phase => diag('上传对账',phase),verify);
                     for (const sub of recovered) if (!next.subtitles.some(item => String(item.id) === String(sub.id))) next.subtitles.push(sub);
                     next.writeBlocked = false;
-                    await inspectExistingSubtitles(next,currentDrive,language,diag,check,{force:true,review});
-                    await inspectEmbedded(next,check,currentDrive); check();
+                    await inspectExistingSubtitles(next,currentDrive,language,diag,verify,{force:true,review,observe});
+                    await inspectEmbedded(next,verify,currentDrive); verify();
                     for (const sub of row.subtitles) { deleteSelection.delete(String(sub.id)); pendingDeletes.delete(String(sub.id)); }
                     Object.assign(row,next,{selectedCandidate:null,candidates:[],autoCandidates:[],sources:[]});
                     meter(++done,rows.length); render();
-                }
+                    return subtitleCoverageState(next) === 'unconfirmed' ? 'failed' : undefined;
+                },check,8,'网盘正文沿用原节流，AI 正文复查保持排队');
                 status('重新检测完成 · ' + done + '/' + rows.length);
             } catch (error) {
                 if (error.pendingUpload || error.stop || error.phase === 'drive-auth') checkedScope = null;
@@ -1001,10 +1023,13 @@
             let deleted = 0; const touched = new Set(), failures = [];
             try {
                 await requireCheckedSelection();
-                for (const {row,sub} of targets) {
-                    check(); status(`删除字幕 ${deleted + failures.length + 1}/${targets.length}：${sub.name}`);
+                const groups = groupBatch(targets,entry => entry.row);
+                await batchStage(groups,'删除外置字幕（视频组）',batchLog,async (group,verify,_index,observe) => {
+                    let failedGroup = false;
+                    for (const {row,sub} of group) {
+                    verify(); status(`删除字幕 ${deleted + failures.length + 1}/${targets.length}：${sub.name}`);
                     try {
-                        const siblings = await subtitleContext.source.children({id:row.node.parentId}); check();
+                        const siblings = await subtitleContext.source.children({id:row.node.parentId}); verify();
                         const current = siblings.find(node => String(node.id) === String(sub.id));
                         const video = siblings.find(node => String(node.id) === String(row.node.id));
                         const sameFile = (now, before) => now && !now.directory && String(now.id) === String(before.id) && now.name === before.name && now.size === before.size && String(now.md5 || '').toLowerCase() === String(before.md5 || '').toLowerCase();
@@ -1012,6 +1037,7 @@
                         if (!sameFile(current,sub) || !sameFile(video,row.node) || !linked.some(item => String(item.id) === String(sub.id)) || !MEDIA_SUB.test(current.name))
                             throw new Error('字幕或关联视频已变化，未删除；请重新检查目录');
                         if (!canDelete(row, sub)) continue;
+                        verify();
                         await recycleMedia({...current,parentId:row.node.parentId},subtitleContext.session,subtitleContext.source);
                         try { drive.verified?.forget(sub); } catch (error) { diag('核验缓存清理失败', `${sub.name} · ${error.message}`); }
                         row.subtitles = row.subtitles.filter(item => String(item.id) !== String(sub.id)); row.siblingNames?.delete(sub.name.toLowerCase()); deleteSelection.delete(String(sub.id)); touched.add(row); deleted++;
@@ -1021,12 +1047,20 @@
                             pendingDeletes.add(String(sub.id)); deleteSelection.delete(String(sub.id));
                             row.writeBlocked = true; row.complete = false; row.error = '字幕删除结果不明，请重新检查目录：' + error.message;
                         }
-                        check();
+                        observe(error);
+                        verify();
                         if (error.stop || [401,403].includes(error.status)) throw error;
+                        failedGroup = true;
                         failures.push(`${sub.name}：${error.message}`); diag('字幕删除失败', `${row.node.name} · ${sub.name} · ${error.message}`);
                     }
-                }
-                for (const row of touched) { check(); if (row.writeBlocked) continue; await inspectExistingSubtitles(row,drive,settings().language,(event,detail)=>diag(event,`${row.node.name} · ${detail}`),check); await inspectEmbedded(row,check); }
+                    }
+                    return failedGroup ? 'failed' : undefined;
+                },check,8,'同一视频的字幕按顺序重新验证并处理');
+                await batchStage([...touched],'删除后复查（视频）',batchLog,async (row,verify,_index,observe) => {
+                    if (row.writeBlocked) return 'skipped';
+                    await inspectExistingSubtitles(row,drive,settings().language,(event,detail) => diag(event,`${row.node.name} · ${detail}`),verify,{observe});
+                    await inspectEmbedded(row,verify);
+                },check);
                 status(`批量删除结束：已移入回收站 ${deleted} 个，失败 ${failures.length} 个。` + (failures.length ? ` ${failures.slice(0,5).join('；')}` : ''));
             } catch (error) {
                 if (cancelled) for (const row of touched) if (!row.writeBlocked) {
@@ -1047,8 +1081,10 @@
             const pausedDownloads = new Set();
             try {
                 await requireCheckedSelection();
-                for (const row of rows) {
-                    check(); row.error = '';
+                const writes = new Map();
+                await batchStage(rows,'下载检测及补齐核验（视频）',batchLog,async (row,check,_index,observe) => {
+                    row.error = '';
+                    let outcome;
                     try {
                         status(`下载字幕 ${done + failed + 1}/${rows.length}：${row.node.name}`);
                         const candidates = row.manualCandidate ? [row.selectedCandidate] : [row.selectedCandidate, ...(row.autoCandidates || []).filter(item => item !== row.selectedCandidate)];
@@ -1082,6 +1118,7 @@
                                 const language = detected || candidate.language || (config.language === 'en' ? 'en' : 'zh');
                                 payload = {name, bytes, verification, language}; break;
                             } catch (error) {
+                                observe(error);
                                 check();
                                 if (error.phase === 'drive-auth' || error.stop && !isSubtitleSourceError(error)) throw error;
                                 candidate.downloadFailed = true;
@@ -1107,19 +1144,22 @@
                             throw new Error((suspicious ? '字幕可疑，待确认：' : '候选均未通过下载/正文检查：') + failures.join('；'));
                         }
                         const {name, bytes, verification, language} = payload;
-                        const target = await drive.save(row, name, bytes, phase => { status(phase + '：' + row.node.name); diag('网盘写入', `${row.node.name} · ${phase}`); }, check,
-                            {language,beforeWrite:nodes => checkSubtitleImportDirectory(row,name,nodes)});
+                        const target = await enqueueByKey(writes,JSON.stringify([row.node.parentId,name.toLowerCase()]),() => drive.save(row,name,bytes,phase => { status(phase + '：' + row.node.name); diag('网盘写入', `${row.node.name} · ${phase}`); }, check,
+                            {language,beforeWrite:nodes => checkSubtitleImportDirectory(row,name,nodes)}));
                         row.subtitles.push(target); row.siblingNames?.add(name.toLowerCase()); row.complete = true; row.verification = verification; row.searchMessage = '已补齐，上传内容一致：' + name + ' · ' + subtitleVerificationMessage(verification); done++;
                         diag('补齐成功', `${row.node.name} · 上传字节已核验 ${name}`);
                     } catch (error) {
+                        observe(error);
                         row.error = error.message;
                         if (error.pendingUpload) row.writeBlocked = true;
                         diag(cancelled ? '已停止' : '未补齐', `${row.node.name}：${error.message}`);
                         if (cancelled || error.stop || error.phase === 'drive-auth') throw error;
                         failed++;
+                        outcome = 'failed';
                     }
                     meter(done + failed, rows.length); render();
-                }
+                    return outcome;
+                },check,8,'单视频依优先级回退，同目录同名写入串行，网盘与来源沿用原节流');
                 const message = `已处理 ${done + failed}/${rows.length} · 已补齐 ${done} · 未补齐 ${failed}`;
                 status('补齐结束 · ' + message); diag('补齐结束',message);
             } catch (error) {

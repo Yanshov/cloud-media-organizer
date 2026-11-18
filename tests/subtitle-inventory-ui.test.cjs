@@ -95,7 +95,7 @@ const view = value => {get('subtitleView').value = value; get('subtitleView').on
     pauseRead = new Promise(resolve => {releaseRead = resolve;});
     const checking = ctx.checkInventory();
     // Three existing-subtitle reads may overlap; rows without files finish first.
-    for (let i = 0; i < 100 && reads < 3; i++) await Promise.resolve();
+    await until(() => reads === 3 && /已检查 2 · 待检查 3/.test(get('subtitleSummary').textContent));
     assert.equal(reads,3,'Directory UI overlaps up to three subtitle reads: ' + get('subtitleProgress').textContent + ' / ' + shown() + ' / ' + get('subtitleLog').value);
     assert.equal(elements.has('subtitleCoverage'),false,'The redundant coverage card is removed from the UI');
     assert.match(shown(),/检查中/);
@@ -351,12 +351,12 @@ async function stageProgress() {
     const wait = gate(), started = [];
     candidateResult = async row => {
         started.push(row.node.id);
-        if (row.node.id === 'progress-0' || row.node.id === 'progress-160') await wait.promise;
+        if (Number(row.node.id.slice(9)) < 8) await wait.promise;
         if (row.node.id === 'progress-3') throw Object.assign(Error('来源网络中断'),{phase:'subtitle-source'});
         return row.node.id === 'progress-2' ? [{source:'迅雷',name:'合成简体.srt',ext:'srt',language:'zh-cn',titleMatched:true}] : [];
     };
     const searching = get('readSubtitles').onclick();
-    await until(() => started.length === 2);
+    await until(() => started.length === 8);
     assert.deepEqual([bar.value,bar.max,bar.hidden],[0,319,false]);
     wait.resolve();
     await searching;
@@ -372,12 +372,12 @@ async function stageProgress() {
         candidateResult = async row => {
             const id = row.node.id;
             visited.push(id);
-            if (id === 'progress-160') await b.promise;
             if (id === 'progress-1') await a.promise;
+            else if (id !== 'progress-0') await b.promise;
             return [];
         };
         const interrupted = get('readSubtitles').onclick();
-        await until(() => bar.value === 1 && visited.includes('progress-1') && visited.includes('progress-160'));
+        await until(() => bar.value === 1 && visited.length === 9);
         if (authFailure) a.reject(Object.assign(Error('网盘登录失效'),{phase:'drive-auth',status:401,stop:true}));
         else { get('stopSubtitles').onclick(); a.resolve(); }
         for (let i=0;i<30;i++) await Promise.resolve();
@@ -386,9 +386,9 @@ async function stageProgress() {
         await interrupted;
         assert.deepEqual([bar.value,bar.max,bar.hidden],[1,318,false]);
         assert.match(get('subtitleProgress').textContent,/已处理 1\/318/);
-        assert.deepEqual(visited.sort(),['progress-0','progress-1','progress-160']);
+        assert.deepEqual(visited,['progress-0','progress-1','progress-3','progress-4','progress-5','progress-6','progress-7','progress-8','progress-9']);
     }
-    console.log('PASS stage progress: 319 completed items, two concurrent works, resets, partial stop and authorization drain');
+    console.log('PASS stage progress: 319 completed items, eight concurrent videos, resets, partial stop and authorization drain');
 }
 
 async function manualImport() {
@@ -453,7 +453,7 @@ async function manualImport() {
     release.resolve();
     await saving;
     assert.equal(panelBusy,false);
-    assert.match(get('subtitleProgress').textContent,/导入中断.*已处理 1\/2.*待对账 1/);
+    assert.match(get('subtitleProgress').textContent,/导入中断.*已处理 2\/2.*待对账 2/);
     await choose(local(1));
     assert.equal(confirm(1),undefined);
     assert.match(shown(),/待匹配 1 项/);
@@ -485,11 +485,13 @@ async function incrementalChecks() {
         return {id:'row-'+index,parentId:'progress-season',name,size:10000,folders:['双骑'],path:'双骑/'+name};
     });
     const traversal = gate(), metadata = gate(), track = gate(), auth = gate();
+    const blocked = new Set(['row-1','row-4','row-5','row-6','row-7','row-8']);
+    const firstWave = Array.from({length:9},(_,i) => 'row-' + i);
     const started = [], reconciled = [], beforeQueries = queried.length, beforeDeletes = deleted.length, beforeSaves = saves;
     listResult = traversal.promise;
     restoreResult = (node) => {
         started.push(node.id);
-        if (node.id === 'row-1') return metadata.promise;
+        if (blocked.has(node.id)) return metadata.promise;
     };
     reconcileResult = row => {
         reconciled.push(row.node.id);
@@ -500,8 +502,8 @@ async function incrementalChecks() {
     assert.match(get('subtitleProgress').textContent,/读取目录/);
     assert.equal(get('subtitleSummary').hidden,true);
     traversal.resolve(); listResult = null;
-    await until(() => /已检查 1 · 待检查 48/.test(get('subtitleSummary').textContent) && started.includes('row-3'));
-    assert.deepEqual(started,['row-0','row-1','row-2','row-3']);
+    await until(() => /已检查 1 · 待检查 48/.test(get('subtitleSummary').textContent) && started.includes('row-8'));
+    assert.deepEqual(started,firstWave);
     assert.ok(!reconciled.includes('row-1'),'Identity restoration must finish before the subtitle check');
     assert.match(shown(),/检查中/);
     assert.match(shown(),/待检查/);
@@ -523,7 +525,7 @@ async function incrementalChecks() {
     metadata.resolve(); track.resolve({chinese:true,message:'旧检查不得追加'});
     await scan;
     assert.equal(panelBusy,false);
-    assert.deepEqual(started,['row-0','row-1','row-2','row-3'],'Authorization failure stops new rows');
+    assert.deepEqual(started,firstWave,'Authorization failure stops new rows');
     assert.match(get('subtitleSummary').textContent,/已检查 1 · 未检查完成 48/);
     assert.match(shown(),/未检查完成 48 集 · 02—49 集/);
     assert.equal(get('subtitleResults').scrollTop,73);
@@ -534,7 +536,7 @@ async function incrementalChecks() {
     assert.equal(get('reviewSubtitleDeletes').disabled,true);
 
     const stopGate = gate();
-    restoreResult = node => node.id === 'row-1' || node.id === 'row-2' || node.id === 'row-3' ? stopGate.promise : undefined;
+    restoreResult = node => node.id !== 'row-0' ? stopGate.promise : undefined;
     reconcileResult = null;
     const stopped = get('readSubtitles').onclick();
     await until(() => /已检查 1 · 待检查 48/.test(get('subtitleSummary').textContent));
@@ -546,13 +548,35 @@ async function incrementalChecks() {
     assert.match(get('subtitleSummary').textContent,/已检查 1 · 未检查完成 48/);
     assert.equal(queried.length,beforeQueries);
     restoreResult = null;
-    trackResult = () => ({chinese:true,message:'新一轮检查完成'});
-    await ctx.checkInventory();
-    assert.match(get('subtitleSummary').textContent,/已检查 49 · 待检查 0/);
+    const prototype = season[0];
+    season.push(...Array.from({length:68},(_,index) => {
+        const episode = 50 + index, name = '假面骑士双骑.S01E' + episode + '.mkv';
+        return {...prototype,id:'row-' + (episode - 1),name,path:'双骑/' + name};
+    }));
+    const hold = gate(), visits = new Set();
+    let active = 0, peak = 0;
+    trackResult = async node => {
+        assert.ok(!visits.has(node.id),'A row must only be checked once');
+        visits.add(node.id);
+        peak = Math.max(peak,++active);
+        await hold.promise;
+        active--;
+        return {chinese:true,message:'新一轮检查完成'};
+    };
+    const normal = ctx.checkInventory();
+    await until(() => active === 8);
+    assert.equal(visits.size,8);
+    hold.resolve();
+    await normal;
+    assert.equal(visits.size,117);
+    assert.equal(peak,8);
+    assert.deepEqual([get('subtitleMeter').value,get('subtitleMeter').max],[117,117]);
+    assert.match(get('subtitleLog').value,/目录字幕检查（视频） · 总量 117 · 上限 8 · 峰值 8/);
+    assert.match(get('subtitleSummary').textContent,/已检查 117 · 待检查 0/);
     assert.equal(cards().length,0);
     view('all');
     assert.equal(cards().length,1);
-    assert.match(shown(),/有字幕（内嵌中文） 49 集 · 01—49 集/);
+    assert.match(shown(),/有字幕（内嵌中文） 117 集 · 01—117 集/);
     assert.equal(get('subtitleRows').querySelectorAll('details').length,0);
     assert.equal(get('selectAllSubtitleDeletes').disabled,true);
     console.log('PASS incremental inventory: placeholders, row streaming, authorization drain, stop, and clean restart');

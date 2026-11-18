@@ -54,18 +54,18 @@ async function replacements(){
    cleanupGuangyaOldDirectories:async()=>{cleanups++;return {removed:1,failed:0}}
   });
   const counts=await ctx.runGuangyaReplacement(files,{id:'0'},{actions:new Map(files.map(f=>[f.path,{kind:'replace'}]))},{},noop,noop,noop,noop);
-  assert.equal(calls,mode==='normal'?3:2);assert.equal(cleanups,mode==='normal'?1:0);assert.equal(saves,1);assert.ok(journal.pending);
-  assert.equal(counts.processed,mode==='normal'?3:2);
+  assert.equal(calls,3);assert.equal(cleanups,mode==='normal'?1:0);assert.equal(saves,1);assert.ok(journal.pending);
+  assert.equal(counts.processed,3);
  }
  for(const phase of ['verify','delete']){
   let reads=0,deletes=0,writes=0;const journal={a:{file:files[0],newFileId:'new',directories:[{id:'dir',parentId:'p',name:'old',path:'old'}]},b:{file:files[1],newFileId:'new',directories:[]}};
   const ctx=load(part('    async function cleanupGuangyaOldDirectories(', '    async function runGuangyaReplacement('),{
-   sleep:async()=>{},writeReplacementJournal:()=>{writes++},readGuangyaDestination:async()=>{reads++;if(phase==='verify')throw Object.assign(Error('403'),{stop:true});return {id:'new'}},
+   sleep:async()=>{},relativeParts:path=>path.split('/'),writeReplacementJournal:()=>{writes++},readGuangyaDestination:async()=>{reads++;if(phase==='verify')throw Object.assign(Error('403'),{stop:true});return {id:'new'}},
    removeGuangyaNode:async()=>{deletes++;throw Object.assign(Error('403'),{stop:true})}
   });
   const source={children:async({id})=>id==='p'?[{id:'dir',name:'old',directory:true}]:[]};
   const r=await ctx.cleanupGuangyaOldDirectories(new Set(['a','b']),{id:'0'},{protectedDirectories:new Set()},source,noop,journal,noop,noop);
-  assert.equal(reads,phase==='verify'?1:2);assert.equal(deletes,phase==='verify'?0:1);assert.equal(r.failed,2);assert.equal(writes,1);assert.deepEqual(Object.keys(journal),['a','b']);
+  assert.equal(reads,2);assert.equal(deletes,phase==='verify'?0:1);assert.equal(r.failed,2);assert.equal(writes,1);assert.deepEqual(Object.keys(journal),['a','b']);
  }
  console.log('PASS audit replacements: returned and thrown stop halt file work and skip cleanup; verify/delete auth failures halt directory cleanup and retain journal; normal path still cleans and saves history');
 }
@@ -107,7 +107,7 @@ async function importRunner(){
  const counts=await ctx.runGuangyaImportFiles(files,'root',async()=>({}),ensure,existing,(message,event)=>logs.push({message,event}),()=>{if(stopped)throw Object.assign(Error('stopped'),{stop:true,cancelled:true})});
  assert.deepEqual({...counts},{saved:0,pending:1,missed:0,failed:1,directories:1,skipped:1,processed:4});assert.equal(directories,1);assert.equal(submissions,1);assert.equal(logs.filter(x=>x.event).length,4);
  stopped=true;const before=submissions;const halted=await ctx.runGuangyaImportFiles([{...valid}],'root',async()=>({}),ensure,existing,noop,()=>{if(stopped)throw Object.assign(Error('stopped'),{stop:true,cancelled:true})});
- assert.equal(submissions,before);assert.equal(halted.processed,1);assert.equal(halted.failed,1);
+ assert.equal(submissions,before);assert.equal(halted.processed,0);assert.equal(halted.failed,0);
  console.log('PASS Guangya import runner: same-name skip, content conflict, pending result, directories, progress events and cancellation before writes');
 }
 async function extras(){

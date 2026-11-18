@@ -2,7 +2,7 @@
 
 在网盘网页里整理影视文件、补齐字幕，并在支持的网盘之间导入和导出 JSON 文件清单。
 
-**当前版本 v3.0.0** · [安装脚本](https://raw.githubusercontent.com/Yanshov/cloud-media-organizer/main/cloud-media-organizer-v3.user.js) · [GitHub 发布页](https://github.com/Yanshov/cloud-media-organizer/releases/tag/v3.0.0)
+**当前版本 v3.0.1** · [安装脚本](https://raw.githubusercontent.com/Yanshov/cloud-media-organizer/main/cloud-media-organizer-v3.user.js) · [GitHub 发布页](https://github.com/Yanshov/cloud-media-organizer/releases)
 
 | 功能 | 百度网盘 | 123 云盘 | 光鸭网盘 |
 | --- | --- | --- | --- |
@@ -16,7 +16,7 @@
 2. 安装后刷新网盘页面，点击右下角的工具按钮。123 或光鸭若未识别到登录状态，切换一次文件夹。
 3. 在工具的「设置」里配置 TMDB、字幕来源和可选的 AI 服务。
 
-如果已安装版本号高于 3.0.0 的构建，请打开脚本链接手动安装。脚本沿用原有的安装标识和浏览器配置。
+如果已安装版本号高于 3.0.1 的构建，请打开脚本链接手动安装。脚本沿用原有的安装标识和浏览器配置。
 
 ## 使用
 

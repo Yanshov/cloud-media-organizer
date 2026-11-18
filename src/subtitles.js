@@ -337,7 +337,19 @@
         let token = '', tokenKey = '';
         const unavailableSources = new Map(), workConflicts = new Map();
         const searchCache = new Map();
-        const seasonPreparations = new Map(), archiveCache = new Map();
+        const seasonPreparations = new Map(), archiveCache = new Map(), transfers = new Map();
+        const archiveWork = paced(0,async (work,verify) => { check(); verify(); return work(); });
+        const transfer = (result,verify) => {
+            check(); verify();
+            const key = result.url;
+            if (!transfers.has(key)) {
+                const pending = subtitleBinary(key,{allowHttp:result.allowHttp === true});
+                transfers.set(key,pending);
+                const clear = () => { if (transfers.get(key) === pending) transfers.delete(key); };
+                pending.then(clear,clear);
+            }
+            return transfers.get(key);
+        };
         const archiveData = async (url,verify) => {
             check(); verify();
             if (!archiveCache.has(url)) {
@@ -398,8 +410,10 @@
                                 for (const candidate of found.filter(item => item.ext === 'zip' && item.titleMatched).slice(0,3)) {
                                     verify();
                                     try {
-                                        const archive = await archiveData(candidate.url,verify);
-                                        for (const target of rows) if (subtitleArchiveChoices(archive.index,{...candidate,parsed:target.parsed},config.language).length) missing.delete(target.parsed.episode);
+                                        await archiveWork(async () => {
+                                            const archive = await archiveData(candidate.url,verify);
+                                            for (const target of rows) if (subtitleArchiveChoices(archive.index,{...candidate,parsed:target.parsed},config.language).length) missing.delete(target.parsed.episode);
+                                        },verify);
                                         log('整季覆盖', `${candidate.name} · 当前缺集 ${missing.size} 集${missing.size ? '，继续补查' : '，停止下载其他整季包'}`);
                                         if (!missing.size) break;
                                     }
@@ -407,17 +421,15 @@
                                 }
                             }]
                         ].filter(([name,enabled]) => enabled && !unavailableSources.has(name));
-                        const results = await Promise.allSettled(sources.map(async ([name,,run]) => {
+                        for (const [name,,run] of sources) {
                             try { await run(); }
                             catch (error) {
                                 check(); verify(); if (!isSubtitleSourceError(error)) throw error;
                                 if (subtitleSourcePaused(name,error)) unavailableSources.set(name,error.message);
                                 log('整季来源失败', `${parsed.query} · ${name} · ${error.message}；单集仍可补查其他来源`);
                             }
-                        }));
+                        }
                         check(); verify();
-                        const failed = results.find(result => result.status === 'rejected');
-                        if (failed) throw failed.reason;
                     })();
                     seasonPreparations.set(key,task); evict(seasonPreparations,24);
                     task.catch(() => seasonPreparations.delete(key));
@@ -733,14 +745,16 @@
                     try {
                         result = await this.download(candidate, config); verify();
                         if (result.fileName) progress('文件选择', `${candidate.source} · ${result.fileName}`);
-                        const archive = candidate.source === 'SubDL' && result.ext === 'zip' ? await archiveData(result.url,verify) : null;
-                        let bytes = archive ? archive.bytes : await subtitleBinary(result.url, {allowHttp:result.allowHttp === true}); verify();
-                        if (archive) {
-                            const file = await subtitleSubdlArchive(bytes,candidate,config.language,verify,archive.index);
-                            bytes = file.bytes; result.ext = file.ext; result.fileName = file.name;
+                        if (candidate.source === 'SubDL' && result.ext === 'zip') return await archiveWork(async () => {
+                            const archive = await archiveData(result.url,verify);
+                            const file = await subtitleSubdlArchive(archive.bytes,candidate,config.language,verify,archive.index);
+                            result.ext = file.ext; result.fileName = file.name;
                             progress('SubDL 压缩包选择',file.name);
-                        }
-                        return {result, bytes};
+                            return {result,bytes:file.bytes};
+                        },verify);
+                        const bytes = await transfer(result,verify);
+                        verify();
+                        return {result,bytes};
                     } catch (error) {
                         verify();
                         if (attempt || error.phase !== 'transfer' || !([401,403,408,429,500,502,503,504].includes(error.status) || error.retryable)) throw error;
@@ -1415,7 +1429,7 @@
         return JSON.stringify([4, String(node.id), String(node.parentId ?? ''), node.name, node.size, (node.md5 || '').toLowerCase(),
             parsed.query, parsed.year, !!parsed.tv, parsed.tmdbId, parsed.season, parsed.episode, parsed.endEpisode, node.durationSeconds, parsed.runtimeSeconds, !!parsed.standalone]);
     }
-    async function inspectExistingSubtitles(row, drive, language, log = () => {}, check = () => {}, {force = false, review = null} = {}) {
+    async function inspectExistingSubtitles(row, drive, language, log = () => {}, check = () => {}, {force = false, review = null, observe = () => {}} = {}) {
         row.complete = false; row.verification = null; row.coverageUnconfirmed = false;
         const rejected = [];
         for (const sub of row.subtitles.filter(sub => /\.(srt|ass|ssa|vtt)$/i.test(sub.name))) {
@@ -1434,7 +1448,7 @@
             log('正文检查', `${row.node.name} · 读取现有字幕 ${sub.name}`);
             let bytes;
             try { bytes = await drive.read(sub, message => log('核验重试', message), check); check(); }
-            catch (error) { check(); if (error.stop) throw error; row.coverageUnconfirmed = true; rejected.push(sub.name + '：读取失败 · ' + error.message); log('现有字幕读取失败', `${sub.name}：${error.message}`); continue; }
+            catch (error) { observe(error); check(); if (error.stop) throw error; row.coverageUnconfirmed = true; rejected.push(sub.name + '：读取失败 · ' + error.message); log('现有字幕读取失败', `${sub.name}：${error.message}`); continue; }
             try {
                 const ext = sub.name.split('.').pop().toLowerCase();
                 const {text, ...result} = subtitleValidateContent(row, bytes, ext, language, log);

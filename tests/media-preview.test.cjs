@@ -37,6 +37,7 @@ function fixture() {
     });
     vm.runInContext(
         part('    function createPanelTask(', '    function panelControls(') +
+        part('    async function forEachConcurrent(', '    function cachedDriveChildren(') +
         part('    function cachedDriveChildren(', '    function titleKey(') +
         '\nconst runTask = createPanelTask(ui, updateControls); this.runOther = createPanelTask(otherUi, () => {});\n' +
         part('        const invalidate =', '        const runTask =') +

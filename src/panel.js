@@ -424,7 +424,20 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             pane.appendChild(stopJson);
         }
         const log = pane.querySelector('#log');
-        if (log) { const detail = document.createElement('details'), summary = document.createElement('summary'); summary.textContent = '详细日志'; log.before(detail); detail.append(summary, log); }
+        if (log) {
+            const detail = document.createElement('details'), summary = document.createElement('summary');
+            const copy = document.createElement('button');
+            summary.textContent = '详细日志';
+            copy.type = 'button';
+            copy.textContent = '复制日志';
+            copy.onclick = async () => {
+                const output = [...log.children].map(line => line.textContent).join('\n');
+                try { await navigator.clipboard.writeText(output); copy.textContent = '已复制'; }
+                catch { copy.textContent = '复制失败'; }
+            };
+            log.before(detail);
+            detail.append(summary,copy,log);
+        }
         arrangeToolPane(pane, id);
         root.querySelector('.workspace-body').appendChild(pane);
         const button = root.querySelector('#' + id + 'Tab'), elements = new Map();
@@ -484,7 +497,10 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         line.textContent = message;
         const box = ui.get('log');
         box.appendChild(line);
-        if (box.childElementCount > 200) box.firstElementChild.remove();
+        if (box.childElementCount > 600) {
+            const oldest = [...box.children].find(entry => !entry.textContent.includes(' · 上限 '));
+            (oldest || box.firstElementChild).remove();
+        }
         box.scrollTop = box.scrollHeight;
     }
     async function copyManifest(ui) {

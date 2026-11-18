@@ -67,7 +67,7 @@
     }
     // A special episode is still part of the programme; only explicit bonus labels count.
     const mediaBonusName = name => /花絮|幕后|幕後|预告|預告|制作特辑|製作特輯|拍摄特辑|拍攝特輯|(?:^|[^a-z0-9])(?:extras?|featurettes?|trailers?|teasers?|bloopers?|outtakes?|sample|behind[ ._-]+the[ ._-]+scenes|special[ ._-]+features)(?=$|[^a-z0-9])/i.test(mediaStem(name));
-    async function resolveMediaSpecials(rows, client, parentPath = '') {
+    async function resolveMediaSpecials(rows,client,parentPath = '',check = () => {},log) {
         const key = titleKey;
         const scopes = row => [...parentPath.split('/').filter(Boolean).map((name, i, parts) => ({ id: 'path:' + parts.slice(0, i + 1).join('/'), name })), ...(row.node.ancestors || []).map(a => ({ id: 'id:' + a.id, name: a.name }))];
         const contexts = new Map(), changed = [];
@@ -90,22 +90,24 @@
             })());
             return cache.get(detail.id);
         };
-        for (const row of rows) {
+        await batchStage(rows,'特别篇归属检查（视频）',log,async (row,verify,index,observe) => {
             // A confirmed per-file AI identity must not be replaced by folder-based special inference.
-            if (row.aiAssisted && row.detail && !row.error) continue;
+            if (row.aiAssisted && row.detail && !row.error) return 'skipped';
             const parsed = parseMediaName(row.node.name);
-            if (parsed.episode != null || mediaBonusName(row.node.name)) continue;
+            if (parsed.episode != null || mediaBonusName(row.node.name)) return 'skipped';
             const scope = scopes(row).reverse().find(s => contexts.has(s.id));
-            if (!scope) continue;
+            if (!scope) return 'skipped';
             const candidates = [...contexts.get(scope.id).values()];
             const explicit = /christmas[ ._-]+special|圣诞特别篇|聖誕特別篇/i.test(row.node.name);
             if (candidates.length !== 1) {
                 if (explicit) { row.detail = null; row.error = '此目录包含多个版本的同名剧集，特别篇归属不唯一'; }
-                continue;
+                return 'skipped';
             }
             const detail = candidates[0];
             try {
-                const episodes = await episodesOf(detail), original = key(mediaStem(row.node.name));
+                const episodes = await episodesOf(detail);
+                verify();
+                const original = key(mediaStem(row.node.name));
                 let matches = episodes.filter(ep => ep.aliases.some(title => key(title).length >= 4 && original.includes(key(title))));
                 if (!matches.length && explicit) {
                     // The year AFTER Christmas.Special is the episode year, not Doctor.Who.2005.
@@ -114,14 +116,20 @@
                 }
                 if (matches.length === 1) {
                     Object.assign(row, { detail, match: 'tv:' + detail.id, type: 'tv', title: detail.name, year: (detail.first_air_date || '').slice(0, 4), category: mediaCategory(detail, 'tv'), season: 0, episode: matches[0].episode_number, endEpisode: null, episodeInferred: true, error: '' });
-                    changed.push(row);
+                    changed[index] = row;
                 } else if (explicit) {
                     Object.assign(row, { detail, match: 'tv:' + detail.id, type: 'tv', title: detail.name, year: (detail.first_air_date || '').slice(0, 4), season: 0, episode: null, error: '已定位特别篇；标题或播出日期无法唯一对应，请下拉选择集名' });
-                    changed.push(row);
+                    changed[index] = row;
                 }
-            } catch (error) { if (explicit) { row.detail = null; row.error = '特别篇信息查询失败：' + error.message; } }
-        }
-        return changed;
+            } catch (error) {
+                observe(error);
+                verify();
+                if (error.stop) throw error;
+                if (explicit) { row.detail = null; row.error = '特别篇信息查询失败：' + error.message; }
+                return 'failed';
+            }
+        },check,8,'相同作品的特别篇季资料复用请求');
+        return changed.filter(Boolean);
     }
     function mediaCategory(detail, type) {
         const genres = new Set((detail.genres || []).map(g => g.id));
@@ -165,11 +173,11 @@
         const info = await source.metadata(node);
         return { ...node, md5: info.md5, size: info.size };
     }
-    async function collectSelectedTree(selected, source, progress = () => {}, check = () => {}) {
+    async function collectSelectedTree(selected, source, progress = () => {}, check = () => {}, log) {
         if (!selected.length) throw new Error('请先勾选文件或文件夹');
         const nodes = [], children = cachedDriveChildren(source, new Map(), check);
         const roots = matchSelected(await children(source.parentId), selected);
-        await walkTree(roots.map(node => ({node, parentId: source.parentId, folders: [], ancestors: []})), entry => entry.node.id, async ({node, parentId, folders, ancestors}) => {
+        await walkTree(roots.map(node => ({node, parentId: source.parentId, folders: [], ancestors: []})), entry => entry.node.id, async ({node, parentId, folders, ancestors}, verify, order) => {
             const path = [...folders, node.name].join('/');
             progress('读取选中内容：' + path);
             if (node.directory) {
@@ -177,9 +185,11 @@
                 const childAncestors = [...ancestors, { id: node.id, parentId, name: node.name, path, depth: ancestors.length }];
                 return (await children(node.id)).map(child => ({node: child, parentId: node.id, folders: childFolders, ancestors: childAncestors}));
             }
-            nodes.push({ ...node, parentId, folders, path, ancestors });
-        }, check);
-        return { nodes, children };
+            verify();
+            nodes.push({order,node:{...node,parentId,folders,path,ancestors}});
+        }, check, log, '选区扫描（目录/文件，分页按服务顺序）');
+        nodes.sort((a,b) => compareTreeOrder(a.order,b.order));
+        return {nodes:nodes.map(entry => entry.node),children};
     }
     function mediaFileHistory(session) {
         if (!session?.token) return null;
@@ -245,8 +255,8 @@
         }
         return {linked,unmatched};
     }
-    async function collectMediaSelection(selected, source, progress = () => {}, skip = () => false, check = () => {}, enrich = true, history) {
-        const { nodes, children } = await collectSelectedTree(selected, source, progress, check);
+    async function collectMediaSelection(selected, source, progress = () => {}, skip = () => false, check = () => {}, enrich = true, history, log) {
+        const { nodes, children } = await collectSelectedTree(selected, source, progress, check, log);
         const videos = nodes.filter(node => MEDIA_VIDEO.test(node.name)), videosByParent = new Map();
         for (const video of videos) {
             if (!videosByParent.has(video.parentId)) videosByParent.set(video.parentId, []);
@@ -270,14 +280,13 @@
         const pending = videos.filter(video => !skip(video) || linked.get(video.id).some(sub => sub.language
             && !mediaSubtitleSuffix(video.name,sub.name)));
         // Standard entries need neither metadata enrichment nor TMDB matching.
-        for (const video of enrich ? pending : []) {
-            check();
-            Object.assign(video, await mediaFileMetadata(video, source));
+        if (enrich) await batchStage(pending,'读取元数据（视频组）',log,async (video,verify) => {
+            Object.assign(video,await mediaFileMetadata(video,source));
             for (const subtitle of linked.get(video.id)) {
-                check();
-                Object.assign(subtitle, await mediaFileMetadata(subtitle, source));
+                verify();
+                Object.assign(subtitle,await mediaFileMetadata(subtitle,source));
             }
-        }
+        },check);
         check();
         const pendingParents = new Set(pending.map(video => video.parentId));
         return { videos: pending, linked, namesByParent, unmatched: unmatched.filter(sub => pendingParents.has(sub.parentId)), skipped: videos.length - pending.length };
@@ -387,7 +396,7 @@
         };
         const scopeKey = nodes => JSON.stringify(nodes.map(node => [node.id,node.parentId,node.name,node.directory,node.size,node.md5]).sort((a,b) => a[0].localeCompare(b[0])));
         const subtitleScopeKey = files => scopeKey(files.map(file => ({...file,id:String(file.id),name:file.name + '\0' + file.suffix})));
-        async function prepare(items, check = () => {}) {
+        async function prepare(items,check = () => {},log) {
             checkPlan = check;
             bindings.clear(); scopeSnapshots.clear();
             const videos = items.filter(item => item.node.id === item.videoId), candidates = new Map();
@@ -405,8 +414,7 @@
                     candidates.get(folder.id).paths.add(path);
                 }
             }
-            const lists = new Map();
-            const children = async id => { check(); if (!lists.has(id)) lists.set(id, await source.children({ id })); return lists.get(id); };
+            const children = cachedDriveChildren(source,new Map(),check);
             const byId = new Map(videos.map(item => [String(item.node.id), item]));
             subtitleSnapshots.clear();
             const planned = new Map();
@@ -415,20 +423,24 @@
                 if (!planned.has(id)) planned.set(id,new Set());
                 planned.get(id).add(String(item.node.id));
             }
-            if (typeof MEDIA_SUB !== 'undefined') for (const {node} of videos) {
+            if (typeof MEDIA_SUB !== 'undefined') await batchStage(videos,'预览字幕关联（视频）',log,async ({node}) => {
                 const id = String(node.id);
                 const found = mediaSubtitleLinks(await children(node.parentId),node.parentId,history).linked.get(id) || [];
                 if (found.some(sub => !planned.get(id)?.has(String(sub.id))) || found.length !== (planned.get(id)?.size || 0))
                     throw new Error('关联字幕已变化，请重新生成预览：' + node.name);
                 subtitleSnapshots.set(node,subtitleScopeKey(found));
-            }
-            for (const { folder, paths } of candidates.values()) {
-                check();
-                if (paths.size !== 1) continue;
+            },check);
+            const proposed = [];
+            await batchStage([...candidates.values()],'整体目录方案预检（候选目录）',log,async ({folder,paths},verify,index) => {
+                if (paths.size !== 1) return 'skipped';
                 const path = [...paths][0], contents = await scanScope(folder.id, children), ids = contents.filter(node => !node.directory && MEDIA_VIDEO.test(node.name)).map(node => node.id);
-                if (!ids.length || ids.some(id => !byId.has(id) || !byId.get(id).destination.startsWith(path + '/'))) continue;
+                if (!ids.length || ids.some(id => !byId.has(id) || !byId.get(id).destination.startsWith(path + '/'))) return 'skipped';
                 if (typeof MEDIA_SUB !== 'undefined' && contents.some(node => !node.directory && MEDIA_SUB.test(node.name)
-                    && !ids.some(id => planned.get(id)?.has(node.id)))) continue;
+                    && !ids.some(id => planned.get(id)?.has(node.id)))) return 'skipped';
+                verify();
+                proposed[index] = {folder,path,contents};
+            },check,8,'同一目录内按顺序读子树，绑定按原顺序合并');
+            for (const {folder,path,contents} of proposed.filter(Boolean)) {
                 // Multiple source folders for one work share one destination; files keep their IDs.
                 const previous = bindings.get(path), name = relativeParts(path).at(-1);
                 if (!previous || previous.name !== name && folder.name === name) { bindings.set(path, folder); scopeSnapshots.set(String(folder.id), contents); }
@@ -448,20 +460,18 @@
             for (const path of [...bindings.keys()].sort((a,b) => relativeParts(a).length - relativeParts(b).length)) { check(); await resolve(path); }
             return [...bindings].map(([destination, folder]) => ({folder, destination, contents:scopeSnapshots.get(String(folder.id))}));
         }
-        async function validate() {
+        async function validate(log) {
             const children = subtitleSnapshots.size ? cachedDriveChildren(source,new Map(),checkPlan) : null;
-            for (const [node,expected] of subtitleSnapshots) {
+            await batchStage([...subtitleSnapshots],'执行前复核字幕（视频）',log,async ([node,expected]) => {
                 const found = mediaSubtitleLinks(await children(node.parentId),node.parentId,history).linked.get(String(node.id)) || [];
                 if (subtitleScopeKey(found) !== expected) throw new Error('关联字幕在预览后变化，请重新生成预览：' + node.name);
-            }
-            for (const folder of bindings.values()) {
-                checkPlan();
+            },checkPlan);
+            await batchStage([...bindings.values()],'执行前复核目录（目录）',log,async folder => {
                 const current = (await source.children({id:folder.parentId})).find(node => node.id === folder.id);
                 if (!current || !current.directory || current.name !== folder.name || scopeKey(await scanScope(folder.id, id => source.children({id}))) !== scopeKey(scopeSnapshots.get(String(folder.id)))) throw new Error('文件夹或内容在预览后发生变化，请重新生成预览：' + folder.path);
-            }
-            checkPlan();
+            },checkPlan);
         }
-        async function relocateDirectory(folder, parentId, name) {
+        async function relocateDirectory(folder,parentId,name,verify) {
             let current = (await source.children({ id: folder.parentId })).find(n => n.id === folder.id);
             if (!current || !current.directory || current.name !== folder.name) throw new Error('原文件夹已变化，预览会自动更新：' + folder.path);
             const expectedScope = scopeSnapshots.get(String(folder.id));
@@ -477,48 +487,64 @@
             const siblings = await source.children({ id: currentParent });
             if (siblings.some(n => n.name === name && n.id !== folder.id)) throw new Error('原目录有同名项目，未覆盖：' + name);
             if (current.name !== name) {
+                verify();
                 await post(guangya ? '/userres/v1/file/rename' : '/file/rename', guangya ? { fileId: folder.id, newName: name } : { driveId: 0, fileId: folder.id, fileName: name });
                 await confirm(name);
             }
             if (currentParent !== parentId) {
+                verify();
                 const result = await post(guangya ? '/userres/v1/file/move_file' : '/file/mod_pid', guangya ? { fileIds: [folder.id], parentId: parentId === '0' ? '' : parentId } : { fileIdList: [{ FileId: folder.id }], parentFileId: parentId });
                 if (guangya && taskIdOf(result.data)) await waitGuangyaDelete(taskIdOf(result.data), post, sleep, '移动文件夹');
                 currentParent = parentId; await confirm(name);
             }
             return folder.id;
         }
-        const ensure = async path => {
-            if (directories.has(path)) return directories.get(path);
-            const parts = relativeParts(path), name = parts.pop(), parentId = await ensure(parts.join('/'));
+        const createDirectory = async (path,verify) => {
+            const parts = relativeParts(path), name = parts.pop(), parentId = await ensure(parts.join('/'),verify);
+            verify();
             let matches = (await source.children({ id: parentId })).filter(node => node.name === name);
             const original = bindings.get(path);
             if (original) {
                 if (matches.some(node => node.id !== original.id)) {
                     throw new Error('目标目录在预览后出现同名项目，请重新生成预览：' + path);
                 }
-                const id = await relocateDirectory(original, parentId, name);
-                directories.set(path, id); return id;
+                return relocateDirectory(original,parentId,name,verify);
             }
             if (!matches.length) {
+                verify();
                 if (guangya) await post(API.mkdir, { parentId: parentId === '0' ? '' : parentId, dirName: name, failIfNameExist: true });
                 else await post('/file/upload_request', { driveId: 0, parentFileId: parentId, fileName: name, type: 1, size: 0, duplicate: 0 });
                 for (let i = 0; i < 3; i++) { if (i) await sleep(400); matches = (await source.children({ id: parentId })).filter(node => node.name === name); if (matches.length) break; }
             }
             if (matches.length !== 1 || !matches[0].directory || (matches[0].id === '0' || matches[0].id === parentId)) throw new Error('无法确认目标目录：' + path);
-            directories.set(path, matches[0].id); return matches[0].id;
+            return matches[0].id;
         };
-        async function execute(item) {
-            checkPlan();
+        const ensure = (path,verify) => {
+            const key = path.normalize('NFKC').toLowerCase();
+            if (!directories.has(key)) directories.set(key,createDirectory(path,verify));
+            return directories.get(key);
+        };
+        const executionKeys = item => {
+            const {node,destination} = item, name = relativeParts(destination).at(-1).toLowerCase();
+            const bound = new Set([...bindings.values()].map(folder => String(folder.id)));
+            return ['源:' + node.parentId + ':' + node.name.toLowerCase(), '源:' + node.parentId + ':' + name,
+                ...((node.ancestors || []).filter(folder => bound.has(String(folder.id))).map(folder => '目录:' + folder.id))];
+        };
+        async function execute(item, verify = checkPlan) {
+            verify();
             const original = item.node, parts = relativeParts(item.destination), name = parts.pop();
             if (!hasFileMetadata(original)) throw new Error('原文件缺少可验证的 MD5 或大小，保留原状');
             const oldNodes = await source.children({ id: original.parentId });
+            verify();
             let current = oldNodes.find(node => node.id === original.id);
             if (current) current = await mediaFileMetadata(current, source);
             if (!current || current.name !== original.name || current.directory || current.size !== original.size || current.md5?.toLowerCase() !== original.md5?.toLowerCase()) throw new Error('预览后原文件发生变化，请重新识别');
             let parentId = original.parentId;
-            const targetId = await ensure(parts.join('/'));
+            verify();
+            const targetId = await ensure(parts.join('/'),verify);
             const destNodes = targetId === parentId ? oldNodes : await source.children({ id: targetId });
-            const occupied = (list, n) => list.some(node => node.name === n && node.id !== original.id);
+            verify();
+            const occupied = (list, n) => list.some(node => node.name.toLowerCase() === n.toLowerCase() && node.id !== original.id);
             if (occupied(destNodes, name)) throw new Error('目标已有同名项目，未覆盖');
             const rename = name !== current.name, move = targetId !== parentId;
             const renameFirst = !move || !occupied(oldNodes, name);
@@ -540,11 +566,12 @@
                 catch (error) { historyError = error; }
             };
             const changeName = async () => {
+                verify();
                 await post(guangya ? '/userres/v1/file/rename' : '/file/rename', guangya ? { fileId: original.id, newName: name } : { driveId: 0, fileId: original.id, fileName: name });
                 await confirm(name);
                 rememberCurrent();
             };
-            const changeParent = async () => { const result = await post(guangya ? '/userres/v1/file/move_file' : '/file/mod_pid', guangya ? { fileIds: [original.id], parentId: targetId === '0' ? '' : targetId } : { fileIdList: [{ FileId: original.id }], parentFileId: targetId });
+            const changeParent = async () => { verify(); const result = await post(guangya ? '/userres/v1/file/move_file' : '/file/mod_pid', guangya ? { fileIds: [original.id], parentId: targetId === '0' ? '' : targetId } : { fileIdList: [{ FileId: original.id }], parentFileId: targetId });
                 if (guangya && taskIdOf(result.data)) await waitGuangyaDelete(taskIdOf(result.data), post, sleep, '移动');
                 parentId = targetId; await confirm(current.name); rememberCurrent(); };
             if (rename && renameFirst) await changeName();
@@ -553,7 +580,7 @@
             if (historyError) return '已整理，原名记录保存失败：' + historyError.message;
             return rename || move ? '已整理' : '已是标准名称与位置';
         }
-        return { prepare, validate, execute };
+        return { prepare, validate, execute, executionKeys };
     }
 
     const mediaStandardFolder = name => (/^.+\.(?:19|20)\d{2}$/.test(name) || /^Season \d{2}$/.test(name) || !!mediaExistingCategory([name])) && mediaClean(name) === name;
@@ -627,7 +654,7 @@
         };
     }
     const mediaPlaybackAttachment = name => MEDIA_SUB.test(name) || /\.(?:ttf|otf|ttc|woff2?)$/i.test(name) || /(?:字体|字體|fonts?).*\.(?:zip|rar|7z)$/i.test(name);
-    async function planMediaCleanup(selected, source, progress = () => {}, {extras = false, includeSubtitles = false, resolveCanonical, parentPath = '', check = () => {}} = {}) {
+    async function planMediaCleanup(selected, source, progress = () => {}, {extras = false, includeSubtitles = false, resolveCanonical, parentPath = '', check = () => {}, log} = {}) {
         if (!selected.length) throw new Error('请先勾选要清理的文件或文件夹');
         const plan = [], {parentId} = source;
         check();
@@ -635,7 +662,7 @@
         check();
         const label = extras ? '检查非正片：' : '识别并检查命名：';
         const baseFolders = parentPath.split('/').filter(Boolean);
-        await walkTree(roots.map(node => ({node, parentId, path:node.name})), entry => entry.node.id, async entry => {
+        await walkTree(roots.map(node => ({node, parentId, path:node.name})), entry => entry.node.id, async (entry,verify,order) => {
             const {node, parentId, path} = entry;
             let {extraScope = null} = entry;
             progress(label + path);
@@ -647,7 +674,7 @@
                     } else if (extraScope) extraScope = {ancestors:[...extraScope.ancestors, folder]};
                 } else if (includeSubtitles || !mediaPlaybackAttachment(node.name)) {
                     const reason = !MEDIA_VIDEO.test(node.name) ? '非视频附件' : mediaBonusName(node.name) ? '花絮、预告等附加视频' : extraScope ? '附加内容目录内的视频' : '';
-                    if (reason) plan.push({id:node.id, parentId, name:node.name, path, directory:false, cleanup:'extras', extraScope, reason});
+                    if (reason) plan.push({order,item:{id:node.id,parentId,name:node.name,path,directory:false,cleanup:'extras',extraScope,reason}});
                 }
             } else {
                 const needsIdentity = node.directory || MEDIA_VIDEO.test(node.name) || MEDIA_SUB.test(node.name);
@@ -655,9 +682,9 @@
                 if (resolveCanonical && needsIdentity) {
                     const folders = [...baseFolders,...path.split('/').slice(0,-1)];
                     let reason = '';
-                    try { expectedName = await resolveCanonical(node,folders); check(); }
+                    try { expectedName = await resolveCanonical(node,folders); verify(); }
                     catch (error) {
-                        check();
+                        verify();
                         if (error.stop) throw error;
                         reason = error.message;
                     }
@@ -668,15 +695,15 @@
                     ? expectedName && expectedName !== node.name
                     : !mediaStandardNode(node);
                 if (nonstandard) {
-                    plan.push({id:node.id, name:node.name, parentId, path, directory:!!node.directory, expectedName});
+                    plan.push({order,item:{id:node.id,name:node.name,parentId,path,directory:!!node.directory,expectedName}});
                     return; // The whole directory is one deletion, including its contents.
                 }
             }
             if (node.directory) return (await source.children({id:node.id})).map(child => ({node:child, parentId:node.id, path:path + '/' + child.name, extraScope}));
-        }, check);
-        return plan;
+        }, check, log, '清理扫描与候选识别（目录/文件）');
+        return plan.sort((a,b) => compareTreeOrder(a.order,b.order)).map(entry => entry.item);
     }
-    async function removeMediaNonstandard(item, session, source) {
+    async function removeMediaNonstandard(item,session,source,check = () => {}) {
         const old = (await source.children({ id: item.parentId })).find(n => n.id === item.id);
         if (!old) return '项目已不存在';
         if (item.cleanup === 'extras') {
@@ -687,11 +714,13 @@
             }
             if (old.directory || old.name !== item.name || item.id === '0' || item.id === session.parent || MEDIA_VIDEO.test(old.name) && !mediaBonusName(old.name) && !scopeValid)
                 throw Object.assign(new Error('项目已变化或不再属于非正片，本次未删除'), { retained: true });
+            check();
             await recycleMedia(item, session, source);
             return '非正片文件已移入回收站';
         }
         if (!!old.directory !== item.directory || old.name !== item.name || item.id === '0' || item.id === session.parent || mediaStandardNode(old) && (!item.expectedName || item.expectedName === old.name))
             throw Object.assign(new Error('项目已变化或已符合标准，本次未删除'), { retained: true });
+        check();
         await recycleMedia(item, session, source);
         return item.directory ? '整个文件夹及内容已移入回收站' : '文件已移入回收站';
     }

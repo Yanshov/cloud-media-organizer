@@ -112,7 +112,7 @@ async function uiStop(){
   ctx.createSubtitleService=()=>({thunderSearch:async r=>[1,2,3].map(id=>({source:'迅雷',fileId:id,name:`Love.Death.and.Robots.S01E0${r.parsed.episode}.简体&英文.ass`,ext:'ass',language:'zh-cn',bilingual:true,titleMatched:true})),fetchFile:async()=>{downloads++;throw Object.assign(Error('限流重试已停止'),{stop:true})}});
  vm.runInContext(part('    function createPanelTask(', '    function panelControls(')+part('    function subtitleInventory(','    if (location.hostname'),ctx);ctx.initSubtitles();
  await elements.get('readSubtitles').onclick();assert.match(elements.get('subtitleSummary').textContent,/缺可用字幕 2/);
-  await elements.get('fillSubtitles').onclick();assert.equal(downloads,1,'Do not burn siblings or later videos');assert.equal(saves,0);
+  await elements.get('fillSubtitles').onclick();assert.equal(downloads,2,'Only already-dispatched video checks may reach the source');assert.equal(saves,0);
  assert.match(elements.get('subtitleLog').value,/补齐中断/);assert.ok(!elements.get('subtitleLog').value.includes('[候选失败]'));
  assert.match(elements.get('subtitleSummary').textContent,/缺可用字幕 2/);
  console.log('PASS log UI stop: fatal download error pauses on first candidate; no sibling failures, deferred queries or uploads; remaining work is not attempted');

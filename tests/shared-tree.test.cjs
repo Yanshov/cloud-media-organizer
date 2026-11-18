@@ -46,7 +46,7 @@ async function deepSelection() {
     const expectedReads = [...folders.map(node => node.id), other.id];
     const exportProgress = [];
     const manifest = await collectTree([root, root], source, state => exportProgress.push(state), '媒体');
-    assert.deepEqual(reads, expectedReads, 'Traversal must read each directory once even when an ancestor is referenced again');
+    assert.deepEqual(reads.slice().sort(),expectedReads.slice().sort(), 'Traversal must read each directory once even when an ancestor is referenced again');
     assert.deepEqual(details, [subtitle.id, skipped.id]);
     assert.equal(manifest.directories, folders.length + 1);
     assert.equal(manifest.files, 3);
@@ -61,7 +61,7 @@ async function deepSelection() {
 
     reads.length = details.length = 0;
     const scanned = await collectMediaSelection([{id: root.id}, {names: [root.name]}], source);
-    assert.deepEqual(reads, ['0', ...expectedReads], 'Sibling subtitles reuse the directory listing from this scan');
+    assert.deepEqual(reads.slice().sort(),['0',...expectedReads].sort(), 'Sibling subtitles reuse the directory listing from this scan');
     assert.deepEqual(details, [subtitle.id]);
     assert.deepEqual(Array.from(scanned.videos, node => node.path), [videoPath, `${otherPath}/${otherVideo.name}`]);
     const [deepVideo] = scanned.videos;
@@ -97,7 +97,7 @@ async function interruptedTraversal(scan, fromSelection, stop) {
     const label = `${fromSelection ? 'Media selection' : 'Manifest export'} should report ${stop ? 'Stop' : 'permission failure'}`;
     const rejected = assert.rejects(result, caught => caught === error, label);
     await Promise.race([started, rejected.then(() => assert.fail('Task failed before starting the child request'))]);
-    const expected = fromSelection ? ['0', first.id] : [first.id];
+    const expected = fromSelection ? ['0',first.id,later.id] : [first.id,later.id];
     assert.deepEqual(reads, expected);
     if (stop) {
         stopped = true;

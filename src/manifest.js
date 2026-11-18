@@ -87,7 +87,7 @@
         if (nonNegativeInteger(data.errno) === 0 && typeof data.result?.bdstoken === 'string' && data.result.bdstoken) return data.result.bdstoken;
         throw new Error('没有获取到 bdstoken，请确认已登录百度网盘');
     }
-    async function collectTree(roots, source, progress = () => {}, parentPath = '', check = () => {}) {
+    async function collectTree(roots, source, progress = () => {}, parentPath = '', check = () => {}, log) {
         const start = roots.map(node => ({ node, path: relativeParts(node.exportPath || (parentPath ? parentPath + '/' + node.name : node.name)).join('/') }));
         const paths = new Map(), entries = [], skipped = [];
         let files = 0, directories = 0, lastProgress = 0, lastPath = '', reportedPath = '';
@@ -99,30 +99,32 @@
             if (relativeParts(node.name).length !== 1) throw new Error('云盘返回了包含路径分隔符的文件名');
             if (!node.key) throw new Error('文件列表缺少项目 ID');
             return node.key;
-        }, async ({node, path}) => {
+        }, async ({node, path}, verify, order) => {
             if (paths.has(path) && paths.get(path) !== node.key) throw new Error(`不同项目导出为同一路径：${path}；请分开导出`);
             paths.set(path, node.key);
             let children;
             if (node.directory) {
-                entries.push({ path, type: 'directory' });
+                entries.push({ order, entry:{ path, type:'directory' } });
                 directories++;
                 children = (await source.children(node)).map(child => ({ node: child, path: path + '/' + child.name }));
             } else {
                 const file = hasFileMetadata(node) ? node : await source.metadata?.(node);
-                if (!hasFileMetadata(file)) skipped.push(path);
+                if (!hasFileMetadata(file)) skipped.push({order,path});
                 else {
                     const entry = { path, md5: file.md5.toLowerCase(), size: file.size };
                     if (typeof file.gcid === 'string' && typeof file.cid === 'string' && /^[a-f0-9]{40}$/i.test(file.gcid) && /^[a-f0-9]{40}$/i.test(file.cid)) Object.assign(entry, { gcid: file.gcid.toUpperCase(), cid: file.cid.toUpperCase() });
-                    entries.push(entry); files++;
+                    entries.push({order,entry}); files++;
                 }
             }
-            check();
+            verify();
             lastPath = path;
             if (Date.now() - lastProgress >= 100) report(path);
             return children;
-        }, check);
+        }, check, log, '清单扫描与导出（目录/文件，分页按服务顺序）');
         if (lastPath !== reportedPath) report(lastPath);
-        return { entries, files, directories, skipped };
+        entries.sort((a,b) => compareTreeOrder(a.order,b.order));
+        skipped.sort((a,b) => compareTreeOrder(a.order,b.order));
+        return { entries:entries.map(item => item.entry), files, directories, skipped:skipped.map(item => item.path) };
     }
     async function readPages(load, keyOf) {
         const items = [], seen = new Set();
@@ -449,7 +451,7 @@
                 if (!roots.length) throw new Error('当前目录没有可导出的项目');
                 const result = await collectTree(roots, source, state => {
                     ui.get('status').textContent = `范围：${scope}；已读 ${state.files} 个文件、${state.directories} 个目录，跳过 ${state.skipped} 项；正在处理：${state.path}`;
-                }, parentPath, checkJsonTask);
+                }, parentPath, checkJsonTask, message => appendLog(ui,message));
                 if (!result.entries.length) throw new Error('没有可导出的文件信息');
                 const summary = exportManifestJson(ui, provider, result);
                 ui.get('status').textContent = `完成（${scope}）：${summary}。` + (!ui.get('json').value ? '没有可导出的内容。' : '请下载 JSON，到目标盘导入。') + (result.skipped.length ? ` 缺少有效 MD5/大小，已跳过 ${result.skipped.length} 项：${result.skipped.slice(0, 5).join('、')}` : '');
@@ -514,79 +516,59 @@
                 if (provider === '123') {
                     const session = recover123Session(), { base, headers } = session;
                     const post = paced(750, (path, body) => requestJson(`${base}${path}`, { method: 'POST', credentials: 'omit', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(body) }));
-                    const folders = new Map([['', target.id]]), childLists = new Map(), source = pan123Source(session);
-                    const unresolvedFolders = new Map();
-                    const children = cachedDriveChildren(source, childLists);
-                    await children(target.id);
-                    const locateDirectory = async (parent, name, path) => {
-                        try {
+                    const source = pan123Source(session), children = cachedDriveChildren(source,new Map(),checkJsonTask);
+                    const dirs = new Map([['',target.id]]);
+                    const ensure = path => {
+                        const key = path.toLowerCase();
+                        if (!dirs.has(key)) dirs.set(key,(async () => {
+                            const parts = relativeParts(path), name = parts.pop(), parent = await ensure(parts.join('/'));
+                            checkJsonTask();
+                            const find = nodes => {
+                                const matches = nodes.filter(item => item.name.toLowerCase() === name.toLowerCase());
+                                if (matches.length > 1 || matches.length && (!matches[0].directory || matches[0].id === '0' || matches[0].id === parent))
+                                    throw new Error('同名项目挡住目标目录：' + path);
+                                return matches[0]?.id;
+                            };
+                            const existing = find(await children(parent));
+                            if (existing) return existing;
+                            checkJsonTask();
+                            const result = await post('/file/upload_request',{driveId:0,parentFileId:parent,fileName:name,type:1,size:0,duplicate:0});
+                            if (![0,200,5060].includes(apiCode(result))) throw apiError('123 创建目录',result);
+                            const created = decimalId(result.data?.FileId ?? result.data?.fileId);
+                            if (created && created !== '0' && created !== parent) return created;
                             for (let attempt = 0; attempt < 3; attempt++) {
                                 if (attempt) await sleep(350);
-                                childLists.delete(parent);
-                                const matches = (await children(parent)).filter(item => item.name === name);
-                                if (matches.length === 1 && matches[0].directory && matches[0].id !== '0' && matches[0].id !== parent) return matches[0].id;
-                                if (matches.length) throw new Error(`目录 ${path} 存在同名冲突或异常 ID`);
+                                checkJsonTask();
+                                const confirmed = find(await source.children({id:parent}));
+                                if (confirmed) return confirmed;
                             }
-                            throw new Error(`创建后未能在父目录 ID ${parent} 中确认 ${path}；本次跳过该目录及其内容，避免重复创建或放错位置`);
-                        } catch (error) { unresolvedFolders.set(path, error); throw error; }
+                            throw new Error('目录创建结果待核对，未重复提交：' + path);
+                        })());
+                        return dirs.get(key);
                     };
                     let saved = 0, missed = 0, skipped = 0, failed = 0, pending = 0, processed = 0;
-                    for (let i = 0; i < files.length; i++) {
-                        const file = files[i];
-                        processed++;
-                        ui.get('progress').textContent = `导入进度：${i + 1}/${files.length}（已处理 ${Math.floor(i * 100 / files.length)}%） ${file.path}`;
+                    const names = new Map();
+                    try { await batchStage(files,'123 导入预检、转存与验证（清单项目）',log,async (file,verify,_index,observe) => {
                         try {
+                          return await enqueueByKey(names,file.path.toLowerCase(),async () => {
+                            verify();
                             const parts = relativeParts(file.path), name = parts.pop();
-                            let parent = target.id, relative = '';
-                            const folderParts = file.type === 'directory' ? [...parts, name] : parts;
-                            for (const part of folderParts) {
-                                relative = relative ? `${relative}/${part}` : part;
-                                if (unresolvedFolders.has(relative)) throw unresolvedFolders.get(relative);
-                                if (folders.has(relative)) { parent = folders.get(relative); continue; }
-                                const parentChildren = await children(parent);
-                                const matches = parentChildren.filter(item => item.name === part);
-                                if (matches.length > 1) throw new Error('多个同名项目，无法确认目录：' + relative);
-                                const old = matches[0];
-                                if (old) {
-                                    if (!old.directory || old.id === '0' || old.id === parent) throw new Error(`同名文件或异常目录挡住路径：${relative}`);
-                                    parent = old.id;
-                                } else {
-                                    let made;
-                                    try { made = await post('/file/upload_request', { driveId: 0, parentFileId: parent, fileName: part, type: 1, size: 0, duplicate: 0 }); }
-                                    catch (error) { unresolvedFolders.set(relative, error); throw error; }
-                                    if ([0, 200].includes(apiCode(made))) {
-                                        const createdId = decimalId(made.data?.FileId ?? made.data?.fileId);
-                                        if (!createdId || createdId === '0' || createdId === parent) {
-                                            const actualId = await locateDirectory(parent, part, relative);
-                                            log(`目录已确认：${relative}；父目录 ID ${parent} → 目录 ID ${actualId}`);
-                                            parent = actualId;
-                                        } else {
-                                            log(`目录：${relative}；父目录 ID ${parent} → 新目录 ID ${createdId}`);
-                                            parent = createdId;
-                                            parentChildren.push({ id: parent, name: part, directory: true });
-                                            childLists.set(parent, []);
-                                        }
-                                    } else if (apiCode(made) === 5060) {
-                                        parent = await locateDirectory(parent, part, relative);
-                                    } else throw apiError('123 创建目录', made);
-                                }
-                                folders.set(relative, parent);
-                            }
-                            if (file.type === 'directory') continue;
-                            const parentChildren = await children(parent);
-                            const sameName = parentChildren.filter(item => item.name === name);
+                            const parent = await ensure(file.type === 'directory' ? file.path : parts.join('/'));
+                            if (file.type === 'directory') return;
+                            verify();
+                            const sameName = (await source.children({id:parent})).filter(item => item.name.toLowerCase() === name.toLowerCase());
                             if (sameName.length > 1) throw new Error('目标存在多个同名项目，无法确认：' + file.path);
                             const old = sameName[0];
-                            if (old) { const message = existingFileMessage(old, file); skipped++; log(`${file.path}：${message}`); continue; }
+                            if (old) { const message = existingFileMessage(old, file); skipped++; log(`${file.path}：${message}`); return 'skipped'; }
+                            verify();
                             const response = await post('/file/upload_request', { driveId: 0, parentFileId: parent, fileName: name, type: 0, size: file.size, etag: file.md5, duplicate: 0 });
                             if (apiCode(response) === 5060) {
-                                childLists.delete(parent);
-                                const refreshed = await children(parent);
+                                const refreshed = await source.children({id:parent});
                                 const matches = refreshed.filter(item => item.name === name);
                                 if (matches.length > 1) throw new Error('目标存在多个同名项目，无法确认：' + file.path);
                                 const existing = matches[0];
                                 if (existing) {
-                                    const message = existingFileMessage(existing, file); skipped++; log(`${file.path}：${message}`); continue;
+                                    const message = existingFileMessage(existing, file); skipped++; log(`${file.path}：${message}`); return 'skipped';
                                 }
                             }
                             if (![0, 200].includes(apiCode(response))) throw apiError('123 秒传', response);
@@ -594,69 +576,79 @@
                                 let verified = false;
                                 for (let attempt = 0; attempt < 5; attempt++) {
                                     if (attempt) await sleep(500);
-                                    childLists.delete(parent);
-                                    const matches = (await children(parent)).filter(item => item.name === name);
+                                    verify();
+                                    const matches = (await source.children({id:parent})).filter(item => item.name === name);
                                     if (!matches.length) continue;
                                     if (matches.length !== 1) throw new Error('目标存在多个同名项目，无法验证：' + file.path);
                                     existingFileMessage(matches[0], file);
                                     if (hasFileMetadata(matches[0])) { verified = true; break; }
                                 }
                                 if (verified) saved++;
-                                else { pending++; log(`${file.path}：接口报告复用，但尚未在目标目录验证到完整文件信息，结果待确认`); }
-                            } else { missed++; log(`${file.path}：哈希未命中，需文件本体，未上传`); }
+                                else { pending++; log(`${file.path}：接口报告复用，但尚未在目标目录验证到完整文件信息，结果待确认`); return 'failed'; }
+                            } else { missed++; log(`${file.path}：哈希未命中，需文件本体，未上传`); return 'failed'; }
+                          });
                         } catch (error) {
-                            failed++;
-                            log(`${file.path}：单项失败，已跳过；${error.message}`);
-                            if (error.stop) { log('登录或权限异常，已停止后续项目'); break; }
+                            failed++; observe(error);
+                            log(file.path+'：单项失败；'+error.message);
+                            if (error.stop) throw error;
+                            return 'failed';
+                        } finally {
+                            processed++;
+                            ui.get('progress').textContent = '导入进度：'+processed+'/'+files.length;
                         }
-                    }
+                    },checkJsonTask,8,'123 写入沿用 750ms 节流，共享路径复用在途建目录'); }
+                    catch (error) { log('导入中断：'+error.message); }
                     ui.get('status').textContent = processed < files.length ? '导入已停止' : missed + failed + pending ? '导入结束，含未完成项' : '导入完成';
                     ui.get('progress').textContent = `导入结束：已处理 ${processed}/${files.length} 项；确认复用 ${saved}，未完成 ${missed}，待确认 ${pending}，同名跳过 ${skipped}，单项失败 ${failed}，未处理 ${files.length - processed}`;
                 } else {
                     const token = await getBdstoken();
                     const source = baiduSource(token), rootPath = target.id;
-                    const dirs = new Map([['', rootPath]]), cached = new Map();
-                    const children = async path => {
-                        if (!cached.has(path)) cached.set(path, await source.children({ key: path || '/', directory: true }));
-                        return cached.get(path);
-                    };
                     const create = async body => {
                         const response = await requestJson(`${location.origin}/api/create?${new URLSearchParams({ channel: 'chunlei', web: '1', app_id: '250528', bdstoken: token })}`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
                         if (nonNegativeInteger(response.errno) !== 0) throw new Error(`百度创建失败：${response.errno ?? '未知错误'}`);
                     };
-                    let saved = 0, missed = 0, skipped = 0;
-                    for (let i = 0; i < files.length; i++) {
-                        const file = files[i];
-                        ui.get('progress').textContent = `导入进度：${i + 1}/${files.length}（已处理 ${Math.floor(i * 100 / files.length)}%） ${file.path}`;
+                    const folders = new Map([['',rootPath]]);
+                    const children = path => source.children({key:path || '/',directory:true});
+                    const ensure = path => {
+                        if (!folders.has(path)) folders.set(path,(async () => {
+                            const parts = relativeParts(path), name = parts.pop(), parent = await ensure(parts.join('/'));
+                            checkJsonTask();
+                            const matches = (await children(parent)).filter(item => item.name === name);
+                            if (matches.length > 1 || matches.length && !matches[0].directory) throw new Error('同名项目挡住目录：'+path);
+                            if (matches.length) return matches[0].key;
+                            const fullPath = parent.replace(/\/$/,'') + '/' + name;
+                            checkJsonTask();
+                            await create({path:fullPath,isdir:1,size:0,block_list:'[]'});
+                            return fullPath;
+                        })());
+                        return folders.get(path);
+                    };
+                    let saved = 0, missed = 0, skipped = 0, failed = 0, processed = 0;
+                    try { await batchStage(files,'百度导入预检与转存（清单项目）',log,async (file,verify,_index,observe) => {
+                      try {
                         const parts = relativeParts(file.path), name = parts.pop();
-                        let parent = rootPath, relative = '';
-                        const folderParts = file.type === 'directory' ? [...parts, name] : parts;
-                        for (const part of folderParts) {
-                            relative = relative ? `${relative}/${part}` : part;
-                            if (dirs.has(relative)) { parent = dirs.get(relative); continue; }
-                            const fullPath = `${parent.replace(/\/$/, '')}/${part}` || `/${part}`;
-                            const entries = await children(parent);
-                            let folder = entries.find(item => item.directory && item.name === part);
-                            if (!folder) {
-                                if (entries.some(item => item.name === part)) throw new Error(`同名文件挡住目录：${relative}`);
-                                await create({ path: fullPath, isdir: 1, size: 0, block_list: '[]' });
-                                folder = { key: fullPath, name: part, directory: true };
-                                cached.delete(parent);
-                            }
-                            parent = folder.key; dirs.set(relative, parent);
-                        }
-                        if (file.type === 'directory') continue;
+                        const parent = await ensure(file.type === 'directory' ? file.path : parts.join('/'));
+                        if (file.type === 'directory') return;
+                        verify();
                         const entries = await children(parent);
-                        if (entries.some(item => item.name === name)) { skipped++; log(`${file.path}：目标已有同名项目，跳过`); continue; }
-                        if (file.size > 256 * 1024) { missed++; log(`${file.path}：百度需要前 256 KB 分片哈希；清单不含原文件，未提交`); continue; }
+                        if (entries.some(item => item.name === name)) { skipped++; log(`${file.path}：目标已有同名项目，跳过`); return 'skipped'; }
+                        if (file.size > 256 * 1024) { missed++; log(`${file.path}：百度需要前 256 KB 分片哈希；清单不含原文件，未提交`); return 'skipped'; }
                         const path = `${parent.replace(/\/$/, '')}/${name}` || `/${name}`;
                         const params = new URLSearchParams({ channel: 'chunlei', web: '1', app_id: '250528', bdstoken: token, clienttype: '0', async: '2' });
+                        verify();
                         const response = await requestJson(`${location.origin}/api/rapidupload?${params}`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' }, body: new URLSearchParams({ path, 'content-md5': file.md5, 'slice-md5': file.md5, 'content-length': String(file.size), isdir: '0', rtype: '3' }).toString() });
-                        if (nonNegativeInteger(response.errno) === 0) { saved++; cached.delete(parent); log(`${file.path}：百度秒传接口已接受`); }
-                        else { missed++; log(`${file.path}：百度未命中秒传（${response.errno ?? '未知错误'}），需要原文件`); }
-                    }
-                    ui.get('status').textContent = '导入完成';
-                    ui.get('progress').textContent = `导入完成：${files.length}/${files.length} 项；百度接口接受 ${saved}，未完成 ${missed}，同名跳过 ${skipped}；大于 256 KB 的项目需原文件分片哈希`;
+                        if (nonNegativeInteger(response.errno) === 0) { saved++; log(`${file.path}：百度秒传接口已接受`); }
+                        else { missed++; log(`${file.path}：百度未命中秒传（${response.errno ?? '未知错误'}），需要原文件`); return 'failed'; }
+                      } catch (error) {
+                        failed++; observe(error);
+                        log(file.path+'：单项失败；'+error.message);
+                        if (error.stop) throw error;
+                        return 'failed';
+                      } finally { processed++; ui.get('progress').textContent = '导入进度：'+processed+'/'+files.length; }
+                    },checkJsonTask,8,'共享路径复用在途建目录，百度分页顺序读取'); }
+                    catch (error) { log('导入中断：'+error.message); }
+                    ui.get('status').textContent = processed < files.length ? '导入已停止' : failed ? '导入结束，含失败项' : '导入完成';
+                    ui.get('progress').textContent = `导入结束：${processed}/${files.length} 项；失败 ${failed}，百度接口接受 ${saved}，未完成 ${missed}，同名跳过 ${skipped}；大于 256 KB 的项目需原文件分片哈希`;
                 }
             } catch (error) { ui.get('status').textContent = '失败：' + error.message; ui.get('progress').textContent = '导入失败：' + error.message; }
             finally { ui.get('manifest').value = ''; controls.forEach(control => { control.disabled = false; }); ui.busy(false); }

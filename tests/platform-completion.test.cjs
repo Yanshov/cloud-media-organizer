@@ -78,12 +78,12 @@ async function manifestUI(){
   let lists123=0;
   const ui={get:id=>{if(!elements.has(id))elements.set(id,{value:'',disabled:false,textContent:''});return elements.get(id)},busy(){}};
   const start=script.indexOf('    function initManifestImporter('),end=script.indexOf('    function installHooks(',start);
-  const ctx=vm.createContext({URL,URLSearchParams,location:{origin:'https://pan.baidu.com'},sleep:async()=>{},panelControls:()=>[],appendLog(){},normalizeFiles:x=>x,relativeParts:x=>x.split('/'),
+  const ctx=vm.createContext({URL,URLSearchParams,location:{origin:'https://pan.baidu.com'},sleep:async()=>{},panelControls:()=>[],appendLog(){},checkJsonTask(){},normalizeFiles:x=>x,relativeParts:x=>x.split('/'),
    current123Parent:()=> '42',currentBaiduPath:()=>'/target',recover123Session:()=>({base:'https://www.123pan.com/b/api',headers:{}}),getBdstoken:async()=> 'test',paced:(_ms,f)=>f,
    pan123Source:()=>({children:async()=>{lists123++;return writes.length?[video]:[]}}),baiduSource:()=>({children:async()=>[]}),apiCode:r=>r.code,nonNegativeInteger:Number,hasFileMetadata:()=>true,existingFileMessage:()=>'',
    requestJson:async(url,options)=>{writes.push({url,body:options.body});return provider==='123'?{code:0,data:{Reuse:true}}:{errno:0}}
   });
-  vm.runInContext(script.slice(script.indexOf('    function cachedDriveChildren('),script.indexOf('    function titleKey('))+script.slice(start,end),ctx);ctx.initManifestImporter(provider,ui);
+  vm.runInContext(script.slice(script.indexOf('    async function forEachConcurrent('),script.indexOf('    function titleKey('))+script.slice(start,end),ctx);ctx.initManifestImporter(provider,ui);
   ui.get('json').value=JSON.stringify([{name:'small.txt',path:'small.txt',size:2,md5:'a'.repeat(32)}]);await ui.get('transfer').onclick();
   assert.equal(writes.length,1,provider);assert.ok(!writes[0].url.includes('userres'),provider+' must not use Guangya endpoints');
   if(provider==='123'){
@@ -105,14 +105,14 @@ async function guangyaExisting(){
   paced:(_ms,fn)=>fn,requestGuangya:base.requestGuangya,checkJsonTask:base.checkJsonTask,directoryResolver:()=>async()=> '42',guangyaSource:()=>({children:async()=>{reads++;return children}}),relativeParts:value=>value.split('/'),
   existingFileMessage:(node,file)=>{if(node.directory||node.size!==file.size||node.md5!==file.md5)throw Error('同名内容不同，未覆盖');return '已有相同文件，跳过'},
   importFile:async()=>{submissions++;return {status:'saved',message:'confirmed'}},sleep:async()=>{}});
- vm.runInContext(script.slice(script.indexOf('    async function runGuangyaImportFiles('),start)+script.slice(start,end),ctx);ctx.initGuangya();
+ vm.runInContext(script.slice(script.indexOf('    async function forEachConcurrent('),script.indexOf('    function cachedDriveChildren('))+script.slice(script.indexOf('    async function runGuangyaImportFiles('),start)+script.slice(start,end),ctx);ctx.initGuangya();
  const file={path:'test.mkv',name:'test.mkv',md5:'a'.repeat(32),size:1};
  ui.get('json').value=JSON.stringify([file]);ui.get('syncExisting').checked=false;
  children=[{...file,id:'x'}];await ui.get('start').onclick();assert.equal(submissions,0);assert.match(ui.get('progress').textContent,/同名跳过 1/);
  children=[{...file,id:'x',md5:'b'.repeat(32)}];await ui.get('start').onclick();assert.equal(submissions,0);assert.ok(logs.some(l=>l.includes('未覆盖')));
  children=[];await ui.get('start').onclick();assert.equal(submissions,1);assert.equal(reads,3);
  base.setStopped(true);await ui.get('start').onclick();assert.equal(submissions,1);assert.equal(reads,3);
- assert.ok(logs.includes('任务已停止，不再处理后续项目'));
+ assert.ok(logs.some(message => message.includes('导入中断')));
  console.log('PASS ordinary Guangya import: fresh destination lookup; same file skipped, conflicting content never submitted, absent file submitted once');
 }
 function startup(){

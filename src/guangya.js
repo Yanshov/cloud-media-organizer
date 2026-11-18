@@ -123,7 +123,7 @@
         GM_setValue(key, journal);
     }
     const replacementKey = file => JSON.stringify([file.path, file.md5, file.size]);
-    async function buildGuangyaReplacementPlan(files, target, source, progress = () => {}, history = readExportHistory('光鸭'), journal = readReplacementJournal(target)) {
+    async function buildGuangyaReplacementPlan(files, target, source, progress = () => {}, history = readExportHistory('光鸭'), journal = readReplacementJournal(target), check = () => {}, log) {
         const byPath = new Map(), byContent = new Map(), seen = new Set(), unverified = [];
         const contentKey = file => file.md5.toLowerCase() + ':' + file.size;
         const neededDirectories = new Set(['']), fileParents = new Set();
@@ -158,11 +158,13 @@
         const directoryKey = path => path.split('/').map(name => name.normalize('NFKC').toLowerCase().replace(/[\p{P}\p{Z}\s]/gu, '') || name).join('/');
         const directoryKeys = new Set([...neededDirectories].map(directoryKey));
         const fileParentKeys = new Set([...fileParents].map(directoryKey));
-        const stack = [{ id: target.id, path: '' }];
-        while (stack.length) {
-            const folder = stack.pop();
+        const root = {id:target.id,path:''};
+        const metadataFiles = [];
+        await walkTree([root],folder => folder.id,async (folder,verify) => {
+            const descendants = [];
             progress('正在核对 JSON 对应目录：' + (folder.path || target.path));
             for (const node of await source.children(folder)) {
+                verify();
                 if (!node.id || node.id === '0' || relativeParts(node.name).length !== 1 || seen.has(node.id)) throw new Error('目标目录结构异常，请刷新后重新预览');
                 seen.add(node.id);
                 const path = folder.path ? folder.path + '/' + node.name : node.name;
@@ -170,21 +172,26 @@
                 const entry = { ...node, path, parentId: folder.id };
                 byPath.set(path, entry);
                 if (entry.directory) {
-                    if (directoryKeys.has(directoryKey(path))) stack.push(entry);
+                    if (directoryKeys.has(directoryKey(path))) descendants.push(entry);
                     continue;
                 }
                 if (!fileParentKeys.has(directoryKey(folder.path))) continue;
                 if (entry.size != null && !wantedSizes.has(entry.size)) continue;
+                metadataFiles.push(entry);
+            }
+            return descendants;
+        },check,log,'光鸭替换目录预览（目录）');
+        await batchStage(metadataFiles,'光鸭替换内容预检（文件）',log,async (entry,verify,_index,observe) => {
                 let metadata;
                 try { metadata = hasFileMetadata(entry) ? entry : await source.metadata(entry); }
-                catch (error) { if (error.stop) throw error; unverified.push(entry); continue; }
-                if (!hasFileMetadata(metadata)) { unverified.push(entry); continue; }
+                catch (error) { observe(error); verify(); if (error.stop) throw error; unverified.push(entry); return 'failed'; }
+                verify();
+                if (!hasFileMetadata(metadata)) { unverified.push(entry); return 'skipped'; }
                 Object.assign(entry, { md5: metadata.md5.toLowerCase(), size: metadata.size });
                 const key = contentKey(entry);
                 if (!byContent.has(key)) byContent.set(key, []);
                 byContent.get(key).push(entry);
-            }
-        }
+        },check,8,'文件详情沿用光鸭节流');
         // Every requested destination is protected from old-file cleanup.
         const requestedPaths = new Set(files.map(file => file.path));
         const demand = new Map();
@@ -334,7 +341,7 @@
         }
         throw Object.assign(new Error('删除请求已提交，但旧项目仍存在；ID：' + node.id), { terminal: true });
     }
-    async function replaceGuangyaFile(file, action, target, plan, source, post, ensureDirectory, journal, progress, wait = sleep) {
+    async function replaceGuangyaFile(file,action,target,plan,source,post,ensureDirectory,journal,progress,wait = sleep,check = () => {}) {
         const key = replacementKey(file), old = action.old;
         let original = null;
         if (old) {
@@ -356,7 +363,9 @@
                 if (/^[a-f0-9]{40}$/i.test(metadata.gcid || '') && /^[a-f0-9]{40}$/i.test(metadata.cid || '')) input = { ...file, gcid: metadata.gcid.toUpperCase(), cid: metadata.cid.toUpperCase() };
             }
             progress('导入中：' + file.path);
-            const parent = await ensureDirectory(relativeParts(file.path).slice(0, -1).join('/'));
+            check();
+            const parent = await ensureDirectory(relativeParts(file.path).slice(0,-1).join('/'));
+            check();
             const result = await importFile(input, parent || '0', post, wait);
             if (result.status !== 'saved') return { status: result.status, message: result.message + '；旧版保留', stop: result.stop };
             progress('验证中：' + file.path);
@@ -375,7 +384,8 @@
             }
             return { status: 'done', reused, message: '新版已在目标路径验证，未删除其他文件' };
         }
-        const directories = new Map((journal[key]?.directories || []).map(node => [node.id, node]));
+        check();
+        const directories = new Map((journal[key]?.directories || []).map(node => [node.id,node]));
         const parts = relativeParts(old.path);
         for (let i = 1; i < parts.length; i++) {
             const path = parts.slice(0, i).join('/'), node = plan.directories.get(path);
@@ -393,7 +403,8 @@
             const current = (await source.children({ id: old.parentId })).find(node => node.id === old.id);
             if (current) {
                 if (current.name !== old.name) throw new Error('旧文件名称已变化，未删除');
-                await checkedGuangyaContent({ ...current, path: old.path }, file, source);
+                await checkedGuangyaContent({...current,path:old.path},file,source);
+                check();
                 progress('清理旧版：' + old.path);
                 await removeGuangyaNode(old, source, post, wait, taskId => {
                     record.taskId = taskId; record.stage = 'delete-pending'; writeReplacementJournal(target, journal);
@@ -408,12 +419,13 @@
             return { status: 'cleanup-failed', reused, message: '新版已就绪，旧版清理失败：' + error.message, stop: error.stop };
         }
     }
-    async function cleanupGuangyaOldDirectories(keys, target, plan, source, post, journal, progress, log, wait = sleep) {
+    async function cleanupGuangyaOldDirectories(keys, target, plan, source, post, journal, progress, log, wait = sleep, check = () => {}) {
         const candidates = new Map(), failed = new Set(), retained = new Set();
-        for (const key of keys) {
+        try { await batchStage([...keys],'旧目录清理前核验（新版文件）',log,async (key,verify,_index,observe) => {
             const record = journal[key];
             try {
                 const destination = await readGuangyaDestination(record.file, target, source);
+                verify();
                 if (!destination || destination.id !== record.newFileId) throw new Error('新版已变化，保留旧目录待核对');
                 for (const node of record.directories) if (!plan.protectedDirectories.has(node.path) && node.id !== target.id) {
                     if (!candidates.has(node.id)) candidates.set(node.id, { node, keys: [] });
@@ -421,26 +433,37 @@
                 }
             } catch (error) {
                 failed.add(key); log(record.file.path + '：新版已就绪，旧目录清理失败：' + error.message);
-                if (error.stop) { writeReplacementJournal(target, journal); return { removed: 0, failed: keys.size }; }
+                observe(error);
+                if (error.stop) throw error;
+                return 'failed';
             }
+        },check); } catch (error) {
+            log('旧目录核验中断：' + error.message);
+            writeReplacementJournal(target,journal);
+            return {removed:0,failed:keys.size};
         }
         let removed = 0;
-        for (const { node, keys: related } of [...candidates.values()].sort((a, b) => b.node.path.split('/').length - a.node.path.split('/').length)) {
-            if (related.some(key => failed.has(key))) continue;
+        const layers = groupBatch([...candidates.values()].sort((a,b) => relativeParts(b.node.path).length - relativeParts(a.node.path).length),entry => relativeParts(entry.node.path).length);
+        try { for (const layer of layers) {
+          await batchStage(layer,'空旧目录清理（同层目录）',log,async ({node,keys:related},verify,_index,observe) => {
+            if (related.some(key => failed.has(key))) return 'skipped';
             try {
                 const current = (await source.children({ id: node.parentId })).find(item => item.id === node.id);
-                if (!current) continue;
+                verify();
+                if (!current) return 'skipped';
                 if (!current.directory || current.name !== node.name) throw new Error('旧目录已变化，保留待核对：' + node.path);
                 let children = await source.children({ id: node.id });
                 for (let attempt = 0; children.length && attempt < 3; attempt++) {
                     await wait(500);
-                    children = await source.children({ id: node.id });
+                    verify();
+                    children = await source.children({id:node.id});
                 }
                 if (children.length) {
                     for (const key of related) retained.add(key);
-                    log('旧目录仍有内容，保留并记录待清理：' + node.path); continue;
+                    log('旧目录仍有内容，保留并记录待清理：' + node.path); return 'skipped';
                 }
                 progress('清理空旧目录：' + node.path);
+                verify();
                 const first = journal[related[0]], taskId = first.directoryTasks?.[node.id] || '';
                 await removeGuangyaNode(node, source, post, wait, taskId => {
                     for (const key of related) (journal[key].directoryTasks ||= {})[node.id] = taskId;
@@ -451,14 +474,21 @@
                 for (const key of related) failed.add(key);
                 if (error.terminal) for (const key of related) delete journal[key].directoryTasks?.[node.id];
                 log('旧目录清理失败：' + node.path + '；' + error.message);
-                if (error.stop) { writeReplacementJournal(target, journal); return { removed, failed: keys.size }; }
+                observe(error);
+                if (error.stop) throw error;
+                return 'failed';
             }
+          },check,8,'先处理深层目录，清理前重新确认当前目录为空');
+        } } catch (error) {
+            log('旧目录清理中断：' + error.message);
+            writeReplacementJournal(target,journal);
+            return {removed,failed:keys.size};
         }
         for (const key of keys) if (!failed.has(key) && !retained.has(key)) delete journal[key];
         writeReplacementJournal(target, journal);
         return { removed, failed: failed.size };
     }
-    async function runGuangyaReplacement(files, target, plan, source, post, ensureDirectory, progress, log, wait = sleep) {
+    async function runGuangyaReplacement(files,target,plan,source,post,ensureDirectory,progress,log,wait = sleep,check = () => {}) {
         const journal = readReplacementJournal(target), cleanupKeys = new Set();
         const verifiedEntries = [], fileDirectories = new Set();
         let stopped = false;
@@ -467,17 +497,17 @@
             for (let i = 1; i < parts.length; i++) fileDirectories.add(parts.slice(0, i).join('/'));
         }
         const counts = { processed: 0, verified: 0, imported: 0, reused: 0, deleted: 0, pending: 0, missed: 0, failed: 0, skipped: 0, cleanupFailed: 0, directories: 0 };
-        for (let i = 0; i < files.length; i++) {
-            const file = files[i], action = plan.actions.get(file.path), label = `[${i + 1}/${files.length}] ${file.path}`;
-            counts.processed++;
+        try { await batchStage(files,'光鸭替换与验证（清单项目）',log,async (file,verify,i,observe) => {
+            const action = plan.actions.get(file.path), label = `[${i + 1}/${files.length}] ${file.path}`;
             try {
-                if (action.kind === 'conflict') { counts.skipped++; log(label + '：跳过；' + action.reason); continue; }
+                verify();
+                if (action.kind === 'conflict') { counts.skipped++; log(label + '：跳过；' + action.reason); return 'skipped'; }
                 if (file.type === 'directory') {
                     if (!fileDirectories.has(file.path)) await ensureDirectory(file.path);
-                    continue;
+                    return;
                 }
                 const result = await replaceGuangyaFile(file, action, target, plan, source, post, ensureDirectory, journal,
-                    message => progress(`[${i + 1}/${files.length}] ${message}`), wait);
+                    message => progress(`[${i + 1}/${files.length}] ${message}`),wait,verify);
                 log(label + '：' + result.message);
                 if (result.status === 'done' || result.status === 'cleanup-failed') {
                     counts.verified++; counts[result.reused ? 'reused' : 'imported']++;
@@ -486,10 +516,18 @@
                     if (result.cleanupKey) cleanupKeys.add(result.cleanupKey);
                     if (result.status === 'cleanup-failed') counts.cleanupFailed++;
                 } else counts[result.status === 'miss' ? 'missed' : 'pending']++;
-                if (result.stop) { stopped = true; break; }
-            } catch (error) { counts.failed++; log(label + '：未完成；' + error.message); if (error.stop) { stopped = true; break; } }
-        }
-        const cleanup = stopped ? { removed: 0, failed: cleanupKeys.size } : await cleanupGuangyaOldDirectories(cleanupKeys, target, plan, source, post, journal, progress, log, wait);
+                if (result.stop) throw Object.assign(new Error(result.message),{stop:true,recorded:true});
+                return result.status === 'done' ? undefined : 'failed';
+            } catch (error) {
+                observe(error);
+                if (!error.recorded) counts.failed++;
+                log(label + '：未完成；' + error.message);
+                if (error.stop || error.cancelled) throw error;
+                return 'failed';
+            } finally { counts.processed++; }
+        },check,8,'同一项先转存和验证，新旧版本任务记录逐项保存'); }
+        catch (error) { stopped = true; log('替换中断：' + error.message); }
+        const cleanup = stopped ? { removed: 0, failed: cleanupKeys.size } : await cleanupGuangyaOldDirectories(cleanupKeys,target,plan,source,post,journal,progress,log,wait,check);
         if (stopped) log('任务已停止，不再执行后续替换和旧目录清理；保留任务记录供下次核对');
         counts.directories = cleanup.removed; counts.cleanupFailed += cleanup.failed;
         if (verifiedEntries.length) {
@@ -501,57 +539,72 @@
     }
     async function runGuangyaImportFiles(files, targetId, post, ensureDirectory, existingSource, log, check) {
         const counts = { saved: 0, pending: 0, missed: 0, failed: 0, directories: 0, skipped: 0, processed: 0 };
-        let listing = null, reads = 0, reused = 0;
-        for (let i = 0; i < files.length; i++) {
-            const file = files[i], label = `[${i + 1}/${files.length}] ${file.path}`;
-            counts.processed++;
+        const listings = new Map(), paths = new Map();
+        let reads = 0, reused = 0;
+        const list = parentId => {
+            const promise = (async () => {
+                reads++;
+                const names = new Map();
+                for (const node of await existingSource.children({id:parentId})) {
+                    const name = node.name.toLowerCase();
+                    names.set(name,names.has(name) ? null : node);
+                }
+                return names;
+            })();
+            listings.set(parentId,promise);
+            promise.catch(() => { if (listings.get(parentId) === promise) listings.delete(parentId); });
+            return promise;
+        };
+        try { await batchStage(files,'光鸭导入预检、转存与核验（清单项目）',log,async (file,verify,i,observe) => {
+            const label = `[${i + 1}/${files.length}] ${file.path}`;
             try {
-                check();
+              return await enqueueByKey(paths,file.path.toLowerCase(),async () => {
+                verify();
                 log(label, { index: i + 1, total: files.length, path: file.path });
                 if (file.type === 'directory') {
-                    listing = null;
                     await ensureDirectory(file.path);
                     counts.directories++;
                     log(label + '：目录已就绪');
                 } else {
                     const parent = await ensureDirectory(relativeParts(file.path).slice(0, -1).join('/'));
-                    check();
+                    verify();
                     const parentId = parent || (targetId === '0' ? '' : targetId);
-                    let names = listing?.parentId === parentId ? listing.names : null;
+                    const name = file.name.toLowerCase();
+                    const cached = listings.get(parentId);
+                    let names = await (cached || list(parentId));
                     // Reuse only positive lookups. Absence must be checked on a fresh listing before submitting.
-                    if (!names?.has(file.name)) {
-                        listing = null; reads++;
-                        const nodes = await existingSource.children({ id: parentId });
-                        check();
-                        names = new Map();
-                        for (const node of nodes) names.set(node.name, names.has(node.name) ? null : node);
-                        listing = { parentId, names };
-                    } else reused++;
-                    if (names.has(file.name)) {
-                        const existing = names.get(file.name);
+                    if (cached && !names.has(name)) names = await list(parentId);
+                    else if (cached) reused++;
+                    verify();
+                    if (names.has(name)) {
+                        const existing = names.get(name);
                         if (!existing) throw new Error('目标存在多个同名项目，未上传');
                         const message = existingFileMessage(existing, file);
                         counts.skipped++;
                         log(label + '：' + message);
+                        return 'skipped';
                     } else {
-                        check();
-                        listing = null;
+                        verify();
+                        listings.delete(parentId);
                         const result = await importFile(file, parent || targetId, post);
                         if (result.status === 'saved') counts.saved++;
                         else if (result.status === 'pending') counts.pending++;
                         else counts.missed++;
                         log(label + '：' + result.message);
-                        if (result.stop) { log('任务已停止，不再处理后续项目'); break; }
+                        if (result.stop) throw Object.assign(new Error(result.message),{stop:true,recorded:true});
+                        return result.status === 'saved' ? undefined : 'failed';
                     }
                 }
+              });
             } catch (error) {
-                listing = null;
-                counts.failed++;
+                observe(error);
+                if (!error.recorded) counts.failed++;
                 log(label + '：失败，' + error.message);
-                if (error.stop || error.cancelled) { log('任务已停止，不再处理后续项目'); break; }
-            }
-            if ((i + 1) % 128 === 0) await sleep(0);
-        }
+                if (error.stop || error.cancelled) throw error;
+                return 'failed';
+            } finally { counts.processed++; }
+        },check,8,'同目录同名串行，光鸭写入与任务轮询沿用 650ms 节流'); }
+        catch (error) { log('导入中断：' + error.message); }
         log(`目录检查：读取 ${reads} 次，复用已有项 ${reused} 次；新提交前仍读取最新目录`);
         return counts;
     }
@@ -601,7 +654,7 @@
                 if (!roots.length) throw new Error('选中项目不在当前目录中，请重新选择');
                 const result = await collectTree(roots, source, state => {
                     ui.get('status').textContent = `正在导出：${state.path}；文件 ${state.files}，目录 ${state.directories}`;
-                }, target.exportPath, checkJsonTask);
+                },target.exportPath,checkJsonTask,log);
                 if (!result.entries.length) throw new Error('没有可导出的项目');
                 const summary = exportManifestJson(ui, '光鸭', result);
                 ui.get('status').textContent = `导出完成：选中 ${roots.length} 项，${summary}；缺少有效 MD5 的文件 ${result.skipped.length} 个。` + (!ui.get('json').value ? '没有可导出的内容。' : '');
@@ -651,11 +704,11 @@
             ui.get('progress').textContent = `准备导入 ${files.length} 项…`;
             try {
                 if (replaceExisting) {
-                    const plan = await buildGuangyaReplacementPlan(files, target, existingSource, message => { ui.get('progress').textContent = message; });
+                    const plan = await buildGuangyaReplacementPlan(files,target,existingSource,message => { ui.get('progress').textContent = message; },undefined,undefined,checkJsonTask,log);
                     ui.get('progress').textContent = '预览已生成，等待确认；尚未修改网盘文件';
                     if (!await confirmGuangyaReplacement(ui, plan, target)) { cancelled = true; return; }
                     replacementCounts = await runGuangyaReplacement(files, target, plan, existingSource, post, ensureDirectory,
-                        message => { ui.get('progress').textContent = message; }, log);
+                        message => { ui.get('progress').textContent = message; },log,sleep,checkJsonTask);
                     refreshHistorySummary(ui, '光鸭');
                     return;
                 }
