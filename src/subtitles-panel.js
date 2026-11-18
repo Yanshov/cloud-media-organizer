@@ -65,7 +65,6 @@
         ui.moveSettings(['openSubtitlesSettings'], 'OpenSubtitles', '#settingsModels');
         let inventory = [], drive = null, subtitleContext = null, checkedScope = null, deletePlan = null, busy = false, cancelled = false, reviewCandidates = null;
         const deleteSelection = new Set(), pendingDeletes = new Set();
-        const openGroups = new Set(), renderedGroups = new Map();
         let scan = null;
         ui.get('subtitleView').value = 'all';
         const service = createSubtitleService({check:() => check(), log:(event, detail) => diag(event, detail)});
@@ -141,11 +140,6 @@
             const active = host.getRootNode?.().activeElement;
             const focusKey = active && host.contains?.(active) ? active.dataset.subtitleFocus : undefined;
             const trackFocus = (control, key) => { control.dataset.subtitleFocus = key; };
-            for (const [key, details] of renderedGroups) {
-                if (details.open) openGroups.add(key);
-                else openGroups.delete(key);
-            }
-            renderedGroups.clear();
             host.replaceChildren();
             const renderRow = row => {
                 const item = document.createElement('div'); item.className = 'subtitle-result';
@@ -195,15 +189,13 @@
                 groups.get(row.groupKey).push(row);
             }
             let visible = 0;
-            for (const [key, rows] of groups) {
+            for (const rows of groups.values()) {
                 const shown = rows.filter(row => inView(row, view));
                 if (!shown.length) continue;
                 visible += shown.length;
                 const box = document.createElement('section'); box.className = 'sync-item';
                 const heading = document.createElement('h5'), first = rows[0];
-                const collapsibleRow = row => covered(row) && !row.writeBlocked;
                 const episodes = first.parsed.tv && first.parsed.season != null && rows.every(row => row.parsed.episode != null);
-                const collapsible = episodes && rows.length > 1;
                 heading.textContent = (first.parsed.query || first.node.name) + (first.parsed.season != null ? ' · 第 ' + first.parsed.season + ' 季' : '');
                 box.append(heading);
                 if (rows.length > 1) {
@@ -217,19 +209,7 @@
                         + (embedded ? ' · 内嵌中文 ' + embedded : '') + (view !== 'all' ? ' · 当前筛选 ' + shown.length + ' ' + unit : '');
                     box.append(summary);
                 }
-                const completedShown = collapsible ? shown.filter(collapsibleRow) : [];
-                for (const row of shown) if (!collapsible || !collapsibleRow(row)) box.append(renderRow(row));
-                if (completedShown.length) {
-                    const details = document.createElement('details'); details.className = 'subtitle-group-details';
-                    const summary = document.createElement('summary');
-                    trackFocus(summary, JSON.stringify(['details',key]));
-                    summary.textContent = '查看 ' + completedShown.length + ' 集详情';
-                    details.open = openGroups.has(key);
-                    details.append(summary);
-                    for (const row of completedShown) details.append(renderRow(row));
-                    renderedGroups.set(key, details);
-                    box.append(details);
-                }
+                for (const row of shown) box.append(renderRow(row));
                 host.append(box);
             }
             ui.get('subtitleEmpty').hidden = visible > 0;
@@ -335,7 +315,7 @@
                 check();
             };
             inventory = []; drive = null; subtitleContext = null; checkedScope = null;
-            deleteSelection.clear(); openGroups.clear(); renderedGroups.clear(); clearDeletePreview();
+            deleteSelection.clear(); clearDeletePreview();
             ui.get('subtitleView').value = 'all';
             ui.get('subtitleResults').scrollTop = 0;
             ui.get('subtitleMeter').hidden = true;
@@ -553,7 +533,7 @@
         };
         ui.get('subtitleView').onchange = () => { render(); ui.get('subtitleResults').scrollTop = 0; };
         ui.get('openSubtitlesKey').onchange = () => { service.logout(); ui.get('subtitleLoginState').textContent = '未登录'; };
-        ui.get('subtitleLanguage').onchange = () => { scan = null; inventory = []; drive = null; subtitleContext = null; checkedScope = null; deleteSelection.clear(); openGroups.clear(); renderedGroups.clear(); clearDeletePreview(); render(); status('语言已更改，请重新查找。'); };
+        ui.get('subtitleLanguage').onchange = () => { scan = null; inventory = []; drive = null; subtitleContext = null; checkedScope = null; deleteSelection.clear(); clearDeletePreview(); render(); status('语言已更改，请重新查找。'); };
         ui.get('saveSubtitleSettings').onclick = () => { GM_setValue('cross-drive-subtitle-settings', settings()); status('设置已保存。'); };
         ui.get('forgetSubtitleKey').onclick = () => {
             const currentDrive = drive || subtitleDrive({session:provider === '光鸭' ? {provider,token:capture.token} : recover123Session(),source:{}});

@@ -74,6 +74,7 @@
             for (const selector of ['#save','#saveJson','#copyJson']) take(fileActions, selector);
             if (fileActions.children.length) heading.append(fileActions);
         } else if (id === 'subtitle') {
+            take(main, '#subtitleSummary');
             take(main, '#subtitleResults');
         } else {
             main.append(create('p', 'tool-list-hint', '按作品查看，点击条目展开详情；操作会应用于全部符合条件的项目。'));
@@ -188,10 +189,10 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 .sync-item{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:16px;margin:12px 0;min-width:0}.tool-results>.sync-item{margin:0;font-size:16px}.tool-results>details[open]{grid-column:1/-1}.tool-results>.sync-item:hover{border-color:var(--accent)}.tool-results summary{font-size:16px;line-height:1.8}.outside-page{display:none!important}
 #subtitlePane .tool-layout,#subtitlePane .tool-main{display:flex;min-height:0}#subtitlePane .tool-main{flex:1;flex-direction:column}#subtitlePane .tool-list-heading{flex:none}#subtitleFilters :focus-visible{outline-offset:-2px}
 #subtitleFilters{display:flex;align-items:center;gap:8px;flex:0 0 auto;max-width:100%}#subtitleFilters label{align-items:center;gap:5px;margin:0;font-size:14px;white-space:nowrap;flex:none}#subtitleFilters input[type=checkbox]{margin:0}
-#subtitleResults{display:flex;flex:1 1 0;flex-direction:column;min-height:0;overflow:auto;overscroll-behavior:contain;overflow-anchor:none;scrollbar-width:none}#subtitleResults:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
-#subtitleSummary{padding:10px 12px;font-size:15px;overflow-wrap:anywhere}
-#subtitleRows{flex:1 0 auto;grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:auto;align-items:start}#subtitleRows:empty{display:none}
-#subtitleFilters{flex-wrap:wrap}#subtitleDeleteSelectionCount,.subtitle-group-count{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}.subtitle-group-count{margin:4px 0 0;overflow-wrap:anywhere}.subtitle-group-details{margin-top:8px}.subtitle-group-details>summary{color:var(--text)}.subtitle-group-details[open]>summary{margin-bottom:0}#subtitleRows>.sync-item{overflow-wrap:anywhere}
+#subtitleResults{flex:1 1 0;min-height:0;overflow:auto;overscroll-behavior:contain;overflow-anchor:none;scrollbar-gutter:stable;container-type:size}#subtitleResults:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+#subtitleSummary{flex:none;padding:10px 12px;font-size:15px;overflow-wrap:anywhere}
+#subtitleRows{grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:minmax(100cqh,auto);align-items:stretch}#subtitleRows:empty{display:none}
+#subtitleFilters{flex-wrap:wrap}#subtitleDeleteSelectionCount,.subtitle-group-count{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}.subtitle-group-count{margin:4px 0 0;overflow-wrap:anywhere}#subtitleRows>.sync-item{overflow-wrap:anywhere}
 #subtitleRows h5{margin:0;font-size:16px;line-height:1.5;overflow-wrap:anywhere}.subtitle-result{margin-top:8px}.subtitle-result+.subtitle-result{padding-top:8px;border-top:1px solid var(--border)}
 .subtitle-result p{margin:0;line-height:1.55;white-space:pre-wrap}.subtitle-result label{margin:6px 0;font-size:14px;overflow-wrap:anywhere}.subtitle-result select{font-size:14px;padding:6px 10px}
 .sync-location{display:grid;grid-template-columns:6.5em minmax(0,1fr);gap:8px;line-height:1.7}.sync-location span:last-child{white-space:pre-wrap;overflow-wrap:anywhere}.sync-location span:first-child{color:var(--muted)}
