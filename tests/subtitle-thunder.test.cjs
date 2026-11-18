@@ -156,7 +156,9 @@ async function thunderOnlyUI() {
     assert.equal(searches,1,'Chinese track prevents searching');
     assert.equal(saves,1,'Chinese track prevents writing');
     assert.equal(elements.get('fillSubtitles').disabled,true);
-    const subtitleText = elements.get('subtitleRows').children[0].children[1].children[0];
+    const card = elements.get('subtitleRows').children[0].children[0].children[0];
+    const content = card.children.at(-1).children[0];
+    const subtitleText = content.children.find(child => child.className === 'subtitle-result').children[0];
     assert.ok([subtitleText, ...subtitleText.children].some(node => node.textContent.includes(embedded.message)));
     const view=elements.get('subtitleView');view.value='incomplete';view.onchange();
     assert.equal(elements.get('subtitleRows').children.length,0,'Chinese track is excluded from incomplete results');

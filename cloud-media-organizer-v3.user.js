@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v3.0（重构版）
 // @namespace    local.cloud-media-organizer
-// @version      3.3.11
+// @version      3.3.12
 // @description  百度/123/光鸭跨盘清单，123/光鸭影视整理、字幕搜索与核验上传
 // @match        https://pan.baidu.com/*
 // @match        https://yun.baidu.com/*
@@ -40,7 +40,7 @@
     if (typeof navigator !== 'undefined' && (navigator.userAgentData?.mobile || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
         navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) return;
 
-    const VERSION = '3.3.11';
+    const VERSION = '3.3.12';
     let jsonTaskStopped = false;
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
@@ -501,8 +501,14 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 #subtitleFilters{display:flex;align-items:center;gap:8px;flex:0 0 auto;max-width:100%}#subtitleFilters label{align-items:center;gap:5px;margin:0;font-size:14px;white-space:nowrap;flex:none}#subtitleFilters input[type=checkbox]{margin:0}
 #subtitleResults{flex:1 1 0;min-height:0;overflow:auto;overscroll-behavior:contain;overflow-anchor:none;scrollbar-gutter:stable;container-type:size}#subtitleResults:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 #subtitleSummary{flex:none;padding:10px 12px;font-size:15px;overflow-wrap:anywhere}
-#subtitleRows{grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:minmax(100cqh,auto);align-items:stretch}#subtitleRows:empty{display:none}
-#subtitleFilters{flex-wrap:wrap}#subtitleDeleteSelectionCount,.subtitle-group-count{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}.subtitle-group-count{margin:4px 0 0;overflow-wrap:anywhere}#subtitleRows>.sync-item{overflow-wrap:anywhere}
+#subtitleRows{position:relative;display:grid;gap:10px}
+.subtitle-pair{min-width:0}
+.subtitle-pair-cards{position:sticky;top:0;height:100cqh;grid-template-rows:minmax(0,1fr);align-items:stretch}
+.subtitle-pair-cards>.sync-item{display:flex;flex-direction:column;min-height:0;overflow-wrap:anywhere}
+.subtitle-card-viewport{flex:1;min-height:0;overflow:hidden;overflow-anchor:none}
+.subtitle-card-content{display:flow-root}
+#subtitleRows:empty{display:none}
+#subtitleFilters{flex-wrap:wrap}#subtitleDeleteSelectionCount,.subtitle-group-count{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}.subtitle-group-count{margin:4px 0 0;overflow-wrap:anywhere}
 #subtitleRows h5{margin:0;font-size:16px;line-height:1.5;overflow-wrap:anywhere}.subtitle-result{margin-top:8px}.subtitle-result+.subtitle-result{padding-top:8px;border-top:1px solid var(--border)}
 .subtitle-result p{margin:0;line-height:1.55;white-space:pre-wrap}.subtitle-result label{margin:6px 0;font-size:14px;overflow-wrap:anywhere}.subtitle-result select{font-size:14px;padding:6px 10px}
 .sync-location{display:grid;grid-template-columns:6.5em minmax(0,1fr);gap:8px;line-height:1.7}.sync-location span:last-child{white-space:pre-wrap;overflow-wrap:anywhere}.sync-location span:first-child{color:var(--muted)}
@@ -521,6 +527,10 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 #log{white-space:pre-wrap;overflow-wrap:anywhere;font:14px/1.7 Consolas,"Microsoft YaHei",monospace;max-height:180px;overflow:auto}#log:empty{display:none}#log>div+div{margin-top:6px}
 #subtitlePane .tool-statusbar:has(#subtitleDiagnostics[open]){max-height:none;overflow:visible}#subtitleDiagnostics .panel-actions{margin:4px 0 8px}#subtitlePane:has(#subtitleDiagnostics[open]) .tool-intro p{display:none}
 #subtitleLog{display:block;width:100%;height:clamp(56px,calc(36cqh - 128px),180px);resize:none;overflow:auto;scrollbar-width:none;overscroll-behavior:contain}
+@container(max-height:660px){
+    #subtitlePane:has(#subtitleDiagnostics[open]) #subtitleSummary{padding:6px 10px;margin-bottom:8px}
+    #subtitlePane:has(#subtitleDiagnostics[open]) #subtitleLog{height:clamp(36px, calc(18cqh - 56px), 68px)}
+}
 .sync-preview{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px}.sync-preview h4{margin:0 0 8px}.sync-preview p{margin:6px 0}#syncList{overflow-wrap:anywhere;font-size:15px}#syncDestination{font-weight:600}
 .export-options{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin:12px 0}.export-options input{width:auto}.export-options button{font-size:14px;padding:7px 12px}.credential-head{display:flex;justify-content:space-between;align-items:center;gap:12px}.credential-head a{font-size:15px;flex-shrink:0}
 .source-result{margin:12px 0;padding:12px;border:1px solid var(--border);border-radius:8px}.source-result button{margin:8px 8px 0 0;font-size:16px}
@@ -5358,7 +5368,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             <div id="subtitleResults" role="region" aria-labelledby="subtitleResultsTitle" tabindex="0">
                 <div id="subtitleSummary" hidden class="sync-preview"></div>
                 <p id="subtitleEmpty">先勾选目录或视频，再点击“检查目录字幕”。</p>
-                <div id="subtitleRows" class="tool-results"></div>
+                <div id="subtitleRows"></div>
             </div>
             <details id="subtitleDeletePreview" name="subtitleFooter" hidden><summary id="subtitleDeleteHeading">确认删除清单</summary><div id="subtitleDeleteList" style="white-space:pre-wrap"></div><div class="panel-actions"><button id="confirmSubtitleDeletes">确认并移入回收站</button><button id="cancelSubtitleDeletes">取消</button></div></details>
             <section id="subtitleSettings" title="ZIP 只提取通过核验的文本字幕，不支持 RAR。">
@@ -5420,6 +5430,40 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         const viewSubtitleIds = view => inventory.filter(row => inView(row, view))
             .flatMap(row => row.subtitles.filter(sub => canDelete(row, sub)).map(sub => String(sub.id)));
         const selectAll = ui.get('selectAllSubtitleDeletes');
+        const results = ui.get('subtitleResults'), host = ui.get('subtitleRows');
+        const pairs = [];
+        const scrollCards = () => {
+            for (const {track, cards, overflow} of pairs) {
+                const offset = Math.min(overflow, Math.max(0, results.scrollTop - track.offsetTop));
+                for (const {viewport} of cards) viewport.scrollTop = offset;
+            }
+        };
+        const sizeTracks = () => {
+            for (const pair of pairs) {
+                pair.overflow = Math.max(...pair.cards.map(({viewport}) => viewport.scrollHeight - viewport.clientHeight));
+                // The native scrollbar covers the details plus the travel between card rows.
+                pair.track.style.minHeight = 'calc(100cqh + ' + pair.overflow + 'px)';
+            }
+            scrollCards();
+        };
+        const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(sizeTracks) : null;
+        results.onscroll = scrollCards;
+        results.onfocusin = event => {
+            const viewport = event.target.closest('.subtitle-card-viewport');
+            if (!viewport) return;
+            const track = viewport.closest('.subtitle-pair');
+            const card = viewport.getBoundingClientRect(), control = event.target.getBoundingClientRect();
+            let offset = viewport.scrollTop;
+            if (control.top < card.top) offset += control.top - card.top;
+            else if (control.bottom > card.bottom) offset += control.bottom - card.bottom;
+            // Keyboard navigation can scroll the clipped card before the outer scrollbar moves.
+            const current = Math.max(0, results.scrollTop - track.offsetTop);
+            if (results.scrollTop < track.offsetTop || current >= track.offsetHeight ||
+                Math.abs(offset - Math.min(current, viewport.scrollHeight - viewport.clientHeight)) > 1) {
+                results.scrollTop = track.offsetTop + Math.max(0, offset);
+                scrollCards();
+            }
+        };
         const render = () => {
             const scope = ui.get('subtitleScope');
             scope.textContent = scan?.scope || '';
@@ -5449,11 +5493,14 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             ui.get('recheckSubtitles').disabled = busy;
             ui.get('auditSubtitles').disabled = busy || !inventory.some(row => row.subtitles.length);
             ui.get('fillSubtitles').disabled = busy || checkedScope === null || !ready.length;
-            const host = ui.get('subtitleRows');
-            const results = ui.get('subtitleResults'), scrollTop = results.scrollTop;
+            const scrollTop = results.scrollTop;
+            const anchor = pairs.find(pair => pair.track.offsetTop + pair.track.offsetHeight > scrollTop);
+            const anchorOffset = anchor ? scrollTop - anchor.track.offsetTop : 0;
             const active = host.getRootNode?.().activeElement;
             const focusKey = active && host.contains?.(active) ? active.dataset.subtitleFocus : undefined;
             const trackFocus = (control, key) => { control.dataset.subtitleFocus = key; };
+            observer?.disconnect();
+            pairs.length = 0;
             host.replaceChildren();
             const renderRow = row => {
                 const item = document.createElement('div'); item.className = 'subtitle-result';
@@ -5503,11 +5550,25 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 groups.get(row.groupKey).push(row);
             }
             let visible = 0;
-            for (const rows of groups.values()) {
+            let pair;
+            for (const [key, rows] of groups) {
                 const shown = rows.filter(row => inView(row, view));
                 if (!shown.length) continue;
                 visible += shown.length;
+                if (!pair || pair.cards.length === 2) {
+                    const track = document.createElement('div'); track.className = 'subtitle-pair';
+                    const grid = document.createElement('div'); grid.className = 'tool-results subtitle-pair-cards';
+                    track.append(grid);
+                    host.append(track);
+                    pair = {key,track,grid,cards:[],overflow:0};
+                    pairs.push(pair);
+                }
                 const box = document.createElement('section'); box.className = 'sync-item';
+                const viewport = document.createElement('div'); viewport.className = 'subtitle-card-viewport';
+                const content = document.createElement('div'); content.className = 'subtitle-card-content';
+                viewport.append(content);
+                pair.grid.append(box);
+                pair.cards.push({viewport,content});
                 const heading = document.createElement('h5'), first = rows[0];
                 const episodes = first.parsed.tv && first.parsed.season != null && rows.every(row => row.parsed.episode != null);
                 heading.textContent = (first.parsed.query || first.node.name) + (first.parsed.season != null ? ' · 第 ' + first.parsed.season + ' 季' : '');
@@ -5523,13 +5584,20 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                         + (embedded ? ' · 内嵌中文 ' + embedded : '') + (view !== 'all' ? ' · 当前筛选 ' + shown.length + ' ' + unit : '');
                     box.append(summary);
                 }
-                for (const row of shown) box.append(renderRow(row));
-                host.append(box);
+                box.append(viewport);
+                for (const row of shown) content.append(renderRow(row));
             }
             ui.get('subtitleEmpty').hidden = visible > 0;
             ui.get('subtitleEmpty').textContent = !inventory.length ? '本次检查没有视频，或尚未检查。请勾选目录或视频，再点击“检查目录字幕”。' : view === 'incomplete' && !missing.length ? '所选范围内的视频都有字幕。' : view === 'choice' ? '没有需要手动选择的字幕。' : '当前筛选下没有视频。';
+            if (observer) {
+                observer.observe(results);
+                for (const {cards} of pairs) for (const {content} of cards) observer.observe(content);
+                sizeTracks();
+            }
+            const restored = anchor && pairs.find(pair => pair.key === anchor.key);
+            results.scrollTop = restored ? restored.track.offsetTop + Math.min(anchorOffset, restored.track.offsetHeight - 1) : scrollTop;
+            if (observer) scrollCards();
             if (focusKey) [...host.querySelectorAll('[data-subtitle-focus]')].find(control => control.dataset.subtitleFocus === focusKey)?.focus({preventScroll:true});
-            results.scrollTop = scrollTop;
         };
         const runTask = createPanelTask(ui, (value, stoppable) => {
             busy = value;
@@ -5845,7 +5913,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             }
             clearDeletePreview(); render();
         };
-        ui.get('subtitleView').onchange = () => { render(); ui.get('subtitleResults').scrollTop = 0; };
+        ui.get('subtitleView').onchange = () => { results.scrollTop = 0; render(); };
         ui.get('openSubtitlesKey').onchange = () => { service.logout(); ui.get('subtitleLoginState').textContent = '未登录'; };
         ui.get('subtitleLanguage').onchange = () => { scan = null; inventory = []; drive = null; subtitleContext = null; checkedScope = null; deleteSelection.clear(); clearDeletePreview(); render(); status('语言已更改，请重新查找。'); };
         ui.get('saveSubtitleSettings').onclick = () => { GM_setValue('cross-drive-subtitle-settings', settings()); status('设置已保存。'); };

@@ -44,7 +44,7 @@
             <div id="subtitleResults" role="region" aria-labelledby="subtitleResultsTitle" tabindex="0">
                 <div id="subtitleSummary" hidden class="sync-preview"></div>
                 <p id="subtitleEmpty">先勾选目录或视频，再点击“检查目录字幕”。</p>
-                <div id="subtitleRows" class="tool-results"></div>
+                <div id="subtitleRows"></div>
             </div>
             <details id="subtitleDeletePreview" name="subtitleFooter" hidden><summary id="subtitleDeleteHeading">确认删除清单</summary><div id="subtitleDeleteList" style="white-space:pre-wrap"></div><div class="panel-actions"><button id="confirmSubtitleDeletes">确认并移入回收站</button><button id="cancelSubtitleDeletes">取消</button></div></details>
             <section id="subtitleSettings" title="ZIP 只提取通过核验的文本字幕，不支持 RAR。">
@@ -106,6 +106,40 @@
         const viewSubtitleIds = view => inventory.filter(row => inView(row, view))
             .flatMap(row => row.subtitles.filter(sub => canDelete(row, sub)).map(sub => String(sub.id)));
         const selectAll = ui.get('selectAllSubtitleDeletes');
+        const results = ui.get('subtitleResults'), host = ui.get('subtitleRows');
+        const pairs = [];
+        const scrollCards = () => {
+            for (const {track, cards, overflow} of pairs) {
+                const offset = Math.min(overflow, Math.max(0, results.scrollTop - track.offsetTop));
+                for (const {viewport} of cards) viewport.scrollTop = offset;
+            }
+        };
+        const sizeTracks = () => {
+            for (const pair of pairs) {
+                pair.overflow = Math.max(...pair.cards.map(({viewport}) => viewport.scrollHeight - viewport.clientHeight));
+                // The native scrollbar covers the details plus the travel between card rows.
+                pair.track.style.minHeight = 'calc(100cqh + ' + pair.overflow + 'px)';
+            }
+            scrollCards();
+        };
+        const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(sizeTracks) : null;
+        results.onscroll = scrollCards;
+        results.onfocusin = event => {
+            const viewport = event.target.closest('.subtitle-card-viewport');
+            if (!viewport) return;
+            const track = viewport.closest('.subtitle-pair');
+            const card = viewport.getBoundingClientRect(), control = event.target.getBoundingClientRect();
+            let offset = viewport.scrollTop;
+            if (control.top < card.top) offset += control.top - card.top;
+            else if (control.bottom > card.bottom) offset += control.bottom - card.bottom;
+            // Keyboard navigation can scroll the clipped card before the outer scrollbar moves.
+            const current = Math.max(0, results.scrollTop - track.offsetTop);
+            if (results.scrollTop < track.offsetTop || current >= track.offsetHeight ||
+                Math.abs(offset - Math.min(current, viewport.scrollHeight - viewport.clientHeight)) > 1) {
+                results.scrollTop = track.offsetTop + Math.max(0, offset);
+                scrollCards();
+            }
+        };
         const render = () => {
             const scope = ui.get('subtitleScope');
             scope.textContent = scan?.scope || '';
@@ -135,11 +169,14 @@
             ui.get('recheckSubtitles').disabled = busy;
             ui.get('auditSubtitles').disabled = busy || !inventory.some(row => row.subtitles.length);
             ui.get('fillSubtitles').disabled = busy || checkedScope === null || !ready.length;
-            const host = ui.get('subtitleRows');
-            const results = ui.get('subtitleResults'), scrollTop = results.scrollTop;
+            const scrollTop = results.scrollTop;
+            const anchor = pairs.find(pair => pair.track.offsetTop + pair.track.offsetHeight > scrollTop);
+            const anchorOffset = anchor ? scrollTop - anchor.track.offsetTop : 0;
             const active = host.getRootNode?.().activeElement;
             const focusKey = active && host.contains?.(active) ? active.dataset.subtitleFocus : undefined;
             const trackFocus = (control, key) => { control.dataset.subtitleFocus = key; };
+            observer?.disconnect();
+            pairs.length = 0;
             host.replaceChildren();
             const renderRow = row => {
                 const item = document.createElement('div'); item.className = 'subtitle-result';
@@ -189,11 +226,25 @@
                 groups.get(row.groupKey).push(row);
             }
             let visible = 0;
-            for (const rows of groups.values()) {
+            let pair;
+            for (const [key, rows] of groups) {
                 const shown = rows.filter(row => inView(row, view));
                 if (!shown.length) continue;
                 visible += shown.length;
+                if (!pair || pair.cards.length === 2) {
+                    const track = document.createElement('div'); track.className = 'subtitle-pair';
+                    const grid = document.createElement('div'); grid.className = 'tool-results subtitle-pair-cards';
+                    track.append(grid);
+                    host.append(track);
+                    pair = {key,track,grid,cards:[],overflow:0};
+                    pairs.push(pair);
+                }
                 const box = document.createElement('section'); box.className = 'sync-item';
+                const viewport = document.createElement('div'); viewport.className = 'subtitle-card-viewport';
+                const content = document.createElement('div'); content.className = 'subtitle-card-content';
+                viewport.append(content);
+                pair.grid.append(box);
+                pair.cards.push({viewport,content});
                 const heading = document.createElement('h5'), first = rows[0];
                 const episodes = first.parsed.tv && first.parsed.season != null && rows.every(row => row.parsed.episode != null);
                 heading.textContent = (first.parsed.query || first.node.name) + (first.parsed.season != null ? ' · 第 ' + first.parsed.season + ' 季' : '');
@@ -209,13 +260,20 @@
                         + (embedded ? ' · 内嵌中文 ' + embedded : '') + (view !== 'all' ? ' · 当前筛选 ' + shown.length + ' ' + unit : '');
                     box.append(summary);
                 }
-                for (const row of shown) box.append(renderRow(row));
-                host.append(box);
+                box.append(viewport);
+                for (const row of shown) content.append(renderRow(row));
             }
             ui.get('subtitleEmpty').hidden = visible > 0;
             ui.get('subtitleEmpty').textContent = !inventory.length ? '本次检查没有视频，或尚未检查。请勾选目录或视频，再点击“检查目录字幕”。' : view === 'incomplete' && !missing.length ? '所选范围内的视频都有字幕。' : view === 'choice' ? '没有需要手动选择的字幕。' : '当前筛选下没有视频。';
+            if (observer) {
+                observer.observe(results);
+                for (const {cards} of pairs) for (const {content} of cards) observer.observe(content);
+                sizeTracks();
+            }
+            const restored = anchor && pairs.find(pair => pair.key === anchor.key);
+            results.scrollTop = restored ? restored.track.offsetTop + Math.min(anchorOffset, restored.track.offsetHeight - 1) : scrollTop;
+            if (observer) scrollCards();
             if (focusKey) [...host.querySelectorAll('[data-subtitle-focus]')].find(control => control.dataset.subtitleFocus === focusKey)?.focus({preventScroll:true});
-            results.scrollTop = scrollTop;
         };
         const runTask = createPanelTask(ui, (value, stoppable) => {
             busy = value;
@@ -531,7 +589,7 @@
             }
             clearDeletePreview(); render();
         };
-        ui.get('subtitleView').onchange = () => { render(); ui.get('subtitleResults').scrollTop = 0; };
+        ui.get('subtitleView').onchange = () => { results.scrollTop = 0; render(); };
         ui.get('openSubtitlesKey').onchange = () => { service.logout(); ui.get('subtitleLoginState').textContent = '未登录'; };
         ui.get('subtitleLanguage').onchange = () => { scan = null; inventory = []; drive = null; subtitleContext = null; checkedScope = null; deleteSelection.clear(); clearDeletePreview(); render(); status('语言已更改，请重新查找。'); };
         ui.get('saveSubtitleSettings').onclick = () => { GM_setValue('cross-drive-subtitle-settings', settings()); status('设置已保存。'); };

@@ -65,6 +65,8 @@ const ctx = vm.createContext({URL, TextEncoder, TextDecoder, Uint8Array, Date,
 const serviceFactory = ctx.createSubtitleService;
 vm.runInContext(part('    function evict(', '    function nonNegativeInteger(') + part('    function subtitleDownloadUrl(', '    function subtitleDrive(') + part('    function createPanelTask(', '    function panelControls(') + part('    function subtitleInventory(', '    if (location.hostname'),ctx);
 ctx.createSubtitleService = serviceFactory;
+const cards = () => get('subtitleRows').children.flatMap(pair => pair.children[0].children);
+const cardContent = () => cards()[0].children.at(-1).children[0];
 const shown = () => get('subtitleRows').querySelectorAll('p').map(row => row.textContent).join('\n');
 const view = value => {get('subtitleView').value = value; get('subtitleView').onchange();};
 
@@ -85,7 +87,7 @@ const view = value => {get('subtitleView').value = value; get('subtitleView').on
     assert.equal(reads,3); assert.equal(queried.length,0); assert.equal(saves,0);
     assert.equal(get('subtitleSummary').hidden,false);
     assert.match(get('subtitleSummary').textContent,/已检查 5 · 待检查 0/);
-    assert.equal(get('subtitleView').value,'all'); assert.equal(get('subtitleRows').children.length,5);
+    assert.equal(get('subtitleView').value,'all'); assert.equal(cards().length,5);
     assert.equal(get('subtitleRows').querySelectorAll('details').length,0,'Results show details without disclosure controls');
     assert.match(shown(),/有字幕：/); assert.match(shown(),/缺可用字幕：/); assert.match(shown(),/读取连接失败/);
     assert.equal(elements.has('subtitleViewPending'),false);
@@ -95,19 +97,19 @@ const view = value => {get('subtitleView').value = value; get('subtitleView').on
     assert.equal(reads,3,'Searching reuses the checked inventory without reading subtitle bodies again');
     assert.deepEqual(queried,['ready','failure','invalid','pending'],'Only files with usable subtitles are skipped');
     assert.equal(get('subtitleSummary').hidden,false);
-    assert.equal(get('subtitleRows').children.length,5,'All results remain visible after searching');
+    assert.equal(cards().length,5,'All results remain visible after searching');
     assert.match(shown(),/缺可用字幕：/); assert.match(shown(),/手动选择\n/); assert.match(shown(),/来源连接失败/);
-    view('choice'); assert.equal(get('subtitleRows').children.length,1); assert.match(shown(),/\/目录3\//);
-    view('complete'); assert.equal(get('subtitleRows').children.length,1); assert.match(shown(),/\/目录0\//);
-    view('all'); assert.equal(get('subtitleRows').children.length,5);
+    view('choice'); assert.equal(cards().length,1); assert.match(shown(),/\/目录3\//);
+    view('complete'); assert.equal(cards().length,1); assert.match(shown(),/\/目录0\//);
+    view('all'); assert.equal(cards().length,5);
     view('incomplete'); await get('fillSubtitles').onclick();
     assert.equal(saves,1);
-    assert.doesNotMatch(shown(),/\/目录1\//); assert.equal(get('subtitleRows').children.length,3);
+    assert.doesNotMatch(shown(),/\/目录1\//); assert.equal(cards().length,3);
     view('choice'); await get('recheckSubtitles').onclick(); assert.equal(get('subtitleView').value,'all','A new directory check resets the previous filter');
     empty = true; await get('recheckSubtitles').onclick();
-    assert.equal(get('subtitleRows').children.length,0); assert.equal(get('fillSubtitles').disabled,true); assert.doesNotMatch(get('subtitleEmpty').textContent,/均已有/);
+    assert.equal(cards().length,0); assert.equal(get('fillSubtitles').disabled,true); assert.doesNotMatch(get('subtitleEmpty').textContent,/均已有/);
     empty = false; collectionError = true; await get('recheckSubtitles').onclick();
-    assert.equal(elements.has('subtitleCoverage'),false); assert.equal(get('subtitleRows').children.length,0); assert.match(get('subtitleProgress').textContent,/目录读取失败/);
+    assert.equal(elements.has('subtitleCoverage'),false); assert.equal(cards().length,0); assert.match(get('subtitleProgress').textContent,/目录读取失败/);
     collectionError = false; await get('recheckSubtitles').onclick();
     const checkboxes=()=>get('subtitleRows').querySelectorAll('input');
     assert.equal(checkboxes().length,3,'Only subtitle files linked to a unique video are offered for deletion');
@@ -165,11 +167,11 @@ async function seasonSummary() {
         return {id:'ep-' + (index + 1),parentId:'season-1',name,size:10000,folders:['双骑'],path:'双骑/' + name};
     });
     const results = get('subtitleRows');
-    const summary = () => results.children[0].children.find(node => node.className === 'subtitle-group-count').textContent;
-    const direct = () => results.children[0].children.filter(node => node.className === 'subtitle-result');
+    const summary = () => cards()[0].children.find(node => node.className === 'subtitle-group-count').textContent;
+    const direct = () => cardContent().children.filter(node => node.className === 'subtitle-result');
     const queriesBefore = queried.length;
     await get('recheckSubtitles').onclick();
-    assert.equal(results.children.length,1);
+    assert.equal(cards().length,1);
     assert.match(summary(),/共 49 集 · 已补齐 49 · 未补齐 0 · 内嵌中文 49/);
     assert.equal(direct().length,49);
     assert.equal(results.querySelectorAll('details').length,0,'Every completed episode is shown directly');
@@ -245,7 +247,8 @@ async function seasonSummary() {
         {...season[2],name:season[2].name.replace('.mkv','.1080p.mkv')},
         {...season[3],name:season[3].name.replace('.mkv','.导演剪辑.mkv')}];
     await get('recheckSubtitles').onclick();
-    assert.equal(results.children.length,4,'Same-title directories and different releases remain separate');
+    assert.equal(cards().length,4,'Same-title directories and different releases remain separate');
+    assert.deepEqual(results.children.map(pair => pair.children[0].children.length),[2,2]);
     assert.equal(results.querySelectorAll('details').length,0,'Single results show their details directly');
     console.log('PASS season summaries: 49 episodes, mixed states, direct details, filtered selection and confirmed deletion');
 }
@@ -287,7 +290,7 @@ async function incrementalChecks() {
     assert.ok(!reconciled.includes('row-1'),'Identity restoration must finish before the subtitle check');
     assert.match(shown(),/检查中/);
     assert.match(shown(),/待检查/);
-    const displayed = () => get('subtitleRows').children[0].children.filter(row => row.className === 'subtitle-result');
+    const displayed = () => cardContent().children.filter(row => row.className === 'subtitle-result');
     assert.equal(displayed().length,49);
     const paths = displayed().map(row => row.textContent.match(/S01E\d+\.mkv/)[0]);
     get('subtitleResults').scrollTop = 73;
