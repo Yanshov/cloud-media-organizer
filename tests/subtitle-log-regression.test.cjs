@@ -92,7 +92,7 @@ async function uiAuth(){
   ctx.createSubtitleService=()=>({assrtSearch:async()=>{searches++;return []},fetchFile:async()=>{downloads++;throw Error('Must not download')}});
  vm.runInContext(part('    function subtitleInventory(','    if (location.hostname'),ctx);ctx.initSubtitles();elements.get('assrtToken').value='test';elements.get('useThunder').checked=false;
   await elements.get('readSubtitles').onclick();assert.equal(searches,2);assert.equal(apiCalls,0);assert.match(elements.get('subtitleLog').value,/查找结束/);
-  await elements.get('searchSubtitles').onclick();assert.equal(searches,4);assert.equal(apiCalls,0);
+  await elements.get('readSubtitles').onclick();assert.equal(searches,4);assert.equal(apiCalls,0);
   await elements.get('fillSubtitles').onclick();assert.equal(downloads,0);assert.equal(apiCalls,0);
   console.log('PASS log UI integration: title search starts after inventory without video sampling; repeat search and empty fill make no unrelated drive requests');
 }

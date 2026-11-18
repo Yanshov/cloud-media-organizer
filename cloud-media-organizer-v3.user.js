@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v3.0（重构版）
 // @namespace    local.cloud-media-organizer
-// @version      3.3.4
+// @version      3.3.5
 // @description  百度/123/光鸭跨盘清单，123/光鸭影视整理、字幕搜索与核验上传
 // @match        https://pan.baidu.com/*
 // @match        https://yun.baidu.com/*
@@ -38,7 +38,10 @@
 (() => {
     'use strict';
 
-    const VERSION = '3.3.4';
+    if (typeof navigator !== 'undefined' && (navigator.userAgentData?.mobile || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
+        navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) return;
+
+    const VERSION = '3.3.5';
     let jsonTaskStopped = false;
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
@@ -322,15 +325,16 @@
         const main = create('div', 'tool-main'), side = create('aside', 'tool-sidebar');
         const status = create('section', 'tool-card tool-status');
         status.append(create('h4', '', '当前状态'));
-        const statusIds = id === 'subtitle' ? ['subtitleProgress','subtitleMeter','subtitleSummary']
+        const statusIds = id === 'subtitle' ? ['subtitleScope','subtitleProgress','subtitleMeter']
             : id === 'media' ? ['mediaTarget','mediaProgress','mediaMeter','mediaSummary','mediaRecordState'] : ['status','target','progress'];
         for (const name of statusIds) take(status, '#' + name);
         side.append(status);
         const heading = create('div', 'tool-list-heading');
-        heading.append(create('h4', '', id === 'subtitle' ? '字幕检查结果' : id === 'media' ? '作品确认与整理预览' : 'JSON 文件清单'));
+        const headingTitle = create('h4', '', id === 'subtitle' ? '字幕检查结果' : id === 'media' ? '作品确认与整理预览' : 'JSON 文件清单');
+        heading.append(headingTitle);
         if (id === 'subtitle') {
-            const filter = pane.querySelector('#subtitleView')?.closest('label');
-            if (filter) heading.append(filter);
+            headingTitle.id = 'subtitleResultsTitle';
+            take(heading, '#subtitleFilters');
         }
         main.append(heading);
         if (id === 'json') {
@@ -347,51 +351,49 @@
             const fileActions = create('div', 'editor-actions');
             for (const selector of ['#save','#saveJson','#copyJson']) take(fileActions, selector);
             if (fileActions.children.length) heading.append(fileActions);
+        } else if (id === 'subtitle') {
+            take(main, '#subtitleResults');
         } else {
             main.append(create('p', 'tool-list-hint', '按作品查看，点击条目展开详情；操作会应用于全部符合条件的项目。'));
-            if (id === 'subtitle') take(main, '#subtitleEmpty');
-            take(main, id === 'subtitle' ? '#subtitleRows' : '#mediaRows');
-            if (id === 'media') {
-                const empty = create('p', 'media-empty', '先在网盘勾选视频或文件夹，点击“识别并预览”。识别后的待处理作品会显示在这里。');
-                main.append(empty);
-                const preview = create('details', 'tool-preview');
-                preview.append(create('summary', '', '查看整理目标路径'));
-                take(preview, '#mediaPreview'); main.append(preview);
-            }
+            take(main, '#mediaRows');
+            const empty = create('p', 'media-empty', '先在网盘勾选视频或文件夹，点击“识别并预览”。识别后的待处理作品会显示在这里。');
+            main.append(empty);
+            const preview = create('details', 'tool-preview');
+            preview.append(create('summary', '', '查看整理目标路径'));
+            take(preview, '#mediaPreview'); main.append(preview);
         }
         const utilities = create('div', 'tool-utilities');
         const auxiliary = id === 'json' ? side : utilities;
-        const actions = create(id === 'json' ? 'section' : 'details', 'tool-card tool-secondary');
-        actions.append(create(id === 'json' ? 'h4' : 'summary', '', id === 'json' ? '导入选项' : '批量与辅助操作'));
-        for (const node of [...pane.querySelectorAll(':scope > .panel-actions, :scope > .export-options')]) actions.append(node);
-        auxiliary.append(actions);
+        if (id !== 'subtitle') {
+            const actions = id === 'json' ? create('section', 'tool-import-options') : create('details', 'tool-card tool-secondary');
+            if (id === 'media') actions.append(create('summary', '', '批量与辅助操作'));
+            for (const node of [...pane.querySelectorAll(':scope > .panel-actions, :scope > .export-options')]) actions.append(node);
+            (id === 'json' ? commands : auxiliary).append(actions);
+        }
         // Settings are moved to the shared settings page by each feature after setup.
         for (const node of [...pane.children]) {
             if (node.id.endsWith('Settings') || (node.tagName === 'INPUT' && node.hidden)) continue;
-            if (node.tagName === 'P') {
-                const help = create('details', 'tool-card'); help.append(create('summary', '', '检查范围说明'), node); auxiliary.append(help);
-            } else { node.classList.add('tool-card'); auxiliary.append(node); }
+            node.classList.add('tool-card'); auxiliary.append(node);
         }
         // A single work surface with a persistent status area, rather than a second sidebar.
-        const overview = create('div', 'tool-overview');
-        for (const selector of ['#subtitleSummary','#mediaSummary']) {
-            const node = status.querySelector(selector); if (node) overview.append(node);
+        const summary = status.querySelector('#mediaSummary');
+        if (summary) {
+            const overview = create('div', 'tool-overview');
+            overview.append(summary); main.prepend(overview);
         }
-        if (overview.children.length) main.prepend(overview);
         status.querySelector('h4').remove(); status.className = 'tool-status-text';
         if (id === 'json') {
-            actions.className = 'tool-import-options'; actions.querySelector('h4').remove(); commands.append(actions);
             for (const node of [...side.children]) if (node !== status) utilities.append(node);
         }
         const footer = create('footer', 'tool-statusbar'); footer.append(status, utilities);
         layout.append(main); pane.append(intro, commands, layout, footer);
-        const rows = main.querySelector('#subtitleRows, #mediaRows');
-        if (rows) {
+        const rows = main.querySelector('#mediaRows');
+        if (id === 'media' && rows) {
             rows.classList.add('tool-results');
             const pager = create('nav', 'tool-pagination'); pager.setAttribute('aria-label', '作品列表分页');
             const previous = create('button', '', '上一页'), next = create('button', '', '下一页'), label = create('span', '');
             previous.type = next.type = 'button'; label.setAttribute('aria-live', 'polite'); pager.append(previous, label, next); rows.after(pager);
-            const pageSize = id === 'subtitle' ? 2 : 4;
+            const pageSize = 4;
             let current = 0;
             const render = () => {
                 const items = [...rows.children], pages = Math.max(1, Math.ceil(items.length / pageSize));
@@ -404,7 +406,6 @@
             previous.onclick = () => { current--; render(); };
             next.onclick = () => { current++; render(); };
             new MutationObserver(render).observe(rows, {childList:true});
-            pane.querySelector('#subtitleView')?.addEventListener('change', () => { current = 0; render(); });
             render();
         }
     }
@@ -430,7 +431,7 @@ input,select,textarea{width:100%;border:1px solid var(--border);border-radius:7p
 textarea{height:180px;resize:vertical;font:14px/1.7 Consolas,"Microsoft YaHei",monospace}label{display:block;margin:12px 0}
 label:has(>input[type=checkbox]){display:flex;align-items:flex-start;gap:8px}input[type=checkbox]{width:18px!important;height:18px;flex:0 0 auto;min-height:0;padding:0;margin:4px 0 0;accent-color:var(--accent)}
 summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-bottom:12px}
-.workspace-overlay{position:fixed;inset:0;pointer-events:none}.box{position:fixed;display:flex;flex-direction:column;pointer-events:auto;width:1280px;height:800px;overflow:hidden;border:1px solid var(--border);border-radius:12px;background:var(--panel);box-shadow:0 24px 80px #0004;container-type:inline-size;outline:none}
+.workspace-overlay{position:fixed;inset:0;pointer-events:none}.box{position:fixed;display:flex;flex-direction:column;pointer-events:auto;width:1280px;height:800px;overflow:hidden;border:1px solid var(--border);border-radius:12px;background:var(--panel);box-shadow:0 24px 80px #0004;container-type:size;outline:none}
 .workspace-header{display:flex;align-items:center;justify-content:space-between;gap:12px;height:52px;flex-shrink:0;padding:0 18px;cursor:grab;touch-action:none;user-select:none;background:var(--surface);border-bottom:1px solid var(--border)}
 .workspace-header h2{font-size:16px;font-weight:600;margin:0;display:flex;align-items:center;gap:9px}.workspace-header h2::before{content:'⇄';display:grid;place-items:center;width:23px;height:23px;border-radius:6px;background:var(--accent);color:var(--button-text);font-size:17px;font-weight:400}
 .workspace-header p{display:none}.workspace-header.dragging{cursor:grabbing}.workspace-header.pinned{cursor:default}.workspace-window-actions{display:flex;align-items:center;gap:12px}
@@ -461,6 +462,13 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 .tool-overview{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.tool-overview>:not([hidden]):not(:empty){background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin:0 0 16px;line-height:1.8;font-size:15px}.tool-overview:has(>:only-child)>:not(:empty){grid-column:1/-1}
 .tool-list-hint{color:var(--muted);font-size:15px;margin:0 0 14px}.tool-results{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}
 .sync-item{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:16px;margin:12px 0;min-width:0}.tool-results>.sync-item{margin:0;font-size:16px}.tool-results>details[open]{grid-column:1/-1}.tool-results>.sync-item:hover{border-color:var(--accent)}.tool-results summary{font-size:16px;line-height:1.8}.outside-page{display:none!important}
+#subtitlePane .tool-layout,#subtitlePane .tool-main{display:flex;min-height:0}#subtitlePane .tool-main{flex:1;flex-direction:column}#subtitlePane .tool-list-heading{flex:none}#subtitleFilters :focus-visible{outline-offset:-2px}
+#subtitleFilters{display:flex;align-items:center;gap:8px;flex:0 0 auto;max-width:100%}#subtitleFilters label{align-items:center;gap:5px;margin:0;font-size:14px;white-space:nowrap;flex:none}#subtitleFilters input[type=checkbox]{margin:0}
+#subtitleResults{display:flex;flex:1 1 0;flex-direction:column;min-height:0;overflow:auto;overscroll-behavior:contain;overflow-anchor:none;scrollbar-width:none}#subtitleResults:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+#subtitleSummary{padding:10px 12px;font-size:15px;overflow-wrap:anywhere}
+#subtitleRows{flex:1 0 auto;grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:auto;align-items:stretch}#subtitleRows:empty{display:none}#subtitleRows>.sync-item{overflow-wrap:anywhere}
+#subtitleRows h5{margin:0;font-size:16px;line-height:1.5;overflow-wrap:anywhere}.subtitle-result{margin-top:8px}.subtitle-result+.subtitle-result{padding-top:8px;border-top:1px solid var(--border)}
+.subtitle-result p{margin:0;line-height:1.55;white-space:pre-wrap}.subtitle-result label{margin:6px 0;font-size:14px;overflow-wrap:anywhere}.subtitle-result select{font-size:14px;padding:6px 10px}
 .sync-location{display:grid;grid-template-columns:6.5em minmax(0,1fr);gap:8px;line-height:1.7}.sync-location span:last-child{white-space:pre-wrap;overflow-wrap:anywhere}.sync-location span:first-child{color:var(--muted)}
 .sync-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border)}
 .tool-pagination{display:flex;align-items:center;justify-content:center;gap:16px;margin:18px 0 0;font-size:14px;color:var(--muted)}.tool-pagination button{padding:5px 10px;font-size:14px}
@@ -471,30 +479,49 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 .tool-status-text{flex:1;min-width:180px}.tool-status-text p{margin:0;line-height:1.9;font-size:15px}.tool-status-text p:empty{display:none}.tool-status-text progress{accent-color:var(--accent);height:6px!important;margin:6px 0!important}.tool-status-text label{margin:0;font-size:15px}.tool-status-text #mediaMeter{margin:0}
 .tool-utilities{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-left:auto}.tool-utilities>.tool-card{padding:0;border:0;background:transparent;margin:0}.tool-utilities summary{padding:2px 0;font-size:15px;font-weight:500;color:var(--muted)}
 .tool-statusbar:has(.tool-utilities>details[open]){display:block}.tool-utilities:has(>details[open]){display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin-top:10px}.tool-utilities>details[open]{grid-column:1/-1;color:var(--text);min-width:0}
-#log{white-space:pre-wrap;overflow-wrap:anywhere;font:14px/1.7 Consolas,"Microsoft YaHei",monospace;max-height:180px;overflow:auto}#log:empty{display:none}#log>div+div{margin-top:6px}#subtitleLog{height:180px;min-height:100px;max-height:300px}
+#subtitlePane .tool-statusbar{align-items:flex-end;margin-top:10px}#subtitlePane .tool-status-text{min-width:0}#subtitleProgress{max-height:3.8em;overflow:auto;scrollbar-width:none}
+#subtitleScope{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#subtitlePane .tool-statusbar:has(.tool-utilities>details[open]){max-height:40%;overflow:auto}#subtitleDeleteList{overflow-wrap:anywhere}
+#log{white-space:pre-wrap;overflow-wrap:anywhere;font:14px/1.7 Consolas,"Microsoft YaHei",monospace;max-height:180px;overflow:auto}#log:empty{display:none}#log>div+div{margin-top:6px}
+#subtitlePane .tool-statusbar:has(#subtitleDiagnostics[open]){max-height:none;overflow:visible}#subtitleDiagnostics .panel-actions{margin:4px 0 8px}#subtitlePane:has(#subtitleDiagnostics[open]) .tool-intro p{display:none}
+#subtitleLog{display:block;width:100%;height:clamp(56px,calc(36cqh - 128px),180px);resize:none;overflow:auto;scrollbar-width:none;overscroll-behavior:contain}
 .sync-preview{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px}.sync-preview h4{margin:0 0 8px}.sync-preview p{margin:6px 0}#syncList{overflow-wrap:anywhere;font-size:15px}#syncDestination{font-weight:600}
 .export-options{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin:12px 0}.export-options input{width:auto}.export-options button{font-size:14px;padding:7px 12px}.credential-head{display:flex;justify-content:space-between;align-items:center;gap:12px}.credential-head a{font-size:15px;flex-shrink:0}
 .source-result{margin:12px 0;padding:12px;border:1px solid var(--border);border-radius:8px}.source-result button{margin:8px 8px 0 0;font-size:16px}
-.workspace-appearance{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:18px 20px;margin:20px 0}
-.theme-row{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:14px 0}.theme-row select{width:220px;margin:0}
-#settingsSections{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}#settingsSections>.sync-item{margin:0}#settingsSections legend{font-size:18px;font-weight:600}#settingsSections h3{font-size:18px;font-weight:600}#backToTools{margin-top:18px}
+#workspaceSettings{display:flex;flex-direction:column;padding:20px 24px;font-size:14px;scrollbar-width:none}
+.settings-heading{display:flex;flex:none;align-items:center;justify-content:space-between;gap:14px;margin-bottom:18px;padding-bottom:12px;border-bottom:1px solid var(--border)}.settings-heading h3{margin:0;font-size:20px}
+.settings-appearance{display:flex;align-items:center;justify-content:flex-end;gap:16px;margin-left:auto}.settings-appearance label{display:flex;align-items:center;gap:6px;margin:0;white-space:nowrap;color:var(--muted)}.settings-appearance select{width:auto;max-width:180px;padding:5px 8px;margin:0}
+#settingsSections{display:grid;flex:none;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}#settingsSections:has(>.settings-column:empty){grid-template-columns:minmax(0,1fr)}
+.settings-column{display:grid;align-content:start;gap:14px;min-width:0}.settings-column:empty{display:none}
+@container(max-height:740px){#settingsSections:has(#openSubtitlesSettings[open]){--compact-settings:1}}
+@container(max-height:650px){#settingsSections:has(>#settingsModels:not(:empty)+#settingsBasics:not(:empty)){--compact-settings:1}}
+#settingsSections{container-name:settings-grid}
+@container settings-grid style(--compact-settings:1){#settingsModels,#settingsBasics{display:contents}#settingsSections .sync-item:has(#mediaAISettings){grid-area:1/1/span 2/2}#settingsSections .sync-item:has(#subtitleSettings){grid-area:1/2/span 2/3}#settingsSections .sync-item:has(#mediaSettings){grid-area:1/3}#settingsSections .sync-item:has(#openSubtitlesSettings){grid-area:2/3}}
+@container(max-height:740px){#settingsSections:has(#openSubtitlesSettings[open]):has(>#settingsModels:not(:empty)+#settingsBasics:not(:empty)){grid-template-columns:minmax(0,1.15fr) minmax(0,1fr) minmax(178px,.73fr);grid-template-rows:min-content auto}}
+@container(max-height:650px){#settingsSections:has(>#settingsModels:not(:empty)+#settingsBasics:not(:empty)){grid-template-columns:minmax(0,1.15fr) minmax(0,1fr) minmax(178px,.73fr);grid-template-rows:min-content auto}}
+#settingsSections .sync-item{margin:0;padding:14px;border-radius:8px}#settingsSections h3{margin:0 0 8px;font-size:16px}
+#mediaAISettings{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr);column-gap:8px}#mediaAISettings>*{grid-column:1/-1}#mediaAISettings>label:has(#mediaAIProvider,#mediaAIModelSelect){grid-column:auto;min-width:0}
+#settingsSections label,#settingsSections p{margin:6px 0;overflow-wrap:anywhere}#settingsSections p{line-height:1.45;color:var(--muted)}#settingsSections input,#settingsSections select{padding:6px 8px;margin-top:4px;line-height:1.4}#settingsSections input[type=checkbox]{margin:1px 0 0}
+#settingsSections .panel-actions{gap:6px;margin:8px 0 0}#settingsSections button,#backToTools{padding:5px 8px;line-height:1.4}#settingsSections details[open]>summary{margin-bottom:5px}#settingsSections .credential-head a{font-size:13px}
+#settingsSections :is(#saveMediaKey,#saveMediaAI,#saveSubtitleSettings){background:var(--tint);font-weight:600}
+#subtitleAccountSettings>div{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}#subtitleAccountSettings>div>label{min-width:0}
+#subtitleSettings .credential-head{flex-wrap:wrap;gap:2px 6px}
+@container(max-height:650px){#workspaceSettings{padding:8px 12px}.settings-heading{margin-bottom:8px;padding-bottom:6px}.settings-heading h3{font-size:18px}#settingsSections{gap:9px}.settings-column{gap:9px}#settingsSections .sync-item{padding:8px}#settingsSections h3{margin-bottom:5px}#settingsSections label,#settingsSections p{margin:3px 0}#settingsSections input,#settingsSections select{padding:4px 6px;margin-top:3px}#settingsSections .panel-actions{gap:4px;margin-top:4px}#settingsSections button,#backToTools{padding:4px 7px}}
 #toggle{display:grid;place-items:center;width:50px;height:50px;padding:0;border-radius:15px;background:var(--surface);box-shadow:0 5px 20px #0003}#toggle svg{width:24px;height:24px;pointer-events:none}
 @container(max-width:1050px){.workspace-navigation{width:152px;padding:16px 9px}.tool-pane{padding:20px 20px 14px}.tool-intro h3{font-size:20px}.tool-intro p{font-size:14px}.tool-commandbar{margin:16px 0 18px;gap:8px}.tool-commandbar button{padding:8px 12px;font-size:14px}.tool-commandbar .panel-actions{gap:6px}.tool-import-options{max-width:240px;font-size:14px}.tool-statusbar{gap:12px;margin-top:14px}.tool-utilities{gap:10px}.tool-overview>:not([hidden]):not(:empty){margin-bottom:10px;padding:10px}.json-editor{min-height:160px}#jsonPane .tool-main{min-height:220px}.json-editor-empty svg{width:44px;height:44px;margin-bottom:10px}.json-editor-empty p{margin:6px 0 12px}.tool-results{gap:10px}.tool-results>.sync-item{padding:12px}}
-@container(max-width:760px){.workspace-frame{flex-direction:column}.workspace-navigation{width:auto;padding:8px 12px;border-right:0;border-bottom:1px solid var(--border);flex-direction:row;align-items:center;gap:8px}.nav-caption,.nav-footer small{display:none}.workspace-tabs{flex-direction:row;flex:1;gap:4px}.workspace-tabs button{justify-content:center;gap:5px;padding:8px 6px;font-size:14px}.workspace-tabs button svg{display:none}.workspace-tabs button[aria-selected=true]::before{display:none}.nav-footer{margin:0}#settingsWorkspace{width:auto;font-size:14px;gap:5px;padding:8px}.workspace-body{min-height:0}.tool-pane{padding:18px 14px}.tool-results,.tool-overview,#settingsSections{grid-template-columns:minmax(0,1fr)}.tool-intro h3{font-size:18px;flex-wrap:wrap}.tool-list-heading{flex-wrap:wrap;gap:8px}.tool-import-options{margin:0;max-width:none}.tool-statusbar{display:block}.tool-utilities{margin-top:10px}.theme-row{flex-wrap:wrap}.theme-row select{max-width:100%}.sync-location{grid-template-columns:1fr;gap:2px}.json-editor-empty{padding:12px}.json-editor-empty strong{font-size:15px}.json-editor-empty p{font-size:14px}#subtitleEmpty,.media-empty{padding:36px 16px}.tool-utilities:has(>details[open]){grid-template-columns:1fr}}
-
         </style><button id="toggle" type="button" title="打开云盘工具" aria-label="打开云盘工具" aria-haspopup="dialog" aria-expanded="false" aria-controls="toolDialog"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 12h4M8 16h3M16 12v6m-2-2 2 2 2-2"/></svg></button>
         <div class="workspace-overlay" hidden><div class="box" id="toolDialog" role="dialog" aria-modal="false" aria-labelledby="workspaceTitle" tabindex="-1">
         <header class="workspace-header"><div><h2 id="workspaceTitle">云盘工具</h2><p id="windowHint">拖动标题栏移动 · 可同时操作网页</p></div><div class="workspace-window-actions"><button id="settingsWorkspace" type="button">设置</button><button id="pinWorkspace" type="button" aria-pressed="false" title="锁定窗口位置">固定位置</button><button id="closeWorkspace" type="button" aria-label="关闭面板" title="关闭">×</button></div></header>
         <div class="workspace-toolbar"><div class="workspace-tabs" role="tablist" aria-label="功能分类"><button id="jsonTab" type="button" role="tab" aria-selected="false" aria-controls="jsonPane" tabindex="-1" disabled>跨盘 JSON</button><button id="mediaTab" type="button" role="tab" aria-selected="false" aria-controls="mediaPane" tabindex="-1" disabled title="当前网盘暂不支持影视整理">影视整理</button><button id="subtitleTab" type="button" role="tab" aria-selected="false" aria-controls="subtitlePane" tabindex="-1" disabled title="当前网盘暂不支持字幕检查">字幕</button></div>
         <label class="theme-row">窗口尺寸<select id="workspaceSize" aria-label="窗口尺寸"><option value="960x600">960 × 600</option><option value="1280x800" selected>1280 × 800（默认）</option><option value="1440x900">1440 × 900</option><option value="1600x1000">1600 × 1000</option></select></label>
         <label class="theme-row">外观<select id="theme"><option value="auto">跟随页面</option><option value="light">浅色</option><option value="dark">深色</option></select></label></div>
-        <div class="workspace-body"><section id="workspaceSettings" class="tool-pane" hidden><h3>设置</h3><p>影视资料、大模型和字幕来源统一在这里配置；凭证只保存在本地脚本设置。</p><div id="settingsSections"></div><button id="backToTools">返回工具</button></section></div></div></div>`;
+        <div class="workspace-body"><section id="workspaceSettings" class="tool-pane" hidden><div class="settings-heading"><h3>设置</h3><button id="backToTools">返回工具</button></div><div id="settingsSections"><div class="settings-column" id="settingsModels"></div><div class="settings-column" id="settingsBasics"></div></div></section></div></div></div>`;
             const overlay = root.querySelector('.workspace-overlay'), dialog = root.querySelector('.box'), toggle = root.querySelector('#toggle');
             const frame = document.createElement('div'); frame.className = 'workspace-frame';
             const navigation = root.querySelector('.workspace-toolbar'); navigation.className = 'workspace-navigation';
-            const appearance = document.createElement('section'); appearance.className = 'workspace-appearance';
+            const appearance = document.createElement('div'); appearance.className = 'settings-appearance';
             for (const label of [...navigation.querySelectorAll('.theme-row')]) appearance.append(label);
-            root.querySelector('#settingsSections').before(appearance);
+            root.querySelector('#backToTools').before(appearance);
             const navTitle = document.createElement('p'); navTitle.className = 'nav-caption'; navTitle.textContent = '工作空间'; navigation.prepend(navTitle);
             const navFooter = document.createElement('div'); navFooter.className = 'nav-footer'; navFooter.append(root.querySelector('#settingsWorkspace'));
             const version = document.createElement('small'); version.textContent = '云盘工具' + (typeof VERSION === 'string' ? ' · v' + VERSION : ''); navFooter.append(version); navigation.append(navFooter);
@@ -518,13 +545,13 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 const width = page.innerWidth, height = page.innerHeight;
                 // Size presets describe screenshot/device pixels, including OS scaling and browser zoom.
                 const ratio = Number.isFinite(page.devicePixelRatio) && page.devicePixelRatio > 0 ? page.devicePixelRatio : 1;
-                const narrow = width * ratio <= 760, margin = (narrow ? 12 : 24) / ratio;
+                const margin = 24 / ratio;
                 const [baseWidth,baseHeight] = sizes.get(windowSize);
                 const scale = Math.max(0,Math.min(1,(width - margin * 2) * ratio / baseWidth,(height - margin * 2) * ratio / baseHeight));
                 dialog.style.transformOrigin = 'top left'; dialog.style.transform = `scale(${1 / ratio})`;
                 dialog.style.maxWidth = dialog.style.maxHeight = 'none';
-                dialog.style.width = Math.max(1,narrow ? Math.min(baseWidth,(width - margin * 2) * ratio) : Math.round(baseWidth * scale)) + 'px';
-                dialog.style.height = Math.max(1,narrow ? Math.min(baseHeight,(height - margin * 2) * ratio) : Math.round(baseHeight * scale)) + 'px';
+                dialog.style.width = Math.max(1,Math.round(baseWidth * scale)) + 'px';
+                dialog.style.height = Math.max(1,Math.round(baseHeight * scale)) + 'px';
                 const rect = dialog.getBoundingClientRect();
                 const left = Math.max(margin, Math.min(point?.left ?? Math.round((width - rect.width) / 2), width - rect.width - margin));
                 const top = Math.max(margin, Math.min(point?.top ?? Math.round((height - rect.height) / 2), height - rect.height - margin));
@@ -613,7 +640,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 root.querySelector('#workspaceSettings').hidden = false;
                 root.querySelector('#settingsWorkspace').setAttribute('aria-pressed', 'true');
                 const detail = name && root.querySelector('#' + name);
-                if (detail) { detail.open = true; detail.scrollIntoView?.({block:'nearest'}); }
+                if (detail) { if (detail.tagName === 'DETAILS') detail.open = true; detail.scrollIntoView?.({block:'nearest'}); }
             };
             root.querySelector('#settingsWorkspace').onclick = () => openSettings();
             root.querySelector('#backToTools').onclick = () => activate(active);
@@ -643,16 +670,17 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         root.querySelector('.workspace-body').appendChild(pane);
         const button = root.querySelector('#' + id + 'Tab'), elements = new Map();
         button.disabled = false; button.removeAttribute('title'); button.onclick = () => activate(id);
-        const entry = { pane, button, onActivate: null, settings:null };
+        const entry = { pane, button, onActivate: null, settings:[] };
         const ui = { get: name => {
-            if (!elements.has(name)) elements.set(name, pane.querySelector('#' + name) || entry.settings?.querySelector('#' + name) || (['toggle', 'theme'].includes(name) ? root.querySelector('#' + name) : null));
+            if (!elements.has(name)) elements.set(name, pane.querySelector('#' + name) || entry.settings.map(section => section.querySelector('#' + name)).find(Boolean) || (['toggle', 'theme'].includes(name) ? root.querySelector('#' + name) : null));
             return elements.get(name);
         }, onActivate: callback => { entry.onActivate = callback; },
-            moveSettings: ids => {
+            moveSettings: (ids, headingTitle = title, destination = '#settingsBasics') => {
                 const section = document.createElement('fieldset'); section.className = 'sync-item'; section.style.minWidth = '0';
-                const heading = document.createElement('h3'); heading.textContent = title; section.appendChild(heading);
-                for (const name of ids) { const detail = ui.get(name); detail.open = true; section.appendChild(detail); }
-                entry.settings = section; root.querySelector('#settingsSections').appendChild(section);
+                const heading = document.createElement('h3'); heading.textContent = headingTitle; section.appendChild(heading);
+                for (const name of ids) section.appendChild(ui.get(name));
+                entry.settings.push(section);
+                root.querySelector(destination).appendChild(section);
             },
             openSettings: name => toolWorkspace.openSettings(name),
             busy: value => {
@@ -664,7 +692,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 for (const [name, tab] of tabs) {
                     const blocked = !!toolWorkspace.owner && name !== toolWorkspace.owner;
                     tab.button.disabled = blocked;
-                    if (tab.settings) tab.settings.disabled = blocked;
+                    for (const section of tab.settings) section.disabled = blocked;
                 }
                 root.querySelector('#settingsWorkspace').disabled = !!toolWorkspace.owner;
                 root.querySelector('#backToTools').disabled = !!toolWorkspace.owner;
@@ -3051,18 +3079,18 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
     function initMediaOrganizer(provider = '123') {
         const ui = makePanel(provider + ' 重命名与自动分类', `
             <p>勾选内容 → 识别并预览 → 确认执行。使用 TMDB 查询影视资料。待确认项目可整组或一键跳过。</p>
-            <details id="mediaSettings"><summary>TMDB 设置</summary><label><span class="credential-head"><span>TMDB 密钥</span><a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener noreferrer">获取 API ↗</a></span><input id="tmdbKey" type="password" autocomplete="off" placeholder="API Key 或 API Read Access Token"></label>
-            <div class="panel-actions"><button id="saveMediaKey">保存密钥</button><button id="forgetMediaKey">清除密钥</button></div></details>
-            <details id="mediaAISettings"><summary>大模型识别 · 可选</summary>
+            <section id="mediaSettings"><label><span class="credential-head"><span>TMDB 密钥</span><a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener noreferrer">获取 API ↗</a></span><input id="tmdbKey" type="password" autocomplete="off" placeholder="API Key 或 API Read Access Token"></label>
+            <div class="panel-actions"><button id="saveMediaKey">保存密钥</button><button id="forgetMediaKey">清除密钥</button></div></section>
+            <section id="mediaAISettings">
             <label><input id="enableMediaAI" type="checkbox">启用大模型识别</label>
-            <p>仅补充 TMDB 未匹配项。发送文件名、目录名或字幕候选，不上传视频；调用可能计费。</p>
+            <p>仅发送文件名、目录名或字幕候选，不上传视频。调用可能计费。</p>
             <label>服务商<select id="mediaAIProvider"><option value="custom">自定义兼容接口</option><option value="deepseek">DeepSeek</option><option value="qwen">通义千问</option><option value="siliconflow">硅基流动</option><option value="openai">OpenAI</option></select></label>
+            <label>模型<select id="mediaAIModelSelect"></select></label>
             <label>API 地址<input id="mediaAIBase" type="url" placeholder="https://服务商地址/v1"></label>
             <label><span class="credential-head"><span>API Key</span><a id="mediaAIKeyLink" href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener noreferrer" hidden>获取 API ↗</a></span><input id="mediaAIKey" type="password" autocomplete="off" placeholder="粘贴 API Key；可带或不带 Bearer 前缀"></label>
-            <label>模型<select id="mediaAIModelSelect"></select></label>
             <div class="panel-actions"><button id="fetchMediaAIModels">获取模型列表</button><button id="saveMediaAI">保存设置</button><button id="testMediaAI">测试连接</button><button id="forgetMediaAI">清除密钥</button></div>
             <label id="mediaAIManualModel" hidden>手动填写模型 ID<input id="mediaAIModel" placeholder="接口不提供列表时手动填写"></label>
-            <p id="mediaAIState" role="status"></p></details>
+            <p id="mediaAIState" role="status"></p></section>
             <p id="mediaTarget"></p><p id="mediaRecordState" role="status"></p>
             <div class="panel-actions"><button id="scanMedia">识别并预览</button><button id="runMedia" disabled>确认执行</button><button id="stopMedia" hidden disabled>停止</button></div>
             <div id="mediaMeter" hidden><label id="mediaMeterLabel" for="mediaBar"></label><progress id="mediaBar" max="100" value="0" style="display:block;width:100%;height:12px;margin:8px 0;accent-color:gray"></progress></div><p id="mediaProgress" role="status"></p><div id="mediaSummary"></div>
@@ -3076,9 +3104,9 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             <p id="cleanupRule">清理图片、附件及已标记的花絮/预告；默认保留字幕、字体和普通视频。</p>
             <div class="panel-actions"><button id="checkCleanup">检查清理范围</button><button id="runEmpty" disabled>确认清理</button></div>
             <div id="emptyPreview" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto"></div></details><div id="log"></div>`, true);
-        ui.moveSettings(['mediaSettings','mediaAISettings']);
+        ui.moveSettings(['mediaSettings'], 'TMDB 设置', '#settingsBasics');
+        ui.moveSettings(['mediaAISettings'], '大模型识别', '#settingsModels');
         ui.get('tmdbKey').value = GM_getValue('cross-drive-tmdb-key', '');
-        ui.get('mediaSettings').open = true;
         const storedAI = GM_getValue('cross-drive-media-ai', {});
         const aiSaved = migrateMediaAISettings(storedAI);
         if (aiSaved !== storedAI) GM_setValue('cross-drive-media-ai', aiSaved);
@@ -3099,13 +3127,13 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             const option = (value, label) => { const item = document.createElement('option'); item.value = value; item.textContent = label; select.appendChild(item); };
             option('', '请选择模型');
             for (const model of models) option(model, model);
-            if (current && !models.includes(current)) option(current, current + '（当前设置，未在列表中确认）');
+            if (current && !models.includes(current)) option(current, current + '（未验证）');
             option('__manual__', '手动填写模型 ID');
             select.value = current;
             ui.get('mediaAIManualModel').hidden = true;
         };
         updateAILink(); showAIModels();
-        ui.get('mediaAIState').textContent = aiSaved.enabled ? '已启用：逐文件翻译完整作品名，保留剧场版、特别篇和副标题后搜索。' : '未启用，不会发送大模型请求。';
+        ui.get('mediaAIState').textContent = aiSaved.enabled ? '大模型识别已启用。' : '未启用，不会发送大模型请求。';
         let rows = [], batch = null, batchWriter = null, session = null, source = null, client = null, targetSession = null, targetPath = '', emptyPlan = [], emptySession = null, emptySource = null;
         let cancelled = false, reused = 0;
         const checkStopped = () => { if (cancelled) throw new Error('已停止；已完成的操作保留，未处理项目不再执行'); };
@@ -5222,9 +5250,6 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
     function subtitleCoverageState(row) {
         return subtitleCovered(row) ? 'complete' : subtitleNeedsVerification(row) ? 'pending' : row.inspected ? 'missing' : 'unchecked';
     }
-    function subtitleRowDetail(row, fallback) {
-        return [row.embedded?.message, row.error || (row.embedded?.status !== 'present' && row.searchMessage)].filter(Boolean).join('\n') || fallback;
-    }
     function subtitleSearchGroups(rows) {
         const groups = new Map();
         for (const row of rows) {
@@ -5239,48 +5264,46 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
     function initSubtitles(provider = '123') {
         const ui = makePanel(provider + ' 字幕', `
             <p>选中视频或文件夹，先“检查目录字幕”查看哪些缺字幕，再查找、补齐到视频所在目录。</p>
-            <div class="panel-actions"><button id="recheckSubtitles">检查目录字幕</button><button id="readSubtitles">查找字幕</button><button id="auditSubtitles" disabled>强制复查已有字幕</button><button id="fillSubtitles" disabled>补齐字幕</button><button id="stopSubtitles" hidden>停止</button></div>
+            <div class="panel-actions"><button id="recheckSubtitles">检查目录字幕</button><button id="readSubtitles">查找字幕</button><button id="auditSubtitles" disabled>强制复查已有字幕</button><button id="fillSubtitles" disabled>补齐字幕</button><button id="reviewSubtitleDeletes" disabled>删除字幕</button><button id="stopSubtitles" hidden>停止</button></div>
+            <p id="subtitleScope"></p>
             <p id="subtitleProgress" role="status">先在网页勾选视频或文件夹。</p>
             <progress id="subtitleMeter" max="1" value="0" hidden style="width:100%;accent-color:#666"></progress>
-            <div id="subtitleSummary" hidden class="sync-preview"></div>
-            <label>显示<select id="subtitleView"><option id="subtitleViewIncomplete" value="incomplete">未补齐</option><option id="subtitleViewChoice" value="choice">待选择</option><option id="subtitleViewPending" value="pending">待核验</option><option id="subtitleViewComplete" value="complete">已有字幕</option><option id="subtitleViewAll" value="all">全部</option></select></label>
-            <p id="subtitleEmpty">先勾选目录或视频，再点击“检查目录字幕”。</p>
-            <div id="subtitleRows"></div>
-            <div class="panel-actions"><button id="searchSubtitles" disabled>重搜未完成项</button><button id="reviewSubtitleDeletes" disabled>预览删除清单</button><button id="copyMissingSubtitles" disabled>复制未补齐路径</button><button id="copySubtitleReport" disabled>复制完整报告</button></div>
-            <details id="subtitleDeletePreview" hidden><summary>确认删除清单</summary><div id="subtitleDeleteList" style="white-space:pre-wrap"></div><div class="panel-actions"><button id="confirmSubtitleDeletes">确认并移入回收站</button><button id="cancelSubtitleDeletes">取消</button></div></details>
-            <details id="subtitleSettings"><summary>字幕来源与设置</summary>
+            <div id="subtitleFilters"><label><input id="selectAllSubtitleDeletes" type="checkbox" disabled>全选</label><select id="subtitleView" aria-label="筛选字幕检查结果"><option id="subtitleViewAll" value="all">全部</option><option id="subtitleViewIncomplete" value="incomplete">未补齐</option><option id="subtitleViewChoice" value="choice">待选择</option><option id="subtitleViewPending" value="pending">待核验</option><option id="subtitleViewComplete" value="complete">已有字幕</option></select></div>
+            <div id="subtitleResults" role="region" aria-labelledby="subtitleResultsTitle" tabindex="0">
+                <div id="subtitleSummary" hidden class="sync-preview"></div>
+                <p id="subtitleEmpty">先勾选目录或视频，再点击“检查目录字幕”。</p>
+                <div id="subtitleRows" class="tool-results"></div>
+            </div>
+            <details id="subtitleDeletePreview" name="subtitleFooter" hidden><summary>确认删除清单</summary><div id="subtitleDeleteList" style="white-space:pre-wrap"></div><div class="panel-actions"><button id="confirmSubtitleDeletes">确认并移入回收站</button><button id="cancelSubtitleDeletes">取消</button></div></details>
+            <section id="subtitleSettings" title="ZIP 只提取通过核验的文本字幕，不支持 RAR。">
             <label><input id="useThunder" type="checkbox" checked>迅雷 · 按片名搜索（免 Key，免费）</label>
             <label><input id="useSubdl" type="checkbox">SubDL（需个人 API Key，可选）</label>
             <label><span class="credential-head"><span>SubDL API Key</span><a href="https://subdl.com/api-doc" target="_blank" rel="noopener noreferrer">官网 API 说明 ↗</a></span><input id="subdlKey" type="password" autocomplete="off"></label>
-            <p>可直接下载字幕；ZIP 只提取通过核验的文本字幕，不支持 RAR。</p>
             <label><input id="useAssrt" type="checkbox" checked>Assrt · 按片名搜索（需 Token）</label>
             <label><span class="credential-head"><span>Assrt API Token</span><a href="https://assrt.net/api/user/token" target="_blank" rel="noopener noreferrer">获取 Token ↗</a></span><input id="assrtToken" type="password" autocomplete="off"></label>
-            <p>电影按片名搜索；剧集先查季集、再查片名。需要 Token。</p>
-            <details id="openSubtitlesSettings"><summary>OpenSubtitles · 可选</summary>
-            <label><input id="useOpenSubtitles" type="checkbox">启用 OpenSubtitles（需 API Key）</label>
-            <label><span class="credential-head"><span>OpenSubtitles API Key</span><a href="https://www.opensubtitles.com/en/consumers" target="_blank" rel="noopener noreferrer">获取 API ↗</a></span><input id="openSubtitlesKey" type="password" autocomplete="off"></label>
-            <p>在官网创建 API Consumer 并复制 API Key。</p>
-            <details id="subtitleAccountSettings"><summary>账号登录（提高下载配额）</summary><label>用户名<input id="subtitleUsername" autocomplete="off"></label><label>密码<input id="subtitlePassword" type="password" autocomplete="off"></label><button id="loginSubtitles">登录</button><p id="subtitleLoginState">密码不保存；令牌仅当前页面有效。</p></details>
+            <details id="openSubtitlesSettings"><summary>账号与 API</summary>
+            <label><input id="useOpenSubtitles" type="checkbox">启用搜索</label>
+            <label><span class="credential-head"><span>API Key</span><a href="https://www.opensubtitles.com/en/consumers" target="_blank" rel="noopener noreferrer">获取 API ↗</a></span><input id="openSubtitlesKey" type="password" autocomplete="off"></label>
+            <details id="subtitleAccountSettings"><summary title="提高下载配额">账号登录</summary><div><label>用户名<input id="subtitleUsername" autocomplete="off"></label><label>密码<input id="subtitlePassword" type="password" autocomplete="off"></label></div><button id="loginSubtitles">登录</button><p id="subtitleLoginState">密码不保存；令牌仅当前页面有效。</p></details>
             </details>
-            <label>字幕语言<select id="subtitleLanguage"><option value="zh-cn,zh-tw,zh">中文（简体 / 繁体）</option><option value="zh-cn">简体中文</option><option value="zh-tw">繁体中文</option><option value="en">英文</option></select></label>
-            <p>中文优先双语、简体，再繁体；也可手动指定。</p>
+            <label>字幕语言<select id="subtitleLanguage" title="中文优先双语、简体，再繁体。"><option value="zh-cn,zh-tw,zh">中文（简体 / 繁体）</option><option value="zh-cn">简体中文</option><option value="zh-tw">繁体中文</option><option value="en">英文</option></select></label>
             <div class="panel-actions"><button id="saveSubtitleSettings">保存设置</button><button id="forgetSubtitleKey">清除凭证</button></div>
-            </details>
-            <details id="subtitleDiagnostics"><summary>字幕运行日志</summary><div class="panel-actions"><button id="copySubtitleLog">复制日志</button><button id="clearSubtitleLog">清空日志</button></div><textarea id="subtitleLog" readonly rows="8" spellcheck="false" aria-label="字幕运行日志" style="width:100%;font:14px/1.7 Consolas,monospace;resize:vertical"></textarea></details>
-            <p>缺字幕指未发现符合当前语言要求的可用外置文本字幕；读取失败、疑似错片或上传结果未确认的单列为“待核验”，不当作确定缺失。只检查最近一次勾选的范围及其子目录，不检测视频内嵌字幕。“已有/已补齐”表示通过基础检查，不代表作品或音画同步已确认。强制复查跳过缓存；启用 AI 时会发送少量对白片段辅助判断作品。</p>
+            </section>
+            <details id="subtitleDiagnostics" name="subtitleFooter"><summary>字幕运行日志</summary><div class="panel-actions"><button id="copySubtitleLog">复制日志</button><button id="clearSubtitleLog">清空日志</button></div><textarea id="subtitleLog" readonly spellcheck="false" aria-label="字幕运行日志"></textarea></details>
 `, 'subtitle');
-        ui.moveSettings(['subtitleSettings']);
-        let inventory = [], drive = null, subtitleContext = null, deletePlan = null, busy = false, cancelled = false, reviewCandidates = null, scope = '', coverageText = '';
+        ui.moveSettings(['subtitleSettings'], '字幕来源与设置');
+        ui.moveSettings(['openSubtitlesSettings'], 'OpenSubtitles', '#settingsModels');
+        let inventory = [], drive = null, subtitleContext = null, checkedScope = null, deletePlan = null, busy = false, cancelled = false, reviewCandidates = null;
         const deleteSelection = new Set();
-        ui.get('subtitleView').value = 'incomplete';
+        ui.get('subtitleView').value = 'all';
         const service = createSubtitleService({check:() => check(), log:(event, detail) => diag(event, detail)});
         const prefs = GM_getValue('cross-drive-subtitle-settings', {});
         ui.get('openSubtitlesKey').value = prefs.key || '';
         ui.get('useOpenSubtitles').checked = prefs.open === true;
-        ui.get('useAssrt').checked = prefs.assrt !== false;
         ui.get('useThunder').checked = prefs.thunder !== false;
         ui.get('useSubdl').checked = prefs.subdl === true;
         ui.get('subdlKey').value = prefs.subdlKey || '';
+        ui.get('useAssrt').checked = prefs.assrt !== false;
         ui.get('assrtToken').value = prefs.assrtToken || '';
         ui.get('subtitleLanguage').value = prefs.language || 'zh-cn,zh-tw,zh';
         const settings = () => ({key:ui.get('openSubtitlesKey').value.trim(), language:ui.get('subtitleLanguage').value, open:ui.get('useOpenSubtitles').checked, assrt:ui.get('useAssrt').checked, thunder:ui.get('useThunder').checked, assrtToken:ui.get('assrtToken').value.trim(), subdl:ui.get('useSubdl').checked, subdlKey:ui.get('subdlKey').value.trim()});
@@ -5309,26 +5332,30 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             catch (error) { diag('AI 设置', '设置无效，跳过 AI：' + error.message); return null; }
         };
         const meter = (done, total) => { const bar = ui.get('subtitleMeter'); bar.hidden = false; bar.max = total || 1; bar.value = done; };
-        const render = (resetGroups = false) => {
-            const missing = inventory.filter(row => !subtitleCovered(row)), searchable = missing.filter(row => !subtitleNeedsVerification(row)), ready = searchable.filter(row => row.selectedCandidate);
-            const coverage = {complete:0,missing:0,pending:0,unchecked:0};
-            for (const row of inventory) coverage[subtitleCoverageState(row)]++;
+        const inView = (row, view) => view === 'all' || (view === 'incomplete' ? !subtitleCovered(row) : view === 'choice' ? subtitleSearchState(row) === 'choice' : subtitleCoverageState(row) === view);
+        const viewSubtitleIds = view => inventory.filter(row => inView(row, view)).flatMap(row => row.subtitles.map(sub => String(sub.id)));
+        const selectAll = ui.get('selectAllSubtitleDeletes');
+        const render = () => {
+            const scope = ui.get('subtitleScope');
+            scope.textContent = checkedScope ?? ''; scope.title = scope.textContent;
+            const missing = inventory.filter(row => !subtitleCovered(row)), ready = missing.filter(row => !subtitleNeedsVerification(row) && row.selectedCandidate);
+            const pending = missing.filter(subtitleNeedsVerification).length;
             const view = ui.get('subtitleView').value;
+            const visibleIds = viewSubtitleIds(view), selectedCount = visibleIds.filter(id => deleteSelection.has(id)).length;
+            selectAll.disabled = busy || !visibleIds.length;
+            selectAll.checked = visibleIds.length > 0 && selectedCount === visibleIds.length;
+            selectAll.indeterminate = selectedCount > 0 && selectedCount < visibleIds.length;
             const choices = inventory.filter(row => subtitleSearchState(row) === 'choice').length;
-            coverageText = `检查范围：${scope}（最近一次勾选范围及其子目录）\n视频 ${inventory.length} · 已有可用字幕 ${coverage.complete} · 缺字幕 ${coverage.missing} · 待核验 ${coverage.pending}` + (coverage.unchecked ? ` · 尚未检查 ${coverage.unchecked}` : '');
-            for (const [id,label,count] of [['Incomplete','未补齐',missing.length],['Choice','待选择',choices],['Pending','待核验',coverage.pending],['Complete','已有字幕',coverage.complete],['All','全部',inventory.length]]) ui.get('subtitleView' + id).textContent = `${label}（${count}）`;
+            for (const [id,label,count] of [['Incomplete','未补齐',missing.length],['Choice','待选择',choices],['Pending','待核验',pending],['Complete','已有字幕',inventory.length - missing.length],['All','全部',inventory.length]]) ui.get('subtitleView' + id).textContent = `${label}（${count}）`;
             ui.get('subtitleSummary').hidden = !inventory.some(row => row.sources?.length);
             ui.get('subtitleSummary').textContent = subtitleSearchSummary(inventory);
-            ui.get('copySubtitleReport').disabled = busy || !inventory.length;
             ui.get('reviewSubtitleDeletes').disabled = busy || !inventory.some(row => row.subtitles.some(sub => deleteSelection.has(String(sub.id))));
             ui.get('confirmSubtitleDeletes').disabled = busy || !deletePlan?.length;
             ui.get('cancelSubtitleDeletes').disabled = busy;
-            ui.get('searchSubtitles').disabled = busy || !searchable.length;
-            ui.get('copyMissingSubtitles').disabled = busy || !missing.length;
             ui.get('recheckSubtitles').disabled = busy;
             ui.get('auditSubtitles').disabled = busy || !inventory.some(row => row.subtitles.length);
             ui.get('fillSubtitles').disabled = busy || !ready.length;
-            const host = ui.get('subtitleRows'), expanded = new Map([...host.querySelectorAll('details')].map(box => [box.dataset.group,box.open]));
+            const host = ui.get('subtitleRows');
             host.replaceChildren();
             const groups = new Map();
             for (const row of inventory) {
@@ -5337,29 +5364,30 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 groups.get(key).push(row);
             }
             let visible = 0;
-            for (const [key, rows] of groups) {
-                const shown = rows.filter(row => view === 'all' || (view === 'incomplete' ? !subtitleCovered(row) : view === 'choice' ? subtitleSearchState(row) === 'choice' : subtitleCoverageState(row) === view));
+            for (const rows of groups.values()) {
+                const shown = rows.filter(row => inView(row, view));
                 if (!shown.length) continue;
                 visible += shown.length;
-                const box = document.createElement('details'); box.className = 'sync-item'; box.dataset.group = key;
-                box.open = !resetGroups && expanded.has(key) ? expanded.get(key) : false;
-                const summary = document.createElement('summary'), first = rows[0];
+                const box = document.createElement('section'); box.className = 'sync-item';
+                const heading = document.createElement('h5'), first = rows[0];
                 const counts = [['ready','可补齐'],['pending','待核验'],['choice','待选择'],['missing','未找到'],['failed','失败']]
                     .map(([state,label]) => { const count = rows.filter(row => subtitleSearchState(row) === state).length; return count ? `${label} ${count}` : ''; }).filter(Boolean);
-                summary.textContent = `${first.parsed.query || first.node.name}${first.parsed.season != null ? ' · 第 ' + first.parsed.season + ' 季' : ''} · 待补齐 ${rows.filter(row => !subtitleCovered(row)).length}/${rows.length}` + (counts.length ? ' · ' + counts.join(' · ') : '');
-                box.append(summary);
+                heading.textContent = `${first.parsed.query || first.node.name}${first.parsed.season != null ? ' · 第 ' + first.parsed.season + ' 季' : ''} · 待补齐 ${rows.filter(row => !subtitleCovered(row)).length}/${rows.length}` + (counts.length ? ' · ' + counts.join(' · ') : '');
+                box.append(heading);
                 for (const row of shown) {
-                    const text = document.createElement('p'); text.style.whiteSpace = 'pre-wrap';
+                    const item = document.createElement('div'); item.className = 'subtitle-result'; box.append(item);
+                    const text = document.createElement('p');
                     const state = subtitleCoverageState(row), searchState = subtitleSearchState(row);
-                    const label = state === 'missing' ? '缺字幕 · ' + ({ready:'可补齐',choice:'待选择',missing:'未找到',failed:'失败',unsearched:'未查询'})[searchState] : ({complete:'已有字幕',pending:'待核验',unchecked:'尚未检查'})[state];
-                    const coverageLabel = row.embedded?.status === 'present' && !row.complete ? '有内嵌字幕' : label;
-                    text.textContent = `${coverageLabel}：${row.node.name}\n${row.path}\n${subtitleRowDetail(row, '尚未搜索字幕')}`; box.append(text);
+                    const embedded = row.embedded;
+                    const label = state === 'missing' ? '缺字幕 · ' + ({ready:'可补齐',choice:'待选择',missing:'未找到',failed:'失败',unsearched:'未查询'})[searchState] : ({complete:embedded?.status === 'present' && !row.complete ? '有内嵌字幕' : '已有字幕',pending:'待核验',unchecked:'尚未检查'})[state];
+                    const detail = [embedded?.message, row.error || (embedded?.status !== 'present' && row.searchMessage)].filter(Boolean).join('\n') || '尚未搜索字幕';
+                    text.textContent = `${label}：${row.node.name}\n${row.path}\n${detail}`; item.append(text);
                     for (const sub of row.subtitles) {
                         const line = document.createElement('label'), checkbox = document.createElement('input'), name = document.createElement('span');
                         checkbox.type = 'checkbox'; checkbox.checked = deleteSelection.has(String(sub.id)); checkbox.disabled = busy;
                         name.textContent = '移入回收站：' + sub.name;
                         checkbox.onchange = () => { if (checkbox.checked) deleteSelection.add(String(sub.id)); else deleteSelection.delete(String(sub.id)); clearDeletePreview(); render(); };
-                        line.append(checkbox, name); box.append(line);
+                        line.append(checkbox, name); item.append(line);
                     }
                     if (subtitleCovered(row) || subtitleNeedsVerification(row)) continue;
                     const select = document.createElement('select'); select.disabled = busy;
@@ -5372,7 +5400,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     });
                     select.value = row.selectedCandidate ? String(row.candidates.indexOf(row.selectedCandidate)) : '';
                     select.onchange = () => { row.selectedCandidate = select.value === '' ? null : row.candidates[Number(select.value)]; row.error = ''; row.manualCandidate = true; row.aiSuggested = false; row.searchMessage = subtitleSearchMessage(row); diag('手动选择', `${row.node.name} · ${row.selectedCandidate ? row.selectedCandidate.source + ' · ' + (row.selectedCandidate.name || row.selectedCandidate.release) : '跳过此视频'}`); render(); };
-                    box.append(select);
+                    item.append(select);
                 }
                 host.append(box);
             }
@@ -5435,18 +5463,20 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     meter(++done, rows.length); render();
                   }
                 }, check);
-                status('查找结束：' + subtitleSearchSummary(inventory) + '。展开作品可查看每个来源的结果。'); diag('查找结束', subtitleSearchSummary(inventory));
+                status('查找结束：' + subtitleSearchSummary(inventory) + '。'); diag('查找结束', subtitleSearchSummary(inventory));
             } catch (error) { render(); status(error.message); diag(cancelled ? '已停止' : '查找中断', error.message); }
             finally { lock(false); }
         };
         const inspectEmbedded = async (row, check) => {
             if (row.embedded || (/\.mkv$/i.test(row.node.name) && row.complete)) return;
+            if (/\.mkv$/i.test(row.node.name) && row.complete) return;
             row.embedded = await drive.inspectEmbedded?.(row.node, check);
             if (row.embedded) diag('内嵌字幕', `${row.node.name} · ${row.embedded.message}`);
         };
-        const readSubtitles = async (searchAfter = true, force = false) => {
+        const checkDirectory = async (force = false) => {
             diag('检查开始', force ? '强制复查已有字幕：跳过缓存，重读正文' : '读取当前选中的视频与已有字幕');
-            cancelled = false; inventory = []; drive = null; subtitleContext = null; deleteSelection.clear(); clearDeletePreview(); scope = ''; ui.get('subtitleView').value = force ? 'all' : 'incomplete'; lock(true);
+            cancelled = false; inventory = []; drive = null; subtitleContext = null; checkedScope = null; deleteSelection.clear(); clearDeletePreview();
+            ui.get('subtitleView').value = 'all'; ui.get('subtitleResults').scrollTop = 0; lock(true);
             try {
                 const context = subtitleContext = await mediaContext(provider); check(); drive = subtitleDrive(context);
                 const collected = await collectMediaSelection(context.selected, context.source, status, () => false, check, false); check();
@@ -5455,7 +5485,6 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     catch (error) { check(); if (error.stop || error.phase === 'drive-auth') throw error; diag('识别记录', `${node.name} · 元数据读取失败：${error.message}`); }
                 }, check);
                 inventory = subtitleInventory(collected, context.path);
-                scope = '/' + (context.path || '').replace(/^\/+|\/+$/g, '') + ` · 勾选 ${context.selected.length} 项：` + context.selected.slice(0,3).map(node => node.name).join('、') + (context.selected.length > 3 ? '…' : '');
                 render();
                 const linkedSubtitleGroups = [...collected.linked.values()].filter(subtitles => subtitles.length).length;
                 diag('检查完成', `视频 ${inventory.length}，已关联字幕 ${linkedSubtitleGroups} 组`);
@@ -5478,19 +5507,25 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                         for (const sub of recovered) if (!row.subtitles.some(existing => existing.id === sub.id)) row.subtitles.push(sub);
                         await inspectExistingSubtitles(row, drive, settings().language, diag, check, {force, review});
                     } catch (error) { check(); if (error.stop || error.phase === 'drive-auth') throw error; if (!row.complete) { row.pendingVerification = true; row.error = error.message; } diag('上传待核验', `${row.node.name} · ${error.message}`); }
-                    check();
                     await inspectEmbedded(row, check);
+                    check();
                     row.inspected = true;
                     meter(++done, inventory.length); render();
                 }, check);
+                const names = context.selected.slice(0, 3).map(item => item.name).filter(Boolean);
+                const selection = names.length ? '（' + names.join('、') + (context.selected.length > names.length ? '等' : '') + '）' : '';
+                checkedScope = `本次范围：/${context.path || ''} · 选中 ${context.selected.length} 项${selection} · 视频 ${inventory.length}`;
                 status(inventory.length ? '已检查选中范围。' : '选中范围没有正片视频。'); diag('字幕检查', inventory.length ? `完成，已有字幕确认 ${inventory.filter(subtitleCovered).length}/${inventory.length}` : '选中范围没有正片视频');
-            } catch (error) { inventory = []; drive = null; status('检查结束：' + error.message); diag('检查失败', error.message); }
+            } catch (error) { inventory = []; drive = null; subtitleContext = null; status('检查结束：' + error.message); diag('检查失败', error.message); }
             finally { lock(false); }
-            if (searchAfter && !cancelled) await searchRows(inventory);
+            return checkedScope !== null;
         };
-        ui.get('readSubtitles').onclick = () => readSubtitles();
-        ui.get('recheckSubtitles').onclick = () => readSubtitles(false);
-        ui.get('auditSubtitles').onclick = () => readSubtitles(false, true);
+        ui.get('readSubtitles').onclick = async () => {
+            if (busy || (checkedScope === null && !await checkDirectory())) return;
+            await searchRows(inventory);
+        };
+        ui.get('recheckSubtitles').onclick = () => checkDirectory();
+        ui.get('auditSubtitles').onclick = () => checkDirectory(true);
         ui.get('reviewSubtitleDeletes').onclick = () => {
             deletePlan = inventory.flatMap(row => row.subtitles.filter(sub => deleteSelection.has(String(sub.id))).map(sub => ({row,sub})));
             if (!deletePlan.length) return;
@@ -5591,12 +5626,16 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             } catch (error) { render(); status(`已中断：已核验 ${done}，待核验 ${pending}，失败 ${failed}；${error.message}`); diag('补齐中断', error.message); }
             finally { lock(false); }
         };
-        ui.get('searchSubtitles').onclick = () => searchRows(inventory);
-        ui.get('stopSubtitles').onclick = () => { cancelled = true; ui.get('stopSubtitles').disabled = true; status('等待当前请求结束后停止…'); };
-        ui.get('clearSubtitleLog').onclick = () => { logLines.length = 0; ui.get('subtitleLog').value = ''; diag('日志', '已清空'); };
-        ui.get('subtitleView').onchange = () => render(true);
+        selectAll.onchange = () => {
+            if (busy) return;
+            for (const id of viewSubtitleIds(ui.get('subtitleView').value)) {
+                if (selectAll.checked) deleteSelection.add(id); else deleteSelection.delete(id);
+            }
+            clearDeletePreview(); render();
+        };
+        ui.get('subtitleView').onchange = () => { render(); ui.get('subtitleResults').scrollTop = 0; };
         ui.get('openSubtitlesKey').onchange = () => { service.logout(); ui.get('subtitleLoginState').textContent = '未登录'; };
-        ui.get('subtitleLanguage').onchange = () => { inventory = []; drive = null; render(); status('语言已更改，请重新查找。'); };
+        ui.get('subtitleLanguage').onchange = () => { inventory = []; drive = null; subtitleContext = null; checkedScope = null; deleteSelection.clear(); clearDeletePreview(); render(); status('语言已更改，请重新查找。'); };
         ui.get('saveSubtitleSettings').onclick = () => { GM_setValue('cross-drive-subtitle-settings', settings()); status('设置已保存。'); };
         ui.get('forgetSubtitleKey').onclick = () => {
             const currentDrive = drive || subtitleDrive({session:provider === '光鸭' ? {provider,token:capture.token} : recover123Session(),source:{}});
@@ -5609,20 +5648,12 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             catch (error) { status('登录失败：' + error.message); }
             finally { ui.get('subtitlePassword').value = ''; lock(false); }
         };
-        ui.get('copySubtitleReport').onclick = async () => {
-            const report = coverageText + '\n' + subtitleSearchSummary(inventory) + '\n\n' + inventory.map(row => row.path + '\n' + subtitleRowDetail(row, '未查询')).join('\n\n');
-            try { await navigator.clipboard.writeText(report); status('查询结果已复制，不包含密钥和下载地址。'); }
-            catch (error) { status('复制失败：' + error.message); }
-        };
         ui.get('copySubtitleLog').onclick = async () => {
             try { await navigator.clipboard.writeText(ui.get('subtitleLog').value || '（暂无字幕运行日志）'); status('字幕运行日志已复制。'); }
             catch (error) { status('复制日志失败：' + error.message); }
         };
-        ui.get('copyMissingSubtitles').onclick = async () => {
-            try { const rows = inventory.filter(row => !subtitleCovered(row)); await navigator.clipboard.writeText(rows.map(row => row.path).join('\n')); status(`已复制未补齐路径 ${rows.length} 条；待核验项也包含在内，不代表已确认缺失。`); }
-            catch (error) { status('复制失败：' + error.message); }
-        };
     }
+
 
     if (location.hostname === 'www.guangyapan.com') {
         installHooks();

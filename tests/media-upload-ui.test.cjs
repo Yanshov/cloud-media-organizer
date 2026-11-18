@@ -308,7 +308,7 @@ async function subtitleUI() {
     Object.assign(ctx,{mediaAIEndpoint:()=> 'https://ai.example/v1/chat/completions',document:{createElement:element},makePanel:(_title,html)=>{
         panelMarkup=html;
         for(const tag of html.matchAll(/<[^>]+\bid="([^"]+)"[^>]*>/g)){const el=element();el.checked=/\bchecked\b/.test(tag[0]);el.disabled=/\bdisabled\b/.test(tag[0]);elements.set(tag[1],el)}
-        return {get,moveSettings(ids){movedSettings=ids},openSettings(){},busy(){}};
+        return {get,moveSettings(ids){movedSettings = [...movedSettings, ...ids]},openSettings(){},busy(){}};
     },mediaContext:async()=>({selected:[video],source:{},path:'电影'}),selectedTreeCache:{stale:true},
     collectMediaSelection:async()=>({videos:[video],linked:new Map([['v',hasSubtitle?[sub]:[]]])}),
     parseMediaName:()=>({query:'电影',year:2000}),mediaBonusName:()=>false,mediaRecords:{get:()=>({query:'电影',year:2000,type:'movie',match:'movie:7'})},mediaStem:name=>name.replace(/\.[^.]+$/,''),
@@ -320,12 +320,12 @@ async function subtitleUI() {
     });
     vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'../src/works.js'),'utf8')+part('    function subtitleInventory(', '    if (location.hostname'),ctx);
     ctx.initSubtitles();get('assrtToken').value='test';get('useThunder').checked=false;
-    assert.match(panelMarkup,/复制完整报告/);assert.match(panelMarkup,/复制未补齐路径/);assert.match(panelMarkup,/OpenSubtitles · 可选/);assert.match(panelMarkup,/id="subtitleAccountSettings"/);
+    assert.doesNotMatch(panelMarkup,/重搜未完成项|复制完整报告|复制未补齐路径/);
     const openSettings=panelMarkup.slice(panelMarkup.indexOf('<details id="openSubtitlesSettings"'),panelMarkup.indexOf('<label>字幕语言'));
     assert.match(openSettings,/useOpenSubtitles[\s\S]*openSubtitlesKey[\s\S]*subtitleAccountSettings/);assert.doesNotMatch(openSettings,/^<details[^>]*\bopen\b/);
-    assert.deepEqual(Array.from(movedSettings),['subtitleSettings']);
+    assert.deepEqual(Array.from(movedSettings),['subtitleSettings','openSubtitlesSettings']);
     await get('readSubtitles').onclick();
-    assert.match(get('subtitleSummary').textContent,/待核验 1/);assert.equal(queries,0);assert.equal(get('fillSubtitles').disabled,true);assert.equal(get('searchSubtitles').disabled,true);assert.equal(get('recheckSubtitles').disabled,false);
+    assert.match(get('subtitleSummary').textContent,/待核验 1/);assert.equal(queries,0);assert.equal(get('fillSubtitles').disabled,true);assert.equal(get('recheckSubtitles').disabled,false);
     broken=false;await get('recheckSubtitles').onclick();assert.match(get('subtitleSummary').textContent,/已有\/已补齐 1/);assert.equal(queries,0);assert.equal(reads,2);
     await get('auditSubtitles').onclick();assert.equal(reads,3);assert.equal(queries,0);assert.equal(get('subtitleView').value,'all');assert.match(get('subtitleLog').value,/作品归属和音画同步未确认/);
     aiConfig={enabled:true,base:'https://ai.example',model:'test'};
@@ -334,15 +334,15 @@ async function subtitleUI() {
     aiConfig={};recovered=[sub];readBytes=Buffer.from('<html>not a subtitle</html>');hasSubtitle=false;
     await get('recheckSubtitles').onclick();assert.match(get('subtitleSummary').textContent,/已有\/已补齐 0/);assert.equal(queries,0,'Recovered upload must pass body validation, not merely receipt reconciliation');
     recovered=[];readBytes=valid;
-    hasSubtitle=false;await get('readSubtitles').onclick();assert.equal(queries,1);assert.equal(get('fillSubtitles').disabled,false);
+    hasSubtitle=false;await get('recheckSubtitles').onclick();await get('readSubtitles').onclick();assert.equal(queries,1);assert.equal(get('fillSubtitles').disabled,false);
     await get('fillSubtitles').onclick();assert.equal(saves,1);assert.match(get('subtitleProgress').textContent,/待核验 1，失败 0/);assert.equal(get('fillSubtitles').disabled,true);
     assert.deepEqual(downloads,['A1','B'],'493 prioritizes another package before siblings of broken package');assert.equal(aliasCalls,2,'Shared work detail and English aliases are fetched once then persisted');
-    await get('searchSubtitles').onclick();assert.equal(queries,1,'Pending upload cannot be searched/refilled');
+    await get('readSubtitles').onclick();assert.equal(queries,1,'Pending upload cannot be searched/refilled');
     await get('recheckSubtitles').onclick();assert.match(get('subtitleSummary').textContent,/已有\/已补齐 1/);assert.equal(saves,1);assert.equal(queries,1,'Recheck only reads drive inventory');
     hasSubtitle=false;aiConfig={enabled:true,base:'https://ai.example',model:'test'};
     ctx.createMediaAI=()=>({disambiguateSubtitle:async payload=>{assert.equal(payload.candidates.length,2);assert.equal(payload.work.tmdbId,'7');return {index:1,confidence:.96}}});
     aiCandidates=true;
-    await get('readSubtitles').onclick();assert.match(get('subtitleSummary').textContent,/可补齐 1/);assert.match(get('subtitleLog').value,/AI 字幕建议.*Another\.Translation/);
+    await get('recheckSubtitles').onclick();await get('readSubtitles').onclick();assert.match(get('subtitleSummary').textContent,/可补齐 1/);assert.match(get('subtitleLog').value,/AI 字幕建议.*Another\.Translation/);
     console.log('PASS subtitle UI flow: existing-read failure disables search/fill; old records resolve trusted TMDB aliases without changing search title; 493 moves to another package; pending upload recheck recovers without repeated upload');
 }
 

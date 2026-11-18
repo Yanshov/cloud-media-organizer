@@ -1,18 +1,18 @@
     function initMediaOrganizer(provider = '123') {
         const ui = makePanel(provider + ' 重命名与自动分类', `
             <p>勾选内容 → 识别并预览 → 确认执行。使用 TMDB 查询影视资料。待确认项目可整组或一键跳过。</p>
-            <details id="mediaSettings"><summary>TMDB 设置</summary><label><span class="credential-head"><span>TMDB 密钥</span><a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener noreferrer">获取 API ↗</a></span><input id="tmdbKey" type="password" autocomplete="off" placeholder="API Key 或 API Read Access Token"></label>
-            <div class="panel-actions"><button id="saveMediaKey">保存密钥</button><button id="forgetMediaKey">清除密钥</button></div></details>
-            <details id="mediaAISettings"><summary>大模型识别 · 可选</summary>
+            <section id="mediaSettings"><label><span class="credential-head"><span>TMDB 密钥</span><a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener noreferrer">获取 API ↗</a></span><input id="tmdbKey" type="password" autocomplete="off" placeholder="API Key 或 API Read Access Token"></label>
+            <div class="panel-actions"><button id="saveMediaKey">保存密钥</button><button id="forgetMediaKey">清除密钥</button></div></section>
+            <section id="mediaAISettings">
             <label><input id="enableMediaAI" type="checkbox">启用大模型识别</label>
-            <p>仅补充 TMDB 未匹配项。发送文件名、目录名或字幕候选，不上传视频；调用可能计费。</p>
+            <p>仅发送文件名、目录名或字幕候选，不上传视频。调用可能计费。</p>
             <label>服务商<select id="mediaAIProvider"><option value="custom">自定义兼容接口</option><option value="deepseek">DeepSeek</option><option value="qwen">通义千问</option><option value="siliconflow">硅基流动</option><option value="openai">OpenAI</option></select></label>
+            <label>模型<select id="mediaAIModelSelect"></select></label>
             <label>API 地址<input id="mediaAIBase" type="url" placeholder="https://服务商地址/v1"></label>
             <label><span class="credential-head"><span>API Key</span><a id="mediaAIKeyLink" href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener noreferrer" hidden>获取 API ↗</a></span><input id="mediaAIKey" type="password" autocomplete="off" placeholder="粘贴 API Key；可带或不带 Bearer 前缀"></label>
-            <label>模型<select id="mediaAIModelSelect"></select></label>
             <div class="panel-actions"><button id="fetchMediaAIModels">获取模型列表</button><button id="saveMediaAI">保存设置</button><button id="testMediaAI">测试连接</button><button id="forgetMediaAI">清除密钥</button></div>
             <label id="mediaAIManualModel" hidden>手动填写模型 ID<input id="mediaAIModel" placeholder="接口不提供列表时手动填写"></label>
-            <p id="mediaAIState" role="status"></p></details>
+            <p id="mediaAIState" role="status"></p></section>
             <p id="mediaTarget"></p><p id="mediaRecordState" role="status"></p>
             <div class="panel-actions"><button id="scanMedia">识别并预览</button><button id="runMedia" disabled>确认执行</button><button id="stopMedia" hidden disabled>停止</button></div>
             <div id="mediaMeter" hidden><label id="mediaMeterLabel" for="mediaBar"></label><progress id="mediaBar" max="100" value="0" style="display:block;width:100%;height:12px;margin:8px 0;accent-color:gray"></progress></div><p id="mediaProgress" role="status"></p><div id="mediaSummary"></div>
@@ -26,9 +26,9 @@
             <p id="cleanupRule">清理图片、附件及已标记的花絮/预告；默认保留字幕、字体和普通视频。</p>
             <div class="panel-actions"><button id="checkCleanup">检查清理范围</button><button id="runEmpty" disabled>确认清理</button></div>
             <div id="emptyPreview" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto"></div></details><div id="log"></div>`, true);
-        ui.moveSettings(['mediaSettings','mediaAISettings']);
+        ui.moveSettings(['mediaSettings'], 'TMDB 设置', '#settingsBasics');
+        ui.moveSettings(['mediaAISettings'], '大模型识别', '#settingsModels');
         ui.get('tmdbKey').value = GM_getValue('cross-drive-tmdb-key', '');
-        ui.get('mediaSettings').open = true;
         const storedAI = GM_getValue('cross-drive-media-ai', {});
         const aiSaved = migrateMediaAISettings(storedAI);
         if (aiSaved !== storedAI) GM_setValue('cross-drive-media-ai', aiSaved);
@@ -49,13 +49,13 @@
             const option = (value, label) => { const item = document.createElement('option'); item.value = value; item.textContent = label; select.appendChild(item); };
             option('', '请选择模型');
             for (const model of models) option(model, model);
-            if (current && !models.includes(current)) option(current, current + '（当前设置，未在列表中确认）');
+            if (current && !models.includes(current)) option(current, current + '（未验证）');
             option('__manual__', '手动填写模型 ID');
             select.value = current;
             ui.get('mediaAIManualModel').hidden = true;
         };
         updateAILink(); showAIModels();
-        ui.get('mediaAIState').textContent = aiSaved.enabled ? '已启用：逐文件翻译完整作品名，保留剧场版、特别篇和副标题后搜索。' : '未启用，不会发送大模型请求。';
+        ui.get('mediaAIState').textContent = aiSaved.enabled ? '大模型识别已启用。' : '未启用，不会发送大模型请求。';
         let rows = [], batch = null, batchWriter = null, session = null, source = null, client = null, targetSession = null, targetPath = '', emptyPlan = [], emptySession = null, emptySource = null;
         let cancelled = false, reused = 0;
         const checkStopped = () => { if (cancelled) throw new Error('已停止；已完成的操作保留，未处理项目不再执行'); };

@@ -129,7 +129,7 @@ async function thunderOnlyUI() {
     for (const status of ['present','unknown']) {
         embedded={status,message:status === 'present' ? '发现 1 条内嵌字幕轨' : '无法确认 MKV 内嵌字幕'};
         await elements.get('recheckSubtitles').onclick();
-        await elements.get('searchSubtitles').onclick();
+        await elements.get('readSubtitles').onclick();
         await elements.get('fillSubtitles').onclick();
         assert.equal(searches,1,'Embedded or unknown MKV never queries a source');
         assert.equal(saves,1,'Embedded or unknown MKV never writes a subtitle');

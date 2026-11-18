@@ -47,15 +47,16 @@
         const main = create('div', 'tool-main'), side = create('aside', 'tool-sidebar');
         const status = create('section', 'tool-card tool-status');
         status.append(create('h4', '', '当前状态'));
-        const statusIds = id === 'subtitle' ? ['subtitleProgress','subtitleMeter','subtitleSummary']
+        const statusIds = id === 'subtitle' ? ['subtitleScope','subtitleProgress','subtitleMeter']
             : id === 'media' ? ['mediaTarget','mediaProgress','mediaMeter','mediaSummary','mediaRecordState'] : ['status','target','progress'];
         for (const name of statusIds) take(status, '#' + name);
         side.append(status);
         const heading = create('div', 'tool-list-heading');
-        heading.append(create('h4', '', id === 'subtitle' ? '字幕检查结果' : id === 'media' ? '作品确认与整理预览' : 'JSON 文件清单'));
+        const headingTitle = create('h4', '', id === 'subtitle' ? '字幕检查结果' : id === 'media' ? '作品确认与整理预览' : 'JSON 文件清单');
+        heading.append(headingTitle);
         if (id === 'subtitle') {
-            const filter = pane.querySelector('#subtitleView')?.closest('label');
-            if (filter) heading.append(filter);
+            headingTitle.id = 'subtitleResultsTitle';
+            take(heading, '#subtitleFilters');
         }
         main.append(heading);
         if (id === 'json') {
@@ -72,51 +73,49 @@
             const fileActions = create('div', 'editor-actions');
             for (const selector of ['#save','#saveJson','#copyJson']) take(fileActions, selector);
             if (fileActions.children.length) heading.append(fileActions);
+        } else if (id === 'subtitle') {
+            take(main, '#subtitleResults');
         } else {
             main.append(create('p', 'tool-list-hint', '按作品查看，点击条目展开详情；操作会应用于全部符合条件的项目。'));
-            if (id === 'subtitle') take(main, '#subtitleEmpty');
-            take(main, id === 'subtitle' ? '#subtitleRows' : '#mediaRows');
-            if (id === 'media') {
-                const empty = create('p', 'media-empty', '先在网盘勾选视频或文件夹，点击“识别并预览”。识别后的待处理作品会显示在这里。');
-                main.append(empty);
-                const preview = create('details', 'tool-preview');
-                preview.append(create('summary', '', '查看整理目标路径'));
-                take(preview, '#mediaPreview'); main.append(preview);
-            }
+            take(main, '#mediaRows');
+            const empty = create('p', 'media-empty', '先在网盘勾选视频或文件夹，点击“识别并预览”。识别后的待处理作品会显示在这里。');
+            main.append(empty);
+            const preview = create('details', 'tool-preview');
+            preview.append(create('summary', '', '查看整理目标路径'));
+            take(preview, '#mediaPreview'); main.append(preview);
         }
         const utilities = create('div', 'tool-utilities');
         const auxiliary = id === 'json' ? side : utilities;
-        const actions = create(id === 'json' ? 'section' : 'details', 'tool-card tool-secondary');
-        actions.append(create(id === 'json' ? 'h4' : 'summary', '', id === 'json' ? '导入选项' : '批量与辅助操作'));
-        for (const node of [...pane.querySelectorAll(':scope > .panel-actions, :scope > .export-options')]) actions.append(node);
-        auxiliary.append(actions);
+        if (id !== 'subtitle') {
+            const actions = id === 'json' ? create('section', 'tool-import-options') : create('details', 'tool-card tool-secondary');
+            if (id === 'media') actions.append(create('summary', '', '批量与辅助操作'));
+            for (const node of [...pane.querySelectorAll(':scope > .panel-actions, :scope > .export-options')]) actions.append(node);
+            (id === 'json' ? commands : auxiliary).append(actions);
+        }
         // Settings are moved to the shared settings page by each feature after setup.
         for (const node of [...pane.children]) {
             if (node.id.endsWith('Settings') || (node.tagName === 'INPUT' && node.hidden)) continue;
-            if (node.tagName === 'P') {
-                const help = create('details', 'tool-card'); help.append(create('summary', '', '检查范围说明'), node); auxiliary.append(help);
-            } else { node.classList.add('tool-card'); auxiliary.append(node); }
+            node.classList.add('tool-card'); auxiliary.append(node);
         }
         // A single work surface with a persistent status area, rather than a second sidebar.
-        const overview = create('div', 'tool-overview');
-        for (const selector of ['#subtitleSummary','#mediaSummary']) {
-            const node = status.querySelector(selector); if (node) overview.append(node);
+        const summary = status.querySelector('#mediaSummary');
+        if (summary) {
+            const overview = create('div', 'tool-overview');
+            overview.append(summary); main.prepend(overview);
         }
-        if (overview.children.length) main.prepend(overview);
         status.querySelector('h4').remove(); status.className = 'tool-status-text';
         if (id === 'json') {
-            actions.className = 'tool-import-options'; actions.querySelector('h4').remove(); commands.append(actions);
             for (const node of [...side.children]) if (node !== status) utilities.append(node);
         }
         const footer = create('footer', 'tool-statusbar'); footer.append(status, utilities);
         layout.append(main); pane.append(intro, commands, layout, footer);
-        const rows = main.querySelector('#subtitleRows, #mediaRows');
-        if (rows) {
+        const rows = main.querySelector('#mediaRows');
+        if (id === 'media' && rows) {
             rows.classList.add('tool-results');
             const pager = create('nav', 'tool-pagination'); pager.setAttribute('aria-label', '作品列表分页');
             const previous = create('button', '', '上一页'), next = create('button', '', '下一页'), label = create('span', '');
             previous.type = next.type = 'button'; label.setAttribute('aria-live', 'polite'); pager.append(previous, label, next); rows.after(pager);
-            const pageSize = id === 'subtitle' ? 2 : 4;
+            const pageSize = 4;
             let current = 0;
             const render = () => {
                 const items = [...rows.children], pages = Math.max(1, Math.ceil(items.length / pageSize));
@@ -129,7 +128,6 @@
             previous.onclick = () => { current--; render(); };
             next.onclick = () => { current++; render(); };
             new MutationObserver(render).observe(rows, {childList:true});
-            pane.querySelector('#subtitleView')?.addEventListener('change', () => { current = 0; render(); });
             render();
         }
     }
@@ -155,7 +153,7 @@ input,select,textarea{width:100%;border:1px solid var(--border);border-radius:7p
 textarea{height:180px;resize:vertical;font:14px/1.7 Consolas,"Microsoft YaHei",monospace}label{display:block;margin:12px 0}
 label:has(>input[type=checkbox]){display:flex;align-items:flex-start;gap:8px}input[type=checkbox]{width:18px!important;height:18px;flex:0 0 auto;min-height:0;padding:0;margin:4px 0 0;accent-color:var(--accent)}
 summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-bottom:12px}
-.workspace-overlay{position:fixed;inset:0;pointer-events:none}.box{position:fixed;display:flex;flex-direction:column;pointer-events:auto;width:1280px;height:800px;overflow:hidden;border:1px solid var(--border);border-radius:12px;background:var(--panel);box-shadow:0 24px 80px #0004;container-type:inline-size;outline:none}
+.workspace-overlay{position:fixed;inset:0;pointer-events:none}.box{position:fixed;display:flex;flex-direction:column;pointer-events:auto;width:1280px;height:800px;overflow:hidden;border:1px solid var(--border);border-radius:12px;background:var(--panel);box-shadow:0 24px 80px #0004;container-type:size;outline:none}
 .workspace-header{display:flex;align-items:center;justify-content:space-between;gap:12px;height:52px;flex-shrink:0;padding:0 18px;cursor:grab;touch-action:none;user-select:none;background:var(--surface);border-bottom:1px solid var(--border)}
 .workspace-header h2{font-size:16px;font-weight:600;margin:0;display:flex;align-items:center;gap:9px}.workspace-header h2::before{content:'⇄';display:grid;place-items:center;width:23px;height:23px;border-radius:6px;background:var(--accent);color:var(--button-text);font-size:17px;font-weight:400}
 .workspace-header p{display:none}.workspace-header.dragging{cursor:grabbing}.workspace-header.pinned{cursor:default}.workspace-window-actions{display:flex;align-items:center;gap:12px}
@@ -186,6 +184,13 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 .tool-overview{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.tool-overview>:not([hidden]):not(:empty){background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin:0 0 16px;line-height:1.8;font-size:15px}.tool-overview:has(>:only-child)>:not(:empty){grid-column:1/-1}
 .tool-list-hint{color:var(--muted);font-size:15px;margin:0 0 14px}.tool-results{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}
 .sync-item{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:16px;margin:12px 0;min-width:0}.tool-results>.sync-item{margin:0;font-size:16px}.tool-results>details[open]{grid-column:1/-1}.tool-results>.sync-item:hover{border-color:var(--accent)}.tool-results summary{font-size:16px;line-height:1.8}.outside-page{display:none!important}
+#subtitlePane .tool-layout,#subtitlePane .tool-main{display:flex;min-height:0}#subtitlePane .tool-main{flex:1;flex-direction:column}#subtitlePane .tool-list-heading{flex:none}#subtitleFilters :focus-visible{outline-offset:-2px}
+#subtitleFilters{display:flex;align-items:center;gap:8px;flex:0 0 auto;max-width:100%}#subtitleFilters label{align-items:center;gap:5px;margin:0;font-size:14px;white-space:nowrap;flex:none}#subtitleFilters input[type=checkbox]{margin:0}
+#subtitleResults{display:flex;flex:1 1 0;flex-direction:column;min-height:0;overflow:auto;overscroll-behavior:contain;overflow-anchor:none;scrollbar-width:none}#subtitleResults:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+#subtitleSummary{padding:10px 12px;font-size:15px;overflow-wrap:anywhere}
+#subtitleRows{flex:1 0 auto;grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:auto;align-items:stretch}#subtitleRows:empty{display:none}#subtitleRows>.sync-item{overflow-wrap:anywhere}
+#subtitleRows h5{margin:0;font-size:16px;line-height:1.5;overflow-wrap:anywhere}.subtitle-result{margin-top:8px}.subtitle-result+.subtitle-result{padding-top:8px;border-top:1px solid var(--border)}
+.subtitle-result p{margin:0;line-height:1.55;white-space:pre-wrap}.subtitle-result label{margin:6px 0;font-size:14px;overflow-wrap:anywhere}.subtitle-result select{font-size:14px;padding:6px 10px}
 .sync-location{display:grid;grid-template-columns:6.5em minmax(0,1fr);gap:8px;line-height:1.7}.sync-location span:last-child{white-space:pre-wrap;overflow-wrap:anywhere}.sync-location span:first-child{color:var(--muted)}
 .sync-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border)}
 .tool-pagination{display:flex;align-items:center;justify-content:center;gap:16px;margin:18px 0 0;font-size:14px;color:var(--muted)}.tool-pagination button{padding:5px 10px;font-size:14px}
@@ -196,30 +201,49 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 .tool-status-text{flex:1;min-width:180px}.tool-status-text p{margin:0;line-height:1.9;font-size:15px}.tool-status-text p:empty{display:none}.tool-status-text progress{accent-color:var(--accent);height:6px!important;margin:6px 0!important}.tool-status-text label{margin:0;font-size:15px}.tool-status-text #mediaMeter{margin:0}
 .tool-utilities{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-left:auto}.tool-utilities>.tool-card{padding:0;border:0;background:transparent;margin:0}.tool-utilities summary{padding:2px 0;font-size:15px;font-weight:500;color:var(--muted)}
 .tool-statusbar:has(.tool-utilities>details[open]){display:block}.tool-utilities:has(>details[open]){display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin-top:10px}.tool-utilities>details[open]{grid-column:1/-1;color:var(--text);min-width:0}
-#log{white-space:pre-wrap;overflow-wrap:anywhere;font:14px/1.7 Consolas,"Microsoft YaHei",monospace;max-height:180px;overflow:auto}#log:empty{display:none}#log>div+div{margin-top:6px}#subtitleLog{height:180px;min-height:100px;max-height:300px}
+#subtitlePane .tool-statusbar{align-items:flex-end;margin-top:10px}#subtitlePane .tool-status-text{min-width:0}#subtitleProgress{max-height:3.8em;overflow:auto;scrollbar-width:none}
+#subtitleScope{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#subtitlePane .tool-statusbar:has(.tool-utilities>details[open]){max-height:40%;overflow:auto}#subtitleDeleteList{overflow-wrap:anywhere}
+#log{white-space:pre-wrap;overflow-wrap:anywhere;font:14px/1.7 Consolas,"Microsoft YaHei",monospace;max-height:180px;overflow:auto}#log:empty{display:none}#log>div+div{margin-top:6px}
+#subtitlePane .tool-statusbar:has(#subtitleDiagnostics[open]){max-height:none;overflow:visible}#subtitleDiagnostics .panel-actions{margin:4px 0 8px}#subtitlePane:has(#subtitleDiagnostics[open]) .tool-intro p{display:none}
+#subtitleLog{display:block;width:100%;height:clamp(56px,calc(36cqh - 128px),180px);resize:none;overflow:auto;scrollbar-width:none;overscroll-behavior:contain}
 .sync-preview{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px}.sync-preview h4{margin:0 0 8px}.sync-preview p{margin:6px 0}#syncList{overflow-wrap:anywhere;font-size:15px}#syncDestination{font-weight:600}
 .export-options{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin:12px 0}.export-options input{width:auto}.export-options button{font-size:14px;padding:7px 12px}.credential-head{display:flex;justify-content:space-between;align-items:center;gap:12px}.credential-head a{font-size:15px;flex-shrink:0}
 .source-result{margin:12px 0;padding:12px;border:1px solid var(--border);border-radius:8px}.source-result button{margin:8px 8px 0 0;font-size:16px}
-.workspace-appearance{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:18px 20px;margin:20px 0}
-.theme-row{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:14px 0}.theme-row select{width:220px;margin:0}
-#settingsSections{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}#settingsSections>.sync-item{margin:0}#settingsSections legend{font-size:18px;font-weight:600}#settingsSections h3{font-size:18px;font-weight:600}#backToTools{margin-top:18px}
+#workspaceSettings{display:flex;flex-direction:column;padding:20px 24px;font-size:14px;scrollbar-width:none}
+.settings-heading{display:flex;flex:none;align-items:center;justify-content:space-between;gap:14px;margin-bottom:18px;padding-bottom:12px;border-bottom:1px solid var(--border)}.settings-heading h3{margin:0;font-size:20px}
+.settings-appearance{display:flex;align-items:center;justify-content:flex-end;gap:16px;margin-left:auto}.settings-appearance label{display:flex;align-items:center;gap:6px;margin:0;white-space:nowrap;color:var(--muted)}.settings-appearance select{width:auto;max-width:180px;padding:5px 8px;margin:0}
+#settingsSections{display:grid;flex:none;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}#settingsSections:has(>.settings-column:empty){grid-template-columns:minmax(0,1fr)}
+.settings-column{display:grid;align-content:start;gap:14px;min-width:0}.settings-column:empty{display:none}
+@container(max-height:740px){#settingsSections:has(#openSubtitlesSettings[open]){--compact-settings:1}}
+@container(max-height:650px){#settingsSections:has(>#settingsModels:not(:empty)+#settingsBasics:not(:empty)){--compact-settings:1}}
+#settingsSections{container-name:settings-grid}
+@container settings-grid style(--compact-settings:1){#settingsModels,#settingsBasics{display:contents}#settingsSections .sync-item:has(#mediaAISettings){grid-area:1/1/span 2/2}#settingsSections .sync-item:has(#subtitleSettings){grid-area:1/2/span 2/3}#settingsSections .sync-item:has(#mediaSettings){grid-area:1/3}#settingsSections .sync-item:has(#openSubtitlesSettings){grid-area:2/3}}
+@container(max-height:740px){#settingsSections:has(#openSubtitlesSettings[open]):has(>#settingsModels:not(:empty)+#settingsBasics:not(:empty)){grid-template-columns:minmax(0,1.15fr) minmax(0,1fr) minmax(178px,.73fr);grid-template-rows:min-content auto}}
+@container(max-height:650px){#settingsSections:has(>#settingsModels:not(:empty)+#settingsBasics:not(:empty)){grid-template-columns:minmax(0,1.15fr) minmax(0,1fr) minmax(178px,.73fr);grid-template-rows:min-content auto}}
+#settingsSections .sync-item{margin:0;padding:14px;border-radius:8px}#settingsSections h3{margin:0 0 8px;font-size:16px}
+#mediaAISettings{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr);column-gap:8px}#mediaAISettings>*{grid-column:1/-1}#mediaAISettings>label:has(#mediaAIProvider,#mediaAIModelSelect){grid-column:auto;min-width:0}
+#settingsSections label,#settingsSections p{margin:6px 0;overflow-wrap:anywhere}#settingsSections p{line-height:1.45;color:var(--muted)}#settingsSections input,#settingsSections select{padding:6px 8px;margin-top:4px;line-height:1.4}#settingsSections input[type=checkbox]{margin:1px 0 0}
+#settingsSections .panel-actions{gap:6px;margin:8px 0 0}#settingsSections button,#backToTools{padding:5px 8px;line-height:1.4}#settingsSections details[open]>summary{margin-bottom:5px}#settingsSections .credential-head a{font-size:13px}
+#settingsSections :is(#saveMediaKey,#saveMediaAI,#saveSubtitleSettings){background:var(--tint);font-weight:600}
+#subtitleAccountSettings>div{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}#subtitleAccountSettings>div>label{min-width:0}
+#subtitleSettings .credential-head{flex-wrap:wrap;gap:2px 6px}
+@container(max-height:650px){#workspaceSettings{padding:8px 12px}.settings-heading{margin-bottom:8px;padding-bottom:6px}.settings-heading h3{font-size:18px}#settingsSections{gap:9px}.settings-column{gap:9px}#settingsSections .sync-item{padding:8px}#settingsSections h3{margin-bottom:5px}#settingsSections label,#settingsSections p{margin:3px 0}#settingsSections input,#settingsSections select{padding:4px 6px;margin-top:3px}#settingsSections .panel-actions{gap:4px;margin-top:4px}#settingsSections button,#backToTools{padding:4px 7px}}
 #toggle{display:grid;place-items:center;width:50px;height:50px;padding:0;border-radius:15px;background:var(--surface);box-shadow:0 5px 20px #0003}#toggle svg{width:24px;height:24px;pointer-events:none}
 @container(max-width:1050px){.workspace-navigation{width:152px;padding:16px 9px}.tool-pane{padding:20px 20px 14px}.tool-intro h3{font-size:20px}.tool-intro p{font-size:14px}.tool-commandbar{margin:16px 0 18px;gap:8px}.tool-commandbar button{padding:8px 12px;font-size:14px}.tool-commandbar .panel-actions{gap:6px}.tool-import-options{max-width:240px;font-size:14px}.tool-statusbar{gap:12px;margin-top:14px}.tool-utilities{gap:10px}.tool-overview>:not([hidden]):not(:empty){margin-bottom:10px;padding:10px}.json-editor{min-height:160px}#jsonPane .tool-main{min-height:220px}.json-editor-empty svg{width:44px;height:44px;margin-bottom:10px}.json-editor-empty p{margin:6px 0 12px}.tool-results{gap:10px}.tool-results>.sync-item{padding:12px}}
-@container(max-width:760px){.workspace-frame{flex-direction:column}.workspace-navigation{width:auto;padding:8px 12px;border-right:0;border-bottom:1px solid var(--border);flex-direction:row;align-items:center;gap:8px}.nav-caption,.nav-footer small{display:none}.workspace-tabs{flex-direction:row;flex:1;gap:4px}.workspace-tabs button{justify-content:center;gap:5px;padding:8px 6px;font-size:14px}.workspace-tabs button svg{display:none}.workspace-tabs button[aria-selected=true]::before{display:none}.nav-footer{margin:0}#settingsWorkspace{width:auto;font-size:14px;gap:5px;padding:8px}.workspace-body{min-height:0}.tool-pane{padding:18px 14px}.tool-results,.tool-overview,#settingsSections{grid-template-columns:minmax(0,1fr)}.tool-intro h3{font-size:18px;flex-wrap:wrap}.tool-list-heading{flex-wrap:wrap;gap:8px}.tool-import-options{margin:0;max-width:none}.tool-statusbar{display:block}.tool-utilities{margin-top:10px}.theme-row{flex-wrap:wrap}.theme-row select{max-width:100%}.sync-location{grid-template-columns:1fr;gap:2px}.json-editor-empty{padding:12px}.json-editor-empty strong{font-size:15px}.json-editor-empty p{font-size:14px}#subtitleEmpty,.media-empty{padding:36px 16px}.tool-utilities:has(>details[open]){grid-template-columns:1fr}}
-
         </style><button id="toggle" type="button" title="打开云盘工具" aria-label="打开云盘工具" aria-haspopup="dialog" aria-expanded="false" aria-controls="toolDialog"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 12h4M8 16h3M16 12v6m-2-2 2 2 2-2"/></svg></button>
         <div class="workspace-overlay" hidden><div class="box" id="toolDialog" role="dialog" aria-modal="false" aria-labelledby="workspaceTitle" tabindex="-1">
         <header class="workspace-header"><div><h2 id="workspaceTitle">云盘工具</h2><p id="windowHint">拖动标题栏移动 · 可同时操作网页</p></div><div class="workspace-window-actions"><button id="settingsWorkspace" type="button">设置</button><button id="pinWorkspace" type="button" aria-pressed="false" title="锁定窗口位置">固定位置</button><button id="closeWorkspace" type="button" aria-label="关闭面板" title="关闭">×</button></div></header>
         <div class="workspace-toolbar"><div class="workspace-tabs" role="tablist" aria-label="功能分类"><button id="jsonTab" type="button" role="tab" aria-selected="false" aria-controls="jsonPane" tabindex="-1" disabled>跨盘 JSON</button><button id="mediaTab" type="button" role="tab" aria-selected="false" aria-controls="mediaPane" tabindex="-1" disabled title="当前网盘暂不支持影视整理">影视整理</button><button id="subtitleTab" type="button" role="tab" aria-selected="false" aria-controls="subtitlePane" tabindex="-1" disabled title="当前网盘暂不支持字幕检查">字幕</button></div>
         <label class="theme-row">窗口尺寸<select id="workspaceSize" aria-label="窗口尺寸"><option value="960x600">960 × 600</option><option value="1280x800" selected>1280 × 800（默认）</option><option value="1440x900">1440 × 900</option><option value="1600x1000">1600 × 1000</option></select></label>
         <label class="theme-row">外观<select id="theme"><option value="auto">跟随页面</option><option value="light">浅色</option><option value="dark">深色</option></select></label></div>
-        <div class="workspace-body"><section id="workspaceSettings" class="tool-pane" hidden><h3>设置</h3><p>影视资料、大模型和字幕来源统一在这里配置；凭证只保存在本地脚本设置。</p><div id="settingsSections"></div><button id="backToTools">返回工具</button></section></div></div></div>`;
+        <div class="workspace-body"><section id="workspaceSettings" class="tool-pane" hidden><div class="settings-heading"><h3>设置</h3><button id="backToTools">返回工具</button></div><div id="settingsSections"><div class="settings-column" id="settingsModels"></div><div class="settings-column" id="settingsBasics"></div></div></section></div></div></div>`;
             const overlay = root.querySelector('.workspace-overlay'), dialog = root.querySelector('.box'), toggle = root.querySelector('#toggle');
             const frame = document.createElement('div'); frame.className = 'workspace-frame';
             const navigation = root.querySelector('.workspace-toolbar'); navigation.className = 'workspace-navigation';
-            const appearance = document.createElement('section'); appearance.className = 'workspace-appearance';
+            const appearance = document.createElement('div'); appearance.className = 'settings-appearance';
             for (const label of [...navigation.querySelectorAll('.theme-row')]) appearance.append(label);
-            root.querySelector('#settingsSections').before(appearance);
+            root.querySelector('#backToTools').before(appearance);
             const navTitle = document.createElement('p'); navTitle.className = 'nav-caption'; navTitle.textContent = '工作空间'; navigation.prepend(navTitle);
             const navFooter = document.createElement('div'); navFooter.className = 'nav-footer'; navFooter.append(root.querySelector('#settingsWorkspace'));
             const version = document.createElement('small'); version.textContent = '云盘工具' + (typeof VERSION === 'string' ? ' · v' + VERSION : ''); navFooter.append(version); navigation.append(navFooter);
@@ -243,13 +267,13 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 const width = page.innerWidth, height = page.innerHeight;
                 // Size presets describe screenshot/device pixels, including OS scaling and browser zoom.
                 const ratio = Number.isFinite(page.devicePixelRatio) && page.devicePixelRatio > 0 ? page.devicePixelRatio : 1;
-                const narrow = width * ratio <= 760, margin = (narrow ? 12 : 24) / ratio;
+                const margin = 24 / ratio;
                 const [baseWidth,baseHeight] = sizes.get(windowSize);
                 const scale = Math.max(0,Math.min(1,(width - margin * 2) * ratio / baseWidth,(height - margin * 2) * ratio / baseHeight));
                 dialog.style.transformOrigin = 'top left'; dialog.style.transform = `scale(${1 / ratio})`;
                 dialog.style.maxWidth = dialog.style.maxHeight = 'none';
-                dialog.style.width = Math.max(1,narrow ? Math.min(baseWidth,(width - margin * 2) * ratio) : Math.round(baseWidth * scale)) + 'px';
-                dialog.style.height = Math.max(1,narrow ? Math.min(baseHeight,(height - margin * 2) * ratio) : Math.round(baseHeight * scale)) + 'px';
+                dialog.style.width = Math.max(1,Math.round(baseWidth * scale)) + 'px';
+                dialog.style.height = Math.max(1,Math.round(baseHeight * scale)) + 'px';
                 const rect = dialog.getBoundingClientRect();
                 const left = Math.max(margin, Math.min(point?.left ?? Math.round((width - rect.width) / 2), width - rect.width - margin));
                 const top = Math.max(margin, Math.min(point?.top ?? Math.round((height - rect.height) / 2), height - rect.height - margin));
@@ -338,7 +362,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 root.querySelector('#workspaceSettings').hidden = false;
                 root.querySelector('#settingsWorkspace').setAttribute('aria-pressed', 'true');
                 const detail = name && root.querySelector('#' + name);
-                if (detail) { detail.open = true; detail.scrollIntoView?.({block:'nearest'}); }
+                if (detail) { if (detail.tagName === 'DETAILS') detail.open = true; detail.scrollIntoView?.({block:'nearest'}); }
             };
             root.querySelector('#settingsWorkspace').onclick = () => openSettings();
             root.querySelector('#backToTools').onclick = () => activate(active);
@@ -368,16 +392,17 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         root.querySelector('.workspace-body').appendChild(pane);
         const button = root.querySelector('#' + id + 'Tab'), elements = new Map();
         button.disabled = false; button.removeAttribute('title'); button.onclick = () => activate(id);
-        const entry = { pane, button, onActivate: null, settings:null };
+        const entry = { pane, button, onActivate: null, settings:[] };
         const ui = { get: name => {
-            if (!elements.has(name)) elements.set(name, pane.querySelector('#' + name) || entry.settings?.querySelector('#' + name) || (['toggle', 'theme'].includes(name) ? root.querySelector('#' + name) : null));
+            if (!elements.has(name)) elements.set(name, pane.querySelector('#' + name) || entry.settings.map(section => section.querySelector('#' + name)).find(Boolean) || (['toggle', 'theme'].includes(name) ? root.querySelector('#' + name) : null));
             return elements.get(name);
         }, onActivate: callback => { entry.onActivate = callback; },
-            moveSettings: ids => {
+            moveSettings: (ids, headingTitle = title, destination = '#settingsBasics') => {
                 const section = document.createElement('fieldset'); section.className = 'sync-item'; section.style.minWidth = '0';
-                const heading = document.createElement('h3'); heading.textContent = title; section.appendChild(heading);
-                for (const name of ids) { const detail = ui.get(name); detail.open = true; section.appendChild(detail); }
-                entry.settings = section; root.querySelector('#settingsSections').appendChild(section);
+                const heading = document.createElement('h3'); heading.textContent = headingTitle; section.appendChild(heading);
+                for (const name of ids) section.appendChild(ui.get(name));
+                entry.settings.push(section);
+                root.querySelector(destination).appendChild(section);
             },
             openSettings: name => toolWorkspace.openSettings(name),
             busy: value => {
@@ -389,7 +414,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 for (const [name, tab] of tabs) {
                     const blocked = !!toolWorkspace.owner && name !== toolWorkspace.owner;
                     tab.button.disabled = blocked;
-                    if (tab.settings) tab.settings.disabled = blocked;
+                    for (const section of tab.settings) section.disabled = blocked;
                 }
                 root.querySelector('#settingsWorkspace').disabled = !!toolWorkspace.owner;
                 root.querySelector('#backToTools').disabled = !!toolWorkspace.owner;
