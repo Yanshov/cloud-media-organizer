@@ -15,8 +15,9 @@
             <p id="mediaAIState" role="status"></p></section>
             <p id="mediaTarget"></p><p id="mediaRecordState" role="status"></p>
             <div class="panel-actions"><button id="scanMedia">识别并预览</button><button id="runMedia" disabled>确认执行</button><button id="openMediaCleanup" type="button" aria-controls="mediaCleanup" aria-expanded="false">清理文件</button><button id="stopMedia" hidden disabled>停止</button></div>
-            <p id="mediaProgress" role="status">先在网页勾选视频或文件夹。</p><progress id="mediaBar" aria-label="影视整理进度" max="1" value="0" hidden></progress><div id="mediaSummary"></div>
-            <div id="mediaPreview" style="max-height:240px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px"></div>
+            <p id="mediaProgress" role="status">先在网页勾选视频或文件夹。</p><progress id="mediaBar" aria-label="影视整理进度" max="1" value="0" hidden></progress><p id="mediaSummary" role="status"></p>
+            <select id="mediaView" aria-label="筛选影视整理结果" disabled><option value="pending">待确认</option><option value="ready">已匹配</option><option value="skipped">已跳过</option><option value="all">全部</option></select>
+            <div id="mediaPreview"></div>
             <div id="mediaRows"></div>
             <section id="mediaCleanup" class="sync-preview" hidden>
             <label>清理规则<select id="cleanupMode"><option value="extras">非正片与附件</option><option value="nonstandard">所有不规范项目</option></select></label>
@@ -92,12 +93,20 @@
             catch (error) { progress('复制日志失败：' + error.message); }
         };
         const invalidate = () => { batch = null; batchWriter = null; ui.get('runMedia').disabled = true; ui.get('mediaPreview').textContent = ''; };
+        let mediaBusy = false;
+        const updateRowControls = () => {
+            filter.disabled = mediaBusy || !rows.length;
+            for (const control of results.querySelectorAll('#mediaRows :is(input,select,button), #mediaEmpty button')) {
+                control.disabled = mediaBusy || control.hasAttribute('data-media-disabled');
+            }
+        };
         const runTask = createPanelTask(ui, (busy, stoppable = false) => {
+            mediaBusy = busy;
             if (busy) cancelled = false;
             ui.get('stopMedia').hidden = !busy || !stoppable;
             ui.get('stopMedia').disabled = !busy || !stoppable;
             for (const id of ['scanMedia', 'openMediaCleanup', 'saveMediaKey', 'forgetMediaKey', 'tmdbKey', 'checkCleanup', 'cleanupMode', 'cleanupSubtitles', 'enableMediaAI', 'mediaAIProvider', 'mediaAIBase', 'mediaAIKey', 'mediaAIModel', 'mediaAIModelSelect', 'fetchMediaAIModels', 'saveMediaAI', 'testMediaAI', 'forgetMediaAI']) ui.get(id).disabled = busy;
-            for (const control of ui.get('mediaRows').querySelectorAll('input,select,button')) control.disabled = busy;
+            updateRowControls();
             ui.get('runMedia').disabled = busy || !batch;
             ui.get('runEmpty').disabled = busy || !emptyPlan.length;
         });
@@ -201,7 +210,7 @@
         };
         const skipRows = async targets => {
             for (const row of targets) row.include = false;
-            invalidate(); render(); progress('已跳过 ' + targets.length + ' 个视频，未修改网盘文件；可点击“恢复已跳过”撤销'); await refreshPreview();
+            invalidate(); render(); progress('已跳过 ' + targets.length + ' 个视频，未修改网盘文件'); await refreshPreview();
         };
         const seasonPicker = (box, row, wholeGroup = false) => {
             const label = document.createElement('label'), select = document.createElement('select');
@@ -241,7 +250,7 @@
             if (row.episode != null && !(row.seasonEpisodes || []).some(ep => ep.episode_number === row.episode)) {
                 const option = document.createElement('option'); option.value = String(row.episode); option.textContent = '原集号 ' + row.episode + '（本季未找到）'; select.appendChild(option);
             }
-            select.value = String(row.episode ?? ''); select.disabled = row.season == null; label.appendChild(select); box.appendChild(label);
+            select.value = String(row.episode ?? ''); if (row.season == null) select.setAttribute('data-media-disabled',''); label.appendChild(select); box.appendChild(label);
             select.onchange = () => {
                 if (!select.value) return;
                 return editRows(async () => { row.episode = Number(select.value); row.episodeInferred = false; row.endEpisode = null; await validateEpisode(row); progress(readyRow(row) ? '已应用季集，此文件已就绪，预览会自动更新' : row.error); });
@@ -274,80 +283,206 @@
             toggle.onclick = () => { showAll = !showAll; update(); };
             box.appendChild(toggle); update(); return select;
         };
+        const mediaViews = [['pending','待确认'], ['ready','已匹配'], ['skipped','已跳过'], ['all','全部']];
+        const results = ui.get('mediaResults'), host = ui.get('mediaRows'), filter = ui.get('mediaView');
+        let detail = null;
+        filter.value = 'pending';
+        filter.onchange = () => {
+            detail = null;
+            results.scrollTop = 0;
+            render();
+        };
+        const rowState = row => !row.include ? 'skipped' : readyRow(row) ? 'ready' : 'pending';
+        const textElement = (tag, text, className = '') => {
+            const el = document.createElement(tag);
+            el.textContent = text;
+            if (className) el.className = className;
+            return el;
+        };
+        const action = (box, label, click) => {
+            const button = textElement('button',label);
+            button.type = 'button';
+            button.onclick = click;
+            box.append(button);
+            return button;
+        };
+        const resetQuery = (row, value) => {
+            Object.assign(row,{query:value,detail:null,match:'',aiType:'',aiAssisted:false,error:'搜索片名已修改，请重新匹配'});
+        };
+        const renderFileDetail = (box, item) => {
+            box.append(textElement('p','原位置：' + (item.node.originalPath || item.node.path),'media-file-path'));
+            if (item.error) box.append(textElement('p',item.error));
+            if (!item.include) return;
+            if (item.detail) {
+                const season = item.type === 'tv' && item.season != null ? ' · ' + (item.season ? '第 ' + item.season + ' 季' : '特别篇') : '';
+                box.append(textElement('p','已匹配：' + item.title + '（' + item.year + '）' + season));
+                if (item.type === 'tv') {
+                    seasonPicker(box,item);
+                    episodePicker(box,item);
+                }
+            }
+            const edits = document.createElement('details');
+            edits.dataset.mediaDisclosure = 'file';
+            edits.append(textElement('summary','修改此文件的作品或命名'));
+            field(edits,'搜索片名（仅本文件）',item.query,value => resetQuery(item,value));
+            action(edits,'查询候选作品',() => editRows(async () => {
+                try { item.candidates = await client.search(item.query); }
+                catch (error) { progress('查询失败：' + error.message); }
+            }));
+            const select = candidatePicker(edits,item);
+            select.onchange = () => {
+                if (!select.value) return;
+                return editRows(async () => {
+                    try { await choose(item,select.value); await validateEpisode(item); }
+                    catch (error) { item.error = error.message; }
+                });
+            };
+            field(edits,'标准片名（仅本文件）',item.title,value => { item.title = value; });
+            field(edits,'年份（仅本文件）',item.year,value => { item.year = value; });
+            box.append(edits);
+            const actions = document.createElement('div');
+            actions.className = 'panel-actions';
+            action(actions,'检查此文件',() => editRows(async () => {
+                await validateEpisode(item);
+                progress(readyRow(item) ? '此文件已就绪，正在更新预览。' : item.error || '此文件仍需处理。');
+            }));
+            action(actions,'跳过此文件',() => skipRows([item]));
+            box.append(actions);
+        };
+        const renderDetail = (group, title) => {
+            const box = document.createElement('section');
+            box.className = 'sync-item media-detail';
+            const back = action(box,'返回结果',() => {
+                const {anchor, scrollTop} = detail;
+                detail = null;
+                render();
+                results.scrollTop = scrollTop;
+                const button = [...host.querySelectorAll('[data-media-group]')].find(node => node.dataset.mediaGroup === anchor.group);
+                (button || filter).focus({preventScroll:true});
+            });
+            back.id = 'mediaBack';
+            box.append(textElement('h5',title));
+            const included = group.filter(row => row.include);
+            const pending = included.filter(row => !readyRow(row));
+            const reference = pending[0] || included[0];
+            if (reference && included.length > 1) {
+                const controls = document.createElement('details');
+                controls.dataset.mediaDisclosure = 'group';
+                controls.open = !!pending.length;
+                controls.append(textElement('summary','调整整组匹配'));
+                field(controls,'搜索片名（整组）',reference.query,value => included.forEach(row => resetQuery(row,value)));
+                action(controls,'重新匹配整组',() => editRows(async () => {
+                    await matchGroup(included,reference.query);
+                    progress('已重新匹配整组。');
+                }));
+                const select = candidatePicker(controls,reference,true);
+                select.onchange = () => {
+                    if (!select.value) return;
+                    return editRows(async () => {
+                        try {
+                            for (const row of included) { await choose(row,select.value); await validateEpisode(row); }
+                        } catch (error) { progress('读取作品失败：' + error.message); }
+                    });
+                };
+                const missingSeason = pending.find(row => row.detail && row.type === 'tv' && row.season == null);
+                if (missingSeason) seasonPicker(controls,missingSeason,true);
+                if (reference.detail) {
+                    field(controls,'标准片名（整组）',reference.title,value => included.forEach(row => { row.title = value; }));
+                    field(controls,'年份（整组，剧集用首播年份）',reference.year,value => included.forEach(row => { row.year = value; }));
+                }
+                action(controls,'跳过本组',() => skipRows(included));
+                box.append(controls);
+            }
+            const item = group.includes(detail.file) ? detail.file : pending[0] || included[0] || group[0];
+            detail.file = item;
+            if (group.length > 1) {
+                const label = textElement('label','选择文件');
+                const select = document.createElement('select');
+                select.id = 'mediaDetailFile';
+                for (const [index,row] of group.entries()) {
+                    const option = textElement('option',mediaViews.find(([state]) => state === rowState(row))[1] + ' · ' + row.node.name);
+                    option.value = String(index);
+                    select.append(option);
+                }
+                select.value = String(group.indexOf(item));
+                select.onchange = () => {
+                    detail.file = group[Number(select.value)];
+                    render();
+                    host.querySelector('#mediaDetailFile')?.focus({preventScroll:true});
+                };
+                label.append(select);
+                box.append(label);
+            }
+            renderFileDetail(box,item);
+            host.append(box);
+        };
         const render = () => {
-            const expanded = new Map([...ui.get('mediaRows').querySelectorAll('details[data-layout-key]')].map(box => [box.dataset.layoutKey,box.open]));
-            ui.get('mediaRows').textContent = '';
-            let ready = 0;
-            const groups = new Map(), pendingGroups = new Map();
+            const scrollTop = results.scrollTop;
+            const previousDisclosures = new Map([...host.querySelectorAll('[data-media-disclosure]')].map(el => [el.dataset.mediaDisclosure,el.open]));
+            host.textContent = '';
+            const groups = new Map(), counts = {pending:0,ready:0,skipped:0,all:rows.length};
             for (const row of rows) {
-                if (!row.include) continue;
-                if (!groups.has(row.group)) groups.set(row.group, []);
+                if (!groups.has(row.group)) groups.set(row.group,[]);
                 groups.get(row.group).push(row);
-                if (readyRow(row)) { ready++; continue; }
-                if (!pendingGroups.has(row.group)) pendingGroups.set(row.group, []);
-                pendingGroups.get(row.group).push(row);
+                counts[rowState(row)]++;
             }
-            const skipped = rows.filter(row => !row.include).length;
-            ui.get('mediaSummary').textContent = rows.length ? `已匹配 ${ready} 个视频 · 待确认 ${rows.length - skipped - ready} 个 · 已跳过 ${skipped} 个` : '';
-            if (rows.length) ui.get('mediaSummary').textContent += ` · ${pendingGroups.size} 组待确认`;
-            for (const pending of pendingGroups.values()) {
-                const row = pending[0], group = groups.get(row.group);
-                const matchedGroup = pending.every(item => item.detail);
-                const box = document.createElement('details'); box.className = 'sync-item'; box.dataset.layoutKey = 'group:' + row.group; box.open = expanded.get(box.dataset.layoutKey) || false;
-                const originalNames = [...new Set(group.map(item => group.length === 1 ? item.node.name : item.originalFolder || item.query || '未识别作品'))];
-                const title = document.createElement('summary'); title.textContent = `原：${originalNames.join(' / ')} · ${group.length} 个视频（${pending.length} 个待处理）${matchedGroup ? (pending.some(item => /季号|集号|季集/.test(item.error)) ? ' · 已匹配，需补季集' : ' · 已匹配，需处理异常') : ''}`; box.appendChild(title);
-                const matched = document.createElement('p'); matched.textContent = '匹配为：' + (row.detail ? `${row.title}（${row.year}） · ${row.detail.source || 'TMDB'}` : '尚未确定'); box.appendChild(matched);
-                const edits = document.createElement('details'), editTitle = document.createElement('summary'); editTitle.textContent = '修改搜索或命名'; edits.appendChild(editTitle);
-                field(edits, '搜索片名', row.query, value => { for (const item of group) { item.query = value; item.detail = null; item.match = ''; item.aiType = ''; item.aiAssisted = false; item.error = '搜索片名已修改，请重新匹配'; } });
-                const search = document.createElement('button'); search.textContent = '重新匹配整组'; edits.appendChild(search);
-                const select = candidatePicker(box, row, true);
-                const missingSeason = pending.find(item => item.detail && item.type === 'tv' && item.season == null);
-                if (missingSeason) seasonPicker(box, missingSeason, true);
-                search.onclick = () => editRows(async () => { try { await matchGroup(peers(row), row.query); progress('已重新匹配同组，明确的结果自动采用'); } catch (e) { progress('匹配失败：' + e.message); } });
-                select.onchange = () => editRows(async () => { try { for (const item of peers(row)) { await choose(item, select.value); await validateEpisode(item); } } catch (e) { progress('读取作品失败：' + e.message); } });
-                if (row.detail) {
-                    field(edits, '标准片名（整组）', row.title, value => { for (const item of group) item.title = value; }); field(edits, '年份（整组，剧集用首播年份）', row.year, value => { for (const item of group) item.year = value; });
-
-                }
-                box.appendChild(edits);
-                const groupActions = document.createElement('div'); groupActions.className = 'panel-actions';
-                const skipGroup = document.createElement('button'); skipGroup.textContent = '跳过本组'; skipGroup.onclick = () => skipRows(group);
-                groupActions.appendChild(skipGroup); box.appendChild(groupActions);
-                const state = document.createElement('p'); state.textContent = [...new Set(pending.map(item => item.error).filter(Boolean))].join('；') || '请检查待确认项目'; box.appendChild(state);
-                const files = document.createElement('details'), summary = document.createElement('summary'); summary.textContent = `查看 ${group.length} 个原文件／调整季集`; files.appendChild(summary);
-                for (const item of matchedGroup ? [] : group) {
-                    const line = document.createElement('div'), name = document.createElement('p'); name.textContent = item.node.path; line.appendChild(name);
-                    if (item.detail && item.type === 'tv') { seasonPicker(line, item); episodePicker(line, item); }
-                    files.appendChild(line);
-                }
-                if (!matchedGroup) box.appendChild(files);
-                ui.get('mediaRows').appendChild(box);
-                if (matchedGroup) for (const item of pending) {
-                    const card = document.createElement('details'); card.className = 'sync-item media-file-issue'; card.dataset.layoutKey = 'file:' + item.node.id; card.open = expanded.get(card.dataset.layoutKey) || false;
-                    const heading = document.createElement('summary'); heading.textContent = '待处理文件：' + item.node.name; card.appendChild(heading);
-                    const original = document.createElement('p'); original.textContent = '原位置：' + (item.node.originalPath || item.node.path); card.appendChild(original);
-                    const issue = document.createElement('p'); issue.textContent = item.error || '请检查文件信息'; card.appendChild(issue);
-                    const work = document.createElement('p'); work.textContent = '已匹配：' + item.title + (item.type === 'tv' ? '（整剧首播 ' + item.year + '）' + (item.season != null ? ' · 第 ' + item.season + ' 季' + (item.seasonYear ? '（' + item.seasonYear + '）' : '') : '') : '（' + item.year + '）') + ' · ' + (item.detail.source || 'TMDB'); card.appendChild(work);
-                    if (item.type === 'tv') {
-                        seasonPicker(card, item);
-                        episodePicker(card, item);
+            for (const [value,label] of mediaViews) {
+                filter.querySelector('option[value="' + value + '"]').textContent = label + '（' + counts[value] + '）';
+            }
+            ui.get('mediaSummary').textContent = rows.length
+                ? groups.size + ' 组作品 · ' + counts.all + ' 个视频 · 待确认 ' + counts.pending + ' · 已匹配 ' + counts.ready + ' · 已跳过 ' + counts.skipped
+                : '';
+            let visible = false;
+            for (const [key,group] of groups) {
+                const shown = group.filter(row => filter.value === 'all' || rowState(row) === filter.value);
+                const reference = group.find(row => row.title) || group[0];
+                const title = reference.title || reference.query || reference.node.name;
+                const seasons = [...new Set(group.filter(row => row.type === 'tv' && row.season != null).map(row => row.season))].sort((a,b) => a-b);
+                const caption = title + (seasons.length ? ' · ' + seasons.map(n => n ? '第 ' + n + ' 季' : '特别篇').join('、') : '');
+                if (detail) {
+                    if (detail.anchor.group !== key) continue;
+                    renderDetail(group,caption);
+                    for (const el of host.querySelectorAll('[data-media-disclosure]')) {
+                        if (previousDisclosures.has(el.dataset.mediaDisclosure)) el.open = previousDisclosures.get(el.dataset.mediaDisclosure);
                     }
-                    const edits = document.createElement('details'), caption = document.createElement('summary'); caption.textContent = '单独修改这个文件的作品或命名'; edits.appendChild(caption);
-                    field(edits, '搜索片名（仅本文件）', item.query, value => { item.query = value; item.detail = null; item.match = ''; item.aiType = ''; item.aiAssisted = false; item.error = '搜索片名已修改，请重新匹配'; });
-                    const search = document.createElement('button'); search.textContent = '查询候选作品'; edits.appendChild(search);
-                    const select = candidatePicker(edits, item);
-                    search.onclick = () => editRows(async () => { try { item.candidates = await client.search(item.query); } catch (e) { progress('查询失败：' + e.message); } });
-                    select.onchange = () => editRows(async () => { try { await choose(item, select.value); await validateEpisode(item); } catch (e) { item.error = e.message; } });
-                    field(edits, '标准片名（仅本文件）', item.title, v => { item.title = v; });
-                    field(edits, '年份（仅本文件）', item.year, v => { item.year = v; });
-                    card.appendChild(edits);
-                    const actions = document.createElement('div'); actions.className = 'panel-actions';
-                    const validate = document.createElement('button'); validate.textContent = '检查此文件';
-                    validate.onclick = () => editRows(async () => { await validateEpisode(item); progress(readyRow(item) ? '此文件已通过季集与命名检查，已从异常列表移除；预览会自动更新' : item.error || '仍需处理'); });
-                    const skip = document.createElement('button'); skip.textContent = '跳过此文件'; skip.onclick = () => skipRows([item]);
-                    actions.appendChild(validate); actions.appendChild(skip); card.appendChild(actions); ui.get('mediaRows').appendChild(card);
+                    visible = true;
+                    break;
                 }
+                if (!shown.length) continue;
+                const count = {pending:0,ready:0,skipped:0};
+                for (const row of group) count[rowState(row)]++;
+                const card = document.createElement('section');
+                card.className = 'sync-item media-card';
+                card.append(textElement('h5',caption));
+                card.append(textElement('p',group.length + ' 个视频 · ' + mediaViews.slice(0,3)
+                    .filter(([state]) => count[state]).map(([state,label]) => label + ' ' + count[state]).join(' · '),'media-card-count'));
+                const issue = shown.find(row => rowState(row) === 'pending' && row.error);
+                if (issue) {
+                    const note = textElement('p',issue.error,'media-card-issue');
+                    note.title = issue.error;
+                    card.append(note);
+                }
+                const button = action(card,filter.value === 'pending' ? '处理待确认' : '查看详情',() => {
+                    detail = {anchor:shown[0],file:shown[0],scrollTop:results.scrollTop};
+                    render();
+                    results.scrollTop = 0;
+                    host.querySelector('#mediaBack').focus({preventScroll:true});
+                });
+                button.dataset.mediaGroup = key;
+                host.append(card);
+                visible = true;
             }
+            const empty = ui.get('mediaEmpty');
+            empty.hidden = visible;
+            empty.textContent = rows.length ? (filter.value === 'pending' ? '当前没有待确认的视频。' : '当前筛选下没有视频。')
+                : '在网盘勾选视频或文件夹后，点击「识别并预览」。';
+            if (!visible && filter.value === 'pending' && counts.ready) action(empty,'查看已匹配',() => {
+                filter.value = 'ready';
+                filter.onchange();
+                filter.focus();
+            });
+            updateRowControls();
+            results.scrollTop = scrollTop;
         };
         async function choose(row, match) {
             checkStopped();
@@ -459,7 +594,10 @@
         };
         async function scan() {
             reused = 0;
-            invalidate(); clearLog(); rows = []; render();
+            invalidate(); clearLog(); rows = []; detail = null;
+            filter.value = 'pending'; results.scrollTop = 0;
+            ui.get('mediaPreviewPanel').open = false;
+            render();
             meter('读取选中内容');
             try {
                 const context = await mediaContext(provider); session = context.session; source = context.source;
@@ -595,7 +733,7 @@
             if (refreshStalePreview()) return;
             if (!batch) return;
 
-            const items = batch, writer = batchWriter; batch = null; batchWriter = null;
+            const items = batch, writer = batchWriter; invalidate();
             meter('重命名文件', 0, items.length);
             let completed = 0, failed = 0; const failedVideos = new Set();
             const rowsById = new Map(rows.map(row => [row.node.id, row]));

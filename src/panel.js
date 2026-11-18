@@ -48,15 +48,18 @@
         const status = create('section', 'tool-card tool-status');
         status.append(create('h4', '', '当前状态'));
         const statusIds = id === 'subtitle' ? ['subtitleScope','subtitleProgress','subtitleMeter']
-            : id === 'media' ? ['mediaTarget','mediaProgress','mediaBar','mediaSummary','mediaRecordState'] : ['status','target','progress'];
+            : id === 'media' ? ['mediaTarget','mediaProgress','mediaBar','mediaRecordState'] : ['status','target','progress'];
         for (const name of statusIds) take(status, '#' + name);
         side.append(status);
         const heading = create('div', 'tool-list-heading');
-        const headingTitle = create('h4', '', id === 'subtitle' ? '字幕检查结果' : id === 'media' ? '作品确认与整理预览' : 'JSON 文件清单');
+        const headingTitle = create('h4', '', id === 'subtitle' ? '字幕检查结果' : id === 'media' ? '影视整理结果' : 'JSON 文件清单');
         heading.append(headingTitle);
         if (id === 'subtitle') {
             headingTitle.id = 'subtitleResultsTitle';
             take(heading, '#subtitleFilters');
+        } else if (id === 'media') {
+            headingTitle.id = 'mediaResultsTitle';
+            take(heading, '#mediaView');
         }
         main.append(heading);
         if (id === 'json') {
@@ -77,14 +80,23 @@
             take(main, '#subtitleSummary');
             take(main, '#subtitleResults');
         } else {
-            main.append(create('p', 'tool-list-hint', '按作品查看，点击条目展开详情；操作会应用于全部符合条件的项目。'));
-            take(main, '#mediaCleanup');
-            take(main, '#mediaRows');
-            const empty = create('p', 'media-empty', '先在网盘勾选视频或文件夹，点击“识别并预览”。识别后的待处理作品会显示在这里。');
-            main.append(empty);
-            const preview = create('details', 'tool-preview');
-            preview.append(create('summary', '', '查看整理目标路径'));
-            take(preview, '#mediaPreview'); main.append(preview);
+            take(main, '#mediaSummary');
+            const results = create('div');
+            results.id = 'mediaResults';
+            results.tabIndex = 0;
+            results.setAttribute('role','region');
+            results.setAttribute('aria-labelledby','mediaResultsTitle');
+            take(results,'#mediaCleanup');
+            const preview = create('details','sync-preview');
+            preview.id = 'mediaPreviewPanel';
+            preview.append(create('summary','','查看整理预览'));
+            take(preview,'#mediaPreview');
+            results.append(preview);
+            take(results,'#mediaRows');
+            const empty = create('div','media-empty','在网盘勾选视频或文件夹后，点击「识别并预览」。');
+            empty.id = 'mediaEmpty';
+            results.append(empty);
+            main.append(results);
         }
         const utilities = create('div', 'tool-utilities');
         const auxiliary = id === 'json' ? side : utilities;
@@ -99,38 +111,12 @@
             node.classList.add('tool-card'); auxiliary.append(node);
         }
         // A single work surface with a persistent status area, rather than a second sidebar.
-        const summary = status.querySelector('#mediaSummary');
-        if (summary) {
-            const overview = create('div', 'tool-overview');
-            overview.append(summary); main.prepend(overview);
-        }
         status.querySelector('h4').remove(); status.className = 'tool-status-text';
         if (id === 'json') {
             for (const node of [...side.children]) if (node !== status) utilities.append(node);
         }
         const footer = create('footer', 'tool-statusbar'); footer.append(status, utilities);
         layout.append(main); pane.append(intro, commands, layout, footer);
-        const rows = main.querySelector('#mediaRows');
-        if (id === 'media' && rows) {
-            rows.classList.add('tool-results');
-            const pager = create('nav', 'tool-pagination'); pager.setAttribute('aria-label', '作品列表分页');
-            const previous = create('button', '', '上一页'), next = create('button', '', '下一页'), label = create('span', '');
-            previous.type = next.type = 'button'; label.setAttribute('aria-live', 'polite'); pager.append(previous, label, next); rows.after(pager);
-            const pageSize = 4;
-            let current = 0;
-            const render = () => {
-                const items = [...rows.children], pages = Math.max(1, Math.ceil(items.length / pageSize));
-                current = Math.min(current, pages - 1);
-                items.forEach((node, index) => node.classList.toggle('outside-page', Math.floor(index / pageSize) !== current));
-                pager.hidden = items.length <= pageSize;
-                label.textContent = `${current + 1} / ${pages} 页 · 共 ${items.length} 项`;
-                previous.disabled = current === 0; next.disabled = current === pages - 1;
-            };
-            previous.onclick = () => { current--; render(); };
-            next.onclick = () => { current++; render(); };
-            new MutationObserver(render).observe(rows, {childList:true});
-            render();
-        }
     }
     let toolWorkspace = null;
     function makePanel(title, html, media = false) {
@@ -184,16 +170,29 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 .json-editor>#json::placeholder{color:transparent}.json-editor-empty{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;padding:24px;text-align:center;color:var(--muted)}
 .json-editor:has(#json:placeholder-shown:not(:focus))>.json-editor-empty{display:flex}.json-editor-empty svg{width:44px;height:44px;padding:8px;border-radius:12px;background:var(--tint);color:var(--muted);margin-bottom:12px}.json-editor-empty strong{color:var(--text);font-size:17px;font-weight:600}.json-editor-empty p{font-size:16px;margin:6px 0 12px}.json-editor-empty span{font-size:14px}
 #jsonPane .tool-main:has(#syncPreview:not([hidden]))>.json-editor{flex:0 0 140px;min-height:140px}#jsonPane:has(#syncPreview:not([hidden])) .tool-layout{flex:none}#jsonPane .tool-main:has(#syncPreview:not([hidden])){height:auto}
-.tool-overview{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.tool-overview>:not([hidden]):not(:empty){background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin:0 0 16px;line-height:1.8;font-size:15px}.tool-overview:has(>:only-child)>:not(:empty){grid-column:1/-1}
-.tool-list-hint{color:var(--muted);font-size:15px;margin:0 0 14px}.tool-results{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}
-.sync-item{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:16px;margin:12px 0;min-width:0}.tool-results>.sync-item{margin:0;font-size:16px}.tool-results>details[open]{grid-column:1/-1}.tool-results>.sync-item:hover{border-color:var(--accent)}.tool-results summary{font-size:16px;line-height:1.8}.outside-page{display:none!important}
-#subtitlePane .tool-layout,#subtitlePane .tool-main{display:flex;min-height:0}#subtitlePane .tool-main{flex:1;flex-direction:column}#subtitlePane .tool-list-heading{flex:none}#subtitleFilters :focus-visible{outline-offset:-2px}
+
+.sync-item{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:16px;margin:12px 0;min-width:0}
+:is(#subtitlePane,#mediaPane) :is(.tool-layout,.tool-main){display:flex;min-height:0}:is(#subtitlePane,#mediaPane) .tool-main{flex:1;flex-direction:column}:is(#subtitlePane,#mediaPane) .tool-list-heading{flex:none}#subtitleFilters :focus-visible{outline-offset:-2px}
 #subtitleFilters{display:flex;align-items:center;gap:8px;flex:0 0 auto;max-width:100%}#subtitleFilters label{align-items:center;gap:5px;margin:0;font-size:14px;white-space:nowrap;flex:none}#subtitleFilters input[type=checkbox]{margin:0}
-#subtitleResults{flex:1 1 0;min-height:0;overflow:auto;overscroll-behavior:contain;overflow-anchor:none;scrollbar-gutter:stable;container-type:size}#subtitleResults:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
-#subtitleSummary{flex:none;padding:10px 12px;font-size:15px;overflow-wrap:anywhere}
-#subtitlePane .tool-surface{overflow:hidden}
-#subtitleRows{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:stretch;align-content:start}
-#subtitleRows>.subtitle-card{margin:0;overflow-wrap:anywhere}
+:is(#subtitleResults,#mediaResults){flex:1 1 0;min-height:0;overflow:auto;overscroll-behavior:contain;overflow-anchor:none;scrollbar-gutter:stable;container-type:size}:is(#subtitleResults,#mediaResults):focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+:is(#subtitleSummary,#mediaSummary){flex:none;padding:10px 12px;font-size:15px;overflow-wrap:anywhere}
+#mediaPane{overflow:hidden}
+:is(#subtitleRows,#mediaRows){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:stretch;align-content:start}
+:is(.subtitle-card,.media-card){margin:0;overflow-wrap:anywhere}
+#mediaSummary:empty{display:none}
+#mediaRows>.sync-item{padding:12px}
+.media-card h5,.media-detail h5{margin:0;font-size:16px;line-height:1.5}
+.media-card p{margin:4px 0;font-size:14px;color:var(--muted)}
+.media-card-issue{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+.media-card-count{font-variant-numeric:tabular-nums}
+.media-card button,#mediaEmpty button{margin-top:6px}
+.media-detail{grid-column:1/-1;margin:0;overflow-wrap:anywhere}
+.media-detail h5{margin-block:8px}
+.media-detail details{padding:8px 0;border-top:1px solid var(--border)}
+.media-detail select{max-width:100%;text-overflow:ellipsis}
+.media-file-path{overflow-wrap:anywhere}
+#mediaView{max-width:100%}
+#mediaPreviewPanel{margin-bottom:10px}
 .subtitle-action-view{grid-column:1/-1;margin:0;overflow-wrap:anywhere}
 #subtitleRows>.sync-item{padding:12px}
 #subtitleRows h5,#subtitleRows p{margin-block:0 4px}
@@ -204,16 +203,17 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 #subtitleRows .subtitle-badge{white-space:normal}
 #subtitleRows .subtitle-detail{flex:1 1 100%;font-size:.9em}
 #subtitleRows .subtitle-result select, #subtitleRows .subtitle-result label span{min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#subtitleRows:empty{display:none}
+:is(#subtitleRows,#mediaRows):empty{display:none}
 #subtitleFilters{flex-wrap:wrap}#subtitleDeleteSelectionCount,.subtitle-group-count{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}.subtitle-group-count{margin:4px 0 0;overflow-wrap:anywhere}
 #subtitleRows h5{margin:0;font-size:16px;line-height:1.5;overflow-wrap:anywhere}.subtitle-result{margin-top:8px}.subtitle-result+.subtitle-result{padding-top:8px;border-top:1px solid var(--border)}
 .subtitle-result p{margin:0;line-height:1.55;white-space:pre-wrap}.subtitle-result label{margin:6px 0;font-size:14px;overflow-wrap:anywhere}.subtitle-result select{font-size:14px;padding:6px 10px}
 .sync-location{display:grid;grid-template-columns:6.5em minmax(0,1fr);gap:8px;line-height:1.7}.sync-location span:last-child{white-space:pre-wrap;overflow-wrap:anywhere}.sync-location span:first-child{color:var(--muted)}
 .sync-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border)}
-.tool-pagination{display:flex;align-items:center;justify-content:center;gap:16px;margin:18px 0 0;font-size:14px;color:var(--muted)}.tool-pagination button{padding:5px 10px;font-size:14px}
+
 #subtitleEmpty,.media-empty{padding:36px 24px;margin:0;text-align:center;border:1px dashed var(--border);border-radius:10px;color:var(--muted);background:var(--surface)}
-.tool-main:has(#mediaRows:not(:empty))>.media-empty,.tool-main:has(#mediaPreview:not(:empty))>.media-empty{display:none}.tool-preview{margin-top:14px}.tool-preview:not(:has(#mediaPreview:not(:empty))){display:none}
-#mediaPreview:not(:empty),#emptyPreview:not(:empty){max-height:none!important;overflow:visible!important;padding:12px 0;margin:12px 0;font-size:14px}
+#mediaPreviewPanel:not(:has(#mediaPreview:not(:empty))){display:none}
+#mediaPreview{white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;margin-top:8px}
+#emptyPreview:not(:empty){max-height:none!important;overflow:visible!important;padding:12px 0;margin:12px 0;font-size:14px}
 .tool-statusbar{display:flex;align-items:flex-start;gap:20px;flex-wrap:wrap;margin-top:20px;padding-top:12px;border-top:1px solid var(--border);font-size:15px;color:var(--muted)}
 .tool-status-text{flex:1;min-width:180px}.tool-status-text p{margin:0;line-height:1.9;font-size:15px}.tool-status-text p:empty{display:none}.tool-status-text progress{accent-color:var(--accent);height:6px!important;margin:6px 0!important}.tool-status-text label{margin:0;font-size:15px}
 .tool-utilities{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-left:auto}.tool-utilities>.tool-card{padding:0;border:0;background:transparent;margin:0}.tool-utilities summary{padding:2px 0;font-size:15px;font-weight:500;color:var(--muted)}
@@ -221,8 +221,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 :is(#subtitlePane,#mediaPane) .tool-statusbar{align-items:flex-end;margin-top:10px}
 :is(#subtitlePane,#mediaPane) .tool-status-text{min-width:0}
 :is(#subtitleProgress,#mediaProgress){max-height:3.8em;overflow:auto;scrollbar-width:none;overflow-wrap:anywhere}
-#mediaPane .tool-layout{display:flex;min-height:0}
-#mediaPane .tool-main{flex:1;overflow:auto;overscroll-behavior:contain}
+
 :is(#subtitleMeter,#mediaBar){display:block;width:100%;border:0;appearance:none;background:var(--border)}
 :is(#subtitleMeter,#mediaBar)::-webkit-progress-bar{background:var(--border)}
 :is(#subtitleMeter,#mediaBar)::-webkit-progress-value{background:var(--text)}
@@ -238,7 +237,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
     #subtitlePane .tool-commandbar{margin-block:8px}
     #subtitlePane .tool-list-heading{margin-bottom:6px}
     #subtitlePane #subtitleSummary{padding:6px 10px;margin-bottom:8px}
-    #subtitleRows>.sync-item{padding:6px 8px}
+    :is(#subtitleRows,#mediaRows)>.sync-item{padding:6px 8px}
     #subtitleRows .subtitle-group-count{margin-top:2px}
     #subtitleRows .subtitle-result{margin-top:4px}
     #subtitleRows .subtitle-result+.subtitle-result{padding-top:4px}
@@ -268,7 +267,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 #subtitleSettings .credential-head{flex-wrap:wrap;gap:2px 6px}
 @container(max-height:650px){#workspaceSettings{padding:8px 12px}.settings-heading{margin-bottom:8px;padding-bottom:6px}.settings-heading h3{font-size:18px}#settingsSections{gap:9px}.settings-column{gap:9px}#settingsSections .sync-item{padding:8px}#settingsSections h3{margin-bottom:5px}#settingsSections label,#settingsSections p{margin:3px 0}#settingsSections input,#settingsSections select{padding:4px 6px;margin-top:3px}#settingsSections .panel-actions{gap:4px;margin-top:4px}#settingsSections button,#backToTools{padding:4px 7px}}
 #toggle{display:grid;place-items:center;width:50px;height:50px;padding:0;border-radius:15px;background:var(--surface);box-shadow:0 5px 20px #0003}#toggle svg{width:24px;height:24px;pointer-events:none}
-@container(max-width:1050px){.workspace-navigation{width:152px;padding:16px 9px}.tool-pane{padding:20px 20px 14px}.tool-intro h3{font-size:20px}.tool-intro p{font-size:14px}.tool-commandbar{margin:16px 0 18px;gap:8px}.tool-commandbar button{padding:8px 12px;font-size:14px}.tool-commandbar .panel-actions{gap:6px}.tool-import-options{max-width:240px;font-size:14px}.tool-statusbar{gap:12px;margin-top:14px}.tool-utilities{gap:10px}.tool-overview>:not([hidden]):not(:empty){margin-bottom:10px;padding:10px}.json-editor{min-height:160px}#jsonPane .tool-main{min-height:220px}.json-editor-empty svg{width:44px;height:44px;margin-bottom:10px}.json-editor-empty p{margin:6px 0 12px}.tool-results{gap:10px}.tool-results>.sync-item{padding:12px}}
+@container(max-width:1050px){.workspace-navigation{width:152px;padding:16px 9px}.tool-pane{padding:20px 20px 14px}.tool-intro h3{font-size:20px}.tool-intro p{font-size:14px}.tool-commandbar{margin:16px 0 18px;gap:8px}.tool-commandbar button{padding:8px 12px;font-size:14px}.tool-commandbar .panel-actions{gap:6px}.tool-import-options{max-width:240px;font-size:14px}.tool-statusbar{gap:12px;margin-top:14px}.tool-utilities{gap:10px}.json-editor{min-height:160px}#jsonPane .tool-main{min-height:220px}.json-editor-empty svg{width:44px;height:44px;margin-bottom:10px}.json-editor-empty p{margin:6px 0 12px}}
         </style><button id="toggle" type="button" title="打开云盘工具" aria-label="打开云盘工具" aria-haspopup="dialog" aria-expanded="false" aria-controls="toolDialog"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 12h4M8 16h3M16 12v6m-2-2 2 2 2-2"/></svg></button>
         <div class="workspace-overlay" hidden><div class="box" id="toolDialog" role="dialog" aria-modal="false" aria-labelledby="workspaceTitle" tabindex="-1">
         <header class="workspace-header"><div><h2 id="workspaceTitle">云盘工具</h2><p id="windowHint">拖动标题栏移动 · 可同时操作网页</p></div><div class="workspace-window-actions"><button id="settingsWorkspace" type="button">设置</button><button id="pinWorkspace" type="button" aria-pressed="false" title="锁定窗口位置">固定位置</button><button id="closeWorkspace" type="button" aria-label="关闭面板" title="关闭">×</button></div></header>

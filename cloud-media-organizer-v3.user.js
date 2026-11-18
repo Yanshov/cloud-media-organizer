@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v3.0（重构版）
 // @namespace    local.cloud-media-organizer
-// @version      3.3.19
+// @version      3.3.20
 // @description  百度/123/光鸭跨盘清单，123/光鸭影视整理、字幕搜索与核验上传
 // @match        https://pan.baidu.com/*
 // @match        https://yun.baidu.com/*
@@ -40,7 +40,7 @@
     if (typeof navigator !== 'undefined' && (navigator.userAgentData?.mobile || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
         navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) return;
 
-    const VERSION = '3.3.19';
+    const VERSION = '3.3.20';
     let jsonTaskStopped = false;
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
@@ -358,15 +358,18 @@
         const status = create('section', 'tool-card tool-status');
         status.append(create('h4', '', '当前状态'));
         const statusIds = id === 'subtitle' ? ['subtitleScope','subtitleProgress','subtitleMeter']
-            : id === 'media' ? ['mediaTarget','mediaProgress','mediaBar','mediaSummary','mediaRecordState'] : ['status','target','progress'];
+            : id === 'media' ? ['mediaTarget','mediaProgress','mediaBar','mediaRecordState'] : ['status','target','progress'];
         for (const name of statusIds) take(status, '#' + name);
         side.append(status);
         const heading = create('div', 'tool-list-heading');
-        const headingTitle = create('h4', '', id === 'subtitle' ? '字幕检查结果' : id === 'media' ? '作品确认与整理预览' : 'JSON 文件清单');
+        const headingTitle = create('h4', '', id === 'subtitle' ? '字幕检查结果' : id === 'media' ? '影视整理结果' : 'JSON 文件清单');
         heading.append(headingTitle);
         if (id === 'subtitle') {
             headingTitle.id = 'subtitleResultsTitle';
             take(heading, '#subtitleFilters');
+        } else if (id === 'media') {
+            headingTitle.id = 'mediaResultsTitle';
+            take(heading, '#mediaView');
         }
         main.append(heading);
         if (id === 'json') {
@@ -387,14 +390,23 @@
             take(main, '#subtitleSummary');
             take(main, '#subtitleResults');
         } else {
-            main.append(create('p', 'tool-list-hint', '按作品查看，点击条目展开详情；操作会应用于全部符合条件的项目。'));
-            take(main, '#mediaCleanup');
-            take(main, '#mediaRows');
-            const empty = create('p', 'media-empty', '先在网盘勾选视频或文件夹，点击“识别并预览”。识别后的待处理作品会显示在这里。');
-            main.append(empty);
-            const preview = create('details', 'tool-preview');
-            preview.append(create('summary', '', '查看整理目标路径'));
-            take(preview, '#mediaPreview'); main.append(preview);
+            take(main, '#mediaSummary');
+            const results = create('div');
+            results.id = 'mediaResults';
+            results.tabIndex = 0;
+            results.setAttribute('role','region');
+            results.setAttribute('aria-labelledby','mediaResultsTitle');
+            take(results,'#mediaCleanup');
+            const preview = create('details','sync-preview');
+            preview.id = 'mediaPreviewPanel';
+            preview.append(create('summary','','查看整理预览'));
+            take(preview,'#mediaPreview');
+            results.append(preview);
+            take(results,'#mediaRows');
+            const empty = create('div','media-empty','在网盘勾选视频或文件夹后，点击「识别并预览」。');
+            empty.id = 'mediaEmpty';
+            results.append(empty);
+            main.append(results);
         }
         const utilities = create('div', 'tool-utilities');
         const auxiliary = id === 'json' ? side : utilities;
@@ -409,38 +421,12 @@
             node.classList.add('tool-card'); auxiliary.append(node);
         }
         // A single work surface with a persistent status area, rather than a second sidebar.
-        const summary = status.querySelector('#mediaSummary');
-        if (summary) {
-            const overview = create('div', 'tool-overview');
-            overview.append(summary); main.prepend(overview);
-        }
         status.querySelector('h4').remove(); status.className = 'tool-status-text';
         if (id === 'json') {
             for (const node of [...side.children]) if (node !== status) utilities.append(node);
         }
         const footer = create('footer', 'tool-statusbar'); footer.append(status, utilities);
         layout.append(main); pane.append(intro, commands, layout, footer);
-        const rows = main.querySelector('#mediaRows');
-        if (id === 'media' && rows) {
-            rows.classList.add('tool-results');
-            const pager = create('nav', 'tool-pagination'); pager.setAttribute('aria-label', '作品列表分页');
-            const previous = create('button', '', '上一页'), next = create('button', '', '下一页'), label = create('span', '');
-            previous.type = next.type = 'button'; label.setAttribute('aria-live', 'polite'); pager.append(previous, label, next); rows.after(pager);
-            const pageSize = 4;
-            let current = 0;
-            const render = () => {
-                const items = [...rows.children], pages = Math.max(1, Math.ceil(items.length / pageSize));
-                current = Math.min(current, pages - 1);
-                items.forEach((node, index) => node.classList.toggle('outside-page', Math.floor(index / pageSize) !== current));
-                pager.hidden = items.length <= pageSize;
-                label.textContent = `${current + 1} / ${pages} 页 · 共 ${items.length} 项`;
-                previous.disabled = current === 0; next.disabled = current === pages - 1;
-            };
-            previous.onclick = () => { current--; render(); };
-            next.onclick = () => { current++; render(); };
-            new MutationObserver(render).observe(rows, {childList:true});
-            render();
-        }
     }
     let toolWorkspace = null;
     function makePanel(title, html, media = false) {
@@ -494,16 +480,29 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 .json-editor>#json::placeholder{color:transparent}.json-editor-empty{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;padding:24px;text-align:center;color:var(--muted)}
 .json-editor:has(#json:placeholder-shown:not(:focus))>.json-editor-empty{display:flex}.json-editor-empty svg{width:44px;height:44px;padding:8px;border-radius:12px;background:var(--tint);color:var(--muted);margin-bottom:12px}.json-editor-empty strong{color:var(--text);font-size:17px;font-weight:600}.json-editor-empty p{font-size:16px;margin:6px 0 12px}.json-editor-empty span{font-size:14px}
 #jsonPane .tool-main:has(#syncPreview:not([hidden]))>.json-editor{flex:0 0 140px;min-height:140px}#jsonPane:has(#syncPreview:not([hidden])) .tool-layout{flex:none}#jsonPane .tool-main:has(#syncPreview:not([hidden])){height:auto}
-.tool-overview{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.tool-overview>:not([hidden]):not(:empty){background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin:0 0 16px;line-height:1.8;font-size:15px}.tool-overview:has(>:only-child)>:not(:empty){grid-column:1/-1}
-.tool-list-hint{color:var(--muted);font-size:15px;margin:0 0 14px}.tool-results{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}
-.sync-item{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:16px;margin:12px 0;min-width:0}.tool-results>.sync-item{margin:0;font-size:16px}.tool-results>details[open]{grid-column:1/-1}.tool-results>.sync-item:hover{border-color:var(--accent)}.tool-results summary{font-size:16px;line-height:1.8}.outside-page{display:none!important}
-#subtitlePane .tool-layout,#subtitlePane .tool-main{display:flex;min-height:0}#subtitlePane .tool-main{flex:1;flex-direction:column}#subtitlePane .tool-list-heading{flex:none}#subtitleFilters :focus-visible{outline-offset:-2px}
+
+.sync-item{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:16px;margin:12px 0;min-width:0}
+:is(#subtitlePane,#mediaPane) :is(.tool-layout,.tool-main){display:flex;min-height:0}:is(#subtitlePane,#mediaPane) .tool-main{flex:1;flex-direction:column}:is(#subtitlePane,#mediaPane) .tool-list-heading{flex:none}#subtitleFilters :focus-visible{outline-offset:-2px}
 #subtitleFilters{display:flex;align-items:center;gap:8px;flex:0 0 auto;max-width:100%}#subtitleFilters label{align-items:center;gap:5px;margin:0;font-size:14px;white-space:nowrap;flex:none}#subtitleFilters input[type=checkbox]{margin:0}
-#subtitleResults{flex:1 1 0;min-height:0;overflow:auto;overscroll-behavior:contain;overflow-anchor:none;scrollbar-gutter:stable;container-type:size}#subtitleResults:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
-#subtitleSummary{flex:none;padding:10px 12px;font-size:15px;overflow-wrap:anywhere}
-#subtitlePane .tool-surface{overflow:hidden}
-#subtitleRows{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:stretch;align-content:start}
-#subtitleRows>.subtitle-card{margin:0;overflow-wrap:anywhere}
+:is(#subtitleResults,#mediaResults){flex:1 1 0;min-height:0;overflow:auto;overscroll-behavior:contain;overflow-anchor:none;scrollbar-gutter:stable;container-type:size}:is(#subtitleResults,#mediaResults):focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+:is(#subtitleSummary,#mediaSummary){flex:none;padding:10px 12px;font-size:15px;overflow-wrap:anywhere}
+#mediaPane{overflow:hidden}
+:is(#subtitleRows,#mediaRows){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:stretch;align-content:start}
+:is(.subtitle-card,.media-card){margin:0;overflow-wrap:anywhere}
+#mediaSummary:empty{display:none}
+#mediaRows>.sync-item{padding:12px}
+.media-card h5,.media-detail h5{margin:0;font-size:16px;line-height:1.5}
+.media-card p{margin:4px 0;font-size:14px;color:var(--muted)}
+.media-card-issue{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+.media-card-count{font-variant-numeric:tabular-nums}
+.media-card button,#mediaEmpty button{margin-top:6px}
+.media-detail{grid-column:1/-1;margin:0;overflow-wrap:anywhere}
+.media-detail h5{margin-block:8px}
+.media-detail details{padding:8px 0;border-top:1px solid var(--border)}
+.media-detail select{max-width:100%;text-overflow:ellipsis}
+.media-file-path{overflow-wrap:anywhere}
+#mediaView{max-width:100%}
+#mediaPreviewPanel{margin-bottom:10px}
 .subtitle-action-view{grid-column:1/-1;margin:0;overflow-wrap:anywhere}
 #subtitleRows>.sync-item{padding:12px}
 #subtitleRows h5,#subtitleRows p{margin-block:0 4px}
@@ -514,16 +513,17 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 #subtitleRows .subtitle-badge{white-space:normal}
 #subtitleRows .subtitle-detail{flex:1 1 100%;font-size:.9em}
 #subtitleRows .subtitle-result select, #subtitleRows .subtitle-result label span{min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#subtitleRows:empty{display:none}
+:is(#subtitleRows,#mediaRows):empty{display:none}
 #subtitleFilters{flex-wrap:wrap}#subtitleDeleteSelectionCount,.subtitle-group-count{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}.subtitle-group-count{margin:4px 0 0;overflow-wrap:anywhere}
 #subtitleRows h5{margin:0;font-size:16px;line-height:1.5;overflow-wrap:anywhere}.subtitle-result{margin-top:8px}.subtitle-result+.subtitle-result{padding-top:8px;border-top:1px solid var(--border)}
 .subtitle-result p{margin:0;line-height:1.55;white-space:pre-wrap}.subtitle-result label{margin:6px 0;font-size:14px;overflow-wrap:anywhere}.subtitle-result select{font-size:14px;padding:6px 10px}
 .sync-location{display:grid;grid-template-columns:6.5em minmax(0,1fr);gap:8px;line-height:1.7}.sync-location span:last-child{white-space:pre-wrap;overflow-wrap:anywhere}.sync-location span:first-child{color:var(--muted)}
 .sync-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border)}
-.tool-pagination{display:flex;align-items:center;justify-content:center;gap:16px;margin:18px 0 0;font-size:14px;color:var(--muted)}.tool-pagination button{padding:5px 10px;font-size:14px}
+
 #subtitleEmpty,.media-empty{padding:36px 24px;margin:0;text-align:center;border:1px dashed var(--border);border-radius:10px;color:var(--muted);background:var(--surface)}
-.tool-main:has(#mediaRows:not(:empty))>.media-empty,.tool-main:has(#mediaPreview:not(:empty))>.media-empty{display:none}.tool-preview{margin-top:14px}.tool-preview:not(:has(#mediaPreview:not(:empty))){display:none}
-#mediaPreview:not(:empty),#emptyPreview:not(:empty){max-height:none!important;overflow:visible!important;padding:12px 0;margin:12px 0;font-size:14px}
+#mediaPreviewPanel:not(:has(#mediaPreview:not(:empty))){display:none}
+#mediaPreview{white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;margin-top:8px}
+#emptyPreview:not(:empty){max-height:none!important;overflow:visible!important;padding:12px 0;margin:12px 0;font-size:14px}
 .tool-statusbar{display:flex;align-items:flex-start;gap:20px;flex-wrap:wrap;margin-top:20px;padding-top:12px;border-top:1px solid var(--border);font-size:15px;color:var(--muted)}
 .tool-status-text{flex:1;min-width:180px}.tool-status-text p{margin:0;line-height:1.9;font-size:15px}.tool-status-text p:empty{display:none}.tool-status-text progress{accent-color:var(--accent);height:6px!important;margin:6px 0!important}.tool-status-text label{margin:0;font-size:15px}
 .tool-utilities{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-left:auto}.tool-utilities>.tool-card{padding:0;border:0;background:transparent;margin:0}.tool-utilities summary{padding:2px 0;font-size:15px;font-weight:500;color:var(--muted)}
@@ -531,8 +531,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 :is(#subtitlePane,#mediaPane) .tool-statusbar{align-items:flex-end;margin-top:10px}
 :is(#subtitlePane,#mediaPane) .tool-status-text{min-width:0}
 :is(#subtitleProgress,#mediaProgress){max-height:3.8em;overflow:auto;scrollbar-width:none;overflow-wrap:anywhere}
-#mediaPane .tool-layout{display:flex;min-height:0}
-#mediaPane .tool-main{flex:1;overflow:auto;overscroll-behavior:contain}
+
 :is(#subtitleMeter,#mediaBar){display:block;width:100%;border:0;appearance:none;background:var(--border)}
 :is(#subtitleMeter,#mediaBar)::-webkit-progress-bar{background:var(--border)}
 :is(#subtitleMeter,#mediaBar)::-webkit-progress-value{background:var(--text)}
@@ -548,7 +547,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
     #subtitlePane .tool-commandbar{margin-block:8px}
     #subtitlePane .tool-list-heading{margin-bottom:6px}
     #subtitlePane #subtitleSummary{padding:6px 10px;margin-bottom:8px}
-    #subtitleRows>.sync-item{padding:6px 8px}
+    :is(#subtitleRows,#mediaRows)>.sync-item{padding:6px 8px}
     #subtitleRows .subtitle-group-count{margin-top:2px}
     #subtitleRows .subtitle-result{margin-top:4px}
     #subtitleRows .subtitle-result+.subtitle-result{padding-top:4px}
@@ -578,7 +577,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 #subtitleSettings .credential-head{flex-wrap:wrap;gap:2px 6px}
 @container(max-height:650px){#workspaceSettings{padding:8px 12px}.settings-heading{margin-bottom:8px;padding-bottom:6px}.settings-heading h3{font-size:18px}#settingsSections{gap:9px}.settings-column{gap:9px}#settingsSections .sync-item{padding:8px}#settingsSections h3{margin-bottom:5px}#settingsSections label,#settingsSections p{margin:3px 0}#settingsSections input,#settingsSections select{padding:4px 6px;margin-top:3px}#settingsSections .panel-actions{gap:4px;margin-top:4px}#settingsSections button,#backToTools{padding:4px 7px}}
 #toggle{display:grid;place-items:center;width:50px;height:50px;padding:0;border-radius:15px;background:var(--surface);box-shadow:0 5px 20px #0003}#toggle svg{width:24px;height:24px;pointer-events:none}
-@container(max-width:1050px){.workspace-navigation{width:152px;padding:16px 9px}.tool-pane{padding:20px 20px 14px}.tool-intro h3{font-size:20px}.tool-intro p{font-size:14px}.tool-commandbar{margin:16px 0 18px;gap:8px}.tool-commandbar button{padding:8px 12px;font-size:14px}.tool-commandbar .panel-actions{gap:6px}.tool-import-options{max-width:240px;font-size:14px}.tool-statusbar{gap:12px;margin-top:14px}.tool-utilities{gap:10px}.tool-overview>:not([hidden]):not(:empty){margin-bottom:10px;padding:10px}.json-editor{min-height:160px}#jsonPane .tool-main{min-height:220px}.json-editor-empty svg{width:44px;height:44px;margin-bottom:10px}.json-editor-empty p{margin:6px 0 12px}.tool-results{gap:10px}.tool-results>.sync-item{padding:12px}}
+@container(max-width:1050px){.workspace-navigation{width:152px;padding:16px 9px}.tool-pane{padding:20px 20px 14px}.tool-intro h3{font-size:20px}.tool-intro p{font-size:14px}.tool-commandbar{margin:16px 0 18px;gap:8px}.tool-commandbar button{padding:8px 12px;font-size:14px}.tool-commandbar .panel-actions{gap:6px}.tool-import-options{max-width:240px;font-size:14px}.tool-statusbar{gap:12px;margin-top:14px}.tool-utilities{gap:10px}.json-editor{min-height:160px}#jsonPane .tool-main{min-height:220px}.json-editor-empty svg{width:44px;height:44px;margin-bottom:10px}.json-editor-empty p{margin:6px 0 12px}}
         </style><button id="toggle" type="button" title="打开云盘工具" aria-label="打开云盘工具" aria-haspopup="dialog" aria-expanded="false" aria-controls="toolDialog"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 12h4M8 16h3M16 12v6m-2-2 2 2 2-2"/></svg></button>
         <div class="workspace-overlay" hidden><div class="box" id="toolDialog" role="dialog" aria-modal="false" aria-labelledby="workspaceTitle" tabindex="-1">
         <header class="workspace-header"><div><h2 id="workspaceTitle">云盘工具</h2><p id="windowHint">拖动标题栏移动 · 可同时操作网页</p></div><div class="workspace-window-actions"><button id="settingsWorkspace" type="button">设置</button><button id="pinWorkspace" type="button" aria-pressed="false" title="锁定窗口位置">固定位置</button><button id="closeWorkspace" type="button" aria-label="关闭面板" title="关闭">×</button></div></header>
@@ -3268,8 +3267,9 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             <p id="mediaAIState" role="status"></p></section>
             <p id="mediaTarget"></p><p id="mediaRecordState" role="status"></p>
             <div class="panel-actions"><button id="scanMedia">识别并预览</button><button id="runMedia" disabled>确认执行</button><button id="openMediaCleanup" type="button" aria-controls="mediaCleanup" aria-expanded="false">清理文件</button><button id="stopMedia" hidden disabled>停止</button></div>
-            <p id="mediaProgress" role="status">先在网页勾选视频或文件夹。</p><progress id="mediaBar" aria-label="影视整理进度" max="1" value="0" hidden></progress><div id="mediaSummary"></div>
-            <div id="mediaPreview" style="max-height:240px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px"></div>
+            <p id="mediaProgress" role="status">先在网页勾选视频或文件夹。</p><progress id="mediaBar" aria-label="影视整理进度" max="1" value="0" hidden></progress><p id="mediaSummary" role="status"></p>
+            <select id="mediaView" aria-label="筛选影视整理结果" disabled><option value="pending">待确认</option><option value="ready">已匹配</option><option value="skipped">已跳过</option><option value="all">全部</option></select>
+            <div id="mediaPreview"></div>
             <div id="mediaRows"></div>
             <section id="mediaCleanup" class="sync-preview" hidden>
             <label>清理规则<select id="cleanupMode"><option value="extras">非正片与附件</option><option value="nonstandard">所有不规范项目</option></select></label>
@@ -3345,12 +3345,20 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             catch (error) { progress('复制日志失败：' + error.message); }
         };
         const invalidate = () => { batch = null; batchWriter = null; ui.get('runMedia').disabled = true; ui.get('mediaPreview').textContent = ''; };
+        let mediaBusy = false;
+        const updateRowControls = () => {
+            filter.disabled = mediaBusy || !rows.length;
+            for (const control of results.querySelectorAll('#mediaRows :is(input,select,button), #mediaEmpty button')) {
+                control.disabled = mediaBusy || control.hasAttribute('data-media-disabled');
+            }
+        };
         const runTask = createPanelTask(ui, (busy, stoppable = false) => {
+            mediaBusy = busy;
             if (busy) cancelled = false;
             ui.get('stopMedia').hidden = !busy || !stoppable;
             ui.get('stopMedia').disabled = !busy || !stoppable;
             for (const id of ['scanMedia', 'openMediaCleanup', 'saveMediaKey', 'forgetMediaKey', 'tmdbKey', 'checkCleanup', 'cleanupMode', 'cleanupSubtitles', 'enableMediaAI', 'mediaAIProvider', 'mediaAIBase', 'mediaAIKey', 'mediaAIModel', 'mediaAIModelSelect', 'fetchMediaAIModels', 'saveMediaAI', 'testMediaAI', 'forgetMediaAI']) ui.get(id).disabled = busy;
-            for (const control of ui.get('mediaRows').querySelectorAll('input,select,button')) control.disabled = busy;
+            updateRowControls();
             ui.get('runMedia').disabled = busy || !batch;
             ui.get('runEmpty').disabled = busy || !emptyPlan.length;
         });
@@ -3454,7 +3462,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         };
         const skipRows = async targets => {
             for (const row of targets) row.include = false;
-            invalidate(); render(); progress('已跳过 ' + targets.length + ' 个视频，未修改网盘文件；可点击“恢复已跳过”撤销'); await refreshPreview();
+            invalidate(); render(); progress('已跳过 ' + targets.length + ' 个视频，未修改网盘文件'); await refreshPreview();
         };
         const seasonPicker = (box, row, wholeGroup = false) => {
             const label = document.createElement('label'), select = document.createElement('select');
@@ -3494,7 +3502,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             if (row.episode != null && !(row.seasonEpisodes || []).some(ep => ep.episode_number === row.episode)) {
                 const option = document.createElement('option'); option.value = String(row.episode); option.textContent = '原集号 ' + row.episode + '（本季未找到）'; select.appendChild(option);
             }
-            select.value = String(row.episode ?? ''); select.disabled = row.season == null; label.appendChild(select); box.appendChild(label);
+            select.value = String(row.episode ?? ''); if (row.season == null) select.setAttribute('data-media-disabled',''); label.appendChild(select); box.appendChild(label);
             select.onchange = () => {
                 if (!select.value) return;
                 return editRows(async () => { row.episode = Number(select.value); row.episodeInferred = false; row.endEpisode = null; await validateEpisode(row); progress(readyRow(row) ? '已应用季集，此文件已就绪，预览会自动更新' : row.error); });
@@ -3527,80 +3535,206 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             toggle.onclick = () => { showAll = !showAll; update(); };
             box.appendChild(toggle); update(); return select;
         };
+        const mediaViews = [['pending','待确认'], ['ready','已匹配'], ['skipped','已跳过'], ['all','全部']];
+        const results = ui.get('mediaResults'), host = ui.get('mediaRows'), filter = ui.get('mediaView');
+        let detail = null;
+        filter.value = 'pending';
+        filter.onchange = () => {
+            detail = null;
+            results.scrollTop = 0;
+            render();
+        };
+        const rowState = row => !row.include ? 'skipped' : readyRow(row) ? 'ready' : 'pending';
+        const textElement = (tag, text, className = '') => {
+            const el = document.createElement(tag);
+            el.textContent = text;
+            if (className) el.className = className;
+            return el;
+        };
+        const action = (box, label, click) => {
+            const button = textElement('button',label);
+            button.type = 'button';
+            button.onclick = click;
+            box.append(button);
+            return button;
+        };
+        const resetQuery = (row, value) => {
+            Object.assign(row,{query:value,detail:null,match:'',aiType:'',aiAssisted:false,error:'搜索片名已修改，请重新匹配'});
+        };
+        const renderFileDetail = (box, item) => {
+            box.append(textElement('p','原位置：' + (item.node.originalPath || item.node.path),'media-file-path'));
+            if (item.error) box.append(textElement('p',item.error));
+            if (!item.include) return;
+            if (item.detail) {
+                const season = item.type === 'tv' && item.season != null ? ' · ' + (item.season ? '第 ' + item.season + ' 季' : '特别篇') : '';
+                box.append(textElement('p','已匹配：' + item.title + '（' + item.year + '）' + season));
+                if (item.type === 'tv') {
+                    seasonPicker(box,item);
+                    episodePicker(box,item);
+                }
+            }
+            const edits = document.createElement('details');
+            edits.dataset.mediaDisclosure = 'file';
+            edits.append(textElement('summary','修改此文件的作品或命名'));
+            field(edits,'搜索片名（仅本文件）',item.query,value => resetQuery(item,value));
+            action(edits,'查询候选作品',() => editRows(async () => {
+                try { item.candidates = await client.search(item.query); }
+                catch (error) { progress('查询失败：' + error.message); }
+            }));
+            const select = candidatePicker(edits,item);
+            select.onchange = () => {
+                if (!select.value) return;
+                return editRows(async () => {
+                    try { await choose(item,select.value); await validateEpisode(item); }
+                    catch (error) { item.error = error.message; }
+                });
+            };
+            field(edits,'标准片名（仅本文件）',item.title,value => { item.title = value; });
+            field(edits,'年份（仅本文件）',item.year,value => { item.year = value; });
+            box.append(edits);
+            const actions = document.createElement('div');
+            actions.className = 'panel-actions';
+            action(actions,'检查此文件',() => editRows(async () => {
+                await validateEpisode(item);
+                progress(readyRow(item) ? '此文件已就绪，正在更新预览。' : item.error || '此文件仍需处理。');
+            }));
+            action(actions,'跳过此文件',() => skipRows([item]));
+            box.append(actions);
+        };
+        const renderDetail = (group, title) => {
+            const box = document.createElement('section');
+            box.className = 'sync-item media-detail';
+            const back = action(box,'返回结果',() => {
+                const {anchor, scrollTop} = detail;
+                detail = null;
+                render();
+                results.scrollTop = scrollTop;
+                const button = [...host.querySelectorAll('[data-media-group]')].find(node => node.dataset.mediaGroup === anchor.group);
+                (button || filter).focus({preventScroll:true});
+            });
+            back.id = 'mediaBack';
+            box.append(textElement('h5',title));
+            const included = group.filter(row => row.include);
+            const pending = included.filter(row => !readyRow(row));
+            const reference = pending[0] || included[0];
+            if (reference && included.length > 1) {
+                const controls = document.createElement('details');
+                controls.dataset.mediaDisclosure = 'group';
+                controls.open = !!pending.length;
+                controls.append(textElement('summary','调整整组匹配'));
+                field(controls,'搜索片名（整组）',reference.query,value => included.forEach(row => resetQuery(row,value)));
+                action(controls,'重新匹配整组',() => editRows(async () => {
+                    await matchGroup(included,reference.query);
+                    progress('已重新匹配整组。');
+                }));
+                const select = candidatePicker(controls,reference,true);
+                select.onchange = () => {
+                    if (!select.value) return;
+                    return editRows(async () => {
+                        try {
+                            for (const row of included) { await choose(row,select.value); await validateEpisode(row); }
+                        } catch (error) { progress('读取作品失败：' + error.message); }
+                    });
+                };
+                const missingSeason = pending.find(row => row.detail && row.type === 'tv' && row.season == null);
+                if (missingSeason) seasonPicker(controls,missingSeason,true);
+                if (reference.detail) {
+                    field(controls,'标准片名（整组）',reference.title,value => included.forEach(row => { row.title = value; }));
+                    field(controls,'年份（整组，剧集用首播年份）',reference.year,value => included.forEach(row => { row.year = value; }));
+                }
+                action(controls,'跳过本组',() => skipRows(included));
+                box.append(controls);
+            }
+            const item = group.includes(detail.file) ? detail.file : pending[0] || included[0] || group[0];
+            detail.file = item;
+            if (group.length > 1) {
+                const label = textElement('label','选择文件');
+                const select = document.createElement('select');
+                select.id = 'mediaDetailFile';
+                for (const [index,row] of group.entries()) {
+                    const option = textElement('option',mediaViews.find(([state]) => state === rowState(row))[1] + ' · ' + row.node.name);
+                    option.value = String(index);
+                    select.append(option);
+                }
+                select.value = String(group.indexOf(item));
+                select.onchange = () => {
+                    detail.file = group[Number(select.value)];
+                    render();
+                    host.querySelector('#mediaDetailFile')?.focus({preventScroll:true});
+                };
+                label.append(select);
+                box.append(label);
+            }
+            renderFileDetail(box,item);
+            host.append(box);
+        };
         const render = () => {
-            const expanded = new Map([...ui.get('mediaRows').querySelectorAll('details[data-layout-key]')].map(box => [box.dataset.layoutKey,box.open]));
-            ui.get('mediaRows').textContent = '';
-            let ready = 0;
-            const groups = new Map(), pendingGroups = new Map();
+            const scrollTop = results.scrollTop;
+            const previousDisclosures = new Map([...host.querySelectorAll('[data-media-disclosure]')].map(el => [el.dataset.mediaDisclosure,el.open]));
+            host.textContent = '';
+            const groups = new Map(), counts = {pending:0,ready:0,skipped:0,all:rows.length};
             for (const row of rows) {
-                if (!row.include) continue;
-                if (!groups.has(row.group)) groups.set(row.group, []);
+                if (!groups.has(row.group)) groups.set(row.group,[]);
                 groups.get(row.group).push(row);
-                if (readyRow(row)) { ready++; continue; }
-                if (!pendingGroups.has(row.group)) pendingGroups.set(row.group, []);
-                pendingGroups.get(row.group).push(row);
+                counts[rowState(row)]++;
             }
-            const skipped = rows.filter(row => !row.include).length;
-            ui.get('mediaSummary').textContent = rows.length ? `已匹配 ${ready} 个视频 · 待确认 ${rows.length - skipped - ready} 个 · 已跳过 ${skipped} 个` : '';
-            if (rows.length) ui.get('mediaSummary').textContent += ` · ${pendingGroups.size} 组待确认`;
-            for (const pending of pendingGroups.values()) {
-                const row = pending[0], group = groups.get(row.group);
-                const matchedGroup = pending.every(item => item.detail);
-                const box = document.createElement('details'); box.className = 'sync-item'; box.dataset.layoutKey = 'group:' + row.group; box.open = expanded.get(box.dataset.layoutKey) || false;
-                const originalNames = [...new Set(group.map(item => group.length === 1 ? item.node.name : item.originalFolder || item.query || '未识别作品'))];
-                const title = document.createElement('summary'); title.textContent = `原：${originalNames.join(' / ')} · ${group.length} 个视频（${pending.length} 个待处理）${matchedGroup ? (pending.some(item => /季号|集号|季集/.test(item.error)) ? ' · 已匹配，需补季集' : ' · 已匹配，需处理异常') : ''}`; box.appendChild(title);
-                const matched = document.createElement('p'); matched.textContent = '匹配为：' + (row.detail ? `${row.title}（${row.year}） · ${row.detail.source || 'TMDB'}` : '尚未确定'); box.appendChild(matched);
-                const edits = document.createElement('details'), editTitle = document.createElement('summary'); editTitle.textContent = '修改搜索或命名'; edits.appendChild(editTitle);
-                field(edits, '搜索片名', row.query, value => { for (const item of group) { item.query = value; item.detail = null; item.match = ''; item.aiType = ''; item.aiAssisted = false; item.error = '搜索片名已修改，请重新匹配'; } });
-                const search = document.createElement('button'); search.textContent = '重新匹配整组'; edits.appendChild(search);
-                const select = candidatePicker(box, row, true);
-                const missingSeason = pending.find(item => item.detail && item.type === 'tv' && item.season == null);
-                if (missingSeason) seasonPicker(box, missingSeason, true);
-                search.onclick = () => editRows(async () => { try { await matchGroup(peers(row), row.query); progress('已重新匹配同组，明确的结果自动采用'); } catch (e) { progress('匹配失败：' + e.message); } });
-                select.onchange = () => editRows(async () => { try { for (const item of peers(row)) { await choose(item, select.value); await validateEpisode(item); } } catch (e) { progress('读取作品失败：' + e.message); } });
-                if (row.detail) {
-                    field(edits, '标准片名（整组）', row.title, value => { for (const item of group) item.title = value; }); field(edits, '年份（整组，剧集用首播年份）', row.year, value => { for (const item of group) item.year = value; });
-
-                }
-                box.appendChild(edits);
-                const groupActions = document.createElement('div'); groupActions.className = 'panel-actions';
-                const skipGroup = document.createElement('button'); skipGroup.textContent = '跳过本组'; skipGroup.onclick = () => skipRows(group);
-                groupActions.appendChild(skipGroup); box.appendChild(groupActions);
-                const state = document.createElement('p'); state.textContent = [...new Set(pending.map(item => item.error).filter(Boolean))].join('；') || '请检查待确认项目'; box.appendChild(state);
-                const files = document.createElement('details'), summary = document.createElement('summary'); summary.textContent = `查看 ${group.length} 个原文件／调整季集`; files.appendChild(summary);
-                for (const item of matchedGroup ? [] : group) {
-                    const line = document.createElement('div'), name = document.createElement('p'); name.textContent = item.node.path; line.appendChild(name);
-                    if (item.detail && item.type === 'tv') { seasonPicker(line, item); episodePicker(line, item); }
-                    files.appendChild(line);
-                }
-                if (!matchedGroup) box.appendChild(files);
-                ui.get('mediaRows').appendChild(box);
-                if (matchedGroup) for (const item of pending) {
-                    const card = document.createElement('details'); card.className = 'sync-item media-file-issue'; card.dataset.layoutKey = 'file:' + item.node.id; card.open = expanded.get(card.dataset.layoutKey) || false;
-                    const heading = document.createElement('summary'); heading.textContent = '待处理文件：' + item.node.name; card.appendChild(heading);
-                    const original = document.createElement('p'); original.textContent = '原位置：' + (item.node.originalPath || item.node.path); card.appendChild(original);
-                    const issue = document.createElement('p'); issue.textContent = item.error || '请检查文件信息'; card.appendChild(issue);
-                    const work = document.createElement('p'); work.textContent = '已匹配：' + item.title + (item.type === 'tv' ? '（整剧首播 ' + item.year + '）' + (item.season != null ? ' · 第 ' + item.season + ' 季' + (item.seasonYear ? '（' + item.seasonYear + '）' : '') : '') : '（' + item.year + '）') + ' · ' + (item.detail.source || 'TMDB'); card.appendChild(work);
-                    if (item.type === 'tv') {
-                        seasonPicker(card, item);
-                        episodePicker(card, item);
+            for (const [value,label] of mediaViews) {
+                filter.querySelector('option[value="' + value + '"]').textContent = label + '（' + counts[value] + '）';
+            }
+            ui.get('mediaSummary').textContent = rows.length
+                ? groups.size + ' 组作品 · ' + counts.all + ' 个视频 · 待确认 ' + counts.pending + ' · 已匹配 ' + counts.ready + ' · 已跳过 ' + counts.skipped
+                : '';
+            let visible = false;
+            for (const [key,group] of groups) {
+                const shown = group.filter(row => filter.value === 'all' || rowState(row) === filter.value);
+                const reference = group.find(row => row.title) || group[0];
+                const title = reference.title || reference.query || reference.node.name;
+                const seasons = [...new Set(group.filter(row => row.type === 'tv' && row.season != null).map(row => row.season))].sort((a,b) => a-b);
+                const caption = title + (seasons.length ? ' · ' + seasons.map(n => n ? '第 ' + n + ' 季' : '特别篇').join('、') : '');
+                if (detail) {
+                    if (detail.anchor.group !== key) continue;
+                    renderDetail(group,caption);
+                    for (const el of host.querySelectorAll('[data-media-disclosure]')) {
+                        if (previousDisclosures.has(el.dataset.mediaDisclosure)) el.open = previousDisclosures.get(el.dataset.mediaDisclosure);
                     }
-                    const edits = document.createElement('details'), caption = document.createElement('summary'); caption.textContent = '单独修改这个文件的作品或命名'; edits.appendChild(caption);
-                    field(edits, '搜索片名（仅本文件）', item.query, value => { item.query = value; item.detail = null; item.match = ''; item.aiType = ''; item.aiAssisted = false; item.error = '搜索片名已修改，请重新匹配'; });
-                    const search = document.createElement('button'); search.textContent = '查询候选作品'; edits.appendChild(search);
-                    const select = candidatePicker(edits, item);
-                    search.onclick = () => editRows(async () => { try { item.candidates = await client.search(item.query); } catch (e) { progress('查询失败：' + e.message); } });
-                    select.onchange = () => editRows(async () => { try { await choose(item, select.value); await validateEpisode(item); } catch (e) { item.error = e.message; } });
-                    field(edits, '标准片名（仅本文件）', item.title, v => { item.title = v; });
-                    field(edits, '年份（仅本文件）', item.year, v => { item.year = v; });
-                    card.appendChild(edits);
-                    const actions = document.createElement('div'); actions.className = 'panel-actions';
-                    const validate = document.createElement('button'); validate.textContent = '检查此文件';
-                    validate.onclick = () => editRows(async () => { await validateEpisode(item); progress(readyRow(item) ? '此文件已通过季集与命名检查，已从异常列表移除；预览会自动更新' : item.error || '仍需处理'); });
-                    const skip = document.createElement('button'); skip.textContent = '跳过此文件'; skip.onclick = () => skipRows([item]);
-                    actions.appendChild(validate); actions.appendChild(skip); card.appendChild(actions); ui.get('mediaRows').appendChild(card);
+                    visible = true;
+                    break;
                 }
+                if (!shown.length) continue;
+                const count = {pending:0,ready:0,skipped:0};
+                for (const row of group) count[rowState(row)]++;
+                const card = document.createElement('section');
+                card.className = 'sync-item media-card';
+                card.append(textElement('h5',caption));
+                card.append(textElement('p',group.length + ' 个视频 · ' + mediaViews.slice(0,3)
+                    .filter(([state]) => count[state]).map(([state,label]) => label + ' ' + count[state]).join(' · '),'media-card-count'));
+                const issue = shown.find(row => rowState(row) === 'pending' && row.error);
+                if (issue) {
+                    const note = textElement('p',issue.error,'media-card-issue');
+                    note.title = issue.error;
+                    card.append(note);
+                }
+                const button = action(card,filter.value === 'pending' ? '处理待确认' : '查看详情',() => {
+                    detail = {anchor:shown[0],file:shown[0],scrollTop:results.scrollTop};
+                    render();
+                    results.scrollTop = 0;
+                    host.querySelector('#mediaBack').focus({preventScroll:true});
+                });
+                button.dataset.mediaGroup = key;
+                host.append(card);
+                visible = true;
             }
+            const empty = ui.get('mediaEmpty');
+            empty.hidden = visible;
+            empty.textContent = rows.length ? (filter.value === 'pending' ? '当前没有待确认的视频。' : '当前筛选下没有视频。')
+                : '在网盘勾选视频或文件夹后，点击「识别并预览」。';
+            if (!visible && filter.value === 'pending' && counts.ready) action(empty,'查看已匹配',() => {
+                filter.value = 'ready';
+                filter.onchange();
+                filter.focus();
+            });
+            updateRowControls();
+            results.scrollTop = scrollTop;
         };
         async function choose(row, match) {
             checkStopped();
@@ -3712,7 +3846,10 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         };
         async function scan() {
             reused = 0;
-            invalidate(); clearLog(); rows = []; render();
+            invalidate(); clearLog(); rows = []; detail = null;
+            filter.value = 'pending'; results.scrollTop = 0;
+            ui.get('mediaPreviewPanel').open = false;
+            render();
             meter('读取选中内容');
             try {
                 const context = await mediaContext(provider); session = context.session; source = context.source;
@@ -3848,7 +3985,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             if (refreshStalePreview()) return;
             if (!batch) return;
 
-            const items = batch, writer = batchWriter; batch = null; batchWriter = null;
+            const items = batch, writer = batchWriter; invalidate();
             meter('重命名文件', 0, items.length);
             let completed = 0, failed = 0; const failedVideos = new Set();
             const rowsById = new Map(rows.map(row => [row.node.id, row]));
