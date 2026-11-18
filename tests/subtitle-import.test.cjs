@@ -13,18 +13,24 @@ const video = (id,name,folder='目录') => ({id,parentId:folder,name,size:1234,f
 function fixture() {
     const memory = new Map(), state = {writes:0,lists:0,entries:[],response:'ok'};
     const ctx = vm.createContext({URL,URLSearchParams,TextEncoder,TextDecoder,Uint8Array,Blob,DecompressionStream,
-        location:{hostname:'www.123pan.com'},window:{fetch:()=>assert.fail('Unexpected network')},
+        location:{hostname:'www.123pan.com'},setTimeout:fn=>setTimeout(fn,0),window:{fetch:()=>assert.fail('Unexpected network')},
+        sourceQueries:state.sourceQueries = [], fixtureSubtitleSearch:async () => ({code:0,data:[{name:'电影.2000.BluRay.简体.srt',url:'https://subtitle.example/file.srt'}]}),
         GM_getValue:(key,fallback)=>memory.get(key) ?? fallback,GM_setValue:(key,value)=>memory.set(key,value),
         fixtureRequest:async (url,options) => {
-            assert.match(url,/\/file\/upload_request$/);
             const input = JSON.parse(options.body);
+            if (state.organize && url.endsWith('/file/rename')) {
+                state.mutations++;
+                state.entries.find(file => file.id === input.fileId).name = input.fileName;
+                return {code:0};
+            }
+            assert.match(url,/\/file\/upload_request$/,'Subtitle phase only calls upload, never rename or move');
             assert.equal(input.duplicate,0);
             state.writes++;
             state.entries.push({id:'uploaded',name:input.fileName,size:input.size,md5:input.etag});
             if (state.response === 'lost') throw Error('连接断开');
             return {code:0,data:{Reuse:true}};
         }});
-    vm.runInContext(source.slice(0,bootstrap) + '\nrequestJson = fixtureRequest; globalThis.api = {subtitleInventory, subtitleImportGroups, planSubtitleImport, checkSubtitleImportDirectory, subtitleDrive, subtitleMd5}; })();',ctx);
+    vm.runInContext(source.slice(0,bootstrap) + '\nrequestJson = fixtureRequest; subtitleRemoteJson = url => { sourceQueries.push(new URL(url).searchParams.get("name")); return fixtureSubtitleSearch(); }; globalThis.api = {subtitleInventory, subtitleImportGroups, planSubtitleImport, checkSubtitleImportDirectory, subtitleDrive, subtitleMd5, mediaFileHistory, mediaSubtitleLinks, readSubtitleImport, mediaOrganizerWriter, createSubtitleService}; })();',ctx);
     const collect = (videos,linked=new Map()) => ctx.api.subtitleInventory({videos,linked},'影视');
     return {api:ctx.api,memory,state,collect};
 }
@@ -39,7 +45,7 @@ function matching() {
     for (const [ext,text] of [['srt',srt],['ass',ass],['ssa',ass],['vtt',vtt]]) {
         const [checked] = plan([entry('电影.2000.'+ext,text)],movies);
         assert.equal(checked.state,'ready',checked.reason);
-        assert.equal(checked.name,'电影.2000.zh.'+ext);
+        assert.equal(checked.name,'电影.2000.'+ext);
         assert.equal(checked.verification.evidence,'unknown');
     }
     for (const text of ['', '<html>中文</html>', new Uint8Array([255,128,255]),
@@ -75,8 +81,58 @@ function matching() {
     console.log('PASS local subtitle plans: 4 formats, real body validation, identity, timing, duplicate and coverage protection');
 }
 
+
+async function organizeAfterUpload() {
+    const {api,state,collect} = fixture();
+    const node = {...video('v','电影.2000.BluRay-GROUP.mkv'),md5:'a'.repeat(32)};
+    const session = {provider:'123',token:'test',parent:node.parentId,base:'https://api.123pan.com',headers:{}};
+    const source = {children:async () => state.entries.map(file => ({...file}))};
+    const openHistory = () => api.mediaFileHistory(session);
+    const before = api.mediaOrganizerWriter(session,source);
+    state.entries = [{...node}];
+    const item = {node:{...node},destination:'电影.2000.mkv',videoId:'v'};
+    await before.prepare([item]);
+    const row = collect([node])[0];
+    row.history = openHistory();
+    const [file] = await api.readSubtitleImport([{name:'电影.2000.简体.srt',size:encoded(srt).length,arrayBuffer:async()=>encoded(srt).buffer}],()=>{});
+    const [plan] = api.planSubtitleImport([file],[row],lang,new Set());
+    assert.equal(plan.state,'ready',plan.reason);
+    await api.subtitleDrive({session,source}).save(row,plan.name,plan.bytes,undefined,undefined,{language:plan.language,
+        beforeWrite:nodes=>api.checkSubtitleImportDirectory(row,plan.name,nodes)});
+    assert.equal(state.writes,1);
+    await assert.rejects(before.validate(),/关联字幕在预览后变化/);
+    const link = history => api.mediaSubtitleLinks(state.entries,node.parentId,history).linked.get(node.id) || [];
+    const [sub] = link(openHistory());
+    assert.equal(sub.name, file.name);
+    assert.equal(sub.suffix,'.zh-cn');
+    assert.equal(link(api.mediaFileHistory({...session,token:'other'})).length,0);
+    assert.equal(api.mediaSubtitleLinks(state.entries,'other-folder',openHistory()).linked.size,0);
+    const legacy = {...sub,id:'legacy',name:'电影.2000.BluRay-GROUP.en.srt'};
+    assert.equal(api.mediaSubtitleLinks([node,legacy],node.parentId,openHistory()).linked.get(node.id)[0].id,'legacy');
+    assert.equal(api.mediaSubtitleLinks([node,{...node,id:'dup',name:node.name.replace('mkv','mp4')},legacy],node.parentId,openHistory()).linked.size,0);
+    const writer = api.mediaOrganizerWriter(session,source);
+    const caption = {node:sub,destination:'电影.2000'+sub.suffix+'.srt',videoId:'v'};
+    await writer.prepare([item,caption]);
+    state.organize = true; state.mutations = 0;
+    await writer.validate();
+    await writer.execute(item);
+    await writer.execute(caption);
+    assert.equal(state.mutations,2);
+    assert.equal(link(openHistory())[0].name,'电影.2000.zh-cn.srt');
+    const original = openHistory().get(item.node,node.parentId).original;
+    assert.equal(original,node.name);
+    const compare = async current => {
+        state.sourceQueries.length = 0;
+        const result = await api.createSubtitleService().thunderSearch({node:current,parsed:{query:'电影',year:2000,tv:false}},{language:lang});
+        return [state.sourceQueries[0],result[0].name];
+    };
+    assert.deepEqual(await compare(node),['电影.2000.BluRay-GROUP','电影.2000.BluRay.简体.srt']);
+    assert.deepEqual(await compare({...item.node,originalName:original}),await compare(node));
+    console.log('PASS original-name upload, stale preview rejection, account and directory recheck, legacy fallback, and retained original after confirmed organization');
+}
+
 async function upload() {
-    for (const scenario of ['new-subtitle','moved','ambiguous','ok','lost']) {
+    for (const scenario of ['new-subtitle','moved','collision','ok','lost']) {
         const {api,state,memory,collect} = fixture();
         const node = video('v','电影.2000.mkv');
         const row = collect([node])[0];
@@ -86,19 +142,20 @@ async function upload() {
             state.lists++;
             return state.entries.slice();
         }}},async()=>{});
-        const name = '电影.2000.zh.srt', bytes = encoded(srt);
+        const name = '来源.电影.简体.srt', bytes = encoded(srt);
+        row.history = api.mediaFileHistory(session);
         state.entries = [node];
         if (scenario === 'new-subtitle') state.entries.push({id:'s',name:'电影.2000.zh-cn.ass',size:20});
         if (scenario === 'moved') state.entries = [];
-        if (scenario === 'ambiguous') state.entries.push({...node,id:'second',name:'电影.2000.mp4'});
+        if (scenario === 'collision') state.entries.push({id:'unrelated',name:name.toUpperCase(),size:bytes.length});
         if (scenario === 'lost') state.response = 'lost';
         const save = current => current.save(row,name,bytes,()=>{},()=>{},{
-            beforeWrite:nodes=>api.checkSubtitleImportDirectory(row,name,nodes)
+            language:'zh-cn',beforeWrite:nodes=>api.checkSubtitleImportDirectory(row,name,nodes)
         });
         if (scenario === 'ok') {
             assert.equal((await save(drive())).id,'uploaded');
             assert.equal(state.lists,2,'Import reuses the uploader listing and readback');
-            await assert.rejects(save(drive()),/关联字幕已变化/);
+            await assert.rejects(save(drive()),/同名/);
             assert.equal(state.writes,1);
         } else if (scenario === 'lost') {
             await assert.rejects(save(drive()),error=>error.pendingUpload);
@@ -106,14 +163,14 @@ async function upload() {
             assert.equal(memory.get(receiptKey).length,1);
             assert.equal((await drive().reconcile(row))[0].id,'uploaded');
             assert.equal(memory.get(receiptKey).length,0);
-            await assert.rejects(save(drive()),/关联字幕已变化/);
+            await assert.rejects(save(drive()),/同名/);
             assert.equal(state.writes,1);
         } else {
-            await assert.rejects(save(drive()),/已移动|无法唯一关联|关联字幕已变化/);
+            await assert.rejects(save(drive()),/已移动|同名|关联字幕已变化/);
             assert.equal(state.writes,0);
         }
     }
     console.log('PASS import upload: production recheck, no overwrite, content readback and receipt recovery');
 }
 
-(async()=>{matching(); await upload();})().catch(error=>{console.error(error);process.exitCode=1;});
+(async()=>{matching(); await upload(); await organizeAfterUpload();})().catch(error=>{console.error(error);process.exitCode=1;});

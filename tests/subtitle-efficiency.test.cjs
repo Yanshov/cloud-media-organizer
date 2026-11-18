@@ -34,11 +34,11 @@ async function fillFallback() {
  const elements=new Map(),calls=[],valid=new TextEncoder().encode('1\n00:00:01,000 --> 00:20:03,000\n中文字幕 Test\n');let saves=0;
  const element=()=>({value:'',checked:false,disabled:false,hidden:false,dataset:{},style:{},children:[],textContent:'',append(...children){this.children.push(...children)},appendChild(child){this.children.push(child)},replaceChildren(...children){this.children=children},querySelectorAll(){return []}});
  const video={id:'v',name:'瑞克和莫蒂.2013.S01E01.mkv',size:10000,folders:[],path:'瑞克和莫蒂.2013.S01E01.mkv'};
- const bi={source:'SubDL',name:'瑞克和莫蒂.S01E01.简体&英文.ass',language:'zh-cn',bilingual:true,titleMatched:true};
+ const bi={source:'SubDL',name:'瑞克和莫蒂.S01E01.简体&英文.srt',ext:'srt',language:'zh-cn',bilingual:true,titleMatched:true};
  const ctx=load({document:{createElement:element},makePanel:(_title,html)=>{
   for(const tag of html.matchAll(/<[^>]+\bid="([^"]+)"[^>]*>/g)){const el=element();el.checked=/\bchecked\b/.test(tag[0]);el.disabled=/\bdisabled\b/.test(tag[0]);elements.set(tag[1],el)}
   return {get:id=>elements.get(id),moveSettings(){},openSettings(){},busy(){}};
- },mediaContext:async()=>({selected:[video],source:{},path:'剧集'}),selectedTreeCache:{stale:true},
+ },mediaContext:async()=>({selected:[video],session:{parent:'root',token:'fixture'},source:{},path:'剧集'}),mediaFileHistory:()=>null, selectedTreeCache:{stale:true},
  collectMediaSelection:async()=>({videos:[video],linked:new Map()}),parseMediaName:()=>row().parsed,mediaBonusName:()=>false,mediaRecords:{get:()=>null},mediaStem:name=>name.replace(/\.[^.]+$/,''),
  subtitleDrive:()=>({reconcile:async()=>[],save:async(_row,name)=>{saves++;calls.push('save');return {id:'s',name}}})});
  ctx.createSubtitleService=()=>({thunderSearch:async()=>{calls.push('thunder');return [{...bi,source:'迅雷'}]},subdlSearch:async()=>{calls.push('subdl');return [{...bi,source:'SubDL'}]},fetchFile:async c=>{calls.push('download-'+c.source);if(c.source==='迅雷')throw Error('正文无效');return {result:{ext:'srt'},bytes:valid}}});

@@ -89,7 +89,7 @@ async function uiAuth(){
  const ctx=load({requestJson:async()=>{apiCalls++;throw Object.assign(Error('HTTP 401'),{stop:true,status:401})},document:{createElement:element},makePanel:(_title,html)=>{
   for(const tag of html.matchAll(/<[^>]+\bid="([^"]+)"[^>]*>/g)){const el=element();el.checked=/\bchecked\b/.test(tag[0]);el.disabled=/\bdisabled\b/.test(tag[0]);elements.set(tag[1],el)}
   return {get:id=>elements.get(id),moveSettings(){},openSettings(){},busy(){}};
- },mediaContext:async()=>({selected:videos,session:{provider:'光鸭',token:'test'},source:{},path:'剧集'}),selectedTreeCache:{stale:true},
+ },mediaContext:async()=>({selected:videos,session:{provider:'光鸭',token:'test'},source:{},path:'剧集'}),mediaFileHistory:()=>null, selectedTreeCache:{stale:true},
  collectMediaSelection:async()=>({videos,linked:new Map()}),parseMediaName:name=>row(Number(name.match(/E(\d+)/)[1])).parsed,mediaBonusName:()=>false,mediaRecords:{get:()=>null}});
  loadDrive(ctx,null); // Install actual drive factory without invoking its operations.
   ctx.createSubtitleService=()=>({thunderSearch:async()=>{searches++;return []},fetchFile:async()=>{downloads++;throw Error('Must not download')}});
@@ -106,10 +106,10 @@ async function uiStop(){
  const ctx=load({document:{createElement:element},makePanel:(_title,html)=>{
   for(const tag of html.matchAll(/<[^>]+\bid="([^"]+)"[^>]*>/g)){const el=element();el.checked=/\bchecked\b/.test(tag[0]);el.disabled=/\bdisabled\b/.test(tag[0]);elements.set(tag[1],el)}
   return {get:id=>elements.get(id),moveSettings(){},openSettings(){},busy(){}};
- },mediaContext:async()=>({selected:videos,source:{},path:'剧集'}),selectedTreeCache:{stale:true},
+ },mediaContext:async()=>({selected:videos,session:{parent:'root',token:'fixture'},source:{},path:'剧集'}),mediaFileHistory:()=>null, selectedTreeCache:{stale:true},
  collectMediaSelection:async()=>({videos,linked:new Map()}),parseMediaName:name=>row(Number(name.match(/E(\d+)/)[1])).parsed,mediaBonusName:()=>false,mediaRecords:{get:()=>null},
   subtitleDrive:()=>({assertReady(){},reconcile:async()=>[],save:async()=>{saves++}})});
-  ctx.createSubtitleService=()=>({thunderSearch:async r=>[1,2,3].map(id=>({source:'迅雷',fileId:id,name:`Love.Death.and.Robots.S01E0${r.parsed.episode}.简体&英文.ass`,language:'zh-cn',bilingual:true,titleMatched:true})),fetchFile:async()=>{downloads++;throw Object.assign(Error('限流重试已停止'),{stop:true})}});
+  ctx.createSubtitleService=()=>({thunderSearch:async r=>[1,2,3].map(id=>({source:'迅雷',fileId:id,name:`Love.Death.and.Robots.S01E0${r.parsed.episode}.简体&英文.ass`,ext:'ass',language:'zh-cn',bilingual:true,titleMatched:true})),fetchFile:async()=>{downloads++;throw Object.assign(Error('限流重试已停止'),{stop:true})}});
  vm.runInContext(part('    function createPanelTask(', '    function panelControls(')+part('    function subtitleInventory(','    if (location.hostname'),ctx);ctx.initSubtitles();
  await elements.get('readSubtitles').onclick();assert.match(elements.get('subtitleSummary').textContent,/缺可用字幕 2/);
   await elements.get('fillSubtitles').onclick();assert.equal(downloads,1,'Do not burn siblings or later videos');assert.equal(saves,0);

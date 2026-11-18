@@ -441,7 +441,13 @@
                 const seasonKey = parsed.tv ? JSON.stringify(['thunder-season',titleKey(title),parsed.year || '',parsed.tmdbId || '',parsed.season]) : '';
                 let items, attempts;
                 const suffix = parsed.tv ? ' S' + String(parsed.season).padStart(2,'0') + (config.seasonSearch ? '' : 'E' + String(parsed.episode).padStart(2,'0')) : '';
-                const queries = (config.correctionName ? [config.correctionName] : subtitleSearchNames(parsed)).map(name => name + suffix);
+                const names = subtitleSearchNames(parsed);
+                const original = row.node?.originalName || row.node?.name || '';
+                const withRelease = !config.seasonSearch && (/\b(?:BluRay|BDRip|WEB[ ._-]?(?:DL|Rip)|REMUX|HDTV|x26[45]|extended|theatrical)\b/i.test(original)
+                    || parsed.tv && /\b(?:2160p|1080p|720p)\b/i.test(original));
+                const plainQueries = names.map(name => name + suffix);
+                const queries = config.correctionName ? [config.correctionName + suffix]
+                    : (withRelease ? [...new Set([original.replace(/\.[^.]+$/,''),...plainQueries])] : plainQueries).slice(0,3);
                 const filter = (items, target) => {
                     const candidates = [], seen = new Set(), excluded = {年份:0,季集:0,语言:0,内容:0,无关:0,待确认上限:0,格式:0,重复:0}, rejectionSamples = [];
                     const sampleRejection = (name, reason) => { if (rejectionSamples.length < 8) rejectionSamples.push(`${name}（${reason}）`); };
@@ -745,11 +751,11 @@
                 }
             },
             async download(candidate, config) {
-                if (candidate.source === '迅雷') return {url:subtitleDownloadUrl(candidate.url,{allowHttp:true}), ext:candidate.ext,allowHttp:true};
+                if (candidate.source === '迅雷') return {url:subtitleDownloadUrl(candidate.url,{allowHttp:true}), ext:candidate.ext,fileName:candidate.name,allowHttp:true};
                 if (candidate.source === 'SubDL') return {url:subtitleDownloadUrl(candidate.url),ext:candidate.ext,fileName:candidate.name};
                 const result = await request('/download', config, {file_id:candidate.fileId});
                 const ext = String(result?.file_name || candidate.name).split('.').pop().toLowerCase();
-                return {url:subtitleDownloadUrl(result?.link), ext};
+                return {url:subtitleDownloadUrl(result?.link), ext,fileName:result?.file_name || candidate.name};
             }
         };
     }
@@ -965,8 +971,12 @@
     function subtitleVerificationMessage(result) {
         return `格式/语言通过；${({file:'对白范围与视频文件时长相符', unknown:'无时长参考', reference:'TMDB 仅作作品时长参考', 'reference-difference':'与 TMDB 作品时长参考有差异'})[result.evidence] || '时长证据待确认'}；${result.work?.status === 'supported' ? 'AI 支持作品归属（非实证）' : '作品归属未确认'}；未核对音画同步`;
     }
-    function subtitleUploadName(row, language, ext) {
-        return mediaStem(row.node.name) + '.' + language.replace(/[^a-z0-9-]/gi, '') + '.' + ext;
+    function subtitleUploadName(name, ext) {
+        if (typeof name !== 'string' || !name.trim()) throw new Error('来源未提供字幕原名，待处理');
+        if (name !== name.trim() || name.length >= 256 || /[\\\/:*?"<>|\x00-\x1f\x7f]/.test(name)
+            || /^\.+|^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])\s*\./i.test(name) || !/\.(?:srt|ass|ssa|vtt)$/i.test(name) || name.split('.').at(-1).toLowerCase() !== ext)
+            throw new Error('字幕原名不可用或扩展名与正文格式不符，待处理');
+        return name;
     }
     function createSubtitleBodyReviewer(ai, log = () => {}, check = () => {}) {
         let parseFailures = 0;
@@ -1003,7 +1013,7 @@
     }
     function selectSubtitleCandidate(row, language) {
         const tokens = value => new Set((String(value).toLowerCase().match(/2160p|1080p|720p|bluray|bdrip|webrip|web[ ._-]?dl|remux|hdtv|x26[45]/g) || []).map(v => v.replace(/[ ._-]/g,'')));
-        const original = tokens(row.node.name), wanted = language.split(',');
+        const original = tokens(row.node.originalName || row.node.name), wanted = language.split(',');
         const scored = (row.candidates || []).map(candidate => {
             const version = tokens(candidate.release + ' ' + candidate.name);
             const editionMismatch = row.parsed && subtitleNetworkEditionMismatch(row.parsed, [candidate.name,candidate.release]);
@@ -1428,7 +1438,7 @@
             try {
                 const ext = sub.name.split('.').pop().toLowerCase();
                 const {text, ...result} = subtitleValidateContent(row, bytes, ext, language, log);
-                if (language !== 'zh-cn,zh-tw,zh' && language !== 'en' && !subtitleLanguageMatch(sub.name, language)) { rejected.push(sub.name + '：正文含中文，但所选简繁标记未确认'); continue; }
+                if (language !== 'zh-cn,zh-tw,zh' && language !== 'en' && sub.language !== language && !subtitleLanguageMatch(sub.name, language)) { rejected.push(sub.name + '：正文含中文，但所选简繁标记未确认'); continue; }
                 if (review) result.work = await review(row, text, ext, check);
                 check();
                 try { drive.verified?.remember(sub,bytes,language,result.encoding,row,result); } catch (error) { log('核验记录', '保存失败：' + error.message); }
@@ -1556,6 +1566,7 @@
     }
     function subtitleDrive(context, wait = sleep) {
         const {session, source} = context, guangya = session.provider === '光鸭';
+        const history = typeof mediaFileHistory === 'function' ? mediaFileHistory(session) : null;
         // A token digest scopes receipts without storing a credential. Token changes do not reuse old receipts.
         const receiptKey = session.token ? 'cross-drive-subtitle-uploads-v1:' + subtitleMd5(new TextEncoder().encode((session.provider || '123') + ':' + session.token)) : '';
         const verifiedKey = receiptKey.replace('cross-drive-subtitle-uploads-v1:', 'cross-drive-subtitle-verified-v1:');
@@ -1662,7 +1673,9 @@
                     check();
                     const matches = nodes.filter(node => node.name === record.name);
                     if (matches.length !== 1 || !await sameContent(matches[0], {length:record.size}, record.md5, progress, check)) throw Object.assign(new Error('此前字幕上传已提交，但目录或内容仍未确认：' + record.name + '；请稍后重新检查目录，不重复上传'), {pendingUpload:true});
-                    check(); recovered.push(matches[0]); receipts.delete(key); persistReceipts();
+                    check();
+                    if (record.language) history?.link(row,matches[0],record.language);
+                    recovered.push({...matches[0],parentId:row.node.parentId,language:record.language}); receipts.delete(key); persistReceipts();
                     progress('已核验此前上传：' + record.name);
                 }
                 return recovered;
@@ -1701,7 +1714,7 @@
                     return {chinese:false, unconfirmed:true, message:'未读取到 MKV 字幕轨：' + error.message};
                 }
             },
-            async save(row, name, bytes, progress = () => {}, check = () => {}, {beforeWrite} = {}) {
+            async save(row, name, bytes, progress = () => {}, check = () => {}, {beforeWrite,language} = {}) {
                 check();
                 if (pendingFor(row).length) {
                     const recovered = await reconcile(row, progress, check);
@@ -1718,7 +1731,7 @@
                 }
                 check(); progress('上传到视频目录');
                 const receiptId = JSON.stringify([videoKey(row), name]);
-                receipts.set(receiptId, {video:videoKey(row), name, size:bytes.length, md5, time:Date.now()});
+                receipts.set(receiptId, {video:videoKey(row), name, size:bytes.length, md5, time:Date.now(),language});
                 try { persistReceipts(); }
                 catch (error) { receipts.delete(receiptId); throw new Error('无法保存上传恢复记录，本次未上传：' + error.message); }
                 const checkSubmitted = () => { try { check(); } catch (error) { error.pendingUpload = true; throw error; } };
@@ -1770,7 +1783,12 @@
                         }
                         validateVideo(row, fresh);
                         const matches = fresh.filter(node => node.name === name);
-                        if (matches.length === 1 && await sameContent(matches[0], bytes, md5, progress, check)) { check(); receipts.delete(receiptId); persistReceipts(); return matches[0]; }
+                        if (matches.length === 1 && await sameContent(matches[0], bytes, md5, progress, check)) {
+                            check();
+                            if (language) history?.link(row,matches[0],language);
+                            receipts.delete(receiptId); persistReceipts();
+                            return {...matches[0],parentId:row.node.parentId,language};
+                        }
                         if (matches.length) throw new Error('上传后字幕内容不一致或同名不唯一，未标为已补齐');
                         if (attempt < 11) await wait(1000);
                     }

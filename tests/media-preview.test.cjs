@@ -19,7 +19,7 @@ function fixture() {
     };
     const ctx = vm.createContext({
         rows: [{include: true, ready: true, destination: 'Movie.2000.mkv', node: {id: 'v', path: 'old.mkv'}, subtitles: [{id: 's', name: 'old.zh-cn.srt', suffix: '.zh-cn'}]}],
-        cancelled: false, batch: null, batchWriter: null, reused: 0,
+        cancelled: false, batch: null, batchWriter: null, reused: 0, history:null, previewRevision:'',
         ui: {busy: busy => claim('media', busy), get: id => {assert.ok(elements[id], 'Unexpected UI dependency: ' + id); return elements[id];}},
         otherUi: {busy: busy => claim('subtitles', busy)},
         updateControls: busy => {state.locks.push(busy); elements.runMedia.disabled = busy || !ctx.batch;},
@@ -29,6 +29,7 @@ function fixture() {
         readyRow: row => row.ready, validateEpisode: async () => {},
         mediaFileMetadata: async () => ({size: 100, md5: 'a'.repeat(32)}),
         mediaRecords: {remember: () => {}, save: () => {}, count: () => 1},
+        mediaSubtitleLinks: () => ({linked:new Map([['v',[{id:'s',name:'old.zh-cn.srt',suffix:'.zh-cn'}]]])}),
         source: {children: async () => []}, targetSession: {parent: 'root'}, targetPath: 'library',
         mediaPath: row => row.destination, mediaStem: value => value.replace(/\.[^.]+$/, ''),
         relativeParts: value => value.split('/'), mediaWorkCounts: () => {},
@@ -41,7 +42,7 @@ function fixture() {
         part('        const invalidate =', '        const runTask =') +
         part('        const refreshPreview =', '        const editRows =') +
         part('        const generatePreview =', "        ui.get('runMedia').onclick =") +
-        '\nthis.refresh = refreshPreview;', ctx);
+        '\nthis.refresh = refreshPreview; this.checkStale = refreshStalePreview;', ctx);
     return {ctx, state, elements};
 }
 

@@ -134,10 +134,10 @@ async function thunderOnlyUI() {
     const elements=new Map(),stored=new Map([['cross-drive-subtitle-settings',{subdl:false,open:false}]]);
     const element=()=>({value:'',checked:false,disabled:false,hidden:false,style:{},dataset:{},textContent:'',children:[],append(...c){this.children.push(...c)},appendChild(c){this.children.push(c)},replaceChildren(...c){this.children=c},querySelectorAll(){return []}});
     const video={id:'v',parentId:'p',name:'电影.2000.mkv',folders:[],path:'电影.2000.mkv',size:1000};
-    let searches=0,saves=0, embedded;
+    let searches=0,saves=0, checks=0, embedded, selected='picked';
     const ctx=load({GM_getValue:(key,def)=>stored.has(key)?stored.get(key):def,GM_setValue:(key,value)=>stored.set(key,value),document:{createElement:element},
         makePanel:(_title,html)=>{for(const tag of html.matchAll(/<[^>]+\bid="([^"]+)"[^>]*>/g)){const e=element();e.checked=/\bchecked\b/.test(tag[0]);elements.set(tag[1],e);}return {get:id=>elements.get(id),moveSettings(){},openSettings(){},busy(){}}},
-        mediaContext:async()=>({selected:[video],source:{},path:'电影'}),collectMediaSelection:async()=>({videos:[video],linked:new Map()}),selectedTreeCache:null,
+        mediaContext:async()=>({selected:[{...video,id:selected}],session:{parent:'root',token:'fixture'},source:{},path:'电影'}),collectMediaSelection:async()=>{checks++;return {videos:[video],linked:new Map()};},mediaFileHistory:()=>null,
         parseMediaName:()=>row().parsed,mediaRecords:{get:()=>null},mediaBonusName:()=>false,mediaStem:name=>name.replace(/\.[^.]+$/,''),
         subtitleDrive:()=>({reconcile:async()=>[],inspectEmbedded:async()=>embedded,save:async()=>{saves++;return {id:'s'}}}),
         GM_xmlhttpRequest:options=>{assert.equal(elements.get('useThunder').disabled,true,'Source switch locked throughout search/download');
@@ -150,10 +150,14 @@ async function thunderOnlyUI() {
     assert.match(elements.get('subtitleLog').value,/启用来源：迅雷/);assert.equal(elements.get('useThunder').disabled,false);
     await elements.get('fillSubtitles').onclick();assert.equal(saves,1);assert.match(elements.get('subtitleSummary').textContent,/有字幕 1/);
     embedded={chinese:true,message:'有内嵌中文字幕，跳过补齐'};
-    await elements.get('recheckSubtitles').onclick();
+    assert.equal(checks,1);
+    selected = 'embedded';
     await elements.get('readSubtitles').onclick();
-    await elements.get('fillSubtitles').onclick();
     assert.equal(searches,1,'Chinese track prevents searching');
+    assert.equal(checks,2,'A new selection is checked once');
+    assert.match(elements.get('subtitleProgress').textContent,/全部已补齐/);
+    await elements.get('readSubtitles').onclick();
+    assert.equal(checks,2,'Repeated searches reuse complete inventory for the same selection');
     assert.equal(saves,1,'Chinese track prevents writing');
     assert.equal(elements.get('fillSubtitles').disabled,true);
     const view=elements.get('subtitleView');
@@ -167,7 +171,7 @@ async function thunderOnlyUI() {
     assert.equal(elements.get('subtitleRows').children.length,0,'Chinese track is excluded from incomplete results');
     for (const message of ['未发现内嵌中文字幕','未读取到 MKV 字幕轨']) {
         embedded={chinese:false,message};
-        await elements.get('recheckSubtitles').onclick();
+        selected = message;
         await elements.get('readSubtitles').onclick();
         assert.equal(searches,1,'Search reuses the prior source response');
         assert.equal(elements.get('fillSubtitles').disabled,false,'No Chinese track leaves the video eligible for fill');

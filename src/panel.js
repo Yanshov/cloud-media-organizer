@@ -78,6 +78,7 @@
             take(main, '#subtitleResults');
         } else {
             main.append(create('p', 'tool-list-hint', '按作品查看，点击条目展开详情；操作会应用于全部符合条件的项目。'));
+            take(main, '#mediaCleanup');
             take(main, '#mediaRows');
             const empty = create('p', 'media-empty', '先在网盘勾选视频或文件夹，点击“识别并预览”。识别后的待处理作品会显示在这里。');
             main.append(empty);
@@ -87,11 +88,10 @@
         }
         const utilities = create('div', 'tool-utilities');
         const auxiliary = id === 'json' ? side : utilities;
-        if (id !== 'subtitle') {
-            const actions = id === 'json' ? create('section', 'tool-import-options') : create('details', 'tool-card tool-secondary');
-            if (id === 'media') actions.append(create('summary', '', '批量与辅助操作'));
+        if (id === 'json') {
+            const actions = create('section', 'tool-import-options');
             for (const node of [...pane.querySelectorAll(':scope > .panel-actions, :scope > .export-options')]) actions.append(node);
-            (id === 'json' ? commands : auxiliary).append(actions);
+            commands.append(actions);
         }
         // Settings are moved to the shared settings page by each feature after setup.
         for (const node of [...pane.children]) {
@@ -173,7 +173,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 .tool-commandbar .panel-actions{margin:0;gap:10px}.tool-commandbar button{padding:9px 17px;min-height:38px}
 .manifest-import{position:relative}.manifest-import>summary{margin:0;border:1px solid var(--border);border-radius:7px;padding:8px 12px;background:var(--surface);line-height:1.5}
 .manifest-import-actions{position:absolute;top:calc(100% + 6px);left:0;z-index:2;width:max-content;display:grid;gap:8px;padding:10px;background:var(--panel);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 14px #0002}.manifest-import-actions label{margin:0;align-items:center}.manifest-import-actions input[type=checkbox]{margin:0}
-#generate,#exportManifest,#scanMedia,#recheckSubtitles,#fillSubtitles,#runMedia,#transfer,#start,#chooseManifest,#chooseJsonFile{background:var(--surface);border:1px solid var(--border);color:var(--text);font-weight:500}
+#generate,#exportManifest,#scanMedia,#readSubtitles,#fillSubtitles,#runMedia,#transfer,#start,#chooseManifest,#chooseJsonFile{background:var(--surface);border:1px solid var(--border);color:var(--text);font-weight:500}
 .tool-import-options{margin-left:auto;max-width:320px;color:var(--muted);font-size:14px}.tool-import-options .export-options,.tool-import-options label{margin:0}.panel-actions:empty,.tool-import-options:not(:has(input,select,button)){display:none}
 .tool-layout{flex:1;min-width:0;min-height:auto}.tool-main{min-width:0}.tool-list-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:34px;margin-bottom:12px}
 .tool-list-heading select{width:auto;max-width:210px;margin:0;font-size:14px;padding:6px 10px}
@@ -268,7 +268,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         </style><button id="toggle" type="button" title="打开云盘工具" aria-label="打开云盘工具" aria-haspopup="dialog" aria-expanded="false" aria-controls="toolDialog"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 12h4M8 16h3M16 12v6m-2-2 2 2 2-2"/></svg></button>
         <div class="workspace-overlay" hidden><div class="box" id="toolDialog" role="dialog" aria-modal="false" aria-labelledby="workspaceTitle" tabindex="-1">
         <header class="workspace-header"><div><h2 id="workspaceTitle">云盘工具</h2><p id="windowHint">拖动标题栏移动 · 可同时操作网页</p></div><div class="workspace-window-actions"><button id="settingsWorkspace" type="button">设置</button><button id="pinWorkspace" type="button" aria-pressed="false" title="锁定窗口位置">固定位置</button><button id="closeWorkspace" type="button" aria-label="关闭面板" title="关闭">×</button></div></header>
-        <div class="workspace-toolbar"><div class="workspace-tabs" role="tablist" aria-label="功能分类"><button id="jsonTab" type="button" role="tab" aria-selected="false" aria-controls="jsonPane" tabindex="-1" disabled>跨盘 JSON</button><button id="mediaTab" type="button" role="tab" aria-selected="false" aria-controls="mediaPane" tabindex="-1" disabled title="当前网盘暂不支持影视整理">影视整理</button><button id="subtitleTab" type="button" role="tab" aria-selected="false" aria-controls="subtitlePane" tabindex="-1" disabled title="当前网盘暂不支持字幕检查">字幕</button></div>
+        <div class="workspace-toolbar"><div class="workspace-tabs" role="tablist" aria-label="功能分类"><button id="jsonTab" type="button" role="tab" aria-selected="false" aria-controls="jsonPane" tabindex="-1" disabled>跨盘 JSON</button><button id="subtitleTab" type="button" role="tab" aria-selected="false" aria-controls="subtitlePane" tabindex="-1" disabled title="当前网盘暂不支持字幕检查">查找字幕</button><button id="mediaTab" type="button" role="tab" aria-selected="false" aria-controls="mediaPane" tabindex="-1" disabled title="当前网盘暂不支持影视整理">影视整理</button></div>
         <label class="theme-row">窗口尺寸<select id="workspaceSize" aria-label="窗口尺寸"><option value="960x600">960 × 600</option><option value="1280x800" selected>1280 × 800（默认）</option><option value="1440x900">1440 × 900</option><option value="1600x1000">1600 × 1000</option></select></label>
         <label class="theme-row">外观<select id="theme"><option value="auto">跟随页面</option><option value="light">浅色</option><option value="dark">深色</option></select></label></div>
         <div class="workspace-body"><section id="workspaceSettings" class="tool-pane" hidden><div class="settings-heading"><h3>设置</h3><button id="backToTools">返回工具</button></div><div id="settingsSections"><div class="settings-column" id="settingsModels"></div><div class="settings-column" id="settingsBasics"></div></div></section></div></div></div>`;
@@ -385,7 +385,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             for (const button of root.querySelectorAll('[role=tab]')) button.onkeydown = event => {
                 if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
                 event.preventDefault();
-                const available = [...tabs.keys()], index = available.indexOf(active);
+                const available = [...root.querySelectorAll('[role=tab]')].map(button => button.id.slice(0,-3)).filter(id => tabs.has(id)), index = available.indexOf(active);
                 const next = event.key === 'Home' ? 0 : event.key === 'End' ? available.length - 1 : (index + (['ArrowRight','ArrowDown'].includes(event.key) ? 1 : -1) + available.length) % available.length;
                 activate(available[next], true);
             };

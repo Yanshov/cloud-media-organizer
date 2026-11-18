@@ -181,25 +181,94 @@
         }, check);
         return { nodes, children };
     }
-    async function collectMediaSelection(selected, source, progress = () => {}, skip = () => false, check = () => {}, enrich = true) {
+    function mediaFileHistory(session) {
+        if (!session?.token) return null;
+        const account = subtitleMd5(new TextEncoder().encode((session.provider || '123') + ':' + session.token));
+        const key = 'cross-drive-file-history-v1:' + account;
+        const load = () => new Map(GM_getValue(key,[]));
+        const snapshot = (node,parentId) => [String(parentId),node.name,node.size,String(node.md5 || '').toLowerCase()];
+        const matches = (saved,node,parentId) => {
+            const [parent,name,size,hash] = snapshot(node,parentId);
+            return saved[0] === parent && saved[1] === name && saved[2] === size && (!saved[3] || !hash || saved[3] === hash);
+        };
+        const save = (entries,id,entry) => {
+            entries.delete(id);
+            entries.set(id,entry);
+            evict(entries,5000);
+            GM_setValue(key,[...entries]);
+        };
+        return {
+            get(node,parentId,entries = load()) {
+                const record = entries.get(String(node.id));
+                return record && matches(record.file,node,parentId) ? record : null;
+            },
+            load,
+            revision(videoIds) {
+                const ids = new Set(videoIds.map(String));
+                return JSON.stringify([...load()].filter(([,record]) => ids.has(record.videoId)));
+            },
+            link(row,sub,language) {
+                if (sub.id == null || row.node.id == null) return;
+                const entries = load(), id = String(sub.id);
+                save(entries,id,{file:snapshot(sub,row.node.parentId),original:sub.name,
+                    videoId:String(row.node.id),video:snapshot(row.node,row.node.parentId),language});
+            },
+            organized(before,after) {
+                const entries = load(), id = String(before.id);
+                const previous = this.get(before,before.parentId,entries);
+                if (previous || MEDIA_VIDEO.test(before.name))
+                    entries.set(id,{...previous,original:previous?.original || before.name,file:snapshot(after,after.parentId)});
+                for (const [subId,record] of entries)
+                    if (record.videoId === id && matches(record.video,before,before.parentId))
+                        entries.set(subId,{...record,video:snapshot(after,after.parentId)});
+                if (entries.has(id)) save(entries,id,entries.get(id));
+            },
+            associated(record, video, parentId) {
+                return video && matches(record.video,video,parentId);
+            }
+        };
+    }
+    function mediaSubtitleLinks(siblings, parentId, history) {
+        const videos = siblings.filter(node => !node.directory && MEDIA_VIDEO.test(node.name));
+        const linked = new Map(), unmatched = [], records = history?.load();
+        const videosById = new Map(videos.map(video => [String(video.id),video]));
+        for (const sub of siblings.filter(node => !node.directory && MEDIA_SUB.test(node.name))) {
+            const saved = history?.get(sub,parentId,records);
+            const intended = saved?.videoId && videosById.get(saved.videoId);
+            const candidates = saved?.videoId ? (history.associated(saved,intended,parentId) ? [intended] : [])
+                : videos.filter(video => mediaSubtitleSuffix(video.name,sub.name) !== null);
+            if (candidates.length !== 1) { unmatched.push(sub); continue; }
+            const video = candidates[0];
+            const suffix = mediaSubtitleSuffix(video.name,sub.name) || (saved?.language ? '.' + saved.language : '');
+            if (!linked.has(String(video.id))) linked.set(String(video.id),[]);
+            linked.get(String(video.id)).push({...sub,parentId,suffix,language:saved?.language});
+        }
+        return {linked,unmatched};
+    }
+    async function collectMediaSelection(selected, source, progress = () => {}, skip = () => false, check = () => {}, enrich = true, history) {
         const { nodes, children } = await collectSelectedTree(selected, source, progress, check);
         const videos = nodes.filter(node => MEDIA_VIDEO.test(node.name)), videosByParent = new Map();
         for (const video of videos) {
             if (!videosByParent.has(video.parentId)) videosByParent.set(video.parentId, []);
             videosByParent.get(video.parentId).push(video);
         }
-        // Sibling subtitles can accompany a selected video, but only an exact
-        // basename plus recognized language/role suffix establishes a link.
-        const subtitles = new Map(nodes.filter(node => MEDIA_SUB.test(node.name)).map(node => [node.id, node]));
-        for (const siblings of videosByParent.values()) for (const node of await children(siblings[0].parentId)) if (!node.directory && MEDIA_SUB.test(node.name))
-            subtitles.set(node.id, { ...node, parentId: siblings[0].parentId, folders: siblings[0].folders, ancestors: siblings[0].ancestors, path: [...siblings[0].folders, node.name].join('/') });
-        const linked = new Map(videos.map(video => [video.id, []])), unmatched = [];
-        for (const sub of subtitles.values()) {
-            const candidates = (videosByParent.get(sub.parentId) || []).filter(video => mediaSubtitleSuffix(video.name, sub.name) !== null);
-            if (candidates.length === 1) linked.get(candidates[0].id).push({ ...sub, suffix: mediaSubtitleSuffix(candidates[0].name, sub.name) });
-            else unmatched.push(sub);
+        const linked = new Map(videos.map(video => [video.id, []])), namesByParent = new Map(), unmatched = [];
+        const records = history?.load();
+        for (const [parentId,siblings] of videosByParent) {
+            const entries = await children(parentId);
+            namesByParent.set(parentId,new Set(entries.map(node => node.name.toLowerCase())));
+            const found = mediaSubtitleLinks(entries,parentId,history);
+            const attachPath = sub => ({...sub,parentId,folders:siblings[0].folders,ancestors:siblings[0].ancestors,
+                path:[...siblings[0].folders,sub.name].join('/')});
+            for (const video of siblings) {
+                const record = history?.get(video,parentId,records);
+                if (record?.original) video.originalName = record.original;
+                linked.set(video.id,(found.linked.get(String(video.id)) || []).map(attachPath));
+            }
+            unmatched.push(...found.unmatched.map(attachPath));
         }
-        const pending = videos.filter(video => !skip(video));
+        const pending = videos.filter(video => !skip(video) || linked.get(video.id).some(sub => sub.language
+            && !mediaSubtitleSuffix(video.name,sub.name)));
         // Standard entries need neither metadata enrichment nor TMDB matching.
         for (const video of enrich ? pending : []) {
             check();
@@ -211,7 +280,7 @@
         }
         check();
         const pendingParents = new Set(pending.map(video => video.parentId));
-        return { videos: pending, linked, unmatched: unmatched.filter(sub => pendingParents.has(sub.parentId)), skipped: videos.length - pending.length };
+        return { videos: pending, linked, namesByParent, unmatched: unmatched.filter(sub => pendingParents.has(sub.parentId)), skipped: videos.length - pending.length };
     }
     const tmdbClients = new Map();
     async function mediaSeasonEpisodes(client, seriesId, seasonNumber) {
@@ -272,10 +341,11 @@
         const write = paced(650, request), read = paced(180, request);
         return (endpoint, body) => (endpoint === API.task ? read : write)(endpoint, body);
     }
-    async function mediaContext(provider) {
+    async function mediaContext(provider, previous) {
         if (provider === '123') {
             const session = recover123Session(), source = pan123Source(session);
-            const path = await export123ParentPath(source);
+            const path = previous?.session.token === session.token && previous.session.parent === session.parent
+                ? previous.path : await export123ParentPath(source);
             return { session, source, path, selected: selectedItems('123') };
         }
         const folder = currentGuangyaFolder();
@@ -299,6 +369,8 @@
             return result;
         });
         const directories = new Map([['', session.parent]]), bindings = new Map(), scopeSnapshots = new Map();
+        const history = typeof mediaFileHistory === 'function' ? mediaFileHistory(session) : null;
+        const subtitleSnapshots = new Map();
         let checkPlan = () => {};
         const scanScope = async (id, children, path = '', seen = new Set()) => {
             checkPlan();
@@ -314,6 +386,7 @@
             return result;
         };
         const scopeKey = nodes => JSON.stringify(nodes.map(node => [node.id,node.parentId,node.name,node.directory,node.size,node.md5]).sort((a,b) => a[0].localeCompare(b[0])));
+        const subtitleScopeKey = files => scopeKey(files.map(file => ({...file,id:String(file.id),name:file.name + '\0' + file.suffix})));
         async function prepare(items, check = () => {}) {
             checkPlan = check;
             bindings.clear(); scopeSnapshots.clear();
@@ -335,11 +408,27 @@
             const lists = new Map();
             const children = async id => { check(); if (!lists.has(id)) lists.set(id, await source.children({ id })); return lists.get(id); };
             const byId = new Map(videos.map(item => [String(item.node.id), item]));
+            subtitleSnapshots.clear();
+            const planned = new Map();
+            for (const item of items) if (item.node.id !== item.videoId) {
+                const id = String(item.videoId);
+                if (!planned.has(id)) planned.set(id,new Set());
+                planned.get(id).add(String(item.node.id));
+            }
+            if (typeof MEDIA_SUB !== 'undefined') for (const {node} of videos) {
+                const id = String(node.id);
+                const found = mediaSubtitleLinks(await children(node.parentId),node.parentId,history).linked.get(id) || [];
+                if (found.some(sub => !planned.get(id)?.has(String(sub.id))) || found.length !== (planned.get(id)?.size || 0))
+                    throw new Error('关联字幕已变化，请重新生成预览：' + node.name);
+                subtitleSnapshots.set(node,subtitleScopeKey(found));
+            }
             for (const { folder, paths } of candidates.values()) {
                 check();
                 if (paths.size !== 1) continue;
                 const path = [...paths][0], contents = await scanScope(folder.id, children), ids = contents.filter(node => !node.directory && MEDIA_VIDEO.test(node.name)).map(node => node.id);
                 if (!ids.length || ids.some(id => !byId.has(id) || !byId.get(id).destination.startsWith(path + '/'))) continue;
+                if (typeof MEDIA_SUB !== 'undefined' && contents.some(node => !node.directory && MEDIA_SUB.test(node.name)
+                    && !ids.some(id => planned.get(id)?.has(node.id)))) continue;
                 // Multiple source folders for one work share one destination; files keep their IDs.
                 const previous = bindings.get(path), name = relativeParts(path).at(-1);
                 if (!previous || previous.name !== name && folder.name === name) { bindings.set(path, folder); scopeSnapshots.set(String(folder.id), contents); }
@@ -360,6 +449,11 @@
             return [...bindings].map(([destination, folder]) => ({folder, destination, contents:scopeSnapshots.get(String(folder.id))}));
         }
         async function validate() {
+            const children = subtitleSnapshots.size ? cachedDriveChildren(source,new Map(),checkPlan) : null;
+            for (const [node,expected] of subtitleSnapshots) {
+                const found = mediaSubtitleLinks(await children(node.parentId),node.parentId,history).linked.get(String(node.id)) || [];
+                if (subtitleScopeKey(found) !== expected) throw new Error('关联字幕在预览后变化，请重新生成预览：' + node.name);
+            }
             for (const folder of bindings.values()) {
                 checkPlan();
                 const current = (await source.children({id:folder.parentId})).find(node => node.id === folder.id);
@@ -438,14 +532,25 @@
                 }
                 throw new Error('请求已提交但结果未确认，请刷新后重新识别；文件 ID：' + original.id);
             };
-            const changeName = async () => { await post(guangya ? '/userres/v1/file/rename' : '/file/rename', guangya ? { fileId: original.id, newName: name } : { driveId: 0, fileId: original.id, fileName: name }); await confirm(name); };
+            let historyError;
+            const rememberCurrent = () => {
+                const before = {...original};
+                Object.assign(original,{name:current.name,parentId});
+                try { history?.organized(before,original); }
+                catch (error) { historyError = error; }
+            };
+            const changeName = async () => {
+                await post(guangya ? '/userres/v1/file/rename' : '/file/rename', guangya ? { fileId: original.id, newName: name } : { driveId: 0, fileId: original.id, fileName: name });
+                await confirm(name);
+                rememberCurrent();
+            };
             const changeParent = async () => { const result = await post(guangya ? '/userres/v1/file/move_file' : '/file/mod_pid', guangya ? { fileIds: [original.id], parentId: targetId === '0' ? '' : targetId } : { fileIdList: [{ FileId: original.id }], parentFileId: targetId });
                 if (guangya && taskIdOf(result.data)) await waitGuangyaDelete(taskIdOf(result.data), post, sleep, '移动');
-                parentId = targetId; await confirm(current.name); };
+                parentId = targetId; await confirm(current.name); rememberCurrent(); };
             if (rename && renameFirst) await changeName();
             if (move) await changeParent();
             if (rename && !renameFirst) await changeName();
-            Object.assign(original, {name, parentId});
+            if (historyError) return '已整理，原名记录保存失败：' + historyError.message;
             return rename || move ? '已整理' : '已是标准名称与位置';
         }
         return { prepare, validate, execute };
