@@ -182,10 +182,19 @@ async function sharedHelpers(){
  const regular={...rows[0],type:'tv',detail,node:{...rows[0].node,ancestors:[ancestor]}};
  const changed=await ctx.resolveMediaSpecials([regular,special],{get:async()=>({episodes:[{name:'Rock & Roll',episode_number:1}]})});
  assert.equal(changed.length,1);assert.equal(special.season,0);assert.equal(special.episode,1);
- const resolve=ctx.mediaCanonicalResolver({search:async()=>[{...detail,media_type:'tv'}],get:async()=>detail});
- assert.equal(await resolve({name:'Love.Death.and.Robots.2019.mkv'}),'Love, Death & Robots.2019.mkv');
+ const searches=[],lookups=[];
+ const resolve=ctx.mediaCanonicalResolver({
+    search:async query=>{searches.push(query);return [{...detail,media_type:'tv'}];},
+    get:async target=>{lookups.push(target);return target.includes('/season/')?{episodes:[{episode_number:1},{episode_number:2}]}:detail;}
+ });
+ assert.equal(await resolve({name:'Love.Death.and.Robots.2019.S01E01.1080p.mkv'}),'Love, Death & Robots.2019.S01E01.mkv');
+ assert.equal(await resolve({name:'02.mkv'},['Love.Death.and.Robots.2019','Season 01']),'Love, Death & Robots.2019.S01E02.mkv');
+ assert.equal(await resolve({name:'Love.Death.and.Robots.2019.S01E01.zh-cn.ass'}),'Love, Death & Robots.2019.S01E01.zh-cn.ass');
+ assert.equal(await resolve({name:'Love.Death.and.Robots.2019.S01E99.mkv'}),null);
+ assert.equal(searches.length,1,'The same series shares recognition across episodes and subtitles');
+ assert.deepEqual(lookups,['/tv/1','/tv/1/season/1']);
  await assert.rejects(resolve({name:'Love.Death.and.Robots.2020.mkv'}),/无法唯一确认/);
- const ambiguous=ctx.mediaCanonicalResolver({search:async()=>[detail,detail]});
+ const ambiguous=ctx.mediaCanonicalResolver({search:async()=>[detail,{...detail,id:2}].map(item=>({...item,media_type:'tv'}))});
  await assert.rejects(ambiguous({name:'Love.Death.and.Robots.2019.mkv'}),/无法唯一确认/);
  console.log('PASS shared helpers: FIFO bounds; auth headers; &/and grouping, specials and canonical aliases; numeric titles, years, ambiguity and movie isolation retained');
 }

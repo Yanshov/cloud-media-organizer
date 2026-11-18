@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v3.0（重构版）
 // @namespace    local.cloud-media-organizer
-// @version      3.3.20
+// @version      3.3.21
 // @description  百度/123/光鸭跨盘清单，123/光鸭影视整理、字幕搜索与核验上传
 // @match        https://pan.baidu.com/*
 // @match        https://yun.baidu.com/*
@@ -40,7 +40,7 @@
     if (typeof navigator !== 'undefined' && (navigator.userAgentData?.mobile || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
         navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) return;
 
-    const VERSION = '3.3.20';
+    const VERSION = '3.3.21';
     let jsonTaskStopped = false;
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
@@ -2830,31 +2830,66 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         if (match[2] && folders.pop() !== 'Season ' + match[2]) return false;
         return folders.pop() === match[1];
     }
-    function mediaCanonicalResolver(client) {
-        const cache = new Map();
-        const key = titleKey;
-        return async node => {
-            if (node.directory && (mediaExistingCategory([node.name]) || /^Season \d{2}$/.test(node.name))) return null;
-            const match = node.name.match(/^(.+)\.((?:19|20)\d{2})(?=\.|$)/);
-            if (!match) return null;
-            const [, title, year] = match, cacheKey = JSON.stringify([title, year]);
-            if (!cache.has(cacheKey)) cache.set(cacheKey, (async () => {
-                const candidates = (await client.search(title)).filter(c => (c.release_date || c.first_air_date || '').startsWith(year) && [c.title, c.name, c.original_title, c.original_name].filter(Boolean).some(name => key(name) === key(title)));
-                if (candidates.length !== 1) throw new Error('无法唯一确认标准片名：' + title + '.' + year + '；请先匹配此作品');
-                const c = candidates[0], detail = await client.get('/' + c.media_type + '/' + c.id);
-                const standardTitle = detail.title || detail.name;
-                if (!standardTitle) throw new Error('TMDB 未返回标准片名：' + title);
-                return mediaClean(standardTitle);
+    function mediaCanonicalResolver(client, check = () => {}) {
+        const works = new Map(), seasons = new Map();
+        return async (node, folders = []) => {
+            check();
+            if (node.directory && (mediaExistingCategory([node.name]) || /^Season \d{2}$/.test(node.name))) return node.name;
+            const subtitle = !node.directory && MEDIA_SUB.test(node.name);
+            const subtitleBase = subtitle && mediaStem(node.name).match(/^(.+\.(?:19|20)\d{2}(?:\.S\d{2}E\d{2,3}(?:E\d{2,3})?)?)(?=\.|$)/)?.[1];
+            const suffix = subtitleBase && mediaSubtitleSuffix(subtitleBase + '.mkv',node.name);
+            if (subtitle && (typeof suffix !== 'string' || !subtitleBase)) return null;
+            const nameToParse = node.directory ? node.name + '.mkv' : subtitle ? subtitleBase + '.mkv' : node.name;
+            const explicit = parseMediaName(nameToParse);
+            const parsed = !node.directory && explicit.tv ? parseMediaName(nameToParse,folders) : explicit;
+            if (!explicit.query && parsed.year && parsed.query.endsWith(' ' + parsed.year))
+                parsed.query = parsed.query.slice(0,-5).trimEnd();
+            if (!parsed.query || node.directory && (!parsed.year || parsed.season != null)) return null;
+            const cacheKey = JSON.stringify([titleKey(parsed.query),parsed.year,parsed.tv]);
+            if (!works.has(cacheKey)) works.set(cacheKey,(async () => {
+                const candidates = (await client.search(parsed.query)).filter(candidate =>
+                    ['movie','tv'].includes(candidate.media_type) && (!parsed.tv || candidate.media_type === 'tv')
+                    && (!parsed.year || (candidate.release_date || candidate.first_air_date || '').startsWith(parsed.year))
+                    && [candidate.title,candidate.name,candidate.original_title,candidate.original_name]
+                        .some(name => name && titleKey(name) === titleKey(parsed.query)));
+                check();
+                if (candidates.length !== 1) throw new Error('无法唯一确认作品：' + parsed.query + (parsed.year ? ' · ' + parsed.year : ''));
+                const {media_type:type,id} = candidates[0];
+                const detail = await client.get('/' + type + '/' + id);
+                check();
+                const title = type === 'tv' ? detail.name : detail.title;
+                const year = (type === 'tv' ? detail.first_air_date : detail.release_date)?.slice(0,4);
+                if (String(detail.id) !== String(id) || !title || !/^(19|20)\d{2}$/.test(year) || (parsed.year && year !== parsed.year))
+                    throw new Error('无法确认标准片名或年份：' + parsed.query);
+                return {id,type,detail,title,year};
             })());
-            return await cache.get(cacheKey) + node.name.slice(title.length);
+            const {id,type,detail,title,year} = await works.get(cacheKey);
+            check();
+            if (node.directory) return mediaClean(title) + '.' + year;
+            if (type === 'tv') {
+                const {season,episode,endEpisode} = parsed;
+                if (season == null || episode == null) return null;
+                if (endEpisode != null && endEpisode < episode) return null;
+                const seasonPath = '/tv/' + id + '/season/' + season;
+                if (!seasons.has(seasonPath)) seasons.set(seasonPath,client.get(seasonPath));
+                const seasonDetail = await seasons.get(seasonPath);
+                check();
+                const numbers = new Set((seasonDetail.episodes || []).map(item => item.episode_number));
+                for (let ep = episode; ep <= (endEpisode ?? episode); ep++) if (!numbers.has(ep)) return null;
+            }
+            const name = mediaPath({...parsed,node,type,detail,title,year}).split('/').at(-1);
+            return subtitle ? mediaStem(name) + suffix + name.slice(name.lastIndexOf('.')) : name;
         };
     }
     const mediaPlaybackAttachment = name => MEDIA_SUB.test(name) || /\.(?:ttf|otf|ttc|woff2?)$/i.test(name) || /(?:字体|字體|fonts?).*\.(?:zip|rar|7z)$/i.test(name);
-    async function planMediaCleanup(selected, source, progress = () => {}, {extras = false, includeSubtitles = false, resolveCanonical} = {}) {
+    async function planMediaCleanup(selected, source, progress = () => {}, {extras = false, includeSubtitles = false, resolveCanonical, parentPath = '', check = () => {}} = {}) {
         if (!selected.length) throw new Error('请先勾选要清理的文件或文件夹');
         const plan = [], {parentId} = source;
+        check();
         const roots = matchSelected(await source.children({id:parentId}), selected);
-        const label = extras ? '检查非正片：' : '检查命名：';
+        check();
+        const label = extras ? '检查非正片：' : '识别并检查命名：';
+        const baseFolders = parentPath.split('/').filter(Boolean);
         await walkTree(roots.map(node => ({node, parentId, path:node.name})), entry => entry.node.id, async entry => {
             const {node, parentId, path} = entry;
             let {extraScope = null} = entry;
@@ -2870,19 +2905,30 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     if (reason) plan.push({id:node.id, parentId, name:node.name, path, directory:false, cleanup:'extras', extraScope, reason});
                 }
             } else {
-                const standard = mediaStandardNode(node);
+                const needsIdentity = node.directory || MEDIA_VIDEO.test(node.name) || MEDIA_SUB.test(node.name);
                 let expectedName = null;
-                if (standard && resolveCanonical) {
-                    try { expectedName = await resolveCanonical(node); }
-                    catch (error) { if (error.stop) throw error; progress(error.message); }
+                if (resolveCanonical && needsIdentity) {
+                    const folders = [...baseFolders,...path.split('/').slice(0,-1)];
+                    let reason = '';
+                    try { expectedName = await resolveCanonical(node,folders); check(); }
+                    catch (error) {
+                        check();
+                        if (error.stop) throw error;
+                        reason = error.message;
+                    }
+                    if (!expectedName && (reason || !mediaStandardNode(node)))
+                        progress('保留，未确认：' + path + ' · ' + (reason || '无法确认标准名称'));
                 }
-                if (!standard || expectedName && expectedName !== node.name) {
+                const nonstandard = resolveCanonical && needsIdentity
+                    ? expectedName && expectedName !== node.name
+                    : !mediaStandardNode(node);
+                if (nonstandard) {
                     plan.push({id:node.id, name:node.name, parentId, path, directory:!!node.directory, expectedName});
                     return; // The whole directory is one deletion, including its contents.
                 }
             }
             if (node.directory) return (await source.children({id:node.id})).map(child => ({node:child, parentId:node.id, path:path + '/' + child.name, extraScope}));
-        }, () => {});
+        }, check);
         return plan;
     }
     async function removeMediaNonstandard(item, session, source) {
@@ -3275,7 +3321,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             <label>清理规则<select id="cleanupMode"><option value="extras">非正片与附件</option><option value="nonstandard">所有不规范项目</option></select></label>
             <label id="cleanupSubtitleOption"><input id="cleanupSubtitles" type="checkbox">同时清理字幕及字体（默认保留）</label>
             <p id="cleanupRule">清理图片、附件及已标记的花絮/预告；默认保留字幕、字体和普通视频。</p>
-            <div class="panel-actions"><button id="checkCleanup">检查清理范围</button><button id="runEmpty" disabled>确认清理</button></div>
+            <div class="panel-actions"><button id="checkCleanup">识别并检查清理范围</button><button id="runEmpty" disabled>确认清理</button></div>
             <div id="emptyPreview" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto"></div></section>
             <details id="mediaDiagnostics"><summary>详细日志</summary><div class="panel-actions"><button id="copyMediaLog" type="button">复制日志</button><button id="clearMediaLog" type="button">清空日志</button></div><textarea id="mediaLog" readonly spellcheck="false" aria-label="影视整理运行日志"></textarea></details>`, true);
         ui.moveSettings(['mediaSettings'], 'TMDB 设置', '#settingsBasics');
@@ -3362,16 +3408,19 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             ui.get('runMedia').disabled = busy || !batch;
             ui.get('runEmpty').disabled = busy || !emptyPlan.length;
         });
-        const previewCleanup = (extras = false) => runTask(async () => {
+        const previewCleanup = () => runTask(async () => {
+            const extras = ui.get('cleanupMode').value === 'extras';
             emptyPlan = []; ui.get('emptyPreview').textContent = ''; meter(extras ? '检查非正片与附件' : '检查不规范项目');
             try {
                 const context = await mediaContext(provider); emptySession = context.session; emptySource = context.source; checkStopped();
-                const canonical = extras ? null : mediaCanonicalResolver(tmdbClient(ui.get('tmdbKey').value));
-                emptyPlan = await planMediaCleanup(context.selected, emptySource, message => {
+                const canonical = extras ? null : mediaCanonicalResolver(tmdbClient(ui.get('tmdbKey').value),checkStopped);
+                const plan = await planMediaCleanup(context.selected, emptySource, message => {
                     checkStopped(); progress(message);
-                    if (!extras && (message.includes('无法唯一确认') || message.includes('未返回标准片名'))) log('未确认标准名，暂不删除：' + message);
-                }, {extras, includeSubtitles:extras && ui.get('cleanupSubtitles').checked, resolveCanonical:canonical});
-                ui.get('emptyPreview').textContent = emptyPlan.map(item => `${item.directory ? '删除整个文件夹及全部内容' : '删除文件'}：${item.path}${item.reason ? '\n原因：' + item.reason : ''}${item.expectedName ? '\n应为标准名称：' + item.expectedName : ''}`).join('\n\n') || (extras ? '未发现非正片文件。' : '没有已确认不符合标准的项目；无法匹配的作品见日志。');
+                    if (message.startsWith('保留，未确认')) log(message);
+                }, {extras, includeSubtitles:extras && ui.get('cleanupSubtitles').checked, resolveCanonical:canonical, parentPath:context.path, check:checkStopped});
+                checkStopped();
+                ui.get('emptyPreview').textContent = plan.map(item => `${item.directory ? '删除整个文件夹及全部内容' : '删除文件'}：${item.path}${item.reason ? '\n原因：' + item.reason : ''}${item.expectedName ? '\n应为标准名称：' + item.expectedName : ''}`).join('\n\n') || (extras ? '未发现非正片文件。' : '没有已确认命名不规范的项目。未确认的作品已保留，详见日志。');
+                emptyPlan = plan;
                 meter('检查结束', emptyPlan.length, emptyPlan.length); progress(`可清理 ${emptyPlan.length} 个${extras ? '非正片文件' : '不规范项目（文件夹包含全部内容）'}；尚未删除`);
             } catch (error) { stopMeter(); progress('检查失败：' + error.message); }
         }, true);
@@ -3379,7 +3428,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             emptyPlan = []; ui.get('runEmpty').disabled = true; ui.get('emptyPreview').textContent = '';
             ui.get('cleanupRule').textContent = ui.get('cleanupMode').value === 'extras'
                 ? (ui.get('cleanupSubtitles').checked ? '清理选中范围内的字幕、字体、图片、其他附件、花絮和预告；保留普通视频及特别篇。' : '清理图片、其他附件、花絮和预告；保留字幕、字体、普通视频及特别篇。')
-                : '清理所选范围内已确认不符合标准命名的文件与文件夹；整文件夹包含全部内容。先核对清单，再移入回收站。无法确认的作品保留。';
+                : '使用 TMDB 识别所选范围，核对标准命名。无法确认的作品会保留。清单中的整文件夹包含全部内容。';
         };
         ui.get('cleanupMode').onchange = () => { ui.get('cleanupSubtitleOption').hidden = ui.get('cleanupMode').value !== 'extras'; changeCleanupRule(); };
         ui.get('cleanupSubtitles').onchange = changeCleanupRule;
@@ -3389,7 +3438,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             ui.get('openMediaCleanup').setAttribute('aria-expanded',String(!section.hidden));
             if (section.hidden) changeCleanupRule();
         };
-        ui.get('checkCleanup').onclick = () => previewCleanup(ui.get('cleanupMode').value === 'extras');
+        ui.get('checkCleanup').onclick = previewCleanup;
         ui.get('runEmpty').onclick = () => runTask(async () => {
             if (!emptyPlan.length) return;
 

@@ -23,7 +23,7 @@
             <label>清理规则<select id="cleanupMode"><option value="extras">非正片与附件</option><option value="nonstandard">所有不规范项目</option></select></label>
             <label id="cleanupSubtitleOption"><input id="cleanupSubtitles" type="checkbox">同时清理字幕及字体（默认保留）</label>
             <p id="cleanupRule">清理图片、附件及已标记的花絮/预告；默认保留字幕、字体和普通视频。</p>
-            <div class="panel-actions"><button id="checkCleanup">检查清理范围</button><button id="runEmpty" disabled>确认清理</button></div>
+            <div class="panel-actions"><button id="checkCleanup">识别并检查清理范围</button><button id="runEmpty" disabled>确认清理</button></div>
             <div id="emptyPreview" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto"></div></section>
             <details id="mediaDiagnostics"><summary>详细日志</summary><div class="panel-actions"><button id="copyMediaLog" type="button">复制日志</button><button id="clearMediaLog" type="button">清空日志</button></div><textarea id="mediaLog" readonly spellcheck="false" aria-label="影视整理运行日志"></textarea></details>`, true);
         ui.moveSettings(['mediaSettings'], 'TMDB 设置', '#settingsBasics');
@@ -110,16 +110,19 @@
             ui.get('runMedia').disabled = busy || !batch;
             ui.get('runEmpty').disabled = busy || !emptyPlan.length;
         });
-        const previewCleanup = (extras = false) => runTask(async () => {
+        const previewCleanup = () => runTask(async () => {
+            const extras = ui.get('cleanupMode').value === 'extras';
             emptyPlan = []; ui.get('emptyPreview').textContent = ''; meter(extras ? '检查非正片与附件' : '检查不规范项目');
             try {
                 const context = await mediaContext(provider); emptySession = context.session; emptySource = context.source; checkStopped();
-                const canonical = extras ? null : mediaCanonicalResolver(tmdbClient(ui.get('tmdbKey').value));
-                emptyPlan = await planMediaCleanup(context.selected, emptySource, message => {
+                const canonical = extras ? null : mediaCanonicalResolver(tmdbClient(ui.get('tmdbKey').value),checkStopped);
+                const plan = await planMediaCleanup(context.selected, emptySource, message => {
                     checkStopped(); progress(message);
-                    if (!extras && (message.includes('无法唯一确认') || message.includes('未返回标准片名'))) log('未确认标准名，暂不删除：' + message);
-                }, {extras, includeSubtitles:extras && ui.get('cleanupSubtitles').checked, resolveCanonical:canonical});
-                ui.get('emptyPreview').textContent = emptyPlan.map(item => `${item.directory ? '删除整个文件夹及全部内容' : '删除文件'}：${item.path}${item.reason ? '\n原因：' + item.reason : ''}${item.expectedName ? '\n应为标准名称：' + item.expectedName : ''}`).join('\n\n') || (extras ? '未发现非正片文件。' : '没有已确认不符合标准的项目；无法匹配的作品见日志。');
+                    if (message.startsWith('保留，未确认')) log(message);
+                }, {extras, includeSubtitles:extras && ui.get('cleanupSubtitles').checked, resolveCanonical:canonical, parentPath:context.path, check:checkStopped});
+                checkStopped();
+                ui.get('emptyPreview').textContent = plan.map(item => `${item.directory ? '删除整个文件夹及全部内容' : '删除文件'}：${item.path}${item.reason ? '\n原因：' + item.reason : ''}${item.expectedName ? '\n应为标准名称：' + item.expectedName : ''}`).join('\n\n') || (extras ? '未发现非正片文件。' : '没有已确认命名不规范的项目。未确认的作品已保留，详见日志。');
+                emptyPlan = plan;
                 meter('检查结束', emptyPlan.length, emptyPlan.length); progress(`可清理 ${emptyPlan.length} 个${extras ? '非正片文件' : '不规范项目（文件夹包含全部内容）'}；尚未删除`);
             } catch (error) { stopMeter(); progress('检查失败：' + error.message); }
         }, true);
@@ -127,7 +130,7 @@
             emptyPlan = []; ui.get('runEmpty').disabled = true; ui.get('emptyPreview').textContent = '';
             ui.get('cleanupRule').textContent = ui.get('cleanupMode').value === 'extras'
                 ? (ui.get('cleanupSubtitles').checked ? '清理选中范围内的字幕、字体、图片、其他附件、花絮和预告；保留普通视频及特别篇。' : '清理图片、其他附件、花絮和预告；保留字幕、字体、普通视频及特别篇。')
-                : '清理所选范围内已确认不符合标准命名的文件与文件夹；整文件夹包含全部内容。先核对清单，再移入回收站。无法确认的作品保留。';
+                : '使用 TMDB 识别所选范围，核对标准命名。无法确认的作品会保留。清单中的整文件夹包含全部内容。';
         };
         ui.get('cleanupMode').onchange = () => { ui.get('cleanupSubtitleOption').hidden = ui.get('cleanupMode').value !== 'extras'; changeCleanupRule(); };
         ui.get('cleanupSubtitles').onchange = changeCleanupRule;
@@ -137,7 +140,7 @@
             ui.get('openMediaCleanup').setAttribute('aria-expanded',String(!section.hidden));
             if (section.hidden) changeCleanupRule();
         };
-        ui.get('checkCleanup').onclick = () => previewCleanup(ui.get('cleanupMode').value === 'extras');
+        ui.get('checkCleanup').onclick = previewCleanup;
         ui.get('runEmpty').onclick = () => runTask(async () => {
             if (!emptyPlan.length) return;
 
