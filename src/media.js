@@ -165,7 +165,7 @@
         if (sub.toLowerCase() === video.toLowerCase()) return '';
         if (!sub.toLowerCase().startsWith(video.toLowerCase())) return null;
         const suffix = sub.slice(video.length).replace(/zh[._ -](cn|tw|hans|hant)(?=[. _&+-]|$)/gi, 'zh$1');
-        return /^(?:[. _&+-](?:zh(?:cn|tw|hans|hant)?|chs|cht|chi|zho|en|eng|ja|jpn|ko|kor|简体|繁体|简中|繁中|中文|英文|双语|中英|forced|default|sdh|简英|繁英))+$/i.test(suffix)
+        return /^(?:[. _&+-](?:zh(?:cn|tw|hans|hant)?|chs|cht|chi|zho|en|eng|ja|jpn|ko|kor|简体|繁体|简中|繁中|中文|英文|双语|中英|forced|default|sdh|synced|简英|繁英))+$/i.test(suffix)
             ? suffix.replace(/[ _&+-]+/g, '.').replace(/zh(cn|tw|hans|hant)(?=[.]|$)/gi, 'zh-$1') : null;
     }
     async function mediaFileMetadata(node, source) {
@@ -217,11 +217,11 @@
                 const ids = new Set(videoIds.map(String));
                 return JSON.stringify([...load()].filter(([,record]) => ids.has(record.videoId)));
             },
-            link(row,sub,language) {
+            link(row,sub,language,variant) {
                 if (sub.id == null || row.node.id == null) return;
                 const entries = load(), id = String(sub.id);
                 save(entries,id,{file:snapshot(sub,row.node.parentId),original:sub.name,
-                    videoId:String(row.node.id),video:snapshot(row.node,row.node.parentId),language});
+                    videoId:String(row.node.id),video:snapshot(row.node,row.node.parentId),language,variant});
             },
             organized(before,after) {
                 const entries = load(), id = String(before.id);
@@ -249,9 +249,11 @@
                 : videos.filter(video => mediaSubtitleSuffix(video.name,sub.name) !== null);
             if (candidates.length !== 1) { unmatched.push(sub); continue; }
             const video = candidates[0];
-            const suffix = mediaSubtitleSuffix(video.name,sub.name) || (saved?.language ? '.' + saved.language : '');
+            const inferred = mediaSubtitleSuffix(video.name,sub.name);
+            const suffix = saved?.variant === 'sync' ? (saved.language && saved.language !== 'und' ? '.' + saved.language : '') + '.synced'
+                : inferred || (saved?.language ? '.' + saved.language : '');
             if (!linked.has(String(video.id))) linked.set(String(video.id),[]);
-            linked.get(String(video.id)).push({...sub,parentId,suffix,language:saved?.language});
+            linked.get(String(video.id)).push({...sub,parentId,suffix,language:saved?.language,variant:saved?.variant});
         }
         return {linked,unmatched};
     }

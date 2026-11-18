@@ -35,6 +35,11 @@
             intro.querySelector('h3').textContent = '跨盘文件清单';
             if (!description) intro.append(create('p', '', '导出当前网盘的文件清单，或导入清单恢复文件。'));
             const context = create('span', 'tool-context', source); intro.querySelector('h3').append(context);
+        } else if (id === 'subtitleSync') {
+            const title = intro.querySelector('h3');
+            const source = title.textContent.replace(/\s+字幕校对$/,'');
+            title.textContent = '字幕校对';
+            title.append(create('span','tool-context',source));
         } else {
             const title = intro.querySelector('h3'), source = title.textContent.replace(/\s+(?:字幕|影视整理|重命名与自动分类).*$/, '').trim();
             title.textContent = '影视整理'; title.append(create('span', 'tool-context', source));
@@ -55,12 +60,12 @@
         const main = create('div', 'tool-main'), side = create('aside', 'tool-sidebar');
         const status = create('section', 'tool-card tool-status');
         status.append(create('h4', '', '当前状态'));
-        const statusIds = id === 'subtitle' ? ['subtitleScope','subtitleProgress','subtitleMeter']
+        const statusIds = id === 'subtitleSync' ? ['subtitleSyncStatus'] : id === 'subtitle' ? ['subtitleScope','subtitleProgress','subtitleMeter']
             : id === 'media' ? ['mediaTarget','mediaProgress','mediaBar','mediaRecordState'] : ['status','target','progress'];
         for (const name of statusIds) take(status, '#' + name);
         side.append(status);
         const heading = create('div', 'tool-list-heading');
-        const headingTitle = create('h4', '', id === 'subtitle' ? '字幕检查结果' : id === 'media' ? '影视整理结果' : 'JSON 文件清单');
+        const headingTitle = create('h4', '', id === 'subtitle' ? '字幕检查结果' : id === 'media' ? '影视整理结果' : id === 'subtitleSync' ? '' : 'JSON 文件清单');
         heading.append(headingTitle);
         if (id === 'subtitle') {
             headingTitle.id = 'subtitleResultsTitle';
@@ -70,7 +75,7 @@
             headingTitle.id = 'mediaResultsTitle';
             take(heading, '#mediaView');
         }
-        main.append(heading);
+        if (id !== 'subtitleSync') main.append(heading);
         if (id === 'json') {
             take(main, '#syncPreview'); take(main, '#json');
             const editor = main.querySelector('#json');
@@ -85,6 +90,8 @@
             const fileActions = create('div', 'editor-actions');
             for (const selector of ['#save','#saveJson','#copyJson']) take(fileActions, selector);
             if (fileActions.children.length) heading.append(fileActions);
+        } else if (id === 'subtitleSync') {
+            take(main,'#subtitleSyncContent');
         } else if (id === 'subtitle') {
             take(main, '#subtitleSummary');
             take(main, '#subtitleResults');
@@ -220,6 +227,13 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 #mediaPreviewPanel{margin-bottom:10px}
 .subtitle-action-view{grid-column:1/-1;margin:0;overflow-wrap:anywhere}
 #subtitleRows>.sync-item{padding:12px}
+#subtitleSyncPane :is(.tool-layout,.tool-main){display:flex;min-height:0}
+#subtitleSyncPane .tool-main{flex:1;flex-direction:column}
+#subtitleSyncContent{min-height:0;overflow:auto;overscroll-behavior:contain;overflow-wrap:anywhere}
+.subtitle-sync-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 16px}
+.subtitle-sync-fields label{margin:3px 0}.subtitle-sync-fields select{overflow:hidden;text-overflow:ellipsis}
+.subtitle-sync-check{display:flex;align-items:center;gap:6px}.subtitle-sync-check input{width:auto;margin:0}
+#syncPoints{padding-inline-start:1.6em}#subtitleSyncContent pre{white-space:pre-wrap}
 .merged-media #mediaRows .media-detail{display:block}.merged-media #mediaEmpty{display:none}
 .merged-media .tool-list-heading{flex-wrap:wrap;gap:6px}.merged-media #allowWithoutSubtitles{margin:0;display:flex;align-items:center;gap:5px;white-space:nowrap}.merged-media #allowWithoutSubtitles input{width:auto;margin:0}
 .merged-media #subtitleRows .panel-actions{margin:6px 0 0}.merged-media #mediaPreviewPanel{overflow:visible}
@@ -299,7 +313,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         </style><button id="toggle" type="button" title="打开云盘工具" aria-label="打开云盘工具" aria-haspopup="dialog" aria-expanded="false" aria-controls="toolDialog"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 12h4M8 16h3M16 12v6m-2-2 2 2 2-2"/></svg></button>
         <div class="workspace-overlay" hidden><div class="box" id="toolDialog" role="dialog" aria-modal="false" aria-labelledby="workspaceTitle" tabindex="-1">
         <header class="workspace-header"><div><h2 id="workspaceTitle">云盘工具</h2><p id="windowHint">拖动标题栏移动 · 可同时操作网页</p></div><div class="workspace-window-actions"><button id="settingsWorkspace" type="button">设置</button><button id="pinWorkspace" type="button" aria-pressed="false" title="锁定窗口位置">固定位置</button><button id="closeWorkspace" type="button" aria-label="关闭面板" title="关闭">×</button></div></header>
-        <div class="workspace-toolbar"><div class="workspace-tabs" role="tablist" aria-label="功能分类"><button id="jsonTab" type="button" role="tab" aria-selected="false" aria-controls="jsonPane" tabindex="-1" disabled>跨盘 JSON</button><button id="subtitleTab" type="button" role="tab" aria-selected="false" aria-controls="subtitlePane" tabindex="-1" disabled title="当前网盘暂不支持字幕检查">影视整理</button></div>
+        <div class="workspace-toolbar"><div class="workspace-tabs" role="tablist" aria-label="功能分类"><button id="jsonTab" type="button" role="tab" aria-selected="false" aria-controls="jsonPane" tabindex="-1" disabled>跨盘 JSON</button><button id="subtitleTab" type="button" role="tab" aria-selected="false" aria-controls="subtitlePane" tabindex="-1" disabled title="当前网盘暂不支持字幕检查">影视整理</button><button id="subtitleSyncTab" type="button" role="tab" aria-selected="false" aria-controls="subtitleSyncPane" tabindex="-1" disabled title="当前网盘暂不支持字幕校对">字幕校对</button></div>
         <label class="theme-row">窗口尺寸<select id="workspaceSize" aria-label="窗口尺寸"><option value="960x600">960 × 600</option><option value="1280x800" selected>1280 × 800（默认）</option><option value="1440x900">1440 × 900</option><option value="1600x1000">1600 × 1000</option></select></label>
         <label class="theme-row">外观<select id="theme"><option value="auto">跟随页面</option><option value="light">浅色</option><option value="dark">深色</option></select></label></div>
         <div class="workspace-body"><section id="workspaceSettings" class="tool-pane" hidden><div class="settings-heading"><h3>设置</h3><button id="backToTools">返回工具</button></div><div id="settingsSections"><div class="settings-column" id="settingsModels"></div><div class="settings-column" id="settingsBasics"></div></div></section></div></div></div>`;

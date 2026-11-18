@@ -1641,15 +1641,15 @@
             return subtitleDownloadUrl(url);
         };
         const retryable = error => !error.stop && /连接|超时|网络|fetch|network|HTTP\s*(?:401|403|408|429|5\d\d)/i.test(error.message);
-        const read = async (node, progress = () => {}, check = () => {}) => {
-            if (node.size > SUBTITLE_LIMIT) throw new Error('字幕文件超过 16MB');
+        const read = async (node,progress = () => {},check = () => {},limit = SUBTITLE_LIMIT) => {
+            if (node.size > limit) throw new Error('字幕文件超过读取大小上限');
             for (let attempt = 0; attempt < 3; attempt++) {
                 check();
                 try {
                     let url;
                     try { url = await downloadUrl(node); }
                     catch (error) { if (!error.message.startsWith('获取网盘下载地址失败：')) error.message = '获取网盘下载地址失败：' + error.message; throw error; }
-                    check(); const bytes = await subtitleBinary(url); check(); return bytes;
+                    check(); const bytes = await subtitleBinary(url,{limit}); check(); return bytes;
                 }
                 catch (error) {
                     check();
@@ -1688,8 +1688,8 @@
                     const matches = nodes.filter(node => node.name === record.name);
                     if (matches.length !== 1 || !await sameContent(matches[0], {length:record.size}, record.md5, progress, check)) throw Object.assign(new Error('此前字幕上传已提交，但目录或内容仍未确认：' + record.name + '；请稍后重新检查目录，不重复上传'), {pendingUpload:true});
                     check();
-                    if (record.language) history?.link(row,matches[0],record.language);
-                    recovered.push({...matches[0],parentId:row.node.parentId,language:record.language}); receipts.delete(key); persistReceipts();
+                    if (record.language) history?.link(row,matches[0],record.language,record.variant);
+                    recovered.push({...matches[0],parentId:row.node.parentId,language:record.language,variant:record.variant}); receipts.delete(key); persistReceipts();
                     progress('已核验此前上传：' + record.name);
                 }
                 return recovered;
@@ -1728,7 +1728,7 @@
                     return {chinese:false, unconfirmed:true, message:'未读取到 MKV 字幕轨：' + error.message};
                 }
             },
-            async save(row, name, bytes, progress = () => {}, check = () => {}, {beforeWrite,language} = {}) {
+            async save(row, name, bytes, progress = () => {}, check = () => {}, {beforeWrite,language,variant} = {}) {
                 check();
                 if (pendingFor(row).length) {
                     const recovered = await reconcile(row, progress, check);
@@ -1745,7 +1745,7 @@
                 }
                 check(); progress('上传到视频目录');
                 const receiptId = JSON.stringify([videoKey(row), name]);
-                receipts.set(receiptId, {video:videoKey(row), name, size:bytes.length, md5, time:Date.now(),language});
+                receipts.set(receiptId, {video:videoKey(row), name, size:bytes.length, md5,time:Date.now(),language,variant});
                 try { persistReceipts(); }
                 catch (error) { receipts.delete(receiptId); throw new Error('无法保存上传恢复记录，本次未上传：' + error.message); }
                 const checkSubmitted = () => { try { check(); } catch (error) { error.pendingUpload = true; throw error; } };
@@ -1799,9 +1799,9 @@
                         const matches = fresh.filter(node => node.name === name);
                         if (matches.length === 1 && await sameContent(matches[0], bytes, md5, progress, check)) {
                             check();
-                            if (language) history?.link(row,matches[0],language);
+                            if (language) history?.link(row,matches[0],language,variant);
                             receipts.delete(receiptId); persistReceipts();
-                            return {...matches[0],parentId:row.node.parentId,language};
+                            return {...matches[0],parentId:row.node.parentId,language,variant};
                         }
                         if (matches.length) throw new Error('上传后字幕内容不一致或同名不唯一，未标为已补齐');
                         if (attempt < 11) await wait(1000);

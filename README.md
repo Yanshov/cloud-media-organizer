@@ -2,7 +2,7 @@
 
 在网盘网页里整理影视文件、补齐字幕，并在支持的网盘之间导入和导出 JSON 文件清单。
 
-**当前版本 v3.0.2** · [安装脚本](https://raw.githubusercontent.com/Yanshov/cloud-media-organizer/main/cloud-media-organizer-v3.user.js) · [GitHub 发布页](https://github.com/Yanshov/cloud-media-organizer/releases)
+**当前版本 v3.0.3** · [安装脚本](https://raw.githubusercontent.com/Yanshov/cloud-media-organizer/main/cloud-media-organizer-v3.user.js) · [GitHub 发布页](https://github.com/Yanshov/cloud-media-organizer/releases)
 
 | 功能 | 百度网盘 | 123 云盘 | 光鸭网盘 |
 | --- | --- | --- | --- |
@@ -24,6 +24,8 @@
 - **影视整理**。配置 TMDB 后勾选视频或文件夹，点击「识别并检查」。在作品卡里核对片名、季集和字幕覆盖。生成预览后核对原路径和目标路径，再点「确认执行」。需要处理缺字幕的视频时，可勾选「允许无字幕整理」。
 - **清理文件**。直接点击「清理文件」下的「识别并检查清理范围」。按命名清理时会用 TMDB 识别作品。核对清单后再确认移入回收站，整文件夹条目包含其中的全部内容。
 - **查找字幕**。在缺字幕的电影或剧季卡内查找或导入字幕。剧季的自动候选须覆盖当前选区内的所有缺字幕集，才可确认补齐。默认使用迅雷，SubDL 和 OpenSubtitles 可按需配置。核对候选后再补齐。也可导入 SRT、ASS、SSA、VTT 或 ZIP。上传保留来源文件名，核对上传后的内容，遇到同名文件时保留原文件。
+
+在「字幕校对」选择一部电影或一集和一份外挂字幕。可用已对齐的 SRT 获取偏移和速度建议，或手填一到两个播放时间点。核查头、中、尾后再下载或保存校对副本。音轨校对使用本地 ffsubsync，处理后的 SRT 可导回。
 
 字幕检查能识别可用的外挂字幕和 MKV 内嵌中文轨。作品卡上的「重新检测」只检查该作品，检查结果不验证播放同步。启用可选 AI 后，文件名、目录名或少量字幕对白可发送给所选服务处理。
 

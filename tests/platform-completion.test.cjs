@@ -118,8 +118,8 @@ async function guangyaExisting(){
 function startup(){
  const boot=fs.readFileSync(path.join(root,'src/bootstrap.js'),'utf8');
  for(const [hostname,expected] of [['www.guangyapan.com',['hooks','ready']],['www.123pan.com',['hooks','ready']],['pan.baidu.com',['ready']]]){
-  const calls=[],callbacks=[];const ctx=vm.createContext({location:{hostname},installHooks:()=>calls.push('hooks'),ready:fn=>{calls.push('ready');callbacks.push(fn)},is123Host:h=>h.includes('123pan'),initGuangya:()=>calls.push('json'),initExporter:()=> 'panel',initManifestImporter:()=>calls.push('json'),initMergedMedia:()=>calls.push('merged')});
-  vm.runInContext(boot,ctx);assert.deepEqual(calls,expected);callbacks.forEach(fn=>fn());assert.ok(calls.includes('json'));if(hostname!=='pan.baidu.com'){assert.equal(calls.filter(call=>call==='merged').length,1)}
+  const calls=[],callbacks=[];const ctx=vm.createContext({location:{hostname},installHooks:()=>calls.push('hooks'),ready:fn=>{calls.push('ready');callbacks.push(fn)},is123Host:h=>h.includes('123pan'),initGuangya:()=>calls.push('json'),initExporter:()=> 'panel',initManifestImporter:()=>calls.push('json'),initMergedMedia:()=>calls.push('merged'),initSubtitleSync:()=>calls.push('subtitleSync')});
+  vm.runInContext(boot,ctx);assert.deepEqual(calls,expected);callbacks.forEach(fn=>fn());assert.ok(calls.includes('json'));if(hostname!=='pan.baidu.com'){assert.equal(calls.filter(call=>call==='merged').length,1);assert.equal(calls.at(-1),'subtitleSync')}
  }
  for(const navigator of [
   {userAgentData:{mobile:true}}, {userAgent:'Mozilla/5.0 (Linux; Android 15)'}, {userAgent:'Mozilla/5.0 (iPhone)'},
