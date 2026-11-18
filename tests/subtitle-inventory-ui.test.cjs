@@ -17,7 +17,7 @@ const siblings = new Map(videos.map(video => [video.parentId,[video,...(linked.g
 const elements = new Map(), queried = [], deleted = [];
 let reads = 0, saves = 0, empty = false, collectionError = false, pauseRead = null, recycleResult = null, panelBusy = false;
 let season = [], missingEpisodes = new Set(), protectedEpisodes = new Set();
-let trackResult, restoreResult, listResult, reconcileResult, candidateResult;
+let trackResult, restoreResult, listResult, reconcileResult, candidateResult, importWrite;
 const uploaded = [];
 const get = id => { assert.ok(elements.has(id),id); return elements.get(id); };
 const ctx = vm.createContext({URL, TextEncoder, TextDecoder, Uint8Array, Date,
@@ -40,8 +40,8 @@ const ctx = vm.createContext({URL, TextEncoder, TextDecoder, Uint8Array, Date,
     },
     mediaContext:async()=>({selected:[{id:'chosen',name:'本次所选文件夹'}],session:{provider:'123',token:'test',base:'https://drive.example',headers:{}},source:{children:async({id})=>siblings.get(id)||[]},path:'影视库'}),
     parseMediaName:name => {
-        const episode = name.match(/S01E(\d+)/)?.[1];
-        return episode ? {query:name.startsWith('第二部') ? '第二部' : '假面骑士双骑',year:2009,tv:true,season:1,episode:Number(episode)} : {query:'同名影片',year:2020,tv:false};
+        const episode = name.match(/S(\d+)E(\d+)/);
+        return episode ? {query:name.startsWith('第二部') ? '第二部' : '假面骑士双骑',year:2009,tv:true,season:Number(episode[1]),episode:Number(episode[2])} : {query:'同名影片',year:2020,tv:false};
     }, mediaBonusName:() => false, mediaRecords:{get:() => null,restore:(...args)=>restoreResult?.(...args)}, mediaStem:name => name.replace(/\.[^.]+$/,''),
     createSubtitleService:() => ({thunderSearch:async row => {
         queried.push(row.node.id);
@@ -62,7 +62,18 @@ const ctx = vm.createContext({URL, TextEncoder, TextDecoder, Uint8Array, Date,
             reads++; if (pauseRead) await pauseRead;
             if (sub.id === 's-pending') throw Error('读取连接失败');
             return sub.id === 's-invalid' || protectedEpisodes.has(sub.id) ? new TextEncoder().encode('<html>错误页</html>') : valid;
-        },save:async row => {saves++; uploaded.push(row.node.id); return {id:'uploaded',name:'同名影片.2020.zh-cn.srt'};}})
+        },save:async (row,name,bytes,progress,check,options) => {
+            if (options) {
+                const nodes = siblings.get(row.node.parentId) || [];
+                const video = nodes.find(node => node.id === row.node.id);
+                if (!video || video.name !== row.node.name) throw Error('视频已移动，请重新检查');
+                options.beforeWrite(nodes);
+                const outcome = await importWrite?.(row,check);
+                check();
+                if (outcome) return outcome;
+            }
+            saves++; uploaded.push(row.node.id); return {id:'uploaded',name,size:bytes.length};
+        }})
 });
 const serviceFactory = ctx.createSubtitleService;
 vm.runInContext(part('    function evict(', '    function nonNegativeInteger(') + part('    function subtitleDownloadUrl(', '    function subtitleDrive(') + part('    function createPanelTask(', '    function panelControls(') + part('    function subtitleInventory(', '    if (location.hostname'),ctx);
@@ -171,6 +182,7 @@ const view = value => {get('subtitleView').value = value; get('subtitleView').on
     await incrementalChecks();
     await seasonPlans();
     await stageProgress();
+    await manualImport();
     console.log('PASS subtitle directory inventory: scan makes no provider/write calls; expanded results, full paths, filters/empty states, fill updates, stale-scan clearing and previewed safe batch deletion (mocked API/DOM)');
 })().catch(error => {console.error(error); process.exitCode = 1;});
 
@@ -359,6 +371,84 @@ async function stageProgress() {
         assert.deepEqual(visited.sort(),['progress-0','progress-1','progress-160']);
     }
     console.log('PASS stage progress: 319 completed items, two concurrent works, resets, partial stop and authorization drain');
+}
+
+async function manualImport() {
+    const importButton = get('importSubtitles'), picker = get('subtitleImportFiles');
+    let pickerOpened = 0;
+    picker.click = () => {pickerOpened++;};
+    get('subtitleLanguage').onchange();
+    importButton.onclick();
+    assert.match(get('subtitleProgress').textContent,/请先检查目录/);
+    assert.equal(pickerOpened,0);
+    const queries = queried.length, previous = saves;
+    const seasonVideo = episode => {
+        const name = '假面骑士双骑.S01E0' + episode + '.mkv';
+        return {id:'import-'+episode,parentId:'import-folder',name,path:'导入/'+name,folders:['导入'],size:10};
+    };
+    season = [1,2,3].map(seasonVideo);
+    trackResult = node => ({chinese:node.id === 'import-3'});
+    siblings.set('import-folder',[...season]);
+    const local = (episode,bytes=valid) => ({name:'假面骑士双骑.S01E0'+episode+'.srt', size:bytes.length, arrayBuffer:async()=>bytes.slice().buffer});
+    const choose = async (...files) => {
+        importButton.onclick(); picker.files = files; await picker.onchange();
+        const select = get('subtitleRows').querySelectorAll('select')[0];
+        if (files.length) { select.value = '0'; select.onchange(); }
+    };
+    const confirm = count => get('subtitleRows').querySelectorAll('button').find(button => button.textContent === '确认导入 '+count+' 项');
+    await get('recheckSubtitles').onclick();
+    await choose();
+    assert.equal(saves,previous);
+    await choose(local(3),local(2),local(1));
+    assert.match(shown(),/已补齐跳过 1 项/);
+    assert.match(shown(),/正文可用.*时间轴未验证/);
+    assert.equal(saves,previous);
+    action('取消导入');
+    assert.equal(saves,previous);
+    await choose(local(2),local(1));
+    const expired = confirm(2);
+    await get('recheckSubtitles').onclick();
+    await expired.onclick();
+    assert.equal(saves,previous);
+    assert.match(get('subtitleProgress').textContent,/计划已失效/);
+
+    await choose(local(2),local(1));
+    siblings.get('import-folder').push({id:'new',name:'假面骑士双骑.S01E02.zh-cn.ass',size:80});
+    await confirm(2).onclick();
+    assert.deepEqual(uploaded.slice(-1),['import-1']);
+    assert.equal(saves,previous+1);
+    assert.match(get('subtitleProgress').textContent,/已处理 2\/2.*已导入 1.*失败 1/);
+    assert.match(shown(),/有字幕 2 集/);
+    siblings.set('import-folder',[...season]);
+    await get('recheckSubtitles').onclick();
+    await choose(local(1),local(2));
+    const started = gate(), release = gate();
+    importWrite = async () => {
+        started.resolve();
+        await release.promise;
+        throw Object.assign(Error('上传结果不明'),{pendingUpload:true});
+    };
+    const saving = confirm(2).onclick();
+    await started.promise;
+    get('stopSubtitles').onclick();
+    await get('recheckSubtitles').onclick();
+    assert.equal(panelBusy,true);
+    release.resolve();
+    await saving;
+    assert.equal(panelBusy,false);
+    assert.match(get('subtitleProgress').textContent,/导入中断.*已处理 1\/2.*待对账 1/);
+    await choose(local(1));
+    assert.equal(confirm(1),undefined);
+    assert.match(shown(),/待匹配 1 项/);
+    action('取消导入');
+    await get('recheckSubtitles').onclick();
+    await choose(local(1),local(2));
+    importWrite = async () => { throw Object.assign(Error('网盘授权失效'),{phase:'drive-auth',status:403}); };
+    await confirm(2).onclick();
+    assert.match(get('subtitleProgress').textContent,/导入中断.*已处理 0\/2.*网盘授权失效/);
+    assert.equal(saves,previous+1);
+    assert.equal(queried.length,queries,'Import does not query subtitle providers');
+    console.log('PASS import preview lifecycle: explicit confirmation, stale plans, late subtitle checks, cancellation, authorization and pending recovery');
 }
 
 function gate() {

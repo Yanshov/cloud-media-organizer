@@ -755,18 +755,20 @@
     }
 
     const SUBTITLE_LIMIT = 16 * 1024 * 1024;
-    function subtitleArchiveIndex(bytes, check = () => {}) {
+    function subtitleArchiveIndex(bytes, check = () => {}, strict = false) {
         // Parse the central directory once; do not inflate unrelated files.
-        const invalid = () => new Error('SubDL ZIP 格式不支持或数据不完整（不支持加密、ZIP64、多卷及 RAR）');
+        const invalid = () => new Error('ZIP 格式不支持或数据不完整（不支持 ZIP64、多卷及 RAR）');
         const view = new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
         let end = bytes.length - 22;
         for (; end >= Math.max(0,bytes.length - 65557); end--) {
             if (view.getUint32(end,true) === 0x06054b50 && end + 22 + view.getUint16(end+20,true) === bytes.length) break;
         }
-        if (end < 0 || end < bytes.length - 65557) throw invalid();
+        if (end < Math.max(0,bytes.length - 65557)) throw invalid();
         const count = view.getUint16(end+10,true), size = view.getUint32(end+12,true), start = view.getUint32(end+16,true);
         if (view.getUint16(end+4,true) || view.getUint16(end+6,true) || count !== view.getUint16(end+8,true) || count > 2000 || start + size !== end) throw invalid();
-        const files = [];
+        const files = [], paths = new Map(), ranges = [];
+        let expanded = 0;
+        if (strict && count > 200) throw new Error('ZIP 条目超过 200 项');
         let offset = start;
         for (let i = 0; i < count; i++) {
             check();
@@ -775,14 +777,51 @@
             const compressed = view.getUint32(offset+20,true), length = view.getUint32(offset+24,true), local = view.getUint32(offset+42,true);
             const nameSize = view.getUint16(offset+28,true), next = offset + 46 + nameSize + view.getUint16(offset+30,true) + view.getUint16(offset+32,true);
             if (next > end || view.getUint16(offset+34,true)) throw invalid();
-            const path = new TextDecoder(flags & 0x800 ? 'utf-8' : 'gb18030').decode(bytes.subarray(offset+46,offset+46+nameSize));
+            const nameBytes = bytes.subarray(offset+46,offset+46+nameSize);
+            const path = new TextDecoder(flags & 0x800 ? 'utf-8' : 'gb18030', {fatal:strict}).decode(nameBytes);
             const name = path.split(/[\\/]/).pop(), ext = name.split('.').pop().toLowerCase();
+            if (strict) {
+                const parts = path.normalize('NFKC').replace(/\\/g,'/').replace(/\/$/,'').split('/');
+                if (parts.some(part => !part || part === '.' || part === '..' || /[:\x00-\x1f]/.test(part) || /[ .]$/.test(part)))
+                    throw new Error('ZIP 包含绝对路径或不安全路径');
+                const key = parts.join('/').toLowerCase(), directory = !name;
+                if (paths.has(key)) throw new Error('ZIP 包含重复或冲突路径');
+                paths.set(key,directory);
+                if ((flags | (local + 30 <= start ? view.getUint16(local+6,true) : 0)) & 0x2041) throw new Error('不支持加密 ZIP');
+                if (length === 0xffffffff || compressed === 0xffffffff || local === 0xffffffff || ![0,8].includes(method)) throw invalid();
+                if (/\.(?:zip|rar|7z|tar|gz|bz2|xz|cab)$/i.test(name)) throw new Error('不支持嵌套压缩包');
+                if (length > 4 * 1024 * 1024) throw new Error('ZIP 单个条目超过 4 MiB');
+                expanded += length;
+                if (expanded > 32 * 1024 * 1024) throw new Error('ZIP 累计解压大小超过 32 MiB');
+                if (length > compressed * 200) throw new Error('ZIP 条目压缩比超过 200:1');
+                const dataStart = subtitleArchiveDataOffset(view,{local,flags,method,compressed,length,crc},start,invalid);
+                if (view.getUint16(local+26,true) !== nameBytes.length || local + 30 + nameBytes.length > dataStart
+                    || nameBytes.some((byte,j) => byte !== bytes[local+30+j])) throw invalid();
+                let dataEnd = dataStart + compressed;
+                if (flags & 8) {
+                    const matches = at => at + 12 <= start && view.getUint32(at,true) === crc
+                        && view.getUint32(at+4,true) === compressed && view.getUint32(at+8,true) === length;
+                    if (matches(dataEnd)) dataEnd += 12;
+                    else if (dataEnd + 4 <= start && view.getUint32(dataEnd,true) === 0x08074b50 && matches(dataEnd+4)) dataEnd += 16;
+                    else throw invalid();
+                } else if (view.getUint32(local+14,true) !== crc || view.getUint32(local+18,true) !== compressed
+                    || view.getUint32(local+22,true) !== length) throw invalid();
+                ranges.push([local,dataEnd]);
+            }
             offset = next;
             if (!['srt','ass','ssa','vtt'].includes(ext) || path.startsWith('__MACOSX/') || name.startsWith('._')) continue;
-            if (flags & 1 || ![0,8].includes(method) || !length || length > SUBTITLE_LIMIT || compressed > SUBTITLE_LIMIT) continue;
+            if (flags & 1 || ![0,8].includes(method) || !strict && !length || length > SUBTITLE_LIMIT || compressed > SUBTITLE_LIMIT) continue;
             files.push({name,path,ext,method,crc,compressed,length,local,flags});
         }
         if (offset !== end) throw invalid();
+        if (strict) {
+            for (const key of paths.keys()) {
+                for (let slash = key.lastIndexOf('/'); slash >= 0; slash = key.lastIndexOf('/',slash-1))
+                    if (paths.get(key.slice(0,slash)) === false) throw new Error('ZIP 包含文件与目录路径冲突');
+            }
+            ranges.sort((a,b) => a[0] - b[0]);
+            if (ranges.some(([at],index) => index && at < ranges[index-1][1])) throw invalid();
+        }
         return {files,start};
     }
     function subtitleArchiveChoices(index,candidate,language) {
@@ -811,15 +850,23 @@
         return files.sort((a,b) => b.score-a.score || a.name.localeCompare(b.name));
     }
     async function subtitleSubdlArchive(bytes, candidate, language, check = () => {}, index = subtitleArchiveIndex(bytes,check)) {
-        const invalid = () => new Error('SubDL ZIP 格式不支持或数据不完整');
         check();
-        const view = new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength), start = index.start;
         const files = subtitleArchiveChoices(index,candidate,language);
         if (!files.length) throw new Error('SubDL 压缩包没有通过片名、年份、季集及语言检查的文本字幕');
-        const file = files[0], local = file.local;
+        return subtitleArchiveExtract(bytes,index,files[0],check);
+    }
+    function subtitleArchiveDataOffset(view, file, start, invalid) {
+        const {local} = file;
         if (local + 30 > start || view.getUint32(local,true) !== 0x04034b50 || view.getUint16(local+6,true) !== file.flags || view.getUint16(local+8,true) !== file.method) throw invalid();
         const dataStart = local + 30 + view.getUint16(local+26,true) + view.getUint16(local+28,true);
         if (dataStart + file.compressed > start) throw invalid();
+        if (file.method === 0 && file.compressed !== file.length) throw invalid();
+        return dataStart;
+    }
+    async function subtitleArchiveExtract(bytes, index, file, check) {
+        const invalid = () => new Error('ZIP 格式不支持或数据不完整');
+        const view = new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
+        const dataStart = subtitleArchiveDataOffset(view,file,index.start,invalid);
         let payload = bytes.subarray(dataStart,dataStart+file.compressed);
         if (file.method === 8) {
             let inflater;
@@ -828,12 +875,13 @@
             let total = 0;
             try {
                 for (;;) {
-                    check(); const {done,value} = await reader.read(); if (done) break;
+                    check(); const {done,value} = await reader.read(); check(); if (done) break;
                     total += value.length;
                     if (total > file.length || total > SUBTITLE_LIMIT) throw invalid();
                     chunks.push(value);
                 }
-            } finally { await reader.cancel().catch(() => {}); }
+            } catch (error) { check(); if (error.name === 'TypeError') throw invalid(); throw error; }
+            finally { await reader.cancel().catch(() => {}); }
             payload = new Uint8Array(total); let at = 0;
             for (const chunk of chunks) { payload.set(chunk,at); at += chunk.length; }
         }
@@ -916,6 +964,9 @@
     }
     function subtitleVerificationMessage(result) {
         return `格式/语言通过；${({file:'对白范围与视频文件时长相符', unknown:'无时长参考', reference:'TMDB 仅作作品时长参考', 'reference-difference':'与 TMDB 作品时长参考有差异'})[result.evidence] || '时长证据待确认'}；${result.work?.status === 'supported' ? 'AI 支持作品归属（非实证）' : '作品归属未确认'}；未核对音画同步`;
+    }
+    function subtitleUploadName(row, language, ext) {
+        return mediaStem(row.node.name) + '.' + language.replace(/[^a-z0-9-]/gi, '') + '.' + ext;
     }
     function createSubtitleBodyReviewer(ai, log = () => {}, check = () => {}) {
         let parseFailures = 0;
@@ -1650,15 +1701,16 @@
                     return {chinese:false, unconfirmed:true, message:'未读取到 MKV 字幕轨：' + error.message};
                 }
             },
-            async save(row, name, bytes, progress = () => {}, check = () => {}) {
+            async save(row, name, bytes, progress = () => {}, check = () => {}, {beforeWrite} = {}) {
                 check();
                 if (pendingFor(row).length) {
                     const recovered = await reconcile(row, progress, check);
                     const found = recovered.find(node => node.name === name);
-                    if (found && await sameContent(found, bytes, subtitleMd5(bytes), progress, check)) return found;
+                    if (!beforeWrite && found && await sameContent(found, bytes, subtitleMd5(bytes), progress, check)) return found;
                     throw Object.assign(new Error('此前上传已核验，请重新检查目录后确认字幕状态；本次不再上传其他版本'), {pendingUpload:true});
                 }
                 const md5 = subtitleMd5(bytes), nodes = await list(row); check(); validateVideo(row, nodes);
+                beforeWrite?.(nodes);
                 const existing = nodes.filter(node => node.name === name);
                 if (existing.length) {
                     if (existing.length !== 1 || !await sameContent(existing[0], bytes, md5, progress, check)) throw new Error('同名字幕已存在且内容不同或无法确认，未覆盖');

@@ -21,6 +21,65 @@ function zip(entries, method=8) {
     const dir=Buffer.concat(directory),end=Buffer.alloc(22);end.writeUInt32LE(0x06054b50);end.writeUInt16LE(entries.length,8);end.writeUInt16LE(entries.length,10);end.writeUInt32LE(dir.length,12);end.writeUInt32LE(offset,16);
     return new Uint8Array(Buffer.concat([...chunks,dir,end]));
 }
+async function localArchives() {
+    const ctx = load();
+    vm.runInContext(part('    async function readSubtitleImport(', '    function initSubtitles('),ctx);
+    const local = (name,bytes) => ({name,size:bytes.length,arrayBuffer:async()=>bytes.slice().buffer});
+    const safe = zip([['Subs/电影.2000.简体.srt',text],['README.txt','notes'],['Cover.jpg','image data']]);
+    const [item] = await ctx.readSubtitleImport([local('字幕.zip',safe)],()=>{});
+    assert.equal(item.name,'电影.2000.简体.srt');
+    assert.equal(ctx.subtitleValidateContent(movie(),item.bytes,item.ext,language).text,text);
+
+    const reject = async (bytes,pattern) => {
+        const [archive,standalone] = await ctx.readSubtitleImport([local('坏包.zip',bytes),local('电影.2000.srt',body)],()=>{});
+        assert.match(archive.error,pattern);
+        assert.equal(standalone.ext,'srt');
+    };
+    for (const name of ['../电影.srt','/根目录/电影.srt','C:\\电影.srt','内层.zip']) {
+        await reject(zip([[name,text]]),/不安全路径|嵌套/);
+    }
+    await reject(zip([['Subs/A.srt',text],['subs/a.srt',text]]),/重复或冲突/);
+    await reject(zip([['Subs',text],['Subs/A.srt',text]]),/目录路径冲突/);
+    const encrypted = zip([['a.srt',text]]);
+    const centralOffset = bytes => new DataView(bytes.buffer,bytes.byteOffset).getUint32(bytes.length-6,true);
+    const central = centralOffset(encrypted);
+    encrypted[central+8] |= 1;
+    await reject(encrypted,/加密/);
+    const damaged = zip([['a.srt',text],['b.srt',text]],0);
+    damaged[30 + 'a.srt'.length] ^= 1;
+    await reject(damaged,/不完整/);
+    await reject(new Uint8Array(4),/不完整/);
+    await reject(zip(Array.from({length:201},(_,i)=>['caption'+i+'.srt',text])),/200/);
+    await reject(zip([['a.srt','中'.repeat(1500000)]]),/4 MiB/);
+    await reject(zip([['a.srt','中'.repeat(120000)]]),/压缩比/);
+    const expanded = zip(Array.from({length:9},(_,i)=>['item'+i+'.srt',text]));
+    const view = new DataView(expanded.buffer);
+    let offset = centralOffset(expanded);
+    for (let i=0;i<9;i++) {
+        const header = view.getUint32(offset+42,true);
+        view.setUint32(offset+20,32768,true);
+        view.setUint32(offset+24,4*1024*1024,true);
+        offset += 46 + view.getUint16(offset+28,true);
+        // The first eight entries instead keep valid local data and header sizes.
+        if (i < 8) {
+            view.setUint32(header+18,32768,true);
+            view.setUint32(header+22,4*1024*1024,true);
+        }
+    }
+    // A compressed archive can claim much more data than it contains. Reject its structure before decoding.
+    await reject(expanded,/不完整/);
+    const noisy = Buffer.alloc(3750000);
+    let random = 2463534242;
+    for (let i=0;i<noisy.length;i++) {
+        random ^= random << 13; random ^= random >>> 17; random ^= random << 5;
+        noisy[i] = i % 12 === 0 ? random & 0xff : 65;
+    }
+    await reject(zip(Array.from({length:9},(_,i)=>['entry'+i+'.srt',noisy])),/累计解压大小/);
+    await assert.rejects(ctx.readSubtitleImport([local('字幕.zip',safe)],()=>{throw Error('已停止');}),/已停止/);
+    const [oversize] = await ctx.readSubtitleImport([{name:'过大.zip',size:16*1024*1024+1,arrayBuffer:()=>assert.fail('Must check before reading')}],()=>{});
+    assert.match(oversize.error,/16 MiB/);
+    console.log('PASS local ZIP limits, CRC, independent-file recovery and bounded extraction');
+}
 async function searchAndTransfer() {
     const requests=[],logs=[];let response={status:true,totalPages:1,subtitles:[
         sub('电影.2000.简体&英文.srt'), sub('电影.2000.繁体.srt',{language:'ZH_BG'}),sub('电影2.2000.srt'),sub('电影.1999.srt'),sub('无关作品.2000.srt'),sub('电影.S01E01.srt'),sub('电影.2000.srt',{language:'DE'}),sub('电影.2000.rar'),
@@ -101,4 +160,4 @@ async function orchestration() {
     await ctx.searchSubtitleSources(movie(),config,service,{});await ctx.searchSubtitleSources(movie(),config,service,{});assert.equal(calls.filter(c=>c==='bad-key').length,1,'Invalid key pauses remaining batch');
     console.log('PASS SubDL orchestration: after Thunder, reliable deferral, download fallback and invalid-key batch pause');
 }
-(async()=>{await searchAndTransfer();await nameFallback();await episodesAndArchives();await orchestration();})().catch(e=>{console.error(e);process.exitCode=1});
+(async()=>{await localArchives();await searchAndTransfer();await nameFallback();await episodesAndArchives();await orchestration();})().catch(e=>{console.error(e);process.exitCode=1});
