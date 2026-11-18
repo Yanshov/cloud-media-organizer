@@ -44,7 +44,7 @@ const pick = (candidates, language = 'zh-cn,zh-tw,zh') => {
     assert.equal(candidates[8].language, 'en', 'English file must not inherit Chinese package language');
     const selected = pick(candidates);
     assert.equal(selected.selectedCandidate.name, names[0]);
-    assert.equal(run('subtitleSearchState(row)'), 'missing');
+    assert.equal(run('subtitleSearchState(row)'), 'ready');
     assert.ok(run('subtitleSearchMessage(row)').includes(names[0]));
     assert.ok(run('subtitleCandidateLabel(row.selectedCandidate)').includes('双语 · 简体中文'));
     assert.ok(!selected.autoCandidates.some(c => c.name === names[8]));

@@ -60,7 +60,7 @@ async function bodyReview() {
     const supported = ctx.createSubtitleBodyReviewer({reviewSubtitleBody:async()=>({verdict:'same',confidence:.96,evidence:'另一部电影的人物',reason:'合成确认样例'})},log);
     await ctx.inspectExistingSubtitles(r,drive,language,log,()=>{}, {force:true,review:supported});
     assert.equal(r.verification.work.status,'supported'); assert.match(r.searchMessage,/AI 支持.*非实证/); assert.match(r.searchMessage,/未核对音画同步/);
-    assert.equal(ctx.subtitleSearchSummary([r]),'视频 1 · 有字幕 1 · 没有字幕 0 · 手动选择 0');
+    assert.equal(ctx.subtitleSearchSummary([r]),'视频 1 · 有字幕 1 · 缺可用字幕 0 · 检查未确认 0');
     const unsupported = ctx.createSubtitleBodyReviewer({reviewSubtitleBody:async()=>({verdict:'different',confidence:.5,evidence:'另一部电影的人物',reason:'低置信度'})},log);
     assert.equal((await unsupported(r,new TextDecoder().decode(bytes),'srt')).status,'unconfirmed');
     let brokenCalls = 0;

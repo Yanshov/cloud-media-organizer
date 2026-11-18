@@ -65,16 +65,12 @@
         ui.get('subdlKey').value = prefs.subdlKey || '';
         ui.get('subtitleLanguage').value = prefs.language || 'zh-cn,zh-tw,zh';
         const settings = () => ({key:ui.get('openSubtitlesKey').value.trim(), language:ui.get('subtitleLanguage').value, open:ui.get('useOpenSubtitles').checked, thunder:ui.get('useThunder').checked, subdl:ui.get('useSubdl').checked, subdlKey:ui.get('subdlKey').value.trim()});
-        const status = text => { ui.get('subtitleProgress').textContent = text; };
+        const safeDiagnostic = text => subtitleDiagnosticText(text, {...settings(), password:ui.get('subtitlePassword').value});
+        const status = text => { ui.get('subtitleProgress').textContent = safeDiagnostic(text); };
         const clearDeletePreview = () => { deletePlan = null; const preview = ui.get('subtitleDeletePreview'); preview.hidden = true; preview.open = false; ui.get('subtitleDeleteList').textContent = ''; };
         const logLines = [];
         const diag = (event, detail = '') => {
-            const config = settings();
-            let message = String(detail ?? '').replace(/https?:\/\/[^\s"'<>]+/gi, value => {
-                try { return new URL(value).origin + '/[地址已隐藏]'; } catch { return '[地址已隐藏]'; }
-            });
-            for (const secret of [config.key, config.subdlKey]) if (secret) message = message.split(secret).join('[凭证已隐藏]');
-            message = message.replace(/(token|api[-_ ]?key|authorization|signature|security[-_ ]?token)=?[^\s&,;]*/gi, '$1=[已隐藏]').replace(/Bearer\s+\S+/gi, 'Bearer [已隐藏]');
+            const message = safeDiagnostic(detail);
             const line = `${new Date().toLocaleTimeString()} [${event}]${message ? ' ' + message : ''}`;
             const box = ui.get('subtitleLog');
             logLines.push(line);
@@ -90,7 +86,8 @@
             catch (error) { diag('AI 设置', '设置无效，跳过 AI：' + error.message); return null; }
         };
         const meter = (done, total) => { const bar = ui.get('subtitleMeter'); bar.hidden = false; bar.max = total || 1; bar.value = done; };
-        const inView = (row, view) => view === 'all' || (view === 'incomplete' ? !subtitleCovered(row) : subtitleSearchState(row) === view);
+        const needsChoice = row => !subtitleCovered(row) && !row.writeBlocked && subtitleSearchState(row) === 'choice';
+        const inView = (row, view) => view === 'all' || (view === 'incomplete' ? !subtitleCovered(row) : view === 'choice' ? needsChoice(row) : subtitleCovered(row));
         const canDelete = sub => !pendingDeletes.has(String(sub.id));
         const selectedForDelete = sub => canDelete(sub) && deleteSelection.has(String(sub.id));
         const viewSubtitleIds = view => inventory.filter(row => inView(row, view)).flatMap(row => row.subtitles.filter(canDelete).map(sub => String(sub.id)));
@@ -104,7 +101,7 @@
             selectAll.disabled = busy || !visibleIds.length;
             selectAll.checked = visibleIds.length > 0 && selectedCount === visibleIds.length;
             selectAll.indeterminate = selectedCount > 0 && selectedCount < visibleIds.length;
-            const choices = inventory.filter(row => subtitleSearchState(row) === 'choice').length;
+            const choices = inventory.filter(needsChoice).length;
             for (const [id,label,count] of [['Incomplete','未补齐',missing.length],['Choice','手动选择',choices],['Complete','有字幕',inventory.length - missing.length],['All','全部',inventory.length]]) ui.get('subtitleView' + id).textContent = `${label}（${count}）`;
             ui.get('subtitleSummary').hidden = !inventory.some(row => row.sources?.length);
             ui.get('subtitleSummary').textContent = subtitleSearchSummary(inventory);
@@ -134,10 +131,12 @@
                 for (const row of shown) {
                     const item = document.createElement('div'); item.className = 'subtitle-result'; box.append(item);
                     const text = document.createElement('p');
-                    const state = subtitleSearchState(row);
+                    const coverage = subtitleCoverageState(row), search = subtitleSearchState(row);
                     const embedded = row.embedded;
-                    const label = {complete:'有字幕',missing:'没有字幕',choice:'手动选择'}[state];
-                    text.textContent = [ `${label}：${row.node.name}`, row.path, embedded?.message, row.error || (!embedded?.chinese && row.searchMessage) ].filter(Boolean).join('\n'); item.append(text);
+                    const label = {complete:'有字幕',missing:'缺可用字幕',unconfirmed:'检查未确认'}[coverage];
+                    text.textContent = safeDiagnostic([label + "：" + row.node.name, row.path, coverage !== "complete" && subtitleSearchLabels[search],
+                        embedded?.message, row.error, !embedded?.chinese && row.searchMessage].filter(Boolean).join("\n"));
+                    item.append(text);
                     for (const sub of row.subtitles) {
                         const line = document.createElement('label'), checkbox = document.createElement('input'), name = document.createElement('span');
                         checkbox.type = 'checkbox'; checkbox.checked = selectedForDelete(sub); checkbox.disabled = busy || !canDelete(sub);
@@ -182,8 +181,12 @@
             else if (!config.key) diag('来源跳过', 'OpenSubtitles 未配置 API Key');
             let done = 0;
             const ai = configuredAI();
+            const credential = GM_getValue('cross-drive-tmdb-key', '');
+            const ask = ai && paced(0, (method, payload) => { check(); return ai[method](payload); });
+            const correctWork = ai?.correctSubtitleWork && credential
+                ? createSubtitleWorkCorrection({correctSubtitleWork:payload => ask('correctSubtitleWork',payload)}, credential) : null;
             service.resetSearchBatch?.();
-            reviewCandidates = ai ? createSubtitleReviewer(ai, config.language, diag, check) : null;
+            reviewCandidates = ai ? createSubtitleReviewer({disambiguateSubtitle:payload => ask('disambiguateSubtitle',payload)}, config.language, diag, check) : null;
             config.reviewCandidates = reviewCandidates;
             diag('查找策略', `剧集先按季搜索并建立文件索引；缺集再搜索迅雷、SubDL、OpenSubtitles；${ai ? '名称有歧义时交给 AI 判断' : 'AI 未启用，使用严格片名匹配'}；来源限流后本批跳过该来源`);
             try {
@@ -194,14 +197,15 @@
                     const check = verify;
                     if (!row.parsed.workResolved) {
                         status('读取作品资料：' + row.node.name);
-                        const credential = GM_getValue('cross-drive-tmdb-key', ''), aliasStarted = Date.now();
+                        const aliasStarted = Date.now();
+                        row.workLookupFailed = false;
                         try {
                             const parsed = row.parsed;
                             if (await resolveMediaWork(parsed,credential,check,diag)) {
                                 mediaRecords.rememberParsed?.(row.node,parsed); mediaRecords.save?.();
                                 diag('作品别名', `已复用或确认作品资料，取得 ${parsed.aliases.length} 个片名用于搜索`);
                             }
-                        } catch (error) { check(); if (error.stop) throw error; diag('作品别名', '读取失败，继续按原片名严格匹配：' + error.message); }
+                        } catch (error) { check(); if (error.stop) throw error; row.workLookupFailed = true; diag('作品别名', '读取失败，继续按原片名严格匹配：' + error.message); }
                         finally { diag('别名耗时', `${row.node.name} · ${((Date.now() - aliasStarted) / 1000).toFixed(1)} 秒`); }
                     }
                   }
@@ -215,8 +219,9 @@
                     diag('作品解析', `片名：${row.parsed.query || '空'} · 年份：${row.parsed.year || '未知'} · 类型：${row.parsed.tv ? '剧集' : '电影/特别篇'} · 季：${row.parsed.season ?? '未知'} · 集：${row.parsed.episode ?? '未知'} · TMDB：${row.parsed.tmdbId || '无记录'}`);
                     diag('作品别名', row.parsed.aliases?.length ? row.parsed.aliases.join('；') : '无');
                     await searchSubtitleSources(row, config, service, drive, diag, check);
+                    await applySubtitleWorkCorrection(row, correctWork, config, service, drive, diag, check);
                     if (!row.selectedCandidate && row.candidates.length) diag('待选样例', row.candidates.slice(0, 8).map(candidate => subtitleCandidateLabel(candidate) + (candidate.matchReason ? '' : ' · 待确认：未满足自动选择条件')).join('；'));
-                    diag('视频结果', `${row.node.name} · ${row.selectedCandidate ? (row.aiSuggested ? 'AI 建议 ' : '自动选择 ') + subtitleCandidateLabel(row.selectedCandidate) : row.candidates.length ? '有候选待手选' : row.sources.some(source => source.error) ? '查询失败' : '未找到'}`);
+                    diag('视频结果', `${row.node.name} · ${subtitleSearchLabels[subtitleSearchState(row)]}${row.selectedCandidate ? ' · ' + subtitleCandidateLabel(row.selectedCandidate) : ''}`);
                     diag('单片耗时', `${row.node.name} · ${((Date.now() - started) / 1000).toFixed(1)} 秒`);
                     meter(++done, rows.length); render();
                   }
@@ -341,7 +346,7 @@
                         const candidates = row.manualCandidate ? [row.selectedCandidate] : [row.selectedCandidate, ...(row.autoCandidates || []).filter(item => item !== row.selectedCandidate)];
                         diag('下载开始', `${row.node.name} · ${candidates.length} 个候选`);
                         let payload = null; const failures = [], attempted = new Set();
-                        while (candidates.length || !row.manualCandidate && row.sources.some(source => source.deferred)) {
+                        while (candidates.length || !row.manualCandidate && row.sources.some(source => source.deferred || source.deferredTerms?.length)) {
                             if (!candidates.length) {
                                 diag('来源补查', `${row.node.name} · 已有候选下载失败，查询此前暂缓的来源`);
                                 await searchSubtitleSources(row, config, service, drive, diag, check, true);
@@ -359,7 +364,13 @@
                                 payload = {candidate, result, bytes, verification}; break;
                             } catch (error) {
                                 candidate.downloadFailed = true;
-                                check(); if (error.stop) throw error; failures.push(candidate.source + ' · ' + (candidate.name || candidate.release) + '：' + error.message);
+                                check();
+                                const source = row.sources?.find(source => source.name === candidate.source);
+                                if (source) saveSubtitleSourceReport(source, config, {downloadErrors:[error.message]});
+                                if (!row.manualCandidate) selectSubtitleCandidate(row, config.language);
+                                row.searchMessage = subtitleSearchMessage(row);
+                                if (error.stop) { row.selectedCandidate = null; throw error; }
+                                failures.push(candidate.source + ' · ' + (candidate.name || candidate.release) + '：' + error.message);
                                 diag('候选失败', `${row.node.name} · ${candidate.source}：${error.message}`);
                             }
                         }

@@ -43,12 +43,12 @@ const review = fn => ctx.createSubtitleReviewer({disambiguateSubtitle:fn},langua
     assert.equal(fallback.selectedCandidate,replacement);
     assert.equal(fallback.candidates.includes(replacement),true);
     assert.equal(fallback.sources.find(s=>s.name==='迅雷').count,0);
-    assert.equal(ctx.subtitleSearchState(fallback),'missing');
+    assert.equal(ctx.subtitleSearchState(fallback),'ready');
     assert.ok(fallback.selectedCandidate);
     const absent=row();
     await ctx.searchSubtitleSources(absent,{thunder:true,language,reviewCandidates:review(async()=>({index:null,rejected:[reject(0)]}))},
         {thunderSearch:async()=>[file(wrong)]},{},log);
-    assert.equal(ctx.subtitleSearchState(absent),'missing','Confirmed wrong works no longer inflate manual choices');
+    assert.equal(ctx.subtitleSearchState(absent),'notFound','Confirmed wrong works no longer inflate manual choices');
 
     const invalid=row(); invalid.candidates=Array.from({length:9},(_,i)=>file('Unknown '+i+'.ass'));
     invalid.candidates[6].identityMatched=true;

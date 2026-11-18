@@ -72,7 +72,7 @@ const view = value => {get('subtitleView').value = value; get('subtitleView').on
     assert.equal(get('subtitleSummary').hidden,true,'Inventory alone shows coverage rather than empty provider statistics');
     assert.equal(get('subtitleView').value,'all'); assert.equal(get('subtitleRows').children.length,5);
     assert.equal(get('subtitleRows').querySelectorAll('details').length,0,'Results show details without disclosure controls');
-    assert.match(shown(),/有字幕：/); assert.match(shown(),/没有字幕：/); assert.match(shown(),/读取连接失败/);
+    assert.match(shown(),/有字幕：/); assert.match(shown(),/缺可用字幕：/); assert.match(shown(),/读取连接失败/);
     assert.equal(elements.has('subtitleViewPending'),false);
     for (const [index] of videos.entries()) assert.ok(shown().includes('/影视库/目录' + index + '/同名影片.2020.mkv'),'Full paths distinguish duplicate filenames');
     assert.match(get('subtitleScope').textContent,/影视库.*本次所选文件夹.*视频 5/);
@@ -81,7 +81,7 @@ const view = value => {get('subtitleView').value = value; get('subtitleView').on
     assert.deepEqual(queried,['ready','failure','invalid','pending'],'Only files with usable subtitles are skipped');
     assert.equal(get('subtitleSummary').hidden,false);
     assert.equal(get('subtitleRows').children.length,5,'All results remain visible after searching');
-    assert.match(shown(),/没有字幕：/); assert.match(shown(),/手动选择：/); assert.match(shown(),/来源连接失败/);
+    assert.match(shown(),/缺可用字幕：/); assert.match(shown(),/手动选择\n/); assert.match(shown(),/来源连接失败/);
     view('choice'); assert.equal(get('subtitleRows').children.length,1); assert.match(shown(),/\/目录3\//);
     view('complete'); assert.equal(get('subtitleRows').children.length,1); assert.match(shown(),/\/目录0\//);
     view('all'); assert.equal(get('subtitleRows').children.length,5);

@@ -83,6 +83,28 @@ async function episodesAndErrors() {
     console.log('PASS thunder safety: exact episode filtering, unknown episodes stay manual, missing/multi-episode refusal, cancellation, HTML/API/shape errors and retryable cache');
 }
 
+async function sourceDiagnostics() {
+    const key = 'mock-key-secret';
+    const ctx = load();
+    ctx.subtitleRemoteJson = async raw => {
+        const name = new URL(raw).searchParams.get('name');
+        if (name === 'Film') throw Object.assign(Error('429 https://download.example/private.srt?signature=mock-signature api_key=' + key), {status:429});
+        return {code:0,data:[file('电影.1999.srt'),file('电影.2000.简体.srt')]};
+    };
+    const r = row(); r.parsed.aliases = ['Film'];
+    await ctx.searchSubtitleSources(r,{language:'en',thunder:true,key},ctx.createSubtitleService(),{});
+    const result = r.sources[0];
+    assert.equal(result.rawCount,2); assert.equal(result.count,1); assert.equal(result.excluded.年份,1);
+    assert.match(result.paused,/429/); assert.match(result.queries[1].error,/429/);
+    assert.doesNotMatch(JSON.stringify(result), /mock-key-secret|mock-signature|private\.srt/);
+    assert.equal(ctx.subtitleSearchState(r),'choice');
+    assert.equal(ctx.subtitleCoverageState({...r,coverageUnconfirmed:true}),'unconfirmed');
+    await ctx.searchSubtitleSources(r,{language,thunder:true},{thunderSearch:async()=>[]},{});
+    assert.equal(ctx.subtitleSearchState(r),'notFound');
+    assert.match(r.searchMessage,/已查询来源未找到匹配项/);
+    console.log('PASS source diagnostics: raw counts, exclusions, partial failure, pause reason and redaction');
+}
+
 async function sourceOrder() {
     const ctx=load(),calls=[],mono={source:'SubDL',name:'电影.2000.简体.srt',language:'zh-cn',titleMatched:true};
     const bilingual={source:'迅雷',name:'电影.2000.繁体&英文.ass',language:'zh-tw',bilingual:true,titleMatched:true};
@@ -103,7 +125,7 @@ async function sourceOrder() {
     calls.length=0;service.subdlSearch=async()=>{calls.push('subdl');return []};service.thunderSearch=async()=>{calls.push('thunder');throw Error('HTTP 429')};
     r=row();await ctx.searchSubtitleSources(r,config,service,drive);
     assert.deepEqual(calls,['thunder','subdl','open']);assert.equal(r.sources.find(s=>s.name==='迅雷').error,'HTTP 429');
-    assert.equal(ctx.subtitleSearchState(r),'missing');
+    assert.equal(ctx.subtitleSearchState(r),'failed');
     assert.match(r.searchMessage,/查询有失败/);
     console.log('PASS subtitle provider order: Thunder/SubDL/OpenSubtitles ranking, deferred fallback, one-time resume and isolated source failure');
 }
@@ -124,7 +146,7 @@ async function thunderOnlyUI() {
     });
     vm.runInContext(part('    function createPanelTask(', '    function panelControls(')+part('    function subtitleInventory(', '    if (location.hostname'),ctx);ctx.initSubtitles();
     assert.equal(elements.get('useThunder').checked,true,'New source defaults on with older preferences');
-    await elements.get('readSubtitles').onclick();assert.equal(searches,1);assert.match(elements.get('subtitleSummary').textContent,/没有字幕 1/);
+    await elements.get('readSubtitles').onclick();assert.equal(searches,1);assert.match(elements.get('subtitleSummary').textContent,/缺可用字幕 1/);
     assert.match(elements.get('subtitleLog').value,/启用来源：迅雷/);assert.equal(elements.get('useThunder').disabled,false);
     await elements.get('fillSubtitles').onclick();assert.equal(saves,1);assert.match(elements.get('subtitleSummary').textContent,/有字幕 1/);
     embedded={chinese:true,message:'有内嵌中文字幕，跳过补齐'};
@@ -144,11 +166,11 @@ async function thunderOnlyUI() {
         await elements.get('readSubtitles').onclick();
         assert.equal(searches,1,'Search reuses the prior source response');
         assert.equal(elements.get('fillSubtitles').disabled,false,'No Chinese track leaves the video eligible for fill');
-        assert.match(elements.get('subtitleSummary').textContent,/没有字幕 1/);
+        assert.match(elements.get('subtitleSummary').textContent,/缺可用字幕 1/);
     }
     elements.get('useThunder').checked=false;await elements.get('saveSubtitleSettings').onclick();assert.equal(stored.get('cross-drive-subtitle-settings').thunder,false);
     ctx.initSubtitles();assert.equal(elements.get('useThunder').checked,false,'Explicit off preference survives reload');
     console.log('PASS thunder-only UI: no key or video sample, busy lock, search/download/save flow and explicit disabled preference');
 }
 
-(async()=>{await searchAndDownloads();await episodesAndErrors();await sourceOrder();await thunderOnlyUI()})().catch(error=>{console.error(error);process.exitCode=1});
+(async()=>{await searchAndDownloads();await episodesAndErrors();await sourceDiagnostics();await sourceOrder();await thunderOnlyUI()})().catch(error=>{console.error(error);process.exitCode=1});

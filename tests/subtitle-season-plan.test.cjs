@@ -43,7 +43,7 @@ async function seasonArchive() {
     for (const r of rows) await ctx.searchSubtitleSources(r,config,service,{});
     assert.equal(rows[0].selectedCandidate,null,'Other-season and extra files must not fill the missing episode');
     assert.ok(rows[1].selectedCandidate);assert.ok(rows[2].selectedCandidate);
-    assert.equal(queries.length,2,'Only missing E01 gets an additional API search');assert.equal(queries[1].searchParams.get('episode_number'),'1');
+    assert.equal(queries.length,3,'Only missing E01 gets an ID query and a bounded name fallback'); assert.ok(queries.slice(1).every(url=>url.searchParams.get('episode_number')==='1'));
     for(const r of rows.slice(1)) {
         const data=await service.fetchFile(r.selectedCandidate,config);
         assert.equal(new TextDecoder().decode(data.bytes),body(r.parsed.episode));
@@ -61,15 +61,17 @@ async function seasonArchive() {
 async function seasonLists() {
     const requests=[];
     const ctx=load({subtitleRemoteJson:async raw=>{
-        const u=new URL(raw);requests.push(u);
-        return {code:0,data:[{name:'剧名.S01E02.简体.srt',ext:'srt',url:'https://example.com/2.srt',languages:['简体']}]};
+        const name=new URL(raw).searchParams.get('name'); requests.push(name);
+        const episode=name==='剧名 S01'?1:2;
+        return {code:0,data:[{name:'剧名.S01E0'+episode+'.简体.srt',ext:'srt',url:'https://example.com/'+episode+'.srt',languages:['简体']}]};
     }}),service=ctx.createSubtitleService(),config={language,thunder:true};
-    await service.prepareSeason([row(1),row(2)],config);
-    assert.equal(requests.filter(u=>u.hostname.includes('xunlei')).length,1);
-    assert.equal(requests.find(u=>u.hostname.includes('xunlei')).searchParams.get('name'),'剧名 S01');
-    assert.equal((await service.thunderCachedEpisode(row(2),config)).length,1);
-    const n=requests.length;await ctx.searchSubtitleSources(row(2),config,service,{});assert.equal(requests.length,n);
-    console.log('PASS seasonal file lists: Thunder query a season and reuse sibling episodes without first-episode match');
+    const rows=[row(1),row(2)];
+    for(const target of rows) target.parsed.aliases=['Series','第三名称'];
+    await service.prepareSeason(rows,config);
+    assert.deepEqual(requests,['剧名 S01','Series S01'],'First-episode hit does not stop a season search');
+    assert.equal((await service.thunderCachedEpisode(rows[1],config)).length,1);
+    await ctx.searchSubtitleSources(rows[1],config,service,{}); assert.equal(requests.length,2,'The second episode reuses the season list');
+    console.log('PASS seasonal file lists: first-episode hit still queries an alias for missing episodes');
 }
 async function namesAndConcurrency() {
     const pending=[],started=[];let stopped=false;
@@ -77,17 +79,18 @@ async function namesAndConcurrency() {
     const service=ctx.createSubtitleService(),r={node:{name:'电影.mkv'},parsed:{query:'中文电影',tv:false,year:2020,aliases:['日本語の映画','Film','第四别名']}};
     const work=service.thunderSearch(r,{language},()=>{},()=>{if(stopped)throw Error('已停止')});
     for(let i=0;i<60;i++)await Promise.resolve();
-    assert.deepEqual(started,['中文电影','日本語の映画'],'Two requests overlap; the third waits for a free slot');
-    pending[0].resolve({code:0,data:[]});for(let i=0;i<60;i++)await Promise.resolve();assert.equal(started.length,3);
+    assert.deepEqual(started,['中文电影']);
+    pending[0].resolve({code:0,data:[]}); for(let i=0;i<60;i++) await Promise.resolve();
+    assert.deepEqual(started,['中文电影','日本語の映画']);
     pending[1].resolve({code:0,data:[{name:'日本語の映画.2020.简体.srt',url:'https://example.com/a.srt'}]});
-    pending[2].resolve({code:0,data:[{name:'日本語の映画.2020.简体.srt',url:'https://example.com/a.srt'}]});
-    const candidates=await work;assert.equal(candidates.length,1,'Same URL across aliases is not downloaded twice');assert.ok(candidates[0].titleMatched);
-    const before=started.length;await service.thunderSearch(r,{language});assert.equal(started.length,before,'All name queries are cached');
+    const candidates=await work; assert.equal(candidates.length,1); assert.ok(candidates[0].titleMatched);
+    assert.equal(started.length,2,'Reliable alias defers the third name');
+    await service.thunderSearch(r,{language}); assert.equal(started.length,2,'Both queries are cached');
     const next=service.thunderSearch({...r,parsed:{...r.parsed,query:'新片',aliases:['新しい映画','New film']}},{language},()=>{},()=>{if(stopped)throw Error('已停止')});
-    const rejection=assert.rejects(next,/已停止/);for(let i=0;i<60;i++)await Promise.resolve();
-    stopped=true;pending[3].resolve({code:0,data:[]});pending[4].resolve({code:0,data:[]});await rejection;
-    assert.equal(started.length,before+2,'Cancellation drains two active requests and prevents the queued third request');
-    console.log('PASS name searches: three-name budget, real two-request overlap, URL deduplication, shared cache and cancellation drain');
+    const rejection=assert.rejects(next,/已停止/); for(let i=0;i<60;i++)await Promise.resolve();
+    stopped=true; pending[2].resolve({code:0,data:[]}); await rejection;
+    assert.equal(started.length,3,'Stop waits for the active request and prevents aliases');
+    console.log('PASS sequential aliases: bounded requests, cache reuse and cancellation drain');
 }
 async function unpackedSeason() {
     let searches=0;
@@ -98,7 +101,7 @@ async function unpackedSeason() {
     ]}]};}}),service=ctx.createSubtitleService(),config={language,subdl:true,subdlKey:'key'};
     await service.prepareSeason([row(1),row(2)],config);
     const found=await service.subdlCachedEpisode(row(2),config);
-    assert.equal(searches,1);assert.equal(found.length,1);assert.equal(found[0].name,'02.srt');assert.ok(found[0].titleMatched);
+    assert.equal(searches,2,'Only the missing first episode triggers the name fallback after the ID search');assert.equal(found.length,1);assert.equal(found[0].name,'02.srt');assert.ok(found[0].titleMatched);
     console.log('PASS unpacked full seasons: independent file metadata maps numbered files, conflicting numbers and episode metadata rejected');
 }
 (async()=>{await seasonArchive();await seasonLists();await namesAndConcurrency();await unpackedSeason();})().catch(error=>{console.error(error);process.exitCode=1});

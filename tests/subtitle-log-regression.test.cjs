@@ -33,7 +33,7 @@ async function auth(){
  const r=row(1);await ctx.searchSubtitleSources(r,{...config,thunder:true},service,drive);assert.equal(calls,0);assert.equal(providerCalls,1,'Subtitle searches use title providers without reading video bytes');
  await assert.rejects(drive.read({id:'s',name:'test.srt',size:valid.length,md5:'a'.repeat(32)}),e=>e.phase==='drive-auth');await assert.rejects(drive.save(row(1),'test.srt',valid),e=>e.phase==='drive-auth');assert.equal(calls,1,'Known invalid drive session makes no further network calls');
  const providerError={thunderSearch:async()=>{throw Object.assign(Error('Provider HTTP 401'),{status:401,stop:true})}};
- const other=row(2);await ctx.searchSubtitleSources(other,{...config,thunder:true},providerError,{});assert.equal(ctx.subtitleSearchState(other),'missing');assert.match(other.searchMessage,/查询有失败/);
+ const other=row(2);await ctx.searchSubtitleSources(other,{...config,thunder:true},providerError,{});assert.equal(ctx.subtitleSearchState(other),'failed');assert.match(other.searchMessage,/查询有失败/);
  // Source directory auth errors share the same fatal boundary.
  let lists=0;const listed=loadDrive(ctx,{session:{provider:'123',token:'test'},source:{children:async()=>{lists++;throw Object.assign(Error('API code 110'),{stop:true})}}});
  await assert.rejects(listed.save(row(1),'test.srt',valid),e=>e.phase==='drive-auth'&&e.stop);await assert.rejects(listed.save(row(2),'test.srt',valid),e=>e.phase==='drive-auth');assert.equal(lists,1);
@@ -68,10 +68,10 @@ async function uiStop(){
   subtitleDrive:()=>({assertReady(){},reconcile:async()=>[],save:async()=>{saves++}})});
   ctx.createSubtitleService=()=>({thunderSearch:async r=>[1,2,3].map(id=>({source:'迅雷',fileId:id,name:`Love.Death.and.Robots.S01E0${r.parsed.episode}.简体&英文.ass`,language:'zh-cn',bilingual:true,titleMatched:true})),fetchFile:async()=>{downloads++;throw Object.assign(Error('限流重试已停止'),{stop:true})}});
  vm.runInContext(part('    function createPanelTask(', '    function panelControls(')+part('    function subtitleInventory(','    if (location.hostname'),ctx);ctx.initSubtitles();
- await elements.get('readSubtitles').onclick();assert.match(elements.get('subtitleSummary').textContent,/没有字幕 2/);
+ await elements.get('readSubtitles').onclick();assert.match(elements.get('subtitleSummary').textContent,/缺可用字幕 2/);
   await elements.get('fillSubtitles').onclick();assert.equal(downloads,1,'Do not burn siblings or later videos');assert.equal(saves,0);
  assert.match(elements.get('subtitleLog').value,/补齐中断/);assert.ok(!elements.get('subtitleLog').value.includes('[候选失败]'));
- assert.match(elements.get('subtitleSummary').textContent,/没有字幕 2/);
+ assert.match(elements.get('subtitleSummary').textContent,/缺可用字幕 2/);
  console.log('PASS log UI stop: fatal download error pauses on first candidate; no sibling failures, deferred queries or uploads; remaining work is not attempted');
 }
 (async()=>{await names();await auth();await uiAuth();await uiStop()})().catch(e=>{console.error(e);process.exitCode=1});

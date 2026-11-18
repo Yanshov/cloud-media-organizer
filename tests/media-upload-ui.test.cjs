@@ -70,7 +70,7 @@ async function aiFallbackGuards() {
     assert.equal(subtitle.subtitleAICandidate({index:0,confidence:.89},row,'zh-cn'),null);
     assert.equal(subtitle.subtitleAICandidate({index:0,confidence:.95},row,'en'),null);
     assert.equal(subtitle.subtitleAICandidate({index:9,confidence:1},row,'zh-cn'),null);
-    row.node.name='Series.S01E01.720p.mkv';assert.equal(subtitle.subtitleAICandidate({index:0,confidence:1},row,'zh-cn'),null);
+    row.node.name='Series.S01E01.720p.mkv';assert.equal(subtitle.subtitleAICandidate({index:0,confidence:1},row,'zh-cn'),candidate,'Resolution difference alone cannot reject an AI candidate');
     row.node.name='Series.S01E01.1080p.mkv';
     for(const name of ['Other.2021.S01E01.srt','Other.S02E01.srt','Other.S01E02.srt','Other.S01E01-E02.srt','Other.简体.srt']) {
         candidate.name=name;assert.equal(subtitle.subtitleAICandidate({index:0,confidence:1},row,'zh-cn'),null,name);
@@ -134,8 +134,8 @@ async function subtitles() {
     calls=[];service.subdlSearch=async()=>{calls.push('subdl');stop=true;return []};
     await assert.rejects(ctx.searchSubtitleSources(row(),{thunder:true,subdl:true,subdlKey:'k',language},service,drive,()=>{},()=>{if(stop)throw Error('已停止')}),/已停止/);
     assert.deepEqual(calls,['thunder','subdl']);
-    r=row();await ctx.searchSubtitleSources(r,{language},service,drive);assert.equal(ctx.subtitleSearchState(r),'missing');assert.match(ctx.subtitleSearchMessage(r),/尚未查询/);
-    r=row();await ctx.searchSubtitleSources(r,{subdl:true,language},service,drive);assert.equal(ctx.subtitleSearchState(r),'missing');assert.match(ctx.subtitleSearchMessage(r),/未配置密钥/);
+    r=row();await ctx.searchSubtitleSources(r,{language},service,drive);assert.equal(ctx.subtitleSearchState(r),'unsearched');assert.match(ctx.subtitleSearchMessage(r),/尚未查询/);
+    r=row();await ctx.searchSubtitleSources(r,{subdl:true,language},service,drive);assert.equal(ctx.subtitleSearchState(r),'unsearched');assert.match(ctx.subtitleSearchMessage(r),/未配置密钥/);
 
     vm.runInContext(part('    function subtitleInventory(', '    function initSubtitles('),ctx);
     Object.assign(ctx,{parseMediaName:()=>({query:'电影',year:2000}),mediaBonusName:()=>false,mediaRecords:{get:()=>null}});
@@ -146,7 +146,7 @@ async function subtitles() {
     for(const bytes of [Buffer.alloc(0),Buffer.from('<html>错误页面</html>'),Buffer.from('random 中文')]) {
         r={subtitles:[sub],node:video};await ctx.inspectExistingSubtitles(r,{read:async()=>bytes},language);assert.equal(r.complete,false);
     }
-    r={subtitles:[sub],node:video};await ctx.inspectExistingSubtitles(r,{read:async()=>{throw Error('连接失败')}},language);assert.equal(r.complete,false);assert.equal(ctx.subtitleSearchState(r),'missing');assert.match(r.searchMessage,/读取失败/);
+    r={subtitles:[sub],node:video};await ctx.inspectExistingSubtitles(r,{read:async()=>{throw Error('连接失败')}},language);assert.equal(r.complete,false);assert.equal(ctx.subtitleSearchState(r),'unsearched');assert.match(r.searchMessage,/读取失败/);
     r={subtitles:[sub,{...sub,name:'another.srt'}],node:video};let read=0;
     await ctx.inspectExistingSubtitles(r,{read:async()=>++read===1?Promise.reject(Error('连接失败')):valid},language);assert.equal(r.complete,true);
     r={subtitles:[{name:'untagged.srt'}],node:video};await ctx.inspectExistingSubtitles(r,{read:async()=>valid},'zh-cn');assert.equal(r.complete,false);
@@ -329,12 +329,12 @@ async function subtitleUI() {
     assert.match(openSettings,/useOpenSubtitles[\s\S]*openSubtitlesKey[\s\S]*subtitleAccountSettings/);assert.doesNotMatch(openSettings,/^<details[^>]*\bopen\b/);
     assert.deepEqual(Array.from(movedSettings),['subtitleSettings','openSubtitlesSettings']);
     await get('recheckSubtitles').onclick();
-    assert.match(get('subtitleSummary').textContent,/没有字幕 1/);assert.equal(queries,0);assert.equal(get('fillSubtitles').disabled,true);assert.equal(get('recheckSubtitles').disabled,false);
+    assert.match(get('subtitleSummary').textContent,/检查未确认 1/);assert.equal(queries,0);assert.equal(get('fillSubtitles').disabled,true);assert.equal(get('recheckSubtitles').disabled,false);
     broken=false;await get('recheckSubtitles').onclick();assert.match(get('subtitleSummary').textContent,/有字幕 1/);assert.equal(queries,0);assert.equal(reads,2);
     await get('auditSubtitles').onclick();assert.equal(reads,3);assert.equal(queries,0);assert.equal(get('subtitleView').value,'all');assert.match(get('subtitleLog').value,/作品归属和音画同步未确认/);
     aiConfig={enabled:true,base:'https://ai.example',model:'test'};
     ctx.createMediaAI=()=>({reviewSubtitleBody:async()=>({verdict:'different',confidence:.99,evidence:'中文字幕 Test',reason:'合成错片证据'})});
-    await get('auditSubtitles').onclick();assert.match(get('subtitleSummary').textContent,/没有字幕 1/);assert.equal(queries,0);assert.equal(get('fillSubtitles').disabled,true);
+    await get('auditSubtitles').onclick();assert.match(get('subtitleSummary').textContent,/缺可用字幕 1/);assert.equal(queries,0);assert.equal(get('fillSubtitles').disabled,true);
     aiConfig={};recovered=[sub];readBytes=Buffer.from('<html>not a subtitle</html>');hasSubtitle=false;
     await get('recheckSubtitles').onclick();assert.match(get('subtitleSummary').textContent,/有字幕 0/);assert.equal(queries,0,'Recovered upload must pass body validation, not merely receipt reconciliation');
     recovered=[];readBytes=valid;

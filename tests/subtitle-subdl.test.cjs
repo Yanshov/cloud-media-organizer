@@ -47,6 +47,28 @@ async function searchAndTransfer() {
     await assert.rejects(service.subdlSearch({...movie(),parsed:{...movie().parsed,tmdbId:10}},config),/编号/);
     console.log('PASS SubDL: API parameters, strict matches, direct unpack links, ZIP download/preference/validation, page/cache bounds, errors and credential isolation (mocked API, synthetic subtitles)');
 }
+async function nameFallback() {
+    let mode = 'alias';
+    const requests = [], foundWork = {tmdb_id:10,name:'Film',type:'movie',year:2000};
+    const ctx = load({GM_xmlhttpRequest:request => {
+        const query = new URL(request.url).searchParams;
+        requests.push(query.get('tmdb_id') || query.get('film_name'));
+        const fixture = mode === 'blocked' ? {status:false,error:'not_authorized'}
+            : mode === 'wrong' ? {status:true,results:[{...foundWork,tmdb_id:11},foundWork],subtitles:[sub('电影.2000.简体.srt')]}
+            : query.get('film_name') === 'Film' ? {status:true,results:[foundWork,{...foundWork,tmdb_id:11}],subtitles:[sub('电影.2000.简体.srt')]}
+                : {status:true,subtitles:[]};
+        request.onload({status:200,responseText:JSON.stringify(fixture)});
+    }});
+    const config = {language,subdlKey:'key'}, target = movie(), service = ctx.createSubtitleService();
+    Object.assign(target.parsed,{tmdbId:10,aliases:['Film']});
+    assert.equal((await service.subdlSearch(target,config)).length,1);
+    assert.deepEqual(requests,['10','电影','Film']);
+    for (const [next,expected] of [['wrong',/编号/],['blocked',/403/]]) {
+        mode = next; requests.length = 0; service.logout();
+        await assert.rejects(service.subdlSearch(target,config),expected);
+        assert.deepEqual(requests,['10']);
+    }
+}
 async function episodesAndArchives() {
     let data={status:true,subtitles:[sub('pack.zip',{releases:['剧名'],unpack_files:[{name:'剧名.S02E01.简体.srt',url:'/s1',season:2,episode:1},{name:'剧名.S02E02.简体.srt',url:'/s2',season:2,episode:2}]})]};
     const ctx=load({GM_xmlhttpRequest:o=>o.onload({status:200,responseText:JSON.stringify(data)})}),service=ctx.createSubtitleService(),config={language,subdlKey:'test'};
@@ -79,4 +101,4 @@ async function orchestration() {
     await ctx.searchSubtitleSources(movie(),config,service,{});await ctx.searchSubtitleSources(movie(),config,service,{});assert.equal(calls.filter(c=>c==='bad-key').length,1,'Invalid key pauses remaining batch');
     console.log('PASS SubDL orchestration: after Thunder, reliable deferral, download fallback and invalid-key batch pause');
 }
-(async()=>{await searchAndTransfer();await episodesAndArchives();await orchestration();})().catch(e=>{console.error(e);process.exitCode=1});
+(async()=>{await searchAndTransfer();await nameFallback();await episodesAndArchives();await orchestration();})().catch(e=>{console.error(e);process.exitCode=1});
