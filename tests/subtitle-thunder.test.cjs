@@ -156,11 +156,15 @@ async function thunderOnlyUI() {
     assert.equal(searches,1,'Chinese track prevents searching');
     assert.equal(saves,1,'Chinese track prevents writing');
     assert.equal(elements.get('fillSubtitles').disabled,true);
+    const view=elements.get('subtitleView');
+    assert.equal(view.value,'incomplete');
+    assert.equal(elements.get('subtitleRows').children.length,0,'Chinese track is excluded from the default results');
+    view.value='all'; view.onchange();
     const card = elements.get('subtitleRows').children[0].children[0].children[0];
     const content = card.children.at(-1).children[0];
     const subtitleText = content.children.find(child => child.className === 'subtitle-result').children[0];
     assert.ok([subtitleText, ...subtitleText.children].some(node => node.textContent.includes(embedded.message)));
-    const view=elements.get('subtitleView');view.value='incomplete';view.onchange();
+    view.value='incomplete';view.onchange();
     assert.equal(elements.get('subtitleRows').children.length,0,'Chinese track is excluded from incomplete results');
     for (const message of ['未发现内嵌中文字幕','未读取到 MKV 字幕轨']) {
         embedded={chinese:false,message};

@@ -331,7 +331,7 @@ async function subtitleUI() {
     await get('recheckSubtitles').onclick();
     assert.match(get('subtitleSummary').textContent,/检查未确认 1/);assert.equal(queries,0);assert.equal(get('fillSubtitles').disabled,true);assert.equal(get('recheckSubtitles').disabled,false);
     broken=false;await get('recheckSubtitles').onclick();assert.match(get('subtitleSummary').textContent,/有字幕 1/);assert.equal(queries,0);assert.equal(reads,2);
-    await get('auditSubtitles').onclick();assert.equal(reads,3);assert.equal(queries,0);assert.equal(get('subtitleView').value,'all');assert.match(get('subtitleLog').value,/作品归属和音画同步未确认/);
+    await get('auditSubtitles').onclick();assert.equal(reads,3);assert.equal(queries,0);assert.equal(get('subtitleView').value,'incomplete');assert.match(get('subtitleLog').value,/作品归属和音画同步未确认/);
     aiConfig={enabled:true,base:'https://ai.example',model:'test'};
     ctx.createMediaAI=()=>({reviewSubtitleBody:async()=>({verdict:'different',confidence:.99,evidence:'中文字幕 Test',reason:'合成错片证据'})});
     await get('auditSubtitles').onclick();assert.match(get('subtitleSummary').textContent,/缺可用字幕 1/);assert.equal(queries,0);assert.equal(get('fillSubtitles').disabled,true);

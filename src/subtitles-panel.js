@@ -66,7 +66,7 @@
         let inventory = [], drive = null, subtitleContext = null, checkedScope = null, deletePlan = null, busy = false, cancelled = false, reviewCandidates = null;
         const deleteSelection = new Set(), pendingDeletes = new Set();
         let scan = null;
-        ui.get('subtitleView').value = 'all';
+        ui.get('subtitleView').value = 'incomplete';
         const service = createSubtitleService({check:() => check(), log:(event, detail) => diag(event, detail)});
         const prefs = GM_getValue('cross-drive-subtitle-settings', {});
         ui.get('openSubtitlesKey').value = prefs.key || '';
@@ -374,7 +374,7 @@
             };
             inventory = []; drive = null; subtitleContext = null; checkedScope = null;
             deleteSelection.clear(); clearDeletePreview();
-            ui.get('subtitleView').value = 'all';
+            ui.get('subtitleView').value = 'incomplete';
             ui.get('subtitleResults').scrollTop = 0;
             ui.get('subtitleMeter').hidden = true;
             status('正在读取目录…');

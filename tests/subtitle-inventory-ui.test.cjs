@@ -72,6 +72,7 @@ const view = value => {get('subtitleView').value = value; get('subtitleView').on
 
 (async () => {
     ctx.initSubtitles();
+    assert.equal(get('subtitleView').value,'incomplete');
     assert.equal(get('recheckSubtitles').disabled,false,'Directory inventory is available without first searching providers');
     let releaseRead;
     pauseRead = new Promise(resolve => {releaseRead = resolve;});
@@ -87,7 +88,9 @@ const view = value => {get('subtitleView').value = value; get('subtitleView').on
     assert.equal(reads,3); assert.equal(queried.length,0); assert.equal(saves,0);
     assert.equal(get('subtitleSummary').hidden,false);
     assert.match(get('subtitleSummary').textContent,/已检查 5 · 待检查 0/);
-    assert.equal(get('subtitleView').value,'all'); assert.equal(cards().length,5);
+    assert.equal(get('subtitleView').value,'incomplete'); assert.equal(cards().length,4);
+    assert.doesNotMatch(shown(),/\/目录0\//);
+    view('all'); assert.equal(cards().length,5);
     assert.equal(get('subtitleRows').querySelectorAll('details').length,0,'Results show details without disclosure controls');
     assert.match(shown(),/有字幕：/); assert.match(shown(),/缺可用字幕：/); assert.match(shown(),/读取连接失败/);
     assert.equal(elements.has('subtitleViewPending'),false);
@@ -105,12 +108,13 @@ const view = value => {get('subtitleView').value = value; get('subtitleView').on
     view('incomplete'); await get('fillSubtitles').onclick();
     assert.equal(saves,1);
     assert.doesNotMatch(shown(),/\/目录1\//); assert.equal(cards().length,3);
-    view('choice'); await get('recheckSubtitles').onclick(); assert.equal(get('subtitleView').value,'all','A new directory check resets the previous filter');
+    view('choice'); await get('recheckSubtitles').onclick(); assert.equal(get('subtitleView').value,'incomplete','A new directory check resets the previous filter');
     empty = true; await get('recheckSubtitles').onclick();
     assert.equal(cards().length,0); assert.equal(get('fillSubtitles').disabled,true); assert.doesNotMatch(get('subtitleEmpty').textContent,/均已有/);
     empty = false; collectionError = true; await get('recheckSubtitles').onclick();
     assert.equal(elements.has('subtitleCoverage'),false); assert.equal(cards().length,0); assert.match(get('subtitleProgress').textContent,/目录读取失败/);
     collectionError = false; await get('recheckSubtitles').onclick();
+    view('all');
     const checkboxes=()=>get('subtitleRows').querySelectorAll('input');
     assert.equal(checkboxes().length,3,'Only subtitle files linked to a unique video are offered for deletion');
     const selectAll = get('selectAllSubtitleDeletes');
@@ -171,6 +175,7 @@ async function seasonSummary() {
     const direct = () => cardContent().children.filter(node => node.className === 'subtitle-result');
     const queriesBefore = queried.length;
     await get('recheckSubtitles').onclick();
+    view('all');
     assert.equal(cards().length,1);
     assert.match(summary(),/共 49 集 · 已补齐 49 · 未补齐 0 · 内嵌中文 49/);
     assert.equal(direct().length,49);
@@ -184,6 +189,7 @@ async function seasonSummary() {
     linked.set('ep-1',[sub]);
     siblings.set('season-1',[...season,sub]);
     await get('recheckSubtitles').onclick();
+    view('all');
     assert.match(summary(),/共 49 集 · 已补齐 46 · 未补齐 3 · 内嵌中文 45/);
     assert.equal(direct().length,49);
     assert.match(direct().at(-1).textContent,/检查未确认/);
@@ -193,10 +199,12 @@ async function seasonSummary() {
     linked.set('ep-2',[protectedSub]);
     siblings.set('season-1',[...season,sub,protectedSub]);
     await get('recheckSubtitles').onclick();
+    view('all');
     assert.equal(results.querySelectorAll('input').length,1,'Known embedded Chinese hides even associated external subtitle controls');
     let checkedRow;
     reconcileResult = row => { if (row.node.id === 'ep-1') checkedRow = row; };
     await get('recheckSubtitles').onclick();
+    view('all');
     reconcileResult = null;
     const selectAll = get('selectAllSubtitleDeletes');
     selectAll.checked = true; selectAll.onchange();
@@ -207,6 +215,7 @@ async function seasonSummary() {
     assert.ok(!deleted.includes(sub.id),'Confirmation rechecks eligibility even with an existing preview');
     assert.equal(get('subtitleDeleteSelectionCount').hidden,true);
     await get('recheckSubtitles').onclick();
+    view('all');
     selectAll.checked = true; selectAll.onchange();
     assert.equal(get('subtitleDeleteSelectionCount').textContent,'已选 1 项');
     view('incomplete');
@@ -247,6 +256,7 @@ async function seasonSummary() {
         {...season[2],name:season[2].name.replace('.mkv','.1080p.mkv')},
         {...season[3],name:season[3].name.replace('.mkv','.导演剪辑.mkv')}];
     await get('recheckSubtitles').onclick();
+    view('all');
     assert.equal(cards().length,4,'Same-title directories and different releases remain separate');
     assert.deepEqual(results.children.map(pair => pair.children[0].children.length),[2,2]);
     assert.equal(results.querySelectorAll('details').length,0,'Single results show their details directly');
@@ -290,6 +300,7 @@ async function incrementalChecks() {
     assert.ok(!reconciled.includes('row-1'),'Identity restoration must finish before the subtitle check');
     assert.match(shown(),/检查中/);
     assert.match(shown(),/待检查/);
+    view('all');
     const displayed = () => cardContent().children.filter(row => row.className === 'subtitle-result');
     assert.equal(displayed().length,49);
     const paths = displayed().map(row => row.textContent.match(/S01E\d+\.mkv/)[0]);
@@ -333,6 +344,8 @@ async function incrementalChecks() {
     trackResult = () => ({chinese:true,message:'新一轮检查完成'});
     await get('recheckSubtitles').onclick();
     assert.match(get('subtitleSummary').textContent,/已检查 49 · 待检查 0/);
+    assert.equal(cards().length,0);
+    view('all');
     assert.equal(displayed().length,49);
     assert.equal(get('subtitleRows').querySelectorAll('details').length,0);
     assert.equal(get('selectAllSubtitleDeletes').disabled,true);
