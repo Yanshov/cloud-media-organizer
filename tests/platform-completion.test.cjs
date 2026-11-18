@@ -68,7 +68,8 @@ async function routes(){
  api.inspectRequest('https://api.guangyapan.com/userres/v1/file/get_file_list',new Headers({Authorization:'Bearer mock'}),'{"parentId":"85"}');
  const media=await api.mediaContext('光鸭');
  assert.equal(media.path,'library/电影/name-with-dashes');assert.equal(media.selected[0].id,'85');
- assert.equal(api.mediaClassificationRoot(media.source,media.path).id,'42');
+ assert.equal(api.mediaClassificationRoot(media.source,media.path).id,'0');
+ assert.equal(api.mediaClassificationRoot(media.source,'云添加').path,'');
  location.hash='#/home/all/42-library/%ZZ';assert.equal(api.currentGuangyaFolder(),null);
  console.log('PASS shared routes: hash formats, query priority, exact media roots and malformed Guangya paths');
 }

@@ -30,7 +30,7 @@ function fixture() {
             if (state.response === 'lost') throw Error('连接断开');
             return {code:0,data:{Reuse:true}};
         }});
-    vm.runInContext(source.slice(0,bootstrap) + '\nrequestJson = fixtureRequest; subtitleRemoteJson = url => { sourceQueries.push(new URL(url).searchParams.get("name")); return fixtureSubtitleSearch(); }; globalThis.api = {subtitleInventory, subtitleImportGroups, planSubtitleImport, checkSubtitleImportDirectory, subtitleDrive, subtitleMd5, mediaFileHistory, mediaSubtitleLinks, readSubtitleImport, mediaOrganizerWriter, createSubtitleService}; })();',ctx);
+    vm.runInContext(source.slice(0,bootstrap) + '\nrequestJson = fixtureRequest; subtitleRemoteJson = url => { sourceQueries.push(new URL(url).searchParams.get("name")); return fixtureSubtitleSearch(); }; globalThis.api = {subtitleInventory, subtitleImportGroups, planSubtitleImport, checkSubtitleImportDirectory, savePanelSubtitle, subtitleDrive, subtitleMd5, mediaFileHistory, mediaSubtitleLinks, readSubtitleImport, mediaOrganizerWriter, createSubtitleService}; })();',ctx);
     const collect = (videos,linked=new Map()) => ctx.api.subtitleInventory({videos,linked},'影视');
     return {api:ctx.api,memory,state,collect};
 }
@@ -149,11 +149,15 @@ async function upload() {
         if (scenario === 'moved') state.entries = [];
         if (scenario === 'collision') state.entries.push({id:'unrelated',name:name.toUpperCase(),size:bytes.length});
         if (scenario === 'lost') state.response = 'lost';
-        const save = current => current.save(row,name,bytes,()=>{},()=>{},{
-            language:'zh-cn',beforeWrite:nodes=>api.checkSubtitleImportDirectory(row,name,nodes)
-        });
+        row.siblingNames = new Set();
+        const verification = {evidence:'unknown'};
+        const save = current => api.savePanelSubtitle(current,row,{name,bytes,verification,language:'zh-cn'},()=>{},()=>{});
         if (scenario === 'ok') {
-            assert.equal((await save(drive())).id,'uploaded');
+            await save(drive());
+            assert.equal(row.subtitles[0].id,'uploaded');
+            assert.ok(row.siblingNames.has(name.toLowerCase()));
+            assert.equal(row.complete,true);
+            assert.equal(row.verification,verification);
             assert.equal(state.lists,2,'Import reuses the uploader listing and readback');
             await assert.rejects(save(drive()),/同名/);
             assert.equal(state.writes,1);
@@ -168,6 +172,11 @@ async function upload() {
         } else {
             await assert.rejects(save(drive()),/已移动|同名|关联字幕已变化/);
             assert.equal(state.writes,0);
+        }
+        if (scenario !== 'ok') {
+            assert.equal(row.subtitles.length,0);
+            assert.equal(row.siblingNames.size,0);
+            assert.equal(row.complete,false);
         }
     }
     console.log('PASS import upload: production recheck, no overwrite, content readback and receipt recovery');

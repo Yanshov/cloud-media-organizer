@@ -1,3 +1,74 @@
+    const workspaceIcons = {
+        'film': '<rect width="18" height="18" x="3" y="3" rx="2" /><path d="M7 3v18" /><path d="M3 7.5h4" /><path d="M3 12h18" /><path d="M3 16.5h4" /><path d="M17 3v18" /><path d="M17 7.5h4" /><path d="M17 16.5h4" />',
+        'captions': '<rect width="18" height="14" x="3" y="5" rx="2" ry="2" /><path d="M7 15h4M15 15h2M7 11h2M13 11h4" />',
+        'settings': '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" /><circle cx="12" cy="12" r="3" />',
+        'upload': '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" x2="12" y1="3" y2="15" />',
+        'download': '<path d="M12 15V3" /><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m7 10 5 5 5-5" />',
+        'scan-search': '<path d="M3 7V5a2 2 0 0 1 2-2h2" /><path d="M17 3h2a2 2 0 0 1 2 2v2" /><path d="M21 17v2a2 2 0 0 1-2 2h-2" /><path d="M7 21H5a2 2 0 0 1-2-2v-2" /><circle cx="12" cy="12" r="3" /><path d="m16 16-1.9-1.9" />',
+        'search': '<circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />',
+        'plus': '<path d="M5 12h14" /><path d="M12 5v14" />',
+        'trash-2': '<path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /><line x1="10" x2="10" y1="11" y2="17" /><line x1="14" x2="14" y1="11" y2="17" />',
+        'x': '<path d="M18 6 6 18" /><path d="m6 6 12 12" />',
+        'pin': '<path d="M12 17v5" /><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" />',
+        'pin-off': '<path d="M12 17v5" /><path d="M15 9.34V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H7.89" /><path d="m2 2 20 20" /><path d="M9 9v1.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h11" />',
+        'key-round': '<path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z" /><circle cx="16.5" cy="7.5" r=".5" fill="currentColor" />',
+        'languages': '<path d="m5 8 6 6" /><path d="m4 14 6-6 2-3" /><path d="M2 5h12" /><path d="M7 2h1" /><path d="m22 22-5-10-5 10" /><path d="M14 18h6" />',
+        'cloud': '<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />',
+        'files': '<path d="M15 2h-4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8" /><path d="M16.706 2.706A2.4 2.4 0 0 0 15 2v5a1 1 0 0 0 1 1h5a2.4 2.4 0 0 0-.706-1.706z" /><path d="M5 7a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h8a2 2 0 0 0 1.732-1" />',
+        'arrow-left': '<path d="m12 19-7-7 7-7" /><path d="M19 12H5" />',
+        'cpu': '<path d="M12 20v2" /><path d="M12 2v2" /><path d="M17 20v2" /><path d="M17 2v2" /><path d="M2 12h2" /><path d="M2 17h2" /><path d="M2 7h2" /><path d="M20 12h2" /><path d="M20 17h2" /><path d="M20 7h2" /><path d="M7 20v2" /><path d="M7 2v2" /><rect x="4" y="4" width="16" height="16" rx="2" /><rect x="8" y="8" width="8" height="8" rx="1" />',
+        'folder-open': '<path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2" />'
+    };
+    /*
+    ISC License
+
+    Copyright (c) 2026 Lucide Icons and Contributors
+
+    Permission to use, copy, modify, and/or distribute this software for any
+    purpose with or without fee is hereby granted, provided that the above
+    copyright notice and this permission notice appear in all copies.
+
+    THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+    WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+    MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+    ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+    WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+    ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+    OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+    ---
+
+    The download, upload, search, plus, trash-2, arrow-left and x icons are derived from Feather.
+
+    The MIT License (MIT) (for the icons listed above)
+
+    Copyright (c) 2013-present Cole Bemis
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
+    */
+    function workspaceIcon(name, className = '') {
+        const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        for (const [key, value] of Object.entries({viewBox:'0 0 24 24',fill:'none',stroke:'currentColor','stroke-width':'1.75','stroke-linecap':'round','stroke-linejoin':'round','aria-hidden':'true'})) icon.setAttribute(key, value);
+        if (className) icon.setAttribute('class', className);
+        icon.innerHTML = workspaceIcons[name];
+        return icon;
+    }
     function saveJsonFile(value, filename, report) {
         try { normalizeFiles(JSONtparse(value)); }
         catch (_) { report('保存失败：文本框不是有效的跨盘 JSON 清单，请先导出文件清单'); return; }
@@ -29,7 +100,7 @@
         const intro = create('div', 'tool-intro');
         take(intro, 'h3');
         const description = pane.querySelector(':scope > p:not([id]), #scope');
-        if (description) intro.append(description);
+        if (description) { description.id ||= id + 'Instructions'; pane.setAttribute('aria-describedby', description.id); intro.append(description); }
         if (id === 'json') {
             const source = intro.querySelector('h3').textContent.replace(/\s*跨盘\s*JSON.*$/, '').trim();
             intro.querySelector('h3').textContent = '跨盘文件清单';
@@ -56,14 +127,15 @@
             pane.classList.add('merged-media');
         }
         if (id === 'json') take(commands, '#stopJson');
+        const commandIcons = {generate:'download',exportManifest:'download',scanMedia:'scan-search',openMediaCleanup:'trash-2',readSubtitles:'search',fillSubtitles:'plus',reviewSubtitleDeletes:'trash-2',importSubtitles:'upload'};
+        for (const [name, glyph] of Object.entries(commandIcons)) commands.querySelector('#' + name)?.prepend(workspaceIcon(glyph, 'command-icon'));
+        commands.querySelector('.manifest-import > summary')?.prepend(workspaceIcon('upload', 'command-icon'));
         const layout = create('div', 'tool-layout');
-        const main = create('div', 'tool-main'), side = create('aside', 'tool-sidebar');
-        const status = create('section', 'tool-card tool-status');
-        status.append(create('h4', '', '当前状态'));
+        const main = create('div', 'tool-main');
+        const status = create('section', 'tool-status-text');
         const statusIds = id === 'subtitleSync' ? ['subtitleSyncStatus'] : id === 'subtitle' ? ['subtitleScope','subtitleProgress','subtitleMeter']
-            : id === 'media' ? ['mediaTarget','mediaProgress','mediaBar','mediaRecordState'] : ['status','target','progress'];
+            : id === 'media' ? ['mediaProgress','mediaBar','mediaRecordState'] : ['status','target','progress'];
         for (const name of statusIds) take(status, '#' + name);
-        side.append(status);
         const heading = create('div', 'tool-list-heading');
         const headingTitle = create('h4', '', id === 'subtitle' ? '字幕检查结果' : id === 'media' ? '影视整理结果' : id === 'subtitleSync' ? '' : 'JSON 文件清单');
         heading.append(headingTitle);
@@ -83,12 +155,13 @@
             if (editor) {
                 const surface = create('div', 'json-editor'); editor.before(surface); surface.append(editor);
                 const empty = create('div', 'json-editor-empty'); empty.setAttribute('aria-hidden', 'true');
-                empty.innerHTML = '<svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M28 7H13a3 3 0 0 0-3 3v28a3 3 0 0 0 3 3h22a3 3 0 0 0 3-3V17L28 7Z"/><path d="M28 7v10h10M18 24l-4 4 4 4m12-8 4 4-4 4m-4-9-4 14"/></svg>';
+                empty.append(workspaceIcon('folder-open'));
                 empty.append(create('strong', '', '从一份文件清单开始'), create('p', '', '点击上方导出，或在这里粘贴 JSON 清单'), create('span', '', '清单仅包含文件信息，不包含视频内容'));
                 surface.append(empty);
             }
             const fileActions = create('div', 'editor-actions');
             for (const selector of ['#save','#saveJson','#copyJson']) take(fileActions, selector);
+            for (const button of fileActions.children) button.prepend(workspaceIcon(button.id === 'copyJson' ? 'files' : 'download', 'command-icon'));
             if (fileActions.children.length) heading.append(fileActions);
         } else if (id === 'subtitleSync') {
             take(main,'#subtitleSyncContent');
@@ -109,7 +182,7 @@
                 for (const unused of ['#mediaView','#mediaSummary','#mediaProgress','#mediaBar']) pane.querySelector(unused).hidden = true;
                 const empty = create('div','media-empty'); empty.id = 'mediaEmpty'; empty.hidden = true;
                 results.append(empty);
-                for (const selector of ['#mediaTarget','#mediaRecordState']) take(status,selector);
+                take(status,'#mediaRecordState');
             }
         } else {
             take(main, '#mediaSummary');
@@ -131,24 +204,20 @@
             main.append(results);
         }
         const utilities = create('div', 'tool-utilities');
-        const auxiliary = id === 'json' ? side : utilities;
-        if (id === 'json') {
-            const actions = create('section', 'tool-import-options');
-            for (const node of [...pane.querySelectorAll(':scope > .panel-actions, :scope > .export-options')]) actions.append(node);
-            commands.append(actions);
+        const auxiliary = id === 'json' ? create('section', 'tool-import-options') : utilities;
+        if (id !== 'subtitle') {
+            for (const node of [...pane.querySelectorAll(':scope > .panel-actions, :scope > .export-options')]) auxiliary.append(node);
+            if (id === 'json') commands.append(auxiliary);
         }
-        // Settings are moved to the shared settings page by each feature after setup.
         for (const node of [...pane.children]) {
             if (node.id.endsWith('Settings') || (node.tagName === 'INPUT' && node.hidden)) continue;
-            node.classList.add('tool-card'); auxiliary.append(node);
-        }
-        // A single work surface with a persistent status area, rather than a second sidebar.
-        status.querySelector('h4').remove(); status.className = 'tool-status-text';
-        if (id === 'json') {
-            for (const node of [...side.children]) if (node !== status) utilities.append(node);
+            node.classList.add('tool-card'); utilities.append(node);
         }
         const footer = create('footer', 'tool-statusbar'); footer.append(status, utilities);
-        layout.append(main); pane.append(intro, commands, layout, footer);
+        const surface = create('div', 'tool-surface');
+        layout.append(main);
+        surface.append(intro, commands, layout, footer);
+        pane.append(surface);
     }
     let toolWorkspace = null;
     function makePanel(title, html, media = false) {
@@ -174,41 +243,53 @@ label:has(>input[type=checkbox]){display:flex;align-items:flex-start;gap:8px}inp
 summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-bottom:12px}
 .workspace-overlay{position:fixed;inset:0;pointer-events:none}.box{position:fixed;display:flex;flex-direction:column;pointer-events:auto;width:1280px;height:800px;overflow:hidden;border:1px solid var(--border);border-radius:12px;background:var(--panel);box-shadow:0 24px 80px #0004;container-type:size;outline:none}
 .workspace-header{display:flex;align-items:center;justify-content:space-between;gap:12px;height:52px;flex-shrink:0;padding:0 18px;cursor:grab;touch-action:none;user-select:none;background:var(--surface);border-bottom:1px solid var(--border)}
-.workspace-header h2{font-size:16px;font-weight:600;margin:0;display:flex;align-items:center;gap:9px}.workspace-header h2::before{content:'⇄';display:grid;place-items:center;width:23px;height:23px;border-radius:6px;background:var(--accent);color:var(--button-text);font-size:17px;font-weight:400}
+.workspace-header h2{display:flex;align-items:center;gap:9px;margin:0;font-size:14px;font-weight:650;white-space:nowrap}.workspace-brand,.workspace-location{display:flex;align-items:center;gap:12px;min-width:0}.workspace-location{border-left:1px solid var(--border);padding-left:12px;font-size:13px;color:var(--muted)}.workspace-location:empty{display:none}.workspace-brand-mark{display:grid;place-items:center;width:26px;height:26px;border-radius:7px;background:var(--button);color:var(--button-text)}.workspace-brand-mark svg{width:16px;height:16px}
 .workspace-header p{display:none}.workspace-header.dragging{cursor:grabbing}.workspace-header.pinned{cursor:default}.workspace-window-actions{display:flex;align-items:center;gap:12px}
-#pinWorkspace,#closeWorkspace{background:transparent;border-color:transparent;color:var(--muted);padding:5px 10px;font-size:14px}#pinWorkspace[aria-pressed=true]{color:var(--accent);background:var(--tint)}#closeWorkspace{width:30px;height:30px;padding:0;font-size:24px;line-height:1}
-.workspace-frame{display:flex;flex:1;min-height:0;min-width:0}.workspace-navigation{width:192px;flex-shrink:0;display:flex;flex-direction:column;background:var(--surface);padding:22px 12px 16px;border-right:1px solid var(--border)}
-.nav-caption{margin:0 12px 14px;font-size:15px;color:var(--muted);letter-spacing:1px}.workspace-tabs{display:flex;flex-direction:column;gap:6px}
-.workspace-tabs button,#settingsWorkspace{position:relative;display:flex;align-items:center;gap:12px;width:100%;padding:12px;text-align:left;border:0;background:transparent;color:var(--muted);font-size:16px;border-radius:7px}
-.workspace-tabs svg,#settingsWorkspace svg{width:19px;height:19px;flex-shrink:0;stroke-linecap:round;stroke-linejoin:round}
-.workspace-tabs button[aria-selected=true],#settingsWorkspace[aria-pressed=true]{background:var(--tint);color:var(--accent);font-weight:600}
-.workspace-tabs button[aria-selected=true]::before{content:'';position:absolute;left:0;top:14px;bottom:14px;width:3px;border-radius:3px;background:var(--accent)}
-.nav-footer{margin-top:auto}.nav-footer small{display:block;margin:16px 12px 0;font-size:14px;color:var(--muted)}
-.workspace-body{flex:1;min-width:0;min-height:0;display:flex}.tool-pane{width:100%;min-width:0;overflow:auto;overscroll-behavior:contain;padding:30px 32px 18px}
-.tool-pane[role=tabpanel]{display:flex;flex-direction:column}.tool-intro,.tool-commandbar,.tool-statusbar{flex-shrink:0}.tool-intro h3{display:flex;align-items:center;gap:12px;font-size:21px;margin:0;line-height:1.4;letter-spacing:0}.tool-intro p{font-size:16px;color:var(--muted);margin:8px 0 0}
-.tool-context{font-size:15px;line-height:28px;padding:0 8px;border-radius:5px;background:var(--tint);color:var(--accent);font-weight:400;letter-spacing:0}
-.tool-commandbar{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin:22px 0 24px}.panel-actions{display:flex;flex-wrap:wrap;gap:10px;margin:12px 0}
-.tool-commandbar .panel-actions{margin:0;gap:10px}.tool-commandbar button{padding:9px 17px;min-height:38px}
+#pinWorkspace,#closeWorkspace{display:grid;place-items:center;width:32px;height:32px;padding:0;background:transparent;border-color:transparent;color:var(--muted)}#pinWorkspace svg,#closeWorkspace svg{width:16px;height:16px}#pinWorkspace[aria-pressed=true]{color:var(--accent);background:var(--tint)}
+.workspace-frame{display:flex;flex:1;min-height:0;min-width:0}
+.workspace-navigation{width:clamp(150px,16cqw,232px);flex:none;display:flex;flex-direction:column;gap:20px;padding:18px 12px;background:var(--panel);border-right:1px solid var(--border)}
+.nav-brand{display:flex;align-items:center;gap:10px;font-size:18px;font-weight:650;padding:4px 8px}
+.workspace-tabs{display:grid;gap:3px}
+.workspace-tabs button,#settingsWorkspace{display:flex;align-items:center;gap:10px;width:100%;min-height:38px;padding:7px 10px;border:0;background:transparent;color:var(--text);text-align:left;font-size:16px;border-radius:6px}
+.workspace-tabs svg,#settingsWorkspace svg{width:18px;height:18px;flex:none}
+.workspace-tabs button[aria-selected=true],#settingsWorkspace[aria-pressed=true]{background:var(--tint);font-weight:650}
+.nav-footer{margin-top:auto;border-top:1px solid var(--border);padding-top:10px}
+.nav-footer small{display:block;margin:8px 10px 0;color:var(--muted);font-size:13px}
+.workspace-body{flex:1;min-width:0;min-height:0;display:flex;--surface-pad:clamp(16px,2cqw,32px)}
+.tool-pane{width:100%;min-width:0;min-height:0}
+.tool-pane[role=tabpanel],#workspaceSettings{display:grid;grid-template-columns:minmax(0,1fr)}
+.tool-surface{display:flex;flex-direction:column;min-width:0;min-height:0;overflow:auto;scrollbar-width:none;overscroll-behavior:contain;padding:25px var(--surface-pad) 0;background:var(--surface)}
+.tool-intro,.tool-commandbar,.tool-statusbar{flex-shrink:0}
+.tool-intro{margin:0 0 16px}.tool-intro h3{display:flex;align-items:baseline;gap:12px;font-size:28px;font-weight:650;margin:0;line-height:1.25}.tool-intro p{display:none}
+.tool-context{font-size:15px;color:var(--muted);font-weight:400}
+.panel-actions,.tool-commandbar{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.panel-actions{margin:12px 0}.tool-commandbar{margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--border)}
+.tool-commandbar>.panel-actions{margin:0}
+.tool-commandbar button,.tool-commandbar .manifest-import>summary{min-height:38px;padding:7px 11px;font-size:15px}
+.command-icon{display:inline-block;width:16px;height:16px;margin-right:6px;vertical-align:-3px;pointer-events:none}
 .manifest-import{position:relative}.manifest-import>summary{margin:0;border:1px solid var(--border);border-radius:7px;padding:8px 12px;background:var(--surface);line-height:1.5}
-.manifest-import-actions{position:absolute;top:calc(100% + 6px);left:0;z-index:2;width:max-content;display:grid;gap:8px;padding:10px;background:var(--panel);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 14px #0002}.manifest-import-actions label{margin:0;align-items:center}.manifest-import-actions input[type=checkbox]{margin:0}
-#generate,#exportManifest,#scanMedia,#readSubtitles,#fillSubtitles,#runMedia,#transfer,#start,#chooseManifest,#chooseJsonFile{background:var(--surface);border:1px solid var(--border);color:var(--text);font-weight:500}
-.tool-import-options{margin-left:auto;max-width:320px;color:var(--muted);font-size:14px}.tool-import-options .export-options,.tool-import-options label{margin:0}.panel-actions:empty,.tool-import-options:not(:has(input,select,button)){display:none}
+.manifest-import-actions{position:absolute;top:100%;left:0;z-index:2;width:max-content;margin-top:6px;display:grid;gap:8px;padding:10px;background:var(--panel);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 14px #0002}.manifest-import-actions label{margin:0;align-items:center}.manifest-import-actions input[type=checkbox]{margin:0}
+:is(#generate,#exportManifest,#scanMedia,#readSubtitles,#runMedia,#fillSubtitles,#confirmSync){background:var(--button);border-color:var(--button);color:var(--button-text);font-weight:600}
+:is(#generate,#exportManifest,#scanMedia,#readSubtitles,#runMedia,#fillSubtitles,#confirmSync):hover:not(:disabled){background:var(--button-hover);border-color:var(--button-hover)}
+:is(#runMedia,#fillSubtitles):disabled{background:var(--surface);border-color:var(--border);color:var(--muted)}
+:is(#reviewSubtitleDeletes,#confirmSubtitleDeletes){color:var(--danger)}
+.tool-import-options{color:var(--muted);font-size:15px}.tool-import-options .export-options,.tool-import-options label{margin:0}.panel-actions:empty,.tool-import-options:not(:has(input,select,button)){display:none}
 .tool-layout{flex:1;min-width:0;min-height:auto}.tool-main{min-width:0}.tool-list-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:34px;margin-bottom:12px}
-.tool-list-heading select{width:auto;max-width:210px;margin:0;font-size:14px;padding:6px 10px}
-.tool-list-heading h4{font-size:18px}.editor-actions{display:flex;gap:8px}.editor-actions button{background:var(--surface);color:var(--text);border-color:var(--border);padding:4px 9px;font-size:15px;min-height:30px}
+.tool-list-heading select{width:auto;max-width:210px;margin:0;font-size:15px;padding:7px 10px}
+.tool-list-heading h4{font-size:19px;font-weight:650}.editor-actions{display:flex;gap:8px}.editor-actions button{background:var(--surface);color:var(--text);border-color:var(--border);padding:4px 9px;font-size:13px;min-height:30px}
 #jsonPane .tool-main{height:100%;display:flex;flex-direction:column;min-height:280px}#jsonPane .tool-main>:not(.json-editor){flex-shrink:0}
-.json-editor{position:relative;display:flex;flex:1;min-height:220px;border:1px solid var(--border);border-radius:10px;background:var(--surface);overflow:hidden;isolation:isolate}
+.json-editor{position:relative;display:flex;flex:1;min-height:220px;border:1px solid var(--border);border-radius:8px;background:var(--surface);overflow:hidden;isolation:isolate}
 .json-editor:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--tint)}.json-editor>#json{width:100%;height:100%;flex:1;min-height:0;max-height:none;margin:0;border:0;border-radius:0;background:transparent;resize:none;outline:none;padding:20px;font:16px/1.8 Consolas,"Microsoft YaHei",monospace}
 .json-editor>#json::placeholder{color:transparent}.json-editor-empty{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;padding:24px;text-align:center;color:var(--muted)}
-.json-editor:has(#json:placeholder-shown:not(:focus))>.json-editor-empty{display:flex}.json-editor-empty svg{width:44px;height:44px;padding:8px;border-radius:12px;background:var(--tint);color:var(--muted);margin-bottom:12px}.json-editor-empty strong{color:var(--text);font-size:17px;font-weight:600}.json-editor-empty p{font-size:16px;margin:6px 0 12px}.json-editor-empty span{font-size:14px}
+.json-editor:has(#json:placeholder-shown:not(:focus))>.json-editor-empty{display:flex}.json-editor-empty svg{width:44px;height:44px;padding:8px;border-radius:8px;background:var(--tint);color:var(--muted);margin-bottom:12px}.json-editor-empty strong{color:var(--text);font-size:15px;font-weight:600}.json-editor-empty p{font-size:13px;margin:4px 0 6px}.json-editor-empty span{font-size:12px}
 #jsonPane .tool-main:has(#syncPreview:not([hidden]))>.json-editor{flex:0 0 140px;min-height:140px}#jsonPane:has(#syncPreview:not([hidden])) .tool-layout{flex:none}#jsonPane .tool-main:has(#syncPreview:not([hidden])){height:auto}
 
-.sync-item{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:16px;margin:12px 0;min-width:0}
+.sync-item{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;margin:12px 0;min-width:0}
 :is(#subtitlePane,#mediaPane) :is(.tool-layout,.tool-main){display:flex;min-height:0}:is(#subtitlePane,#mediaPane) .tool-main{flex:1;flex-direction:column}:is(#subtitlePane,#mediaPane) .tool-list-heading{flex:none}#subtitleFilters :focus-visible{outline-offset:-2px}
-#subtitleFilters{display:flex;align-items:center;gap:8px;flex:0 0 auto;max-width:100%}#subtitleFilters label{align-items:center;gap:5px;margin:0;font-size:14px;white-space:nowrap;flex:none}#subtitleFilters input[type=checkbox]{margin:0}
+#subtitleFilters{display:flex;align-items:center;gap:8px;flex:0 0 auto;max-width:100%}#subtitleFilters label{align-items:center;gap:5px;margin:0;font-size:15px;white-space:nowrap;flex:none}#subtitleFilters input[type=checkbox]{margin:0}
 :is(#subtitleResults,#mediaResults){flex:1 1 0;min-height:0;overflow:auto;overscroll-behavior:contain;overflow-anchor:none;scrollbar-gutter:stable;container-type:size}:is(#subtitleResults,#mediaResults):focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 :is(#subtitleSummary,#mediaSummary){flex:none;padding:10px 12px;font-size:15px;overflow-wrap:anywhere}
-#mediaPane{overflow:hidden}
+:is(#subtitlePane,#mediaPane) .tool-surface{overflow:hidden}
 :is(#subtitleRows,#mediaRows){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:stretch;align-content:start}
 :is(.subtitle-card,.media-card){margin:0;overflow-wrap:anywhere}
 #mediaSummary:empty{display:none}
@@ -240,25 +321,25 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 #subtitleRows h5,#subtitleRows p{margin-block:0 4px}
 #subtitleRows button{margin-top:4px}
 #subtitleRows select{width:100%;min-width:0;text-overflow:ellipsis}
-#subtitleRows .subtitle-result>p{display:flex;align-items:baseline;flex-wrap:wrap;gap:2px 6px}
-#subtitleRows .subtitle-result strong{flex:none}
+ #subtitleRows .subtitle-result>p{display:flex;align-items:baseline;flex-wrap:wrap;gap:2px 6px}
+ #subtitleRows .subtitle-result strong{flex:none}
 #subtitleRows .subtitle-badge{white-space:normal}
 #subtitleRows .subtitle-detail{flex:1 1 100%;font-size:.9em}
-#subtitleRows .subtitle-result select, #subtitleRows .subtitle-result label span{min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ #subtitleRows .subtitle-result select, #subtitleRows .subtitle-result label span{min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 :is(#subtitleRows,#mediaRows):empty{display:none}
 #subtitleFilters{flex-wrap:wrap}#subtitleDeleteSelectionCount,.subtitle-group-count{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}.subtitle-group-count{margin:4px 0 0;overflow-wrap:anywhere}
-#subtitleRows h5{margin:0;font-size:16px;line-height:1.5;overflow-wrap:anywhere}.subtitle-result{margin-top:8px}.subtitle-result+.subtitle-result{padding-top:8px;border-top:1px solid var(--border)}
-.subtitle-result p{margin:0;line-height:1.55;white-space:pre-wrap}.subtitle-result label{margin:6px 0;font-size:14px;overflow-wrap:anywhere}.subtitle-result select{font-size:14px;padding:6px 10px}
+#subtitleRows h5{margin:0;font-size:17px;line-height:1.5;overflow-wrap:anywhere}.subtitle-result{margin-top:8px}.subtitle-result+.subtitle-result{padding-top:8px;border-top:1px solid var(--border)}
+.subtitle-result p{margin:0;line-height:1.55;white-space:pre-wrap;color:var(--muted);font-size:15px}.subtitle-result p>strong{font-weight:650;color:var(--text)}.subtitle-badge{display:inline-block;white-space:nowrap;padding:1px 6px;margin-right:6px;border-radius:4px;background:var(--hover);color:var(--text);font-size:13px;font-weight:600}.subtitle-result[data-state=complete] .subtitle-badge{color:var(--button-text);background:var(--button)}.subtitle-result[data-state=choice] .subtitle-badge{outline:1px solid var(--edge);outline-offset:-1px;background:transparent}.subtitle-detail{display:block}.subtitle-result label{margin:6px 0;font-size:15px;overflow-wrap:anywhere}.subtitle-result select{font-size:15px;padding:7px 8px}
 .sync-location{display:grid;grid-template-columns:6.5em minmax(0,1fr);gap:8px;line-height:1.7}.sync-location span:last-child{white-space:pre-wrap;overflow-wrap:anywhere}.sync-location span:first-child{color:var(--muted)}
 .sync-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border)}
 
-#subtitleEmpty,.media-empty{padding:36px 24px;margin:0;text-align:center;border:1px dashed var(--border);border-radius:10px;color:var(--muted);background:var(--surface)}
+#subtitleEmpty,.media-empty{padding:28px 24px;margin:0;text-align:center;border:1px dashed var(--border);border-radius:8px;color:var(--muted);font-size:13px;background:var(--surface)}
 #mediaPreviewPanel:not(:has(#mediaPreview:not(:empty))){display:none}
 #mediaPreview{white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;margin-top:8px}
 #emptyPreview:not(:empty){max-height:none!important;overflow:visible!important;padding:12px 0;margin:12px 0;font-size:14px}
-.tool-statusbar{display:flex;align-items:flex-start;gap:20px;flex-wrap:wrap;margin-top:20px;padding-top:12px;border-top:1px solid var(--border);font-size:15px;color:var(--muted)}
-.tool-status-text{flex:1;min-width:180px}.tool-status-text p{margin:0;line-height:1.9;font-size:15px}.tool-status-text p:empty{display:none}.tool-status-text progress{accent-color:var(--accent);height:6px!important;margin:6px 0!important}.tool-status-text label{margin:0;font-size:15px}
-.tool-utilities{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-left:auto}.tool-utilities>.tool-card{padding:0;border:0;background:transparent;margin:0}.tool-utilities summary{padding:2px 0;font-size:15px;font-weight:500;color:var(--muted)}
+.tool-statusbar{display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-top:14px;padding:8px 0 10px;border-top:1px solid var(--border);font-size:14px;color:var(--muted)}
+.tool-status-text{flex:1;min-width:180px}.tool-status-text p{margin:0;line-height:1.5;font-size:14px}.tool-status-text p:empty{display:none}.tool-status-text progress{accent-color:var(--accent);height:6px!important;margin:6px 0!important}.tool-status-text label{margin:0;font-size:12px}
+.tool-utilities{display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-left:auto}.tool-utilities>.tool-card{padding:0;border:0;background:transparent;margin:0}.tool-utilities summary{padding:2px 0;font-size:14px;font-weight:500;color:var(--muted)}
 .tool-statusbar:has(.tool-utilities>details[open]){display:block}.tool-utilities:has(>details[open]){display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin-top:10px}.tool-utilities>details[open]{grid-column:1/-1;color:var(--text);min-width:0}
 :is(#subtitlePane,#mediaPane) .tool-statusbar{align-items:flex-end;margin-top:10px}
 :is(#subtitlePane,#mediaPane) .tool-status-text{min-width:0}
@@ -268,11 +349,11 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 :is(#subtitleMeter,#mediaBar)::-webkit-progress-bar{background:var(--border)}
 :is(#subtitleMeter,#mediaBar)::-webkit-progress-value{background:var(--text)}
 :is(#subtitleMeter,#mediaBar)::-moz-progress-bar{background:var(--text)}
-:is(#subtitleScope,#mediaTarget){overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#subtitlePane .tool-statusbar:has(.tool-utilities>details[open]){max-height:40%;overflow:auto}#subtitleDeleteList{overflow-wrap:anywhere}
+#subtitleScope{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#subtitlePane .tool-statusbar:has(.tool-utilities>details[open]){max-height:40%;overflow:auto;scrollbar-width:none}#subtitleDeleteList{overflow-wrap:anywhere}
 #log{white-space:pre-wrap;overflow-wrap:anywhere;font:14px/1.7 Consolas,"Microsoft YaHei",monospace;max-height:180px;overflow:auto}#log:empty{display:none}#log>div+div{margin-top:6px}
-#subtitlePane .tool-statusbar:has(#subtitleDiagnostics[open]){max-height:none;overflow:visible}:is(#subtitleDiagnostics,#mediaDiagnostics) .panel-actions{margin:4px 0 8px}#subtitlePane:has(#subtitleDiagnostics[open]) .tool-intro p{display:none}
-:is(#subtitleLog,#mediaLog){display:block;width:100%;height:clamp(56px,calc(36cqh - 128px),180px);resize:none;overflow:auto;scrollbar-width:none;overscroll-behavior:contain}
+#subtitlePane .tool-statusbar:has(#subtitleDiagnostics[open]){max-height:58%}:is(#subtitleDiagnostics,#mediaDiagnostics) .panel-actions{margin:4px 0 8px}
+:is(#subtitleLog,#mediaLog){display:block;width:100%;height:clamp(40px,calc(37cqh - 163px),150px);resize:none;overflow:auto;scrollbar-width:none;overscroll-behavior:contain}
 @container(max-height:660px){
     #subtitlePane .tool-intro p{display:none}
     #subtitlePane .tool-intro h3{font-size:20px}
@@ -289,48 +370,108 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 .sync-preview{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px}.sync-preview h4{margin:0 0 8px}.sync-preview p{margin:6px 0}#syncList{overflow-wrap:anywhere;font-size:15px}#syncDestination{font-weight:600}
 .export-options{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin:12px 0}.export-options input{width:auto}.export-options button{font-size:14px;padding:7px 12px}.credential-head{display:flex;justify-content:space-between;align-items:center;gap:12px}.credential-head a{font-size:15px;flex-shrink:0}
 .source-result{margin:12px 0;padding:12px;border:1px solid var(--border);border-radius:8px}.source-result button{margin:8px 8px 0 0;font-size:16px}
-#workspaceSettings{display:flex;flex-direction:column;padding:20px 24px;font-size:14px;scrollbar-width:none}
-.settings-heading{display:flex;flex:none;align-items:center;justify-content:space-between;gap:14px;margin-bottom:18px;padding-bottom:12px;border-bottom:1px solid var(--border)}.settings-heading h3{margin:0;font-size:20px}
-.settings-appearance{display:flex;align-items:center;justify-content:flex-end;gap:16px;margin-left:auto}.settings-appearance label{display:flex;align-items:center;gap:6px;margin:0;white-space:nowrap;color:var(--muted)}.settings-appearance select{width:auto;max-width:180px;padding:5px 8px;margin:0}
-#settingsSections{display:grid;flex:none;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}#settingsSections:has(>.settings-column:empty){grid-template-columns:minmax(0,1fr)}
-.settings-column{display:grid;align-content:start;gap:14px;min-width:0}.settings-column:empty{display:none}
-@container(max-height:740px){#settingsSections:has(#openSubtitlesSettings[open]){--compact-settings:1}}
-@container(max-height:650px){#settingsSections:has(>#settingsModels:not(:empty)+#settingsBasics:not(:empty)){--compact-settings:1}}
-#settingsSections{container-name:settings-grid}
-@container settings-grid style(--compact-settings:1){#settingsModels,#settingsBasics{display:contents}#settingsSections .sync-item:has(#mediaAISettings){grid-area:1/1/span 2/2}#settingsSections .sync-item:has(#subtitleSettings){grid-area:1/2/span 2/3}#settingsSections .sync-item:has(#mediaSettings){grid-area:1/3}#settingsSections .sync-item:has(#openSubtitlesSettings){grid-area:2/3}}
-@container(max-height:740px){#settingsSections:has(#openSubtitlesSettings[open]):has(>#settingsModels:not(:empty)+#settingsBasics:not(:empty)){grid-template-columns:minmax(0,1.15fr) minmax(0,1fr) minmax(178px,.73fr);grid-template-rows:min-content auto}}
-@container(max-height:650px){#settingsSections:has(>#settingsModels:not(:empty)+#settingsBasics:not(:empty)){grid-template-columns:minmax(0,1.15fr) minmax(0,1fr) minmax(178px,.73fr);grid-template-rows:min-content auto}}
-#settingsSections .sync-item{margin:0;padding:14px;border-radius:8px}#settingsSections h3{margin:0 0 8px;font-size:16px}
-#mediaAISettings{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr);column-gap:8px}#mediaAISettings>*{grid-column:1/-1}#mediaAISettings>label:has(#mediaAIProvider,#mediaAIModelSelect){grid-column:auto;min-width:0}
-#settingsSections label,#settingsSections p{margin:6px 0;overflow-wrap:anywhere}#settingsSections p{line-height:1.45;color:var(--muted)}#settingsSections input,#settingsSections select{padding:6px 8px;margin-top:4px;line-height:1.4}#settingsSections input[type=checkbox]{margin:1px 0 0}
-#settingsSections .panel-actions{gap:6px;margin:8px 0 0}#settingsSections button,#backToTools{padding:5px 8px;line-height:1.4}#settingsSections details[open]>summary{margin-bottom:5px}#settingsSections .credential-head a{font-size:13px}
-#settingsSections :is(#saveMediaKey,#saveMediaAI,#saveSubtitleSettings){background:var(--tint);font-weight:600}
-#subtitleAccountSettings>div{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}#subtitleAccountSettings>div>label{min-width:0}
-#subtitleSettings .credential-head{flex-wrap:wrap;gap:2px 6px}
-@container(max-height:650px){#workspaceSettings{padding:8px 12px}.settings-heading{margin-bottom:8px;padding-bottom:6px}.settings-heading h3{font-size:18px}#settingsSections{gap:9px}.settings-column{gap:9px}#settingsSections .sync-item{padding:8px}#settingsSections h3{margin-bottom:5px}#settingsSections label,#settingsSections p{margin:3px 0}#settingsSections input,#settingsSections select{padding:4px 6px;margin-top:3px}#settingsSections .panel-actions{gap:4px;margin-top:4px}#settingsSections button,#backToTools{padding:4px 7px}}
-#toggle{display:grid;place-items:center;width:50px;height:50px;padding:0;border-radius:15px;background:var(--surface);box-shadow:0 5px 20px #0003}#toggle svg{width:24px;height:24px;pointer-events:none}
-@container(max-width:1050px){.workspace-navigation{width:152px;padding:16px 9px}.tool-pane{padding:20px 20px 14px}.tool-intro h3{font-size:20px}.tool-intro p{font-size:14px}.tool-commandbar{margin:16px 0 18px;gap:8px}.tool-commandbar button{padding:8px 12px;font-size:14px}.tool-commandbar .panel-actions{gap:6px}.tool-import-options{max-width:240px;font-size:14px}.tool-statusbar{gap:12px;margin-top:14px}.tool-utilities{gap:10px}.json-editor{min-height:160px}#jsonPane .tool-main{min-height:220px}.json-editor-empty svg{width:44px;height:44px;margin-bottom:10px}.json-editor-empty p{margin:6px 0 12px}}
-        </style><button id="toggle" type="button" title="打开云盘工具" aria-label="打开云盘工具" aria-haspopup="dialog" aria-expanded="false" aria-controls="toolDialog"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 12h4M8 16h3M16 12v6m-2-2 2 2 2-2"/></svg></button>
+#workspaceSettings{overflow:auto;scrollbar-width:none;overscroll-behavior:contain}
+.settings-main{display:flex;flex-direction:column;min-width:0;padding:25px var(--surface-pad) 20px;background:var(--surface)}
+.settings-heading{display:flex;flex:none;align-items:center;justify-content:space-between;gap:14px;margin-bottom:18px;padding-bottom:18px;border-bottom:1px solid var(--border)}.settings-heading h3{margin:0;font-size:clamp(32px,3.6cqw,52px);line-height:1.2;letter-spacing:-.04em}
+.settings-appearance{display:flex;align-items:center;gap:12px;margin-left:auto}.settings-appearance label{display:flex;align-items:center;gap:6px;margin:0;font-size:15px;white-space:nowrap}.settings-appearance select{width:auto}#workspaceSettings .settings-appearance select{margin:0}
+.settings-column{min-width:0}.settings-column:empty{display:none}
+#settingsBasics{display:grid;gap:8px;margin-top:14px}#settingsBasics:empty{display:none}
+#settingsBasics #mediaSettings{display:flex;align-items:end;gap:12px;flex-wrap:wrap}
+#settingsBasics #mediaSettings>label{flex:1;min-width:180px;margin:0}
+#settingsBasics #mediaSettings>label{display:flex;align-items:center;gap:12px}
+#settingsBasics .credential-head{flex:none}
+#settingsBasics #tmdbKey{margin:0}
+#settingsBasics #mediaSettings .panel-actions{margin:0}
+#settingsModels{display:grid;flex:1;grid-template-columns:minmax(0,1.12fr) minmax(0,1fr);gap:16px}
+#settingsModels:has(#openSubtitlesSettings){grid-template-rows:1fr auto}
+#settingsModels:has(#openSubtitlesSettings)>.sync-item:has(#mediaAISettings){grid-row:span 2}
+#settingsModels>.sync-item:has(#openSubtitlesSettings){grid-column:2}
+#settingsModels:has(>:only-child){grid-template-columns:minmax(0,1fr)}#settingsModels:empty{display:none}
+#workspaceSettings .sync-item{margin:0;padding:0;border:0;background:transparent;min-inline-size:0}#workspaceSettings h3>svg{width:18px;height:18px;flex:none;color:var(--accent)}
+#workspaceSettings .sync-item h3{display:flex;align-items:center;gap:8px;margin:0 0 8px;font-size:18px}
+#settingsBasics .sync-item{border-top:1px solid var(--border);padding-top:8px}#settingsBasics .sync-item h3{display:none}
+#settingsModels .sync-item{display:flex;flex-direction:column;padding:18px 20px;border:1px solid var(--border);border-radius:12px;background:var(--surface)}
+#settingsModels .sync-item:has(#mediaAISettings){background:var(--panel)}
+#settingsModels .sync-item h3{margin-bottom:12px;font-size:20px}
+#settingsModels .sync-item>section{display:flex;flex:1;flex-direction:column;gap:clamp(6px,1.6cqh,16px);min-width:0}
+#settingsModels .panel-actions{margin-top:auto;padding-top:8px;border-top:1px solid var(--border)}
+#settingsModels .sync-item:has(#openSubtitlesSettings){background:var(--rail)}
+#settingsModels .sync-item:has(#openSubtitlesSettings:not([open])){display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+#settingsModels .sync-item:has(#openSubtitlesSettings:not([open])) h3{margin:0}
+#workspaceSettings:has(#openSubtitlesSettings[open]) #subtitleSettings{gap:2px}
+#workspaceSettings:has(#openSubtitlesSettings[open]) #subtitleSettings>label{margin-block:2px}
+#workspaceSettings:has(#openSubtitlesSettings[open]) #subtitleSettings>label:has(#subtitleLanguage,#subdlKey){
+    display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:8px
+}
+#workspaceSettings:has(#openSubtitlesSettings[open]) #subtitleSettings .credential-head{display:grid;gap:0}
+#workspaceSettings:has(#openSubtitlesSettings[open]) #subdlKey{margin:0}
+#openSubtitlesSettings[open]{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;column-gap:10px}
+#openSubtitlesSettings[open]>label:has(#openSubtitlesKey),#subtitleAccountSettings{grid-column:1/-1}
+#subtitleAccountSettings>div{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+#workspaceSettings label,#workspaceSettings p{overflow-wrap:anywhere}#workspaceSettings .sync-item label,#workspaceSettings p{margin:4px 0}#workspaceSettings p{line-height:1.45;color:var(--muted);font-size:14px}#workspaceSettings input,#workspaceSettings select{min-height:38px;padding:6px 9px;margin-top:4px;line-height:1.45}#workspaceSettings input[type=checkbox]{min-height:0;margin:3px 0 0}
+#workspaceSettings .panel-actions{gap:6px;margin:6px 0 0}#workspaceSettings button{padding:6px 9px;font-size:15px;line-height:1.4;min-height:35px}#workspaceSettings details[open]>summary{margin-bottom:7px}#workspaceSettings .credential-head{flex-wrap:wrap;gap:0 8px}#workspaceSettings .credential-head a{font-size:14px}
+#workspaceSettings :is(#saveMediaKey,#saveMediaAI,#saveSubtitleSettings){background:var(--button);border-color:var(--button);color:var(--button-text);font-weight:600}#workspaceSettings :is(#saveMediaKey,#saveMediaAI,#saveSubtitleSettings):hover:not(:disabled){background:var(--button-hover)}
+#settingsModels .sync-item:has(#mediaAISettings)>section{display:grid;grid-template-columns:minmax(0,.95fr) minmax(0,1.05fr);grid-template-rows:auto auto auto auto auto 1fr;column-gap:10px}#mediaAISettings>*{grid-column:1/-1}#mediaAISettings>label:has(#mediaAIProvider,#mediaAIModelSelect){grid-column:auto;min-width:0}#mediaAIState:empty{display:none}
+#toggle{display:grid;place-items:center;width:50px;height:50px;padding:0;border-radius:12px;background:var(--button);color:var(--button-text);box-shadow:0 5px 20px #0003}#toggle:hover:not(:disabled){background:var(--button-hover)}#toggle svg{width:24px;height:24px;pointer-events:none}#toggle[aria-expanded=true]{visibility:hidden}
+@container(max-width:1050px){
+    .workspace-navigation{padding:12px 8px}
+    .tool-surface,.settings-main{padding-top:14px}
+    .settings-heading{padding-bottom:10px;margin-bottom:10px}.settings-heading h3{font-size:28px}
+    #settingsModels{gap:10px}#settingsModels .sync-item{padding:10px}#settingsModels .sync-item>section{gap:2px}
+    .settings-appearance label{font-size:14px}
+}
+@container(max-height:660px){.settings-main{padding-bottom:8px}#workspaceSettings .sync-item label{margin:2px 0}#workspaceSettings .sync-item input:not([type=checkbox]),#workspaceSettings .sync-item select{min-height:34px;padding-block:4px}#settingsBasics{margin-top:5px}}
+@container(max-width:790px){.workspace-body{--surface-pad:12px}.workspace-navigation{width:134px}.settings-heading{flex-wrap:wrap}.settings-appearance{flex-wrap:wrap}#settingsModels{grid-template-columns:minmax(0,1fr);align-content:start}.tool-list-heading{flex-wrap:wrap;gap:5px}#subtitleFilters{margin-left:auto}}
+@container(max-width:790px){
+    #settingsModels:has(#openSubtitlesSettings){grid-template-rows:auto}
+    #settingsModels:has(#openSubtitlesSettings)>.sync-item:has(#mediaAISettings){grid-row:auto}
+    #settingsModels>.sync-item:has(#openSubtitlesSettings){grid-column:auto}
+}
+@container(max-height:660px){
+    #workspaceSettings .settings-appearance{padding:0;gap:6px}
+    #settingsModels .sync-item h3{margin-bottom:6px;font-size:18px}
+    #settingsModels .sync-item:has(#openSubtitlesSettings[open]){position:relative}
+    #settingsModels .sync-item:has(#openSubtitlesSettings[open]) h3{position:absolute;top:10px;left:10px}
+    #openSubtitlesSettings[open]>summary{grid-column:1/-1;justify-self:end;margin-left:145px}
+    #openSubtitlesSettings[open]>label:has(#useOpenSubtitles){grid-column:1/-1}
+    #workspaceSettings:has(#openSubtitlesSettings[open]) .settings-heading{margin-bottom:6px;padding-bottom:6px}
+    #workspaceSettings:has(#openSubtitlesSettings[open]) #settingsModels{gap:6px}
+    #workspaceSettings:has(#openSubtitlesSettings[open]) #subtitleSettings>label:has(#subtitleLanguage){
+        display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:8px
+    }
+    #workspaceSettings:has(#openSubtitlesSettings[open]) #subtitleLanguage{margin:0}
+    #workspaceSettings:has(#openSubtitlesSettings[open]) #mediaAISettings>label:has(#mediaAIBase,#mediaAIKey){
+        display:grid;grid-template-columns:5em minmax(0,1fr);align-items:center;gap:6px
+    }
+    #workspaceSettings:has(#openSubtitlesSettings[open]) #openSubtitlesSettings>label:has(#openSubtitlesKey){
+        display:flex;align-items:center;gap:8px
+    }
+    #workspaceSettings:has(#openSubtitlesSettings[open]) #openSubtitlesSettings .credential-head{flex:none}
+}
+        </style><button id="toggle" type="button" title="打开云盘工具" aria-label="打开云盘工具" aria-haspopup="dialog" aria-expanded="false" aria-controls="toolDialog"></button>
         <div class="workspace-overlay" hidden><div class="box" id="toolDialog" role="dialog" aria-modal="false" aria-labelledby="workspaceTitle" tabindex="-1">
-        <header class="workspace-header"><div><h2 id="workspaceTitle">云盘工具</h2><p id="windowHint">拖动标题栏移动 · 可同时操作网页</p></div><div class="workspace-window-actions"><button id="settingsWorkspace" type="button">设置</button><button id="pinWorkspace" type="button" aria-pressed="false" title="锁定窗口位置">固定位置</button><button id="closeWorkspace" type="button" aria-label="关闭面板" title="关闭">×</button></div></header>
-        <div class="workspace-toolbar"><div class="workspace-tabs" role="tablist" aria-label="功能分类"><button id="jsonTab" type="button" role="tab" aria-selected="false" aria-controls="jsonPane" tabindex="-1" disabled>跨盘 JSON</button><button id="subtitleTab" type="button" role="tab" aria-selected="false" aria-controls="subtitlePane" tabindex="-1" disabled title="当前网盘暂不支持字幕检查">影视整理</button><button id="subtitleSyncTab" type="button" role="tab" aria-selected="false" aria-controls="subtitleSyncPane" tabindex="-1" disabled title="当前网盘暂不支持字幕校对">字幕校对</button></div>
+        <header class="workspace-header"><div class="workspace-brand"><h2 id="workspaceTitle"><span class="workspace-brand-mark" aria-hidden="true"></span>云盘工具</h2><span class="workspace-location" id="workspaceLocation"></span><p id="windowHint">拖动标题栏移动 · 可同时操作网页</p></div><div class="workspace-window-actions"><button id="settingsWorkspace" type="button">设置</button><button id="pinWorkspace" type="button" aria-pressed="false" title="锁定窗口位置">固定位置</button><button id="closeWorkspace" type="button" aria-label="关闭面板" title="关闭"></button></div></header>
+        <div class="workspace-toolbar"><div class="workspace-tabs" role="tablist" aria-label="功能分类"><button id="jsonTab" type="button" role="tab" aria-selected="false" aria-controls="jsonPane" tabindex="-1" disabled>跨盘清单</button><button id="subtitleTab" type="button" role="tab" aria-selected="false" aria-controls="subtitlePane" tabindex="-1" disabled title="当前网盘暂不支持字幕检查">影视整理</button><button id="subtitleSyncTab" type="button" role="tab" aria-selected="false" aria-controls="subtitleSyncPane" tabindex="-1" disabled title="当前网盘暂不支持字幕校对">字幕校对</button></div>
         <label class="theme-row">窗口尺寸<select id="workspaceSize" aria-label="窗口尺寸"><option value="960x600">960 × 600</option><option value="1280x800" selected>1280 × 800（默认）</option><option value="1440x900">1440 × 900</option><option value="1600x1000">1600 × 1000</option></select></label>
         <label class="theme-row">外观<select id="theme"><option value="auto">跟随页面</option><option value="light">浅色</option><option value="dark">深色</option></select></label></div>
-        <div class="workspace-body"><section id="workspaceSettings" class="tool-pane" hidden><div class="settings-heading"><h3>设置</h3><button id="backToTools">返回工具</button></div><div id="settingsSections"><div class="settings-column" id="settingsModels"></div><div class="settings-column" id="settingsBasics"></div></div></section></div></div></div>`;
+        <div class="workspace-body"><section id="workspaceSettings" class="tool-pane" hidden><div class="settings-main"><div class="settings-heading"><h3>设置</h3><div id="settingsAppearance" class="settings-appearance"></div><button id="backToTools">返回工具</button></div><div class="settings-column" id="settingsModels"></div><div class="settings-column" id="settingsBasics"></div></div></section></div></div></div>`;
             const overlay = root.querySelector('.workspace-overlay'), dialog = root.querySelector('.box'), toggle = root.querySelector('#toggle');
             const frame = document.createElement('div'); frame.className = 'workspace-frame';
             const navigation = root.querySelector('.workspace-toolbar'); navigation.className = 'workspace-navigation';
-            const appearance = document.createElement('div'); appearance.className = 'settings-appearance';
+            const appearance = root.querySelector('#settingsAppearance');
+            const navBrand = document.createElement('div');
+            navBrand.className = 'nav-brand';
+            navBrand.append(root.querySelector('.workspace-brand-mark'), document.createTextNode('云盘工具'));
+            root.querySelector('#workspaceTitle').textContent = '工作区';
+            navigation.prepend(navBrand);
             for (const label of [...navigation.querySelectorAll('.theme-row')]) appearance.append(label);
-            root.querySelector('#backToTools').before(appearance);
-            const navTitle = document.createElement('p'); navTitle.className = 'nav-caption'; navTitle.textContent = '工作空间'; navigation.prepend(navTitle);
             const navFooter = document.createElement('div'); navFooter.className = 'nav-footer'; navFooter.append(root.querySelector('#settingsWorkspace'));
-            const version = document.createElement('small'); version.textContent = '云盘工具' + (typeof VERSION === 'string' ? ' · v' + VERSION : ''); navFooter.append(version); navigation.append(navFooter);
-            const icons = {jsonTab:'M7 4h7l4 4v12H7zM14 4v5h5M10 13h5m-5 3h5',subtitleTab:'M4 5h16v14H4zM4 9h16M8 5v4m8-4v4m-6 4 5 3-5 3z',settingsWorkspace:'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8M12 3v2m0 14v2M3 12h2m14 0h2M5.6 5.6 7 7m10 10 1.4 1.4M5.6 18.4 7 17m10-10 1.4-1.4'};
-            for (const [name, path] of Object.entries(icons)) {
-                const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); icon.setAttribute('viewBox', '0 0 24 24'); icon.setAttribute('fill', 'none'); icon.setAttribute('stroke', 'currentColor'); icon.setAttribute('stroke-width', '1.6'); icon.setAttribute('aria-hidden', 'true');
-                const line = document.createElementNS('http://www.w3.org/2000/svg', 'path'); line.setAttribute('d', path); icon.append(line); root.querySelector('#' + name).prepend(icon);
-            }
+            const version = document.createElement('small'); version.textContent = typeof VERSION === 'string' ? 'v' + VERSION : ''; navFooter.append(version); navigation.append(navFooter);
+            const icons = {jsonTab:'files',subtitleTab:'film',settingsWorkspace:'settings',closeWorkspace:'x',backToTools:'arrow-left'};
+            for (const [name, glyph] of Object.entries(icons)) root.querySelector('#' + name).prepend(workspaceIcon(glyph, name === 'backToTools' ? 'command-icon' : ''));
+            root.querySelector('.workspace-brand-mark').append(workspaceIcon('cloud'));
+            toggle.append(workspaceIcon('cloud'));
+            const location = root.querySelector('#workspaceLocation');
             root.querySelector('.workspace-tabs').setAttribute('aria-orientation', 'vertical');
             frame.append(navigation, root.querySelector('.workspace-body')); dialog.append(frame);
             const tabs = new Map();
@@ -372,7 +513,8 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 place(position); saveLayout();
             };
             const renderPin = () => {
-                pin.textContent = pinned ? '解除固定' : '固定位置';
+                pin.replaceChildren(workspaceIcon(pinned ? 'pin-off' : 'pin'));
+                pin.setAttribute('aria-label', pinned ? '解除固定' : '固定位置');
                 pin.setAttribute('aria-pressed', String(pinned));
                 pin.title = pinned ? '解除后可以拖动窗口' : '锁定窗口位置';
                 header.classList.toggle('pinned', pinned);
@@ -401,6 +543,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             const activate = (id, focus = false) => {
                 if (!tabs.has(id)) return;
                 active = id;
+                location.textContent = tabs.get(id).button.textContent;
                 root.querySelector('#workspaceSettings').hidden = true;
                 root.querySelector('#settingsWorkspace').setAttribute('aria-pressed', 'false');
                 for (const [name, entry] of tabs) {
@@ -437,6 +580,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             document.body.appendChild(host);
             bindPanelTheme(host, root);
             const openSettings = name => {
+                location.textContent = '设置';
                 for (const entry of tabs.values()) { entry.pane.hidden = true; entry.button.setAttribute('aria-selected', 'false'); }
                 root.querySelector('#workspaceSettings').hidden = false;
                 root.querySelector('#settingsWorkspace').setAttribute('aria-pressed', 'true');
@@ -491,7 +635,9 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         }, onActivate: callback => { entry.onActivate = callback; },
             moveSettings: (ids, headingTitle = title, destination = '#settingsBasics') => {
                 const section = document.createElement('fieldset'); section.className = 'sync-item'; section.style.minWidth = '0';
-                const heading = document.createElement('h3'); heading.textContent = headingTitle; section.appendChild(heading);
+                const heading = document.createElement('h3'); heading.textContent = headingTitle; const glyph = {mediaSettings:'key-round',mediaAISettings:'cpu',subtitleSettings:'languages',openSubtitlesSettings:'captions'}[ids[0]];
+                if (glyph) heading.prepend(workspaceIcon(glyph));
+                section.appendChild(heading);
                 for (const name of ids) section.appendChild(ui.get(name));
                 entry.settings.push(section);
                 root.querySelector(destination).appendChild(section);
@@ -529,6 +675,20 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 try { updateControls(false); }
                 finally { active = false; ui.busy(false); }
             }
+        };
+    }
+    function scheduleLogDisplay(box, lines) {
+        let pending = false;
+        const paint = () => {
+            pending = false;
+            box.value = lines.join('\n');
+            box.scrollTop = box.scrollHeight;
+        };
+        return () => {
+            if (pending) return;
+            pending = true;
+            if (typeof requestAnimationFrame === 'function') requestAnimationFrame(paint);
+            else paint();
         };
     }
     function panelControls(ui) {
@@ -589,8 +749,8 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 }
             }
             host.style.cssText = baseStyle + (dark
-                ? ';--scheme:dark;--panel:#181818;--surface:#222;--text:#ededed;--muted:#bdbdbd;--field:#222;--border:#383838;--accent:#e2e2e2;--tint:#303030;--button:#e2e2e2;--button-text:#181818'
-                : ';--scheme:light;--panel:#f6f6f6;--surface:#fff;--text:#242424;--muted:#555;--field:#fff;--border:#e1e1e1;--accent:#292929;--tint:#eaeaea;--button:#292929;--button-text:#fff');
+                ? ';--scheme:dark;--panel:#202020;--surface:#181818;--rail:#242424;--text:#f5f5f5;--muted:#b7b7b7;--field:#151515;--border:#3b3b3b;--edge:#646464;--accent:#e8e8e8;--tint:#343434;--hover:#2e2e2e;--button:#efefef;--button-text:#171717;--button-hover:#d4d4d4;--danger:#fff'
+                : ';--scheme:light;--panel:#fafafa;--surface:#fff;--rail:#eee;--text:#171717;--muted:#515151;--field:#fff;--border:#dedede;--edge:#adadad;--accent:#161616;--tint:#ebebeb;--hover:#eee;--button:#171717;--button-text:#fff;--button-hover:#373737;--danger:#111');
         }
         select.onchange = () => {
             GM_setValue('cross-drive-theme', select.value);

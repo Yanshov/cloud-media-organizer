@@ -12,7 +12,7 @@
             <div class="panel-actions"><button id="fetchMediaAIModels">获取模型列表</button><button id="saveMediaAI">保存设置</button><button id="testMediaAI">测试连接</button><button id="forgetMediaAI">清除密钥</button></div>
             <label id="mediaAIManualModel" hidden>手动填写模型 ID<input id="mediaAIModel" placeholder="接口不提供列表时手动填写"></label>
             <p id="mediaAIState" role="status"></p></section>
-            <p id="mediaTarget"></p><p id="mediaRecordState" role="status"></p>
+            <p id="mediaRecordState" role="status"></p>
             <div class="panel-actions"><button id="scanMedia">${merged ? '识别并检查' : '识别并预览'}</button>${merged ? '<button id="previewMedia" disabled>生成整理预览</button>' : ''}<button id="runMedia" disabled>确认执行</button><button id="openMediaCleanup" type="button" aria-controls="mediaCleanup" aria-expanded="false">清理文件</button><button id="stopMedia" hidden disabled>停止</button></div>
             ${merged ? '<label id="allowWithoutSubtitles"><input id="mediaAllowMissing" type="checkbox">允许无字幕整理</label>' : ''}
             <p id="mediaProgress" role="status">先在网页勾选视频或文件夹。</p><progress id="mediaBar" aria-label="影视整理进度" max="1" value="0" hidden></progress><p id="mediaSummary" role="status"></p>
@@ -82,6 +82,7 @@
             bar.setAttribute('aria-valuetext', '本阶段未完成');
         };
         const logLines = [], logBox = ui.get('mediaLog');
+        const displayLog = flow ? null : scheduleLogDisplay(logBox,logLines);
         const clearLog = () => { if (!flow) { logLines.length = 0; logBox.value = ''; } };
         const log = message => {
             if (flow) return flow.log('影视整理',message);
@@ -90,12 +91,11 @@
                 const oldest = logLines.findIndex(line => !line.includes(' · 上限 '));
                 logLines.splice(Math.max(0,oldest),1);
             }
-            logBox.value = logLines.join('\n');
-            logBox.scrollTop = logBox.scrollHeight;
+            displayLog();
         };
         if (!flow) ui.get('clearMediaLog').onclick = clearLog;
         if (!flow) ui.get('copyMediaLog').onclick = async () => {
-            try { await navigator.clipboard.writeText(logBox.value || '（暂无影视整理运行日志）'); progress('影视整理运行日志已复制。'); }
+            try { await navigator.clipboard.writeText(logLines.join('\n') || '（暂无影视整理运行日志）'); progress('影视整理运行日志已复制。'); }
             catch (error) { progress('复制日志失败：' + error.message); }
         };
         const invalidate = () => { batch = null; batchWriter = null; ui.get('runMedia').disabled = true; ui.get('mediaPreview').textContent = ''; };
@@ -233,6 +233,7 @@
             if (!row.detail || row.error || !row.type || !row.title || !row.year) return false;
             try { mediaPath(row); return true; } catch { return false; }
         };
+        if (flow) flow.workReady = readyRow;
         const skipRows = async targets => {
             for (const row of targets) row.include = false;
             invalidate(); render(); progress('已跳过 ' + targets.length + ' 个视频，未修改网盘文件'); await refreshPreview();
@@ -633,6 +634,40 @@
                 }
             } catch (error) { if (error.stop) throw error; verify(); for (const row of group) row.error = error.message; }
         }
+        async function recoverWorkFromSubtitle(row, verify) {
+            if (!client || row.detail || row.match || readyRow(row)) return;
+            const hint = flow.subtitleWorkHints(row);
+            if (!hint) return;
+            const preference = mediaCandidatePreference(row);
+            if (preference.conflict || preference.type && preference.type !== hint.type) return;
+            const draft = () => ({...row, sourceYear:row.explicitYear || row.sourceYear || hint.year, aiType:hint.type});
+            const matches = new Map();
+            const add = candidate => {
+                if (readyRow(candidate) && candidate.type === hint.type &&
+                    (hint.type !== 'movie' || !candidate.sourceYear || candidate.year === String(candidate.sourceYear)))
+                    matches.set(candidate.match,candidate);
+            };
+            if (hint.id) {
+                const candidate = draft();
+                await choose(candidate, hint.type + ':' + hint.id);
+                verify();
+                await validateEpisode(candidate);
+                add(candidate);
+            } else {
+                for (const query of hint.queries) {
+                    const candidate = draft();
+                    await matchGroup([candidate],query,false,null,verify);
+                    verify();
+                    if (candidate.matchFailure === 'ambiguous' || candidate.matchFailure === 'lookup-error') return;
+                    add(candidate);
+                    if (matches.size > 1) return;
+                }
+            }
+            if (matches.size !== 1) return;
+            Object.assign(row,matches.values().next().value);
+            flow.acceptSubtitleWork(row);
+            log('已用字幕线索确认作品：' + row.node.name + ' → ' + row.title + '（' + row.year + '）');
+        }
         ui.get('scanMedia').onclick = async () => {
             if (flow) return runTask(scan,true);
             const shouldPreview = await runTask(scan, true);
@@ -652,10 +687,15 @@
                 if (!selected.length) throw new Error('请先在 ' + provider + ' 勾选文件或文件夹');
                 const parentPath = context.path;
                 const root = mediaClassificationRoot(source, parentPath); targetPath = root.path; targetSession = { ...session, parent: root.id };
-                const target = ui.get('mediaTarget');
-                target.title = target.textContent = '分类保存到：/' + targetPath + '（纪录片独立分类，动画电影归电影）';
                 history = mediaFileHistory(session);
-                const collected = await collectMediaSelection(selected,source,progress,node => !flow && mediaAlreadyStandard(node,parentPath),checkStopped,false,history,log);
+                const collected = await collectMediaSelection(selected, source, progress, node => {
+                    if (flow) return false;
+                    if (provider === '光鸭') {
+                        const folders = [...parentPath.split('/').filter(Boolean), ...node.folders];
+                        if (!mediaExistingCategory(folders.slice(0,1))) return false;
+                    }
+                    return mediaAlreadyStandard(node,parentPath);
+                }, checkStopped,false,history,log);
                 if (!collected.videos.length) { meter('检查完成', collected.skipped, collected.skipped); progress(`已跳过 ${collected.skipped} 个命名和所在作品目录均规范的视频，没有需要匹配的项目。`); return; }
                 const credential = ui.get('tmdbKey').value.trim();
                 if (!flow && !credential) ui.openSettings('mediaSettings');
@@ -741,11 +781,12 @@
                     if (!enabled) await validateEpisode(row);
                     meter('检查命名', ++checked, included.length);
                     if (enabled && !flow.canOrganize(row)) { log('字幕待核对或缺少字幕，已跳过：' + row.node.path); return 'skipped'; }
-                    if (!readyRow(row)) { log('待确认，已跳过：' + row.node.path + '；' + (row.error || '未匹配作品')); return 'skipped'; }
-                    Object.assign(row.node, await mediaFileMetadata(row.node, source));
                     const fresh = mediaSubtitleLinks(await sourceLists(row.node.parentId),row.node.parentId,history);
                     if (enabled && !flow.sameSubtitles(row,fresh.linked.get(String(row.node.id)) || []))
                         throw new Error('目录字幕已变化，请重新识别并检查：' + row.node.name);
+                    if (enabled && !readyRow(row)) await recoverWorkFromSubtitle(row,verify);
+                    if (!readyRow(row)) { log('待确认，已跳过：' + row.node.path + '；' + (row.error || '未匹配作品')); return 'skipped'; }
+                    Object.assign(row.node, await mediaFileMetadata(row.node, source));
                     row.subtitles = (fresh.linked.get(String(row.node.id)) || []).map(sub => ({...sub,
                         originalPath:row.node.originalPath?.replace(/[^/]+$/,() => sub.name),path:sub.name}));
                     mediaRecords.remember(row);

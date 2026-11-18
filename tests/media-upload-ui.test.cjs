@@ -233,6 +233,7 @@ function treeFixture(numeric=false,nested=false) {
     const children=async({id:parentId})=>nodes.filter(n=>n.parentId===parentId).map(n=>({...n}));
     const ctx=load(part('    function mediaOrganizerWriter(', '    const mediaStandardFolder'),{
         MEDIA_VIDEO:/\.(mkv|mp4)$/i,mediaExistingCategory:parts=>parts[0]==='电影',relativeParts:p=>p.split('/').filter(Boolean),
+        recycleMedia:async folder=>{assert.ok(!nodes.some(n=>n.parentId===folder.id));nodes.splice(nodes.findIndex(n=>n.id===folder.id),1);},
         hasFileMetadata:n=>!!n.md5,mediaFileMetadata:async n=>n,sleep:async()=>{},paced:(_ms,fn)=>fn,apiCode:()=>0,
         requestJson:async(url,opts)=>{const body=JSON.parse(opts.body);mutations.push([url,body]);
             if(url.endsWith('/file/rename')) nodes.find(n=>n.id===body.fileId).name=body.fileName;
@@ -245,10 +246,44 @@ function treeFixture(numeric=false,nested=false) {
     ctx.context={session:{provider:'123',base:'https://test',parent:id('0'),headers:{}},source:{children}};
     const writer=vm.runInContext('mediaOrganizerWriter(context.session,context.source)',ctx);
     const item={node:{...video},videoId:video.id,destination:nested?'电影/新片名.2000/Season 01/new.mkv':'电影/新片名.2000/new.mkv'};
-    return {writer,item,nodes,mutations,folder,attachment,video,season};
+    return {writer,item,nodes,mutations,folder,attachment,video,season,source:ctx.context.source};
 }
 
 async function folders() {
+    const direct = treeFixture(false,true);
+    direct.source.parentId = direct.season.id;
+    direct.source.breadcrumbs = [direct.folder,direct.season];
+    direct.item.node.ancestors = [];
+    direct.nodes.splice(direct.nodes.indexOf(direct.attachment),1);
+    await direct.writer.prepare([direct.item]);
+    await direct.writer.validate();
+    await direct.writer.execute(direct.item);
+    assert.equal(await direct.writer.recycleEmptySeasonSources(()=>{},()=>{}),2,'Directly selected episodes leave neither the empty source season nor the empty work folder');
+    for(const keepAttachment of [false,true]){
+        const f=treeFixture(false,true);
+        f.folder.depth=0; f.season.depth=1;
+        f.nodes.push({id:'cat',parentId:'0',name:'电影',directory:true},{id:'work',parentId:'cat',name:'新片名.2000',directory:true},{id:'season',parentId:'work',name:'Season 01',directory:true});
+        if(!keepAttachment) f.nodes.splice(f.nodes.indexOf(f.attachment),1);
+        await f.writer.prepare([f.item]); await f.writer.validate(); await f.writer.execute(f.item);
+        assert.equal(await f.writer.recycleEmptySeasonSources(()=>{},()=>{}),keepAttachment?0:2);
+        assert.equal(f.nodes.includes(f.folder),keepAttachment);
+        assert.equal(f.video.parentId,'season');
+    }
+    for (const missing of [['md5'],['size'],['md5','size']]) {
+        const f=treeFixture();
+        f.item.node.ancestors=[];
+        for(const key of missing){ delete f.item.node[key]; delete f.video[key]; }
+        await f.writer.prepare([f.item]); await f.writer.validate(); await f.writer.execute(f.item);
+        assert.equal(f.video.name,'new.mkv');
+        assert.notEqual(f.video.parentId,f.folder.id);
+    }
+    for(const field of ['size','md5']){
+        const f=treeFixture();
+        delete f.item.node[field==='size'?'md5':'size'];
+        f.video[field]=field==='size'?101:'c'.repeat(32);
+        await assert.rejects(f.writer.execute(f.item),/预览后原文件发生变化/);
+        assert.equal(f.mutations.length,0);
+    }
     for(const numeric of [false,true])for(const nested of [false,true]) {
         const f=treeFixture(numeric,nested);const plans=await f.writer.prepare([f.item]);
         assert.ok(plans.length);assert.ok(plans.some(p=>p.contents.some(n=>n.name==='poster.jpg')),'Preview includes unlinked attachment');

@@ -292,19 +292,10 @@ async function seasonSummary() {
     get('subtitleResults').scrollTop = 100;
     await get('readSubtitles').onclick();
     assert.deepEqual(queried.slice(queriesBefore).sort(),['ep-47','ep-48']);
-    assert.match(shown(),/需手选 1 集 · 47 集/);
+    assert.match(shown(),/自动查找未覆盖本季全部缺字幕集，请使用“导入字幕”手动补齐/);
     assert.match(shown(),/查询失败 1 集，请查看日志/);
-    assert.equal(controls().length,1);
-    action('处理待确认项');
-    const candidate = controls()[0];
-    get('subtitleResults').scrollTop = 100;
-    candidate.value = '0'; candidate.onchange();
-    assert.equal(get('subtitleResults').scrollTop,100,'Candidate changes retain scroll position');
-    await get('fillSubtitles').onclick();
-    assert.equal(saves,2);
-    assert.equal(get('subtitleResults').scrollTop,100);
-    action('返回结果');
-    assert.match(shown(),/有字幕 47 集 · 01—47 集/);
+    assert.equal(controls().length,0);
+    assert.equal(saves,1,'An incomplete season uses manual import instead of per-episode fill');
     await ctx.checkInventory();
     assert.equal(get('subtitleResults').scrollTop,0,'A new check resets the list');
 
@@ -337,12 +328,8 @@ async function seasonPlans() {
     assert.match(shown(),/没字幕 48 集 · 01—03、05—49 集/);
     await get('readSubtitles').onclick();
     assert.equal(cards().length,1);
-    assert.equal(controls().length,1);
-    assert.match(controls()[0].children[1].textContent,/覆盖待补 2\/48 集/);
-    controls()[0].value = '0'; controls()[0].onchange();
-    const before = uploaded.length;
-    await get('fillSubtitles').onclick();
-    assert.deepEqual(uploaded.slice(before),['plan-1','plan-2'],'An explicit pack only fills verified episodes');
+    assert.equal(controls().length,0,'An incomplete season does not show a per-season selection');
+    assert.equal(get('fillSubtitles').disabled,true,'An incomplete season requires manual import');
     await ctx.checkInventory();
     assert.equal(controls().length,0,'A new inventory removes all plan controls');
     assert.equal(get('fillSubtitles').disabled,true);
@@ -376,7 +363,7 @@ async function stageProgress() {
     assert.deepEqual([bar.value,bar.max,bar.hidden],[319,319,false]);
     assert.match(get('subtitleProgress').textContent,/已处理 319\/319.*1 项遇到来源错误/);
     await get('fillSubtitles').onclick();
-    assert.deepEqual([bar.value,bar.max,bar.hidden],[1,1,false]);
+    assert.deepEqual([bar.value,bar.max,bar.hidden],[0,1,true]);
     await get('fillSubtitles').onclick();
     assert.deepEqual([bar.value,bar.max,bar.hidden],[0,1,true]);
 
@@ -397,9 +384,9 @@ async function stageProgress() {
         assert.equal(panelBusy,true);
         b.resolve();
         await interrupted;
-        assert.deepEqual([bar.value,bar.max,bar.hidden],[1,318,false]);
-        assert.match(get('subtitleProgress').textContent,/已处理 1\/318/);
-        assert.deepEqual(visited,['progress-0','progress-1','progress-3','progress-4','progress-5','progress-6','progress-7','progress-8','progress-9']);
+        assert.deepEqual([bar.value,bar.max,bar.hidden],[1,319,false]);
+        assert.match(get('subtitleProgress').textContent,/已处理 1\/319/);
+        assert.deepEqual(visited,['progress-0','progress-1','progress-2','progress-3','progress-4','progress-5','progress-6','progress-7','progress-8']);
     }
     console.log('PASS stage progress: 319 completed items, eight concurrent videos, resets, partial stop and authorization drain');
 }

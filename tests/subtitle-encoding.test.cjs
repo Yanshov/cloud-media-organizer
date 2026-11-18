@@ -7,7 +7,7 @@ const context = vm.createContext({TextDecoder});
 vm.runInContext(source.slice(source.indexOf('    function* subtitleEvents('), source.indexOf('    function subtitleSearchNames(')) + source.slice(source.indexOf('    const SUBTITLE_LIMIT'), source.indexOf('    function subtitleLanguageMatch(')), context);
 const check = (bytes, ext) => {
     context.bytes = bytes; context.ext = ext;
-    return vm.runInContext('subtitlePayload(bytes, ext, "zh-cn,zh-tw,zh")', context);
+    return vm.runInContext('subtitleValidateContent({node:{name:"fixture"}}, bytes, ext, "zh-cn,zh-tw,zh").text', context);
 };
 // Encoding fixtures below are synthetic and reproducible; no third-party subtitle files are bundled.
 const srt = '1\r\n00:00:01,000 --> 00:00:03,000\r\n测试字幕 Test\r\n';

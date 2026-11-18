@@ -17,19 +17,21 @@
         return number.length === 1 && number in digits ? digits[number] : null;
     }
     function mediaBracketTitle(name) {
-        const stem = mediaStem(name).normalize('NFKC');
+        const stem = mediaStem(name).normalize('NFKC').replace(/[【】]/g, match => match === '【' ? '[' : ']');
         const parts = [...stem.matchAll(/\[([^\]]+)\]/g)].map(match => match[1].trim());
-        const title = parts.find(value => /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(value) && !/字幕|中字|简体|繁体|字幕组/.test(value));
+        const ignored = /^(?:動畫瘋|动画疯|CXRAW|KRSUB|DBD[- ]?Raws?|字幕|中字|简体|繁体|中文配音|電影|电影|剧场版|劇場版|BDrip|BDRip|1080P?|720P?|2160P?)$/i;
+        const titles = parts.filter(value => !ignored.test(value) && /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(value));
+        const title = titles.sort((a,b) => b.length - a.length)[0];
         // A leading release-group label must not override a full CJK work title.
         if (!title) return null;
         const prefix = stem.slice(0, stem.indexOf('[')).replace(/\]+$/, '').trim();
         return {title, release: parts[0] !== title ? parts[0] : prefix};
     }
     function parseMediaName(name, folders = []) {
-        const stem = mediaStem(name).normalize('NFKC');
+        const stem = mediaStem(name).normalize('NFKC').replace(/[【】]/g, match => match === '【' ? '[' : ']');
         const brackets = [...stem.matchAll(/\[([^\]]+)\]/g)].map(m => m[1].trim());
         const bracketEpisode = brackets.find(value => /^(?:EP?\s*)?\d{1,3}(?:v\d+)?$/i.test(value));
-        const isReleaseTag = value => /^(?:\d{3,4}p|\d{4}|4k|8k|BDRip|BluRay|WEB[ ._-]?DL|WEBRip|DVD|REMUX|HEVC.*|AVC.*|x26[45].*|H[ .]?26[45].*|FLAC.*|AAC.*|DTS.*|AC3.*|HDR.*|DV|10bit|8bit|CHS|CHT|ENG|简繁.*|简体.*|繁体.*|中字.*)$/i.test(value) || /(?:raws|字幕组|sub|rip)$/i.test(value);
+        const isReleaseTag = value => /^(?:\d{3,4}p|\d{4}|4k|8k|BDRip|BluRay|WEB[ ._-]?DL|WEBRip|DVD|REMUX|HEVC.*|AVC.*|x26[45].*|H[ .]?26[45].*|FLAC.*|AAC.*|DTS.*|AC3.*|HDR.*|DV|10bit|8bit|CHS|CHT|ENG|简繁.*|简体.*|繁体.*|中字.*|動畫瘋|动画疯|CXRAW|KRSUB|DBD[- ]?Raws?|中文配音|电影|電影|剧场版|劇場版)$/i.test(value) || /(?:raws|字幕组|sub|rip)$/i.test(value);
         const workBracket = mediaBracketTitle(name);
         const bracketTitle = workBracket?.title || brackets.find(value => value !== bracketEpisode && !isReleaseTag(value) && !/^(?:S\d+E\d+|Season\s*\d+)$/i.test(value) && /[\p{L}]/u.test(value));
         const ep = stem.match(/(?:^|[. _-])S(\d{1,2})[. _-]*E(\d{1,3})(?:[. _-]*E(\d{1,3}))?/i)
@@ -343,13 +345,13 @@
         evict(tmdbClients, 2);
         return client;
     }
-    function mediaGuangyaPost(token) {
+    function mediaGuangyaPost(token, writeInterval = 650) {
         const request = async (endpoint, body) => {
             const result = await requestGuangya(token, endpoint, body);
             if (guangyaCode(result) !== 0) throw apiError('光鸭整理', result);
             return result;
         };
-        const write = paced(650, request), read = paced(180, request);
+        const write = paced(writeInterval, request), read = paced(180, request);
         return (endpoint, body) => (endpoint === API.task ? read : write)(endpoint, body);
     }
     async function mediaContext(provider, previous) {
@@ -374,7 +376,7 @@
     }
     function mediaOrganizerWriter(session, source) {
         const guangya = session.provider === '光鸭';
-        const post = guangya ? mediaGuangyaPost(session.token) : paced(700, async (path, body) => {
+        const post = guangya ? mediaGuangyaPost(session.token, 0) : paced(700, async (path, body) => {
             const result = await requestJson(session.base + path, { method: 'POST', credentials: 'omit', headers: { ...session.headers, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
             if (![0, 200].includes(apiCode(result))) throw apiError('123 ' + path + (body.fileName ? '，请求名称：' + body.fileName : ''), result);
             return result;
@@ -412,6 +414,13 @@
         };
         const scopeKey = nodes => JSON.stringify(nodes.map(node => [node.id,node.parentId,node.name,node.directory,node.size,node.md5]).sort((a,b) => a[0].localeCompare(b[0])));
         const subtitleScopeKey = files => scopeKey(files.map(file => ({...file,id:String(file.id),name:file.name + '\0' + file.suffix})));
+        function linksByDirectory(children) {
+            const pending = new Map();
+            return id => {
+                if (!pending.has(id)) pending.set(id,children(id).then(files => mediaSubtitleLinks(files,id,history).linked));
+                return pending.get(id);
+            };
+        }
         async function prepare(items,check = () => {},log) {
             checkPlan = check;
             bindings.clear(); scopeSnapshots.clear(); targetSnapshots = [];
@@ -442,9 +451,10 @@
                 if (!planned.has(id)) planned.set(id,new Set());
                 planned.get(id).add(String(item.node.id));
             }
+            const links = linksByDirectory(children);
             if (typeof MEDIA_SUB !== 'undefined') await batchStage(videos,'预览字幕关联（视频）',log,async ({node}) => {
                 const id = String(node.id);
-                const found = mediaSubtitleLinks(await children(node.parentId),node.parentId,history).linked.get(id) || [];
+                const found = (await links(node.parentId)).get(id) || [];
                 if (found.some(sub => !planned.get(id)?.has(String(sub.id))) || found.length !== (planned.get(id)?.size || 0))
                     throw new Error('关联字幕已变化，请重新生成预览：' + node.name);
                 subtitleSnapshots.set(node,subtitleScopeKey(found));
@@ -480,17 +490,18 @@
             return [...bindings].map(([destination, folder]) => ({folder, destination, contents:scopeSnapshots.get(String(folder.id))}));
         }
         async function validate(log) {
-            const children = targetSnapshots.length || subtitleSnapshots.size ? cachedDriveChildren(source,new Map(),checkPlan) : null;
+            const children = cachedDriveChildren(source,new Map(),checkPlan);
+            const links = linksByDirectory(children);
             if (targetSnapshots.length) await batchStage(targetSnapshots,'执行前复核目标（文件）',log,async ([destination,expected],verify) => {
                 if (await targetScope(destination,children,verify) !== expected) throw new Error('整理目标已变化，请重新生成预览：' + destination);
             },checkPlan);
             await batchStage([...subtitleSnapshots],'执行前复核字幕（视频）',log,async ([node,expected]) => {
-                const found = mediaSubtitleLinks(await children(node.parentId),node.parentId,history).linked.get(String(node.id)) || [];
+                const found = (await links(node.parentId)).get(String(node.id)) || [];
                 if (subtitleScopeKey(found) !== expected) throw new Error('关联字幕在预览后变化，请重新生成预览：' + node.name);
             },checkPlan);
             await batchStage([...bindings.values()],'执行前复核目录（目录）',log,async folder => {
-                const current = (await source.children({id:folder.parentId})).find(node => node.id === folder.id);
-                if (!current || !current.directory || current.name !== folder.name || scopeKey(await scanScope(folder.id, id => source.children({id}))) !== scopeKey(scopeSnapshots.get(String(folder.id)))) throw new Error('文件夹或内容在预览后发生变化，请重新生成预览：' + folder.path);
+                const current = (await children(folder.parentId)).find(node => node.id === folder.id);
+                if (!current || !current.directory || current.name !== folder.name || scopeKey(await scanScope(folder.id, children)) !== scopeKey(scopeSnapshots.get(String(folder.id)))) throw new Error('文件夹或内容在预览后发生变化，请重新生成预览：' + folder.path);
             },checkPlan);
         }
         async function relocateDirectory(folder,parentId,name,verify) {
@@ -555,12 +566,16 @@
         async function execute(item, verify = checkPlan) {
             verify();
             const original = item.node, parts = relativeParts(item.destination), name = parts.pop();
-            if (!hasFileMetadata(original)) throw new Error('原文件缺少可验证的 MD5 或大小，保留原状');
+            if (original.id == null || original.id === '') throw new Error('原文件缺少文件 ID，保留原状');
+            const matchesMetadata = file =>
+                (original.size == null || file.size == null || file.size === original.size) &&
+                (!original.md5 || !file.md5 || file.md5.toLowerCase() === original.md5.toLowerCase());
+            const needsDetail = file => (original.md5 && !file.md5) || (original.size != null && file.size == null);
             const oldNodes = await source.children({ id: original.parentId });
             verify();
             let current = oldNodes.find(node => node.id === original.id);
-            if (current) current = await mediaFileMetadata(current, source);
-            if (!current || current.name !== original.name || current.directory || current.size !== original.size || current.md5?.toLowerCase() !== original.md5?.toLowerCase()) throw new Error('预览后原文件发生变化，请重新识别');
+            if (current && needsDetail(current)) current = await mediaFileMetadata(current, source);
+            if (!current || current.name !== original.name || current.directory || !matchesMetadata(current)) throw new Error('预览后原文件发生变化，请重新识别');
             let parentId = original.parentId;
             verify();
             const targetId = await ensure(parts.join('/'),verify);
@@ -575,8 +590,8 @@
                 for (let i = 0; i < 5; i++) {
                     if (i) await sleep(500);
                     let found = (await source.children({ id: parentId })).find(node => node.id === original.id && node.name === expected);
-                    if (found) found = await mediaFileMetadata(found, source);
-                    if (found && found.size === original.size && found.md5?.toLowerCase() === original.md5?.toLowerCase()) { current = found; return; }
+                    if (found && needsDetail(found)) found = await mediaFileMetadata(found, source);
+                    if (found && !found.directory && matchesMetadata(found)) { current = found; return; }
                 }
                 throw new Error('请求已提交但结果未确认，请刷新后重新识别；文件 ID：' + original.id);
             };
@@ -794,12 +809,9 @@
     }
     function mediaClassificationRoot(source, parentPath) {
         const names = parentPath.split('/').filter(Boolean);
+        if (source.breadcrumbs) return {id:'0', path:''};
         const categoryIndex = names.findIndex(name => ['电影', '剧集', '动漫', '纪录片', '综艺'].includes(name));
         if (categoryIndex < 0) return { id: source.parentId, path: parentPath };
-        if (source.breadcrumbs) {
-            if (source.breadcrumbs.length !== names.length || source.breadcrumbs.at(-1)?.id !== source.parentId) throw new Error('无法确认光鸭分类根目录，请重新打开文件夹');
-            return { id: categoryIndex === 0 ? '0' : source.breadcrumbs[categoryIndex - 1].id, path: names.slice(0, categoryIndex).join('/') };
-        }
         const url = new URL(location.href);
         const raw = url.searchParams.get('homeFilePath') ?? routeHashParams(url.hash).get('homeFilePath') ?? source.parentId;
         const ids = raw.split(',').map(id => decimalId(id.trim())).filter(id => id !== '0');

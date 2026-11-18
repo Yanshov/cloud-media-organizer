@@ -408,6 +408,77 @@
         } finally { clearTimeout(timer); }
     }
 
+    const workspaceIcons = {
+        'film': '<rect width="18" height="18" x="3" y="3" rx="2" /><path d="M7 3v18" /><path d="M3 7.5h4" /><path d="M3 12h18" /><path d="M3 16.5h4" /><path d="M17 3v18" /><path d="M17 7.5h4" /><path d="M17 16.5h4" />',
+        'captions': '<rect width="18" height="14" x="3" y="5" rx="2" ry="2" /><path d="M7 15h4M15 15h2M7 11h2M13 11h4" />',
+        'settings': '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" /><circle cx="12" cy="12" r="3" />',
+        'upload': '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" x2="12" y1="3" y2="15" />',
+        'download': '<path d="M12 15V3" /><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m7 10 5 5 5-5" />',
+        'scan-search': '<path d="M3 7V5a2 2 0 0 1 2-2h2" /><path d="M17 3h2a2 2 0 0 1 2 2v2" /><path d="M21 17v2a2 2 0 0 1-2 2h-2" /><path d="M7 21H5a2 2 0 0 1-2-2v-2" /><circle cx="12" cy="12" r="3" /><path d="m16 16-1.9-1.9" />',
+        'search': '<circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />',
+        'plus': '<path d="M5 12h14" /><path d="M12 5v14" />',
+        'trash-2': '<path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /><line x1="10" x2="10" y1="11" y2="17" /><line x1="14" x2="14" y1="11" y2="17" />',
+        'x': '<path d="M18 6 6 18" /><path d="m6 6 12 12" />',
+        'pin': '<path d="M12 17v5" /><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" />',
+        'pin-off': '<path d="M12 17v5" /><path d="M15 9.34V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H7.89" /><path d="m2 2 20 20" /><path d="M9 9v1.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h11" />',
+        'key-round': '<path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z" /><circle cx="16.5" cy="7.5" r=".5" fill="currentColor" />',
+        'languages': '<path d="m5 8 6 6" /><path d="m4 14 6-6 2-3" /><path d="M2 5h12" /><path d="M7 2h1" /><path d="m22 22-5-10-5 10" /><path d="M14 18h6" />',
+        'cloud': '<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />',
+        'files': '<path d="M15 2h-4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8" /><path d="M16.706 2.706A2.4 2.4 0 0 0 15 2v5a1 1 0 0 0 1 1h5a2.4 2.4 0 0 0-.706-1.706z" /><path d="M5 7a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h8a2 2 0 0 0 1.732-1" />',
+        'arrow-left': '<path d="m12 19-7-7 7-7" /><path d="M19 12H5" />',
+        'cpu': '<path d="M12 20v2" /><path d="M12 2v2" /><path d="M17 20v2" /><path d="M17 2v2" /><path d="M2 12h2" /><path d="M2 17h2" /><path d="M2 7h2" /><path d="M20 12h2" /><path d="M20 17h2" /><path d="M20 7h2" /><path d="M7 20v2" /><path d="M7 2v2" /><rect x="4" y="4" width="16" height="16" rx="2" /><rect x="8" y="8" width="8" height="8" rx="1" />',
+        'folder-open': '<path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2" />'
+    };
+    /*
+    ISC License
+
+    Copyright (c) 2026 Lucide Icons and Contributors
+
+    Permission to use, copy, modify, and/or distribute this software for any
+    purpose with or without fee is hereby granted, provided that the above
+    copyright notice and this permission notice appear in all copies.
+
+    THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+    WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+    MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+    ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+    WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+    ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+    OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+    ---
+
+    The download, upload, search, plus, trash-2, arrow-left and x icons are derived from Feather.
+
+    The MIT License (MIT) (for the icons listed above)
+
+    Copyright (c) 2013-present Cole Bemis
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
+    */
+    function workspaceIcon(name, className = '') {
+        const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        for (const [key, value] of Object.entries({viewBox:'0 0 24 24',fill:'none',stroke:'currentColor','stroke-width':'1.75','stroke-linecap':'round','stroke-linejoin':'round','aria-hidden':'true'})) icon.setAttribute(key, value);
+        if (className) icon.setAttribute('class', className);
+        icon.innerHTML = workspaceIcons[name];
+        return icon;
+    }
     function saveJsonFile(value, filename, report) {
         try { normalizeFiles(JSONtparse(value)); }
         catch (_) { report('保存失败：文本框不是有效的跨盘 JSON 清单，请先导出文件清单'); return; }
@@ -439,7 +510,7 @@
         const intro = create('div', 'tool-intro');
         take(intro, 'h3');
         const description = pane.querySelector(':scope > p:not([id]), #scope');
-        if (description) intro.append(description);
+        if (description) { description.id ||= id + 'Instructions'; pane.setAttribute('aria-describedby', description.id); intro.append(description); }
         if (id === 'json') {
             const source = intro.querySelector('h3').textContent.replace(/\s*跨盘\s*JSON.*$/, '').trim();
             intro.querySelector('h3').textContent = '跨盘文件清单';
@@ -466,14 +537,15 @@
             pane.classList.add('merged-media');
         }
         if (id === 'json') take(commands, '#stopJson');
+        const commandIcons = {generate:'download',exportManifest:'download',scanMedia:'scan-search',openMediaCleanup:'trash-2',readSubtitles:'search',fillSubtitles:'plus',reviewSubtitleDeletes:'trash-2',importSubtitles:'upload'};
+        for (const [name, glyph] of Object.entries(commandIcons)) commands.querySelector('#' + name)?.prepend(workspaceIcon(glyph, 'command-icon'));
+        commands.querySelector('.manifest-import > summary')?.prepend(workspaceIcon('upload', 'command-icon'));
         const layout = create('div', 'tool-layout');
-        const main = create('div', 'tool-main'), side = create('aside', 'tool-sidebar');
-        const status = create('section', 'tool-card tool-status');
-        status.append(create('h4', '', '当前状态'));
+        const main = create('div', 'tool-main');
+        const status = create('section', 'tool-status-text');
         const statusIds = id === 'subtitleSync' ? ['subtitleSyncStatus'] : id === 'subtitle' ? ['subtitleScope','subtitleProgress','subtitleMeter']
-            : id === 'media' ? ['mediaTarget','mediaProgress','mediaBar','mediaRecordState'] : ['status','target','progress'];
+            : id === 'media' ? ['mediaProgress','mediaBar','mediaRecordState'] : ['status','target','progress'];
         for (const name of statusIds) take(status, '#' + name);
-        side.append(status);
         const heading = create('div', 'tool-list-heading');
         const headingTitle = create('h4', '', id === 'subtitle' ? '字幕检查结果' : id === 'media' ? '影视整理结果' : id === 'subtitleSync' ? '' : 'JSON 文件清单');
         heading.append(headingTitle);
@@ -493,12 +565,13 @@
             if (editor) {
                 const surface = create('div', 'json-editor'); editor.before(surface); surface.append(editor);
                 const empty = create('div', 'json-editor-empty'); empty.setAttribute('aria-hidden', 'true');
-                empty.innerHTML = '<svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M28 7H13a3 3 0 0 0-3 3v28a3 3 0 0 0 3 3h22a3 3 0 0 0 3-3V17L28 7Z"/><path d="M28 7v10h10M18 24l-4 4 4 4m12-8 4 4-4 4m-4-9-4 14"/></svg>';
+                empty.append(workspaceIcon('folder-open'));
                 empty.append(create('strong', '', '从一份文件清单开始'), create('p', '', '点击上方导出，或在这里粘贴 JSON 清单'), create('span', '', '清单仅包含文件信息，不包含视频内容'));
                 surface.append(empty);
             }
             const fileActions = create('div', 'editor-actions');
             for (const selector of ['#save','#saveJson','#copyJson']) take(fileActions, selector);
+            for (const button of fileActions.children) button.prepend(workspaceIcon(button.id === 'copyJson' ? 'files' : 'download', 'command-icon'));
             if (fileActions.children.length) heading.append(fileActions);
         } else if (id === 'subtitleSync') {
             take(main,'#subtitleSyncContent');
@@ -519,7 +592,7 @@
                 for (const unused of ['#mediaView','#mediaSummary','#mediaProgress','#mediaBar']) pane.querySelector(unused).hidden = true;
                 const empty = create('div','media-empty'); empty.id = 'mediaEmpty'; empty.hidden = true;
                 results.append(empty);
-                for (const selector of ['#mediaTarget','#mediaRecordState']) take(status,selector);
+                take(status,'#mediaRecordState');
             }
         } else {
             take(main, '#mediaSummary');
@@ -541,24 +614,20 @@
             main.append(results);
         }
         const utilities = create('div', 'tool-utilities');
-        const auxiliary = id === 'json' ? side : utilities;
-        if (id === 'json') {
-            const actions = create('section', 'tool-import-options');
-            for (const node of [...pane.querySelectorAll(':scope > .panel-actions, :scope > .export-options')]) actions.append(node);
-            commands.append(actions);
+        const auxiliary = id === 'json' ? create('section', 'tool-import-options') : utilities;
+        if (id !== 'subtitle') {
+            for (const node of [...pane.querySelectorAll(':scope > .panel-actions, :scope > .export-options')]) auxiliary.append(node);
+            if (id === 'json') commands.append(auxiliary);
         }
-        // Settings are moved to the shared settings page by each feature after setup.
         for (const node of [...pane.children]) {
             if (node.id.endsWith('Settings') || (node.tagName === 'INPUT' && node.hidden)) continue;
-            node.classList.add('tool-card'); auxiliary.append(node);
-        }
-        // A single work surface with a persistent status area, rather than a second sidebar.
-        status.querySelector('h4').remove(); status.className = 'tool-status-text';
-        if (id === 'json') {
-            for (const node of [...side.children]) if (node !== status) utilities.append(node);
+            node.classList.add('tool-card'); utilities.append(node);
         }
         const footer = create('footer', 'tool-statusbar'); footer.append(status, utilities);
-        layout.append(main); pane.append(intro, commands, layout, footer);
+        const surface = create('div', 'tool-surface');
+        layout.append(main);
+        surface.append(intro, commands, layout, footer);
+        pane.append(surface);
     }
     let toolWorkspace = null;
     function makePanel(title, html, media = false) {
@@ -584,41 +653,53 @@ label:has(>input[type=checkbox]){display:flex;align-items:flex-start;gap:8px}inp
 summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-bottom:12px}
 .workspace-overlay{position:fixed;inset:0;pointer-events:none}.box{position:fixed;display:flex;flex-direction:column;pointer-events:auto;width:1280px;height:800px;overflow:hidden;border:1px solid var(--border);border-radius:12px;background:var(--panel);box-shadow:0 24px 80px #0004;container-type:size;outline:none}
 .workspace-header{display:flex;align-items:center;justify-content:space-between;gap:12px;height:52px;flex-shrink:0;padding:0 18px;cursor:grab;touch-action:none;user-select:none;background:var(--surface);border-bottom:1px solid var(--border)}
-.workspace-header h2{font-size:16px;font-weight:600;margin:0;display:flex;align-items:center;gap:9px}.workspace-header h2::before{content:'⇄';display:grid;place-items:center;width:23px;height:23px;border-radius:6px;background:var(--accent);color:var(--button-text);font-size:17px;font-weight:400}
+.workspace-header h2{display:flex;align-items:center;gap:9px;margin:0;font-size:14px;font-weight:650;white-space:nowrap}.workspace-brand,.workspace-location{display:flex;align-items:center;gap:12px;min-width:0}.workspace-location{border-left:1px solid var(--border);padding-left:12px;font-size:13px;color:var(--muted)}.workspace-location:empty{display:none}.workspace-brand-mark{display:grid;place-items:center;width:26px;height:26px;border-radius:7px;background:var(--button);color:var(--button-text)}.workspace-brand-mark svg{width:16px;height:16px}
 .workspace-header p{display:none}.workspace-header.dragging{cursor:grabbing}.workspace-header.pinned{cursor:default}.workspace-window-actions{display:flex;align-items:center;gap:12px}
-#pinWorkspace,#closeWorkspace{background:transparent;border-color:transparent;color:var(--muted);padding:5px 10px;font-size:14px}#pinWorkspace[aria-pressed=true]{color:var(--accent);background:var(--tint)}#closeWorkspace{width:30px;height:30px;padding:0;font-size:24px;line-height:1}
-.workspace-frame{display:flex;flex:1;min-height:0;min-width:0}.workspace-navigation{width:192px;flex-shrink:0;display:flex;flex-direction:column;background:var(--surface);padding:22px 12px 16px;border-right:1px solid var(--border)}
-.nav-caption{margin:0 12px 14px;font-size:15px;color:var(--muted);letter-spacing:1px}.workspace-tabs{display:flex;flex-direction:column;gap:6px}
-.workspace-tabs button,#settingsWorkspace{position:relative;display:flex;align-items:center;gap:12px;width:100%;padding:12px;text-align:left;border:0;background:transparent;color:var(--muted);font-size:16px;border-radius:7px}
-.workspace-tabs svg,#settingsWorkspace svg{width:19px;height:19px;flex-shrink:0;stroke-linecap:round;stroke-linejoin:round}
-.workspace-tabs button[aria-selected=true],#settingsWorkspace[aria-pressed=true]{background:var(--tint);color:var(--accent);font-weight:600}
-.workspace-tabs button[aria-selected=true]::before{content:'';position:absolute;left:0;top:14px;bottom:14px;width:3px;border-radius:3px;background:var(--accent)}
-.nav-footer{margin-top:auto}.nav-footer small{display:block;margin:16px 12px 0;font-size:14px;color:var(--muted)}
-.workspace-body{flex:1;min-width:0;min-height:0;display:flex}.tool-pane{width:100%;min-width:0;overflow:auto;overscroll-behavior:contain;padding:30px 32px 18px}
-.tool-pane[role=tabpanel]{display:flex;flex-direction:column}.tool-intro,.tool-commandbar,.tool-statusbar{flex-shrink:0}.tool-intro h3{display:flex;align-items:center;gap:12px;font-size:21px;margin:0;line-height:1.4;letter-spacing:0}.tool-intro p{font-size:16px;color:var(--muted);margin:8px 0 0}
-.tool-context{font-size:15px;line-height:28px;padding:0 8px;border-radius:5px;background:var(--tint);color:var(--accent);font-weight:400;letter-spacing:0}
-.tool-commandbar{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin:22px 0 24px}.panel-actions{display:flex;flex-wrap:wrap;gap:10px;margin:12px 0}
-.tool-commandbar .panel-actions{margin:0;gap:10px}.tool-commandbar button{padding:9px 17px;min-height:38px}
+#pinWorkspace,#closeWorkspace{display:grid;place-items:center;width:32px;height:32px;padding:0;background:transparent;border-color:transparent;color:var(--muted)}#pinWorkspace svg,#closeWorkspace svg{width:16px;height:16px}#pinWorkspace[aria-pressed=true]{color:var(--accent);background:var(--tint)}
+.workspace-frame{display:flex;flex:1;min-height:0;min-width:0}
+.workspace-navigation{width:clamp(150px,16cqw,232px);flex:none;display:flex;flex-direction:column;gap:20px;padding:18px 12px;background:var(--panel);border-right:1px solid var(--border)}
+.nav-brand{display:flex;align-items:center;gap:10px;font-size:18px;font-weight:650;padding:4px 8px}
+.workspace-tabs{display:grid;gap:3px}
+.workspace-tabs button,#settingsWorkspace{display:flex;align-items:center;gap:10px;width:100%;min-height:38px;padding:7px 10px;border:0;background:transparent;color:var(--text);text-align:left;font-size:16px;border-radius:6px}
+.workspace-tabs svg,#settingsWorkspace svg{width:18px;height:18px;flex:none}
+.workspace-tabs button[aria-selected=true],#settingsWorkspace[aria-pressed=true]{background:var(--tint);font-weight:650}
+.nav-footer{margin-top:auto;border-top:1px solid var(--border);padding-top:10px}
+.nav-footer small{display:block;margin:8px 10px 0;color:var(--muted);font-size:13px}
+.workspace-body{flex:1;min-width:0;min-height:0;display:flex;--surface-pad:clamp(16px,2cqw,32px)}
+.tool-pane{width:100%;min-width:0;min-height:0}
+.tool-pane[role=tabpanel],#workspaceSettings{display:grid;grid-template-columns:minmax(0,1fr)}
+.tool-surface{display:flex;flex-direction:column;min-width:0;min-height:0;overflow:auto;scrollbar-width:none;overscroll-behavior:contain;padding:25px var(--surface-pad) 0;background:var(--surface)}
+.tool-intro,.tool-commandbar,.tool-statusbar{flex-shrink:0}
+.tool-intro{margin:0 0 16px}.tool-intro h3{display:flex;align-items:baseline;gap:12px;font-size:28px;font-weight:650;margin:0;line-height:1.25}.tool-intro p{display:none}
+.tool-context{font-size:15px;color:var(--muted);font-weight:400}
+.panel-actions,.tool-commandbar{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.panel-actions{margin:12px 0}.tool-commandbar{margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--border)}
+.tool-commandbar>.panel-actions{margin:0}
+.tool-commandbar button,.tool-commandbar .manifest-import>summary{min-height:38px;padding:7px 11px;font-size:15px}
+.command-icon{display:inline-block;width:16px;height:16px;margin-right:6px;vertical-align:-3px;pointer-events:none}
 .manifest-import{position:relative}.manifest-import>summary{margin:0;border:1px solid var(--border);border-radius:7px;padding:8px 12px;background:var(--surface);line-height:1.5}
-.manifest-import-actions{position:absolute;top:calc(100% + 6px);left:0;z-index:2;width:max-content;display:grid;gap:8px;padding:10px;background:var(--panel);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 14px #0002}.manifest-import-actions label{margin:0;align-items:center}.manifest-import-actions input[type=checkbox]{margin:0}
-#generate,#exportManifest,#scanMedia,#readSubtitles,#fillSubtitles,#runMedia,#transfer,#start,#chooseManifest,#chooseJsonFile{background:var(--surface);border:1px solid var(--border);color:var(--text);font-weight:500}
-.tool-import-options{margin-left:auto;max-width:320px;color:var(--muted);font-size:14px}.tool-import-options .export-options,.tool-import-options label{margin:0}.panel-actions:empty,.tool-import-options:not(:has(input,select,button)){display:none}
+.manifest-import-actions{position:absolute;top:100%;left:0;z-index:2;width:max-content;margin-top:6px;display:grid;gap:8px;padding:10px;background:var(--panel);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 14px #0002}.manifest-import-actions label{margin:0;align-items:center}.manifest-import-actions input[type=checkbox]{margin:0}
+:is(#generate,#exportManifest,#scanMedia,#readSubtitles,#runMedia,#fillSubtitles,#confirmSync){background:var(--button);border-color:var(--button);color:var(--button-text);font-weight:600}
+:is(#generate,#exportManifest,#scanMedia,#readSubtitles,#runMedia,#fillSubtitles,#confirmSync):hover:not(:disabled){background:var(--button-hover);border-color:var(--button-hover)}
+:is(#runMedia,#fillSubtitles):disabled{background:var(--surface);border-color:var(--border);color:var(--muted)}
+:is(#reviewSubtitleDeletes,#confirmSubtitleDeletes){color:var(--danger)}
+.tool-import-options{color:var(--muted);font-size:15px}.tool-import-options .export-options,.tool-import-options label{margin:0}.panel-actions:empty,.tool-import-options:not(:has(input,select,button)){display:none}
 .tool-layout{flex:1;min-width:0;min-height:auto}.tool-main{min-width:0}.tool-list-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:34px;margin-bottom:12px}
-.tool-list-heading select{width:auto;max-width:210px;margin:0;font-size:14px;padding:6px 10px}
-.tool-list-heading h4{font-size:18px}.editor-actions{display:flex;gap:8px}.editor-actions button{background:var(--surface);color:var(--text);border-color:var(--border);padding:4px 9px;font-size:15px;min-height:30px}
+.tool-list-heading select{width:auto;max-width:210px;margin:0;font-size:15px;padding:7px 10px}
+.tool-list-heading h4{font-size:19px;font-weight:650}.editor-actions{display:flex;gap:8px}.editor-actions button{background:var(--surface);color:var(--text);border-color:var(--border);padding:4px 9px;font-size:13px;min-height:30px}
 #jsonPane .tool-main{height:100%;display:flex;flex-direction:column;min-height:280px}#jsonPane .tool-main>:not(.json-editor){flex-shrink:0}
-.json-editor{position:relative;display:flex;flex:1;min-height:220px;border:1px solid var(--border);border-radius:10px;background:var(--surface);overflow:hidden;isolation:isolate}
+.json-editor{position:relative;display:flex;flex:1;min-height:220px;border:1px solid var(--border);border-radius:8px;background:var(--surface);overflow:hidden;isolation:isolate}
 .json-editor:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--tint)}.json-editor>#json{width:100%;height:100%;flex:1;min-height:0;max-height:none;margin:0;border:0;border-radius:0;background:transparent;resize:none;outline:none;padding:20px;font:16px/1.8 Consolas,"Microsoft YaHei",monospace}
 .json-editor>#json::placeholder{color:transparent}.json-editor-empty{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;padding:24px;text-align:center;color:var(--muted)}
-.json-editor:has(#json:placeholder-shown:not(:focus))>.json-editor-empty{display:flex}.json-editor-empty svg{width:44px;height:44px;padding:8px;border-radius:12px;background:var(--tint);color:var(--muted);margin-bottom:12px}.json-editor-empty strong{color:var(--text);font-size:17px;font-weight:600}.json-editor-empty p{font-size:16px;margin:6px 0 12px}.json-editor-empty span{font-size:14px}
+.json-editor:has(#json:placeholder-shown:not(:focus))>.json-editor-empty{display:flex}.json-editor-empty svg{width:44px;height:44px;padding:8px;border-radius:8px;background:var(--tint);color:var(--muted);margin-bottom:12px}.json-editor-empty strong{color:var(--text);font-size:15px;font-weight:600}.json-editor-empty p{font-size:13px;margin:4px 0 6px}.json-editor-empty span{font-size:12px}
 #jsonPane .tool-main:has(#syncPreview:not([hidden]))>.json-editor{flex:0 0 140px;min-height:140px}#jsonPane:has(#syncPreview:not([hidden])) .tool-layout{flex:none}#jsonPane .tool-main:has(#syncPreview:not([hidden])){height:auto}
 
-.sync-item{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:16px;margin:12px 0;min-width:0}
+.sync-item{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;margin:12px 0;min-width:0}
 :is(#subtitlePane,#mediaPane) :is(.tool-layout,.tool-main){display:flex;min-height:0}:is(#subtitlePane,#mediaPane) .tool-main{flex:1;flex-direction:column}:is(#subtitlePane,#mediaPane) .tool-list-heading{flex:none}#subtitleFilters :focus-visible{outline-offset:-2px}
-#subtitleFilters{display:flex;align-items:center;gap:8px;flex:0 0 auto;max-width:100%}#subtitleFilters label{align-items:center;gap:5px;margin:0;font-size:14px;white-space:nowrap;flex:none}#subtitleFilters input[type=checkbox]{margin:0}
+#subtitleFilters{display:flex;align-items:center;gap:8px;flex:0 0 auto;max-width:100%}#subtitleFilters label{align-items:center;gap:5px;margin:0;font-size:15px;white-space:nowrap;flex:none}#subtitleFilters input[type=checkbox]{margin:0}
 :is(#subtitleResults,#mediaResults){flex:1 1 0;min-height:0;overflow:auto;overscroll-behavior:contain;overflow-anchor:none;scrollbar-gutter:stable;container-type:size}:is(#subtitleResults,#mediaResults):focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 :is(#subtitleSummary,#mediaSummary){flex:none;padding:10px 12px;font-size:15px;overflow-wrap:anywhere}
-#mediaPane{overflow:hidden}
+:is(#subtitlePane,#mediaPane) .tool-surface{overflow:hidden}
 :is(#subtitleRows,#mediaRows){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:stretch;align-content:start}
 :is(.subtitle-card,.media-card){margin:0;overflow-wrap:anywhere}
 #mediaSummary:empty{display:none}
@@ -650,25 +731,25 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 #subtitleRows h5,#subtitleRows p{margin-block:0 4px}
 #subtitleRows button{margin-top:4px}
 #subtitleRows select{width:100%;min-width:0;text-overflow:ellipsis}
-#subtitleRows .subtitle-result>p{display:flex;align-items:baseline;flex-wrap:wrap;gap:2px 6px}
-#subtitleRows .subtitle-result strong{flex:none}
+ #subtitleRows .subtitle-result>p{display:flex;align-items:baseline;flex-wrap:wrap;gap:2px 6px}
+ #subtitleRows .subtitle-result strong{flex:none}
 #subtitleRows .subtitle-badge{white-space:normal}
 #subtitleRows .subtitle-detail{flex:1 1 100%;font-size:.9em}
-#subtitleRows .subtitle-result select, #subtitleRows .subtitle-result label span{min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ #subtitleRows .subtitle-result select, #subtitleRows .subtitle-result label span{min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 :is(#subtitleRows,#mediaRows):empty{display:none}
 #subtitleFilters{flex-wrap:wrap}#subtitleDeleteSelectionCount,.subtitle-group-count{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}.subtitle-group-count{margin:4px 0 0;overflow-wrap:anywhere}
-#subtitleRows h5{margin:0;font-size:16px;line-height:1.5;overflow-wrap:anywhere}.subtitle-result{margin-top:8px}.subtitle-result+.subtitle-result{padding-top:8px;border-top:1px solid var(--border)}
-.subtitle-result p{margin:0;line-height:1.55;white-space:pre-wrap}.subtitle-result label{margin:6px 0;font-size:14px;overflow-wrap:anywhere}.subtitle-result select{font-size:14px;padding:6px 10px}
+#subtitleRows h5{margin:0;font-size:17px;line-height:1.5;overflow-wrap:anywhere}.subtitle-result{margin-top:8px}.subtitle-result+.subtitle-result{padding-top:8px;border-top:1px solid var(--border)}
+.subtitle-result p{margin:0;line-height:1.55;white-space:pre-wrap;color:var(--muted);font-size:15px}.subtitle-result p>strong{font-weight:650;color:var(--text)}.subtitle-badge{display:inline-block;white-space:nowrap;padding:1px 6px;margin-right:6px;border-radius:4px;background:var(--hover);color:var(--text);font-size:13px;font-weight:600}.subtitle-result[data-state=complete] .subtitle-badge{color:var(--button-text);background:var(--button)}.subtitle-result[data-state=choice] .subtitle-badge{outline:1px solid var(--edge);outline-offset:-1px;background:transparent}.subtitle-detail{display:block}.subtitle-result label{margin:6px 0;font-size:15px;overflow-wrap:anywhere}.subtitle-result select{font-size:15px;padding:7px 8px}
 .sync-location{display:grid;grid-template-columns:6.5em minmax(0,1fr);gap:8px;line-height:1.7}.sync-location span:last-child{white-space:pre-wrap;overflow-wrap:anywhere}.sync-location span:first-child{color:var(--muted)}
 .sync-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border)}
 
-#subtitleEmpty,.media-empty{padding:36px 24px;margin:0;text-align:center;border:1px dashed var(--border);border-radius:10px;color:var(--muted);background:var(--surface)}
+#subtitleEmpty,.media-empty{padding:28px 24px;margin:0;text-align:center;border:1px dashed var(--border);border-radius:8px;color:var(--muted);font-size:13px;background:var(--surface)}
 #mediaPreviewPanel:not(:has(#mediaPreview:not(:empty))){display:none}
 #mediaPreview{white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;margin-top:8px}
 #emptyPreview:not(:empty){max-height:none!important;overflow:visible!important;padding:12px 0;margin:12px 0;font-size:14px}
-.tool-statusbar{display:flex;align-items:flex-start;gap:20px;flex-wrap:wrap;margin-top:20px;padding-top:12px;border-top:1px solid var(--border);font-size:15px;color:var(--muted)}
-.tool-status-text{flex:1;min-width:180px}.tool-status-text p{margin:0;line-height:1.9;font-size:15px}.tool-status-text p:empty{display:none}.tool-status-text progress{accent-color:var(--accent);height:6px!important;margin:6px 0!important}.tool-status-text label{margin:0;font-size:15px}
-.tool-utilities{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-left:auto}.tool-utilities>.tool-card{padding:0;border:0;background:transparent;margin:0}.tool-utilities summary{padding:2px 0;font-size:15px;font-weight:500;color:var(--muted)}
+.tool-statusbar{display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-top:14px;padding:8px 0 10px;border-top:1px solid var(--border);font-size:14px;color:var(--muted)}
+.tool-status-text{flex:1;min-width:180px}.tool-status-text p{margin:0;line-height:1.5;font-size:14px}.tool-status-text p:empty{display:none}.tool-status-text progress{accent-color:var(--accent);height:6px!important;margin:6px 0!important}.tool-status-text label{margin:0;font-size:12px}
+.tool-utilities{display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-left:auto}.tool-utilities>.tool-card{padding:0;border:0;background:transparent;margin:0}.tool-utilities summary{padding:2px 0;font-size:14px;font-weight:500;color:var(--muted)}
 .tool-statusbar:has(.tool-utilities>details[open]){display:block}.tool-utilities:has(>details[open]){display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin-top:10px}.tool-utilities>details[open]{grid-column:1/-1;color:var(--text);min-width:0}
 :is(#subtitlePane,#mediaPane) .tool-statusbar{align-items:flex-end;margin-top:10px}
 :is(#subtitlePane,#mediaPane) .tool-status-text{min-width:0}
@@ -678,11 +759,11 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 :is(#subtitleMeter,#mediaBar)::-webkit-progress-bar{background:var(--border)}
 :is(#subtitleMeter,#mediaBar)::-webkit-progress-value{background:var(--text)}
 :is(#subtitleMeter,#mediaBar)::-moz-progress-bar{background:var(--text)}
-:is(#subtitleScope,#mediaTarget){overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#subtitlePane .tool-statusbar:has(.tool-utilities>details[open]){max-height:40%;overflow:auto}#subtitleDeleteList{overflow-wrap:anywhere}
+#subtitleScope{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#subtitlePane .tool-statusbar:has(.tool-utilities>details[open]){max-height:40%;overflow:auto;scrollbar-width:none}#subtitleDeleteList{overflow-wrap:anywhere}
 #log{white-space:pre-wrap;overflow-wrap:anywhere;font:14px/1.7 Consolas,"Microsoft YaHei",monospace;max-height:180px;overflow:auto}#log:empty{display:none}#log>div+div{margin-top:6px}
-#subtitlePane .tool-statusbar:has(#subtitleDiagnostics[open]){max-height:none;overflow:visible}:is(#subtitleDiagnostics,#mediaDiagnostics) .panel-actions{margin:4px 0 8px}#subtitlePane:has(#subtitleDiagnostics[open]) .tool-intro p{display:none}
-:is(#subtitleLog,#mediaLog){display:block;width:100%;height:clamp(56px,calc(36cqh - 128px),180px);resize:none;overflow:auto;scrollbar-width:none;overscroll-behavior:contain}
+#subtitlePane .tool-statusbar:has(#subtitleDiagnostics[open]){max-height:58%}:is(#subtitleDiagnostics,#mediaDiagnostics) .panel-actions{margin:4px 0 8px}
+:is(#subtitleLog,#mediaLog){display:block;width:100%;height:clamp(40px,calc(37cqh - 163px),150px);resize:none;overflow:auto;scrollbar-width:none;overscroll-behavior:contain}
 @container(max-height:660px){
     #subtitlePane .tool-intro p{display:none}
     #subtitlePane .tool-intro h3{font-size:20px}
@@ -699,48 +780,108 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 .sync-preview{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px}.sync-preview h4{margin:0 0 8px}.sync-preview p{margin:6px 0}#syncList{overflow-wrap:anywhere;font-size:15px}#syncDestination{font-weight:600}
 .export-options{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin:12px 0}.export-options input{width:auto}.export-options button{font-size:14px;padding:7px 12px}.credential-head{display:flex;justify-content:space-between;align-items:center;gap:12px}.credential-head a{font-size:15px;flex-shrink:0}
 .source-result{margin:12px 0;padding:12px;border:1px solid var(--border);border-radius:8px}.source-result button{margin:8px 8px 0 0;font-size:16px}
-#workspaceSettings{display:flex;flex-direction:column;padding:20px 24px;font-size:14px;scrollbar-width:none}
-.settings-heading{display:flex;flex:none;align-items:center;justify-content:space-between;gap:14px;margin-bottom:18px;padding-bottom:12px;border-bottom:1px solid var(--border)}.settings-heading h3{margin:0;font-size:20px}
-.settings-appearance{display:flex;align-items:center;justify-content:flex-end;gap:16px;margin-left:auto}.settings-appearance label{display:flex;align-items:center;gap:6px;margin:0;white-space:nowrap;color:var(--muted)}.settings-appearance select{width:auto;max-width:180px;padding:5px 8px;margin:0}
-#settingsSections{display:grid;flex:none;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}#settingsSections:has(>.settings-column:empty){grid-template-columns:minmax(0,1fr)}
-.settings-column{display:grid;align-content:start;gap:14px;min-width:0}.settings-column:empty{display:none}
-@container(max-height:740px){#settingsSections:has(#openSubtitlesSettings[open]){--compact-settings:1}}
-@container(max-height:650px){#settingsSections:has(>#settingsModels:not(:empty)+#settingsBasics:not(:empty)){--compact-settings:1}}
-#settingsSections{container-name:settings-grid}
-@container settings-grid style(--compact-settings:1){#settingsModels,#settingsBasics{display:contents}#settingsSections .sync-item:has(#mediaAISettings){grid-area:1/1/span 2/2}#settingsSections .sync-item:has(#subtitleSettings){grid-area:1/2/span 2/3}#settingsSections .sync-item:has(#mediaSettings){grid-area:1/3}#settingsSections .sync-item:has(#openSubtitlesSettings){grid-area:2/3}}
-@container(max-height:740px){#settingsSections:has(#openSubtitlesSettings[open]):has(>#settingsModels:not(:empty)+#settingsBasics:not(:empty)){grid-template-columns:minmax(0,1.15fr) minmax(0,1fr) minmax(178px,.73fr);grid-template-rows:min-content auto}}
-@container(max-height:650px){#settingsSections:has(>#settingsModels:not(:empty)+#settingsBasics:not(:empty)){grid-template-columns:minmax(0,1.15fr) minmax(0,1fr) minmax(178px,.73fr);grid-template-rows:min-content auto}}
-#settingsSections .sync-item{margin:0;padding:14px;border-radius:8px}#settingsSections h3{margin:0 0 8px;font-size:16px}
-#mediaAISettings{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr);column-gap:8px}#mediaAISettings>*{grid-column:1/-1}#mediaAISettings>label:has(#mediaAIProvider,#mediaAIModelSelect){grid-column:auto;min-width:0}
-#settingsSections label,#settingsSections p{margin:6px 0;overflow-wrap:anywhere}#settingsSections p{line-height:1.45;color:var(--muted)}#settingsSections input,#settingsSections select{padding:6px 8px;margin-top:4px;line-height:1.4}#settingsSections input[type=checkbox]{margin:1px 0 0}
-#settingsSections .panel-actions{gap:6px;margin:8px 0 0}#settingsSections button,#backToTools{padding:5px 8px;line-height:1.4}#settingsSections details[open]>summary{margin-bottom:5px}#settingsSections .credential-head a{font-size:13px}
-#settingsSections :is(#saveMediaKey,#saveMediaAI,#saveSubtitleSettings){background:var(--tint);font-weight:600}
-#subtitleAccountSettings>div{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}#subtitleAccountSettings>div>label{min-width:0}
-#subtitleSettings .credential-head{flex-wrap:wrap;gap:2px 6px}
-@container(max-height:650px){#workspaceSettings{padding:8px 12px}.settings-heading{margin-bottom:8px;padding-bottom:6px}.settings-heading h3{font-size:18px}#settingsSections{gap:9px}.settings-column{gap:9px}#settingsSections .sync-item{padding:8px}#settingsSections h3{margin-bottom:5px}#settingsSections label,#settingsSections p{margin:3px 0}#settingsSections input,#settingsSections select{padding:4px 6px;margin-top:3px}#settingsSections .panel-actions{gap:4px;margin-top:4px}#settingsSections button,#backToTools{padding:4px 7px}}
-#toggle{display:grid;place-items:center;width:50px;height:50px;padding:0;border-radius:15px;background:var(--surface);box-shadow:0 5px 20px #0003}#toggle svg{width:24px;height:24px;pointer-events:none}
-@container(max-width:1050px){.workspace-navigation{width:152px;padding:16px 9px}.tool-pane{padding:20px 20px 14px}.tool-intro h3{font-size:20px}.tool-intro p{font-size:14px}.tool-commandbar{margin:16px 0 18px;gap:8px}.tool-commandbar button{padding:8px 12px;font-size:14px}.tool-commandbar .panel-actions{gap:6px}.tool-import-options{max-width:240px;font-size:14px}.tool-statusbar{gap:12px;margin-top:14px}.tool-utilities{gap:10px}.json-editor{min-height:160px}#jsonPane .tool-main{min-height:220px}.json-editor-empty svg{width:44px;height:44px;margin-bottom:10px}.json-editor-empty p{margin:6px 0 12px}}
-        </style><button id="toggle" type="button" title="打开云盘工具" aria-label="打开云盘工具" aria-haspopup="dialog" aria-expanded="false" aria-controls="toolDialog"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 12h4M8 16h3M16 12v6m-2-2 2 2 2-2"/></svg></button>
+#workspaceSettings{overflow:auto;scrollbar-width:none;overscroll-behavior:contain}
+.settings-main{display:flex;flex-direction:column;min-width:0;padding:25px var(--surface-pad) 20px;background:var(--surface)}
+.settings-heading{display:flex;flex:none;align-items:center;justify-content:space-between;gap:14px;margin-bottom:18px;padding-bottom:18px;border-bottom:1px solid var(--border)}.settings-heading h3{margin:0;font-size:clamp(32px,3.6cqw,52px);line-height:1.2;letter-spacing:-.04em}
+.settings-appearance{display:flex;align-items:center;gap:12px;margin-left:auto}.settings-appearance label{display:flex;align-items:center;gap:6px;margin:0;font-size:15px;white-space:nowrap}.settings-appearance select{width:auto}#workspaceSettings .settings-appearance select{margin:0}
+.settings-column{min-width:0}.settings-column:empty{display:none}
+#settingsBasics{display:grid;gap:8px;margin-top:14px}#settingsBasics:empty{display:none}
+#settingsBasics #mediaSettings{display:flex;align-items:end;gap:12px;flex-wrap:wrap}
+#settingsBasics #mediaSettings>label{flex:1;min-width:180px;margin:0}
+#settingsBasics #mediaSettings>label{display:flex;align-items:center;gap:12px}
+#settingsBasics .credential-head{flex:none}
+#settingsBasics #tmdbKey{margin:0}
+#settingsBasics #mediaSettings .panel-actions{margin:0}
+#settingsModels{display:grid;flex:1;grid-template-columns:minmax(0,1.12fr) minmax(0,1fr);gap:16px}
+#settingsModels:has(#openSubtitlesSettings){grid-template-rows:1fr auto}
+#settingsModels:has(#openSubtitlesSettings)>.sync-item:has(#mediaAISettings){grid-row:span 2}
+#settingsModels>.sync-item:has(#openSubtitlesSettings){grid-column:2}
+#settingsModels:has(>:only-child){grid-template-columns:minmax(0,1fr)}#settingsModels:empty{display:none}
+#workspaceSettings .sync-item{margin:0;padding:0;border:0;background:transparent;min-inline-size:0}#workspaceSettings h3>svg{width:18px;height:18px;flex:none;color:var(--accent)}
+#workspaceSettings .sync-item h3{display:flex;align-items:center;gap:8px;margin:0 0 8px;font-size:18px}
+#settingsBasics .sync-item{border-top:1px solid var(--border);padding-top:8px}#settingsBasics .sync-item h3{display:none}
+#settingsModels .sync-item{display:flex;flex-direction:column;padding:18px 20px;border:1px solid var(--border);border-radius:12px;background:var(--surface)}
+#settingsModels .sync-item:has(#mediaAISettings){background:var(--panel)}
+#settingsModels .sync-item h3{margin-bottom:12px;font-size:20px}
+#settingsModels .sync-item>section{display:flex;flex:1;flex-direction:column;gap:clamp(6px,1.6cqh,16px);min-width:0}
+#settingsModels .panel-actions{margin-top:auto;padding-top:8px;border-top:1px solid var(--border)}
+#settingsModels .sync-item:has(#openSubtitlesSettings){background:var(--rail)}
+#settingsModels .sync-item:has(#openSubtitlesSettings:not([open])){display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+#settingsModels .sync-item:has(#openSubtitlesSettings:not([open])) h3{margin:0}
+#workspaceSettings:has(#openSubtitlesSettings[open]) #subtitleSettings{gap:2px}
+#workspaceSettings:has(#openSubtitlesSettings[open]) #subtitleSettings>label{margin-block:2px}
+#workspaceSettings:has(#openSubtitlesSettings[open]) #subtitleSettings>label:has(#subtitleLanguage,#subdlKey){
+    display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:8px
+}
+#workspaceSettings:has(#openSubtitlesSettings[open]) #subtitleSettings .credential-head{display:grid;gap:0}
+#workspaceSettings:has(#openSubtitlesSettings[open]) #subdlKey{margin:0}
+#openSubtitlesSettings[open]{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;column-gap:10px}
+#openSubtitlesSettings[open]>label:has(#openSubtitlesKey),#subtitleAccountSettings{grid-column:1/-1}
+#subtitleAccountSettings>div{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+#workspaceSettings label,#workspaceSettings p{overflow-wrap:anywhere}#workspaceSettings .sync-item label,#workspaceSettings p{margin:4px 0}#workspaceSettings p{line-height:1.45;color:var(--muted);font-size:14px}#workspaceSettings input,#workspaceSettings select{min-height:38px;padding:6px 9px;margin-top:4px;line-height:1.45}#workspaceSettings input[type=checkbox]{min-height:0;margin:3px 0 0}
+#workspaceSettings .panel-actions{gap:6px;margin:6px 0 0}#workspaceSettings button{padding:6px 9px;font-size:15px;line-height:1.4;min-height:35px}#workspaceSettings details[open]>summary{margin-bottom:7px}#workspaceSettings .credential-head{flex-wrap:wrap;gap:0 8px}#workspaceSettings .credential-head a{font-size:14px}
+#workspaceSettings :is(#saveMediaKey,#saveMediaAI,#saveSubtitleSettings){background:var(--button);border-color:var(--button);color:var(--button-text);font-weight:600}#workspaceSettings :is(#saveMediaKey,#saveMediaAI,#saveSubtitleSettings):hover:not(:disabled){background:var(--button-hover)}
+#settingsModels .sync-item:has(#mediaAISettings)>section{display:grid;grid-template-columns:minmax(0,.95fr) minmax(0,1.05fr);grid-template-rows:auto auto auto auto auto 1fr;column-gap:10px}#mediaAISettings>*{grid-column:1/-1}#mediaAISettings>label:has(#mediaAIProvider,#mediaAIModelSelect){grid-column:auto;min-width:0}#mediaAIState:empty{display:none}
+#toggle{display:grid;place-items:center;width:50px;height:50px;padding:0;border-radius:12px;background:var(--button);color:var(--button-text);box-shadow:0 5px 20px #0003}#toggle:hover:not(:disabled){background:var(--button-hover)}#toggle svg{width:24px;height:24px;pointer-events:none}#toggle[aria-expanded=true]{visibility:hidden}
+@container(max-width:1050px){
+    .workspace-navigation{padding:12px 8px}
+    .tool-surface,.settings-main{padding-top:14px}
+    .settings-heading{padding-bottom:10px;margin-bottom:10px}.settings-heading h3{font-size:28px}
+    #settingsModels{gap:10px}#settingsModels .sync-item{padding:10px}#settingsModels .sync-item>section{gap:2px}
+    .settings-appearance label{font-size:14px}
+}
+@container(max-height:660px){.settings-main{padding-bottom:8px}#workspaceSettings .sync-item label{margin:2px 0}#workspaceSettings .sync-item input:not([type=checkbox]),#workspaceSettings .sync-item select{min-height:34px;padding-block:4px}#settingsBasics{margin-top:5px}}
+@container(max-width:790px){.workspace-body{--surface-pad:12px}.workspace-navigation{width:134px}.settings-heading{flex-wrap:wrap}.settings-appearance{flex-wrap:wrap}#settingsModels{grid-template-columns:minmax(0,1fr);align-content:start}.tool-list-heading{flex-wrap:wrap;gap:5px}#subtitleFilters{margin-left:auto}}
+@container(max-width:790px){
+    #settingsModels:has(#openSubtitlesSettings){grid-template-rows:auto}
+    #settingsModels:has(#openSubtitlesSettings)>.sync-item:has(#mediaAISettings){grid-row:auto}
+    #settingsModels>.sync-item:has(#openSubtitlesSettings){grid-column:auto}
+}
+@container(max-height:660px){
+    #workspaceSettings .settings-appearance{padding:0;gap:6px}
+    #settingsModels .sync-item h3{margin-bottom:6px;font-size:18px}
+    #settingsModels .sync-item:has(#openSubtitlesSettings[open]){position:relative}
+    #settingsModels .sync-item:has(#openSubtitlesSettings[open]) h3{position:absolute;top:10px;left:10px}
+    #openSubtitlesSettings[open]>summary{grid-column:1/-1;justify-self:end;margin-left:145px}
+    #openSubtitlesSettings[open]>label:has(#useOpenSubtitles){grid-column:1/-1}
+    #workspaceSettings:has(#openSubtitlesSettings[open]) .settings-heading{margin-bottom:6px;padding-bottom:6px}
+    #workspaceSettings:has(#openSubtitlesSettings[open]) #settingsModels{gap:6px}
+    #workspaceSettings:has(#openSubtitlesSettings[open]) #subtitleSettings>label:has(#subtitleLanguage){
+        display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:8px
+    }
+    #workspaceSettings:has(#openSubtitlesSettings[open]) #subtitleLanguage{margin:0}
+    #workspaceSettings:has(#openSubtitlesSettings[open]) #mediaAISettings>label:has(#mediaAIBase,#mediaAIKey){
+        display:grid;grid-template-columns:5em minmax(0,1fr);align-items:center;gap:6px
+    }
+    #workspaceSettings:has(#openSubtitlesSettings[open]) #openSubtitlesSettings>label:has(#openSubtitlesKey){
+        display:flex;align-items:center;gap:8px
+    }
+    #workspaceSettings:has(#openSubtitlesSettings[open]) #openSubtitlesSettings .credential-head{flex:none}
+}
+        </style><button id="toggle" type="button" title="打开云盘工具" aria-label="打开云盘工具" aria-haspopup="dialog" aria-expanded="false" aria-controls="toolDialog"></button>
         <div class="workspace-overlay" hidden><div class="box" id="toolDialog" role="dialog" aria-modal="false" aria-labelledby="workspaceTitle" tabindex="-1">
-        <header class="workspace-header"><div><h2 id="workspaceTitle">云盘工具</h2><p id="windowHint">拖动标题栏移动 · 可同时操作网页</p></div><div class="workspace-window-actions"><button id="settingsWorkspace" type="button">设置</button><button id="pinWorkspace" type="button" aria-pressed="false" title="锁定窗口位置">固定位置</button><button id="closeWorkspace" type="button" aria-label="关闭面板" title="关闭">×</button></div></header>
-        <div class="workspace-toolbar"><div class="workspace-tabs" role="tablist" aria-label="功能分类"><button id="jsonTab" type="button" role="tab" aria-selected="false" aria-controls="jsonPane" tabindex="-1" disabled>跨盘 JSON</button><button id="subtitleTab" type="button" role="tab" aria-selected="false" aria-controls="subtitlePane" tabindex="-1" disabled title="当前网盘暂不支持字幕检查">影视整理</button><button id="subtitleSyncTab" type="button" role="tab" aria-selected="false" aria-controls="subtitleSyncPane" tabindex="-1" disabled title="当前网盘暂不支持字幕校对">字幕校对</button></div>
+        <header class="workspace-header"><div class="workspace-brand"><h2 id="workspaceTitle"><span class="workspace-brand-mark" aria-hidden="true"></span>云盘工具</h2><span class="workspace-location" id="workspaceLocation"></span><p id="windowHint">拖动标题栏移动 · 可同时操作网页</p></div><div class="workspace-window-actions"><button id="settingsWorkspace" type="button">设置</button><button id="pinWorkspace" type="button" aria-pressed="false" title="锁定窗口位置">固定位置</button><button id="closeWorkspace" type="button" aria-label="关闭面板" title="关闭"></button></div></header>
+        <div class="workspace-toolbar"><div class="workspace-tabs" role="tablist" aria-label="功能分类"><button id="jsonTab" type="button" role="tab" aria-selected="false" aria-controls="jsonPane" tabindex="-1" disabled>跨盘清单</button><button id="subtitleTab" type="button" role="tab" aria-selected="false" aria-controls="subtitlePane" tabindex="-1" disabled title="当前网盘暂不支持字幕检查">影视整理</button><button id="subtitleSyncTab" type="button" role="tab" aria-selected="false" aria-controls="subtitleSyncPane" tabindex="-1" disabled title="当前网盘暂不支持字幕校对">字幕校对</button></div>
         <label class="theme-row">窗口尺寸<select id="workspaceSize" aria-label="窗口尺寸"><option value="960x600">960 × 600</option><option value="1280x800" selected>1280 × 800（默认）</option><option value="1440x900">1440 × 900</option><option value="1600x1000">1600 × 1000</option></select></label>
         <label class="theme-row">外观<select id="theme"><option value="auto">跟随页面</option><option value="light">浅色</option><option value="dark">深色</option></select></label></div>
-        <div class="workspace-body"><section id="workspaceSettings" class="tool-pane" hidden><div class="settings-heading"><h3>设置</h3><button id="backToTools">返回工具</button></div><div id="settingsSections"><div class="settings-column" id="settingsModels"></div><div class="settings-column" id="settingsBasics"></div></div></section></div></div></div>`;
+        <div class="workspace-body"><section id="workspaceSettings" class="tool-pane" hidden><div class="settings-main"><div class="settings-heading"><h3>设置</h3><div id="settingsAppearance" class="settings-appearance"></div><button id="backToTools">返回工具</button></div><div class="settings-column" id="settingsModels"></div><div class="settings-column" id="settingsBasics"></div></div></section></div></div></div>`;
             const overlay = root.querySelector('.workspace-overlay'), dialog = root.querySelector('.box'), toggle = root.querySelector('#toggle');
             const frame = document.createElement('div'); frame.className = 'workspace-frame';
             const navigation = root.querySelector('.workspace-toolbar'); navigation.className = 'workspace-navigation';
-            const appearance = document.createElement('div'); appearance.className = 'settings-appearance';
+            const appearance = root.querySelector('#settingsAppearance');
+            const navBrand = document.createElement('div');
+            navBrand.className = 'nav-brand';
+            navBrand.append(root.querySelector('.workspace-brand-mark'), document.createTextNode('云盘工具'));
+            root.querySelector('#workspaceTitle').textContent = '工作区';
+            navigation.prepend(navBrand);
             for (const label of [...navigation.querySelectorAll('.theme-row')]) appearance.append(label);
-            root.querySelector('#backToTools').before(appearance);
-            const navTitle = document.createElement('p'); navTitle.className = 'nav-caption'; navTitle.textContent = '工作空间'; navigation.prepend(navTitle);
             const navFooter = document.createElement('div'); navFooter.className = 'nav-footer'; navFooter.append(root.querySelector('#settingsWorkspace'));
-            const version = document.createElement('small'); version.textContent = '云盘工具' + (typeof VERSION === 'string' ? ' · v' + VERSION : ''); navFooter.append(version); navigation.append(navFooter);
-            const icons = {jsonTab:'M7 4h7l4 4v12H7zM14 4v5h5M10 13h5m-5 3h5',subtitleTab:'M4 5h16v14H4zM4 9h16M8 5v4m8-4v4m-6 4 5 3-5 3z',settingsWorkspace:'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8M12 3v2m0 14v2M3 12h2m14 0h2M5.6 5.6 7 7m10 10 1.4 1.4M5.6 18.4 7 17m10-10 1.4-1.4'};
-            for (const [name, path] of Object.entries(icons)) {
-                const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); icon.setAttribute('viewBox', '0 0 24 24'); icon.setAttribute('fill', 'none'); icon.setAttribute('stroke', 'currentColor'); icon.setAttribute('stroke-width', '1.6'); icon.setAttribute('aria-hidden', 'true');
-                const line = document.createElementNS('http://www.w3.org/2000/svg', 'path'); line.setAttribute('d', path); icon.append(line); root.querySelector('#' + name).prepend(icon);
-            }
+            const version = document.createElement('small'); version.textContent = typeof VERSION === 'string' ? 'v' + VERSION : ''; navFooter.append(version); navigation.append(navFooter);
+            const icons = {jsonTab:'files',subtitleTab:'film',settingsWorkspace:'settings',closeWorkspace:'x',backToTools:'arrow-left'};
+            for (const [name, glyph] of Object.entries(icons)) root.querySelector('#' + name).prepend(workspaceIcon(glyph, name === 'backToTools' ? 'command-icon' : ''));
+            root.querySelector('.workspace-brand-mark').append(workspaceIcon('cloud'));
+            toggle.append(workspaceIcon('cloud'));
+            const location = root.querySelector('#workspaceLocation');
             root.querySelector('.workspace-tabs').setAttribute('aria-orientation', 'vertical');
             frame.append(navigation, root.querySelector('.workspace-body')); dialog.append(frame);
             const tabs = new Map();
@@ -782,7 +923,8 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 place(position); saveLayout();
             };
             const renderPin = () => {
-                pin.textContent = pinned ? '解除固定' : '固定位置';
+                pin.replaceChildren(workspaceIcon(pinned ? 'pin-off' : 'pin'));
+                pin.setAttribute('aria-label', pinned ? '解除固定' : '固定位置');
                 pin.setAttribute('aria-pressed', String(pinned));
                 pin.title = pinned ? '解除后可以拖动窗口' : '锁定窗口位置';
                 header.classList.toggle('pinned', pinned);
@@ -811,6 +953,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             const activate = (id, focus = false) => {
                 if (!tabs.has(id)) return;
                 active = id;
+                location.textContent = tabs.get(id).button.textContent;
                 root.querySelector('#workspaceSettings').hidden = true;
                 root.querySelector('#settingsWorkspace').setAttribute('aria-pressed', 'false');
                 for (const [name, entry] of tabs) {
@@ -847,6 +990,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             document.body.appendChild(host);
             bindPanelTheme(host, root);
             const openSettings = name => {
+                location.textContent = '设置';
                 for (const entry of tabs.values()) { entry.pane.hidden = true; entry.button.setAttribute('aria-selected', 'false'); }
                 root.querySelector('#workspaceSettings').hidden = false;
                 root.querySelector('#settingsWorkspace').setAttribute('aria-pressed', 'true');
@@ -901,7 +1045,9 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         }, onActivate: callback => { entry.onActivate = callback; },
             moveSettings: (ids, headingTitle = title, destination = '#settingsBasics') => {
                 const section = document.createElement('fieldset'); section.className = 'sync-item'; section.style.minWidth = '0';
-                const heading = document.createElement('h3'); heading.textContent = headingTitle; section.appendChild(heading);
+                const heading = document.createElement('h3'); heading.textContent = headingTitle; const glyph = {mediaSettings:'key-round',mediaAISettings:'cpu',subtitleSettings:'languages',openSubtitlesSettings:'captions'}[ids[0]];
+                if (glyph) heading.prepend(workspaceIcon(glyph));
+                section.appendChild(heading);
                 for (const name of ids) section.appendChild(ui.get(name));
                 entry.settings.push(section);
                 root.querySelector(destination).appendChild(section);
@@ -939,6 +1085,20 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 try { updateControls(false); }
                 finally { active = false; ui.busy(false); }
             }
+        };
+    }
+    function scheduleLogDisplay(box, lines) {
+        let pending = false;
+        const paint = () => {
+            pending = false;
+            box.value = lines.join('\n');
+            box.scrollTop = box.scrollHeight;
+        };
+        return () => {
+            if (pending) return;
+            pending = true;
+            if (typeof requestAnimationFrame === 'function') requestAnimationFrame(paint);
+            else paint();
         };
     }
     function panelControls(ui) {
@@ -999,8 +1159,8 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 }
             }
             host.style.cssText = baseStyle + (dark
-                ? ';--scheme:dark;--panel:#181818;--surface:#222;--text:#ededed;--muted:#bdbdbd;--field:#222;--border:#383838;--accent:#e2e2e2;--tint:#303030;--button:#e2e2e2;--button-text:#181818'
-                : ';--scheme:light;--panel:#f6f6f6;--surface:#fff;--text:#242424;--muted:#555;--field:#fff;--border:#e1e1e1;--accent:#292929;--tint:#eaeaea;--button:#292929;--button-text:#fff');
+                ? ';--scheme:dark;--panel:#202020;--surface:#181818;--rail:#242424;--text:#f5f5f5;--muted:#b7b7b7;--field:#151515;--border:#3b3b3b;--edge:#646464;--accent:#e8e8e8;--tint:#343434;--hover:#2e2e2e;--button:#efefef;--button-text:#171717;--button-hover:#d4d4d4;--danger:#fff'
+                : ';--scheme:light;--panel:#fafafa;--surface:#fff;--rail:#eee;--text:#171717;--muted:#515151;--field:#fff;--border:#dedede;--edge:#adadad;--accent:#161616;--tint:#ebebeb;--hover:#eee;--button:#171717;--button-text:#fff;--button-hover:#373737;--danger:#111');
         }
         select.onchange = () => {
             GM_setValue('cross-drive-theme', select.value);
@@ -2475,19 +2635,21 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         return number.length === 1 && number in digits ? digits[number] : null;
     }
     function mediaBracketTitle(name) {
-        const stem = mediaStem(name).normalize('NFKC');
+        const stem = mediaStem(name).normalize('NFKC').replace(/[【】]/g, match => match === '【' ? '[' : ']');
         const parts = [...stem.matchAll(/\[([^\]]+)\]/g)].map(match => match[1].trim());
-        const title = parts.find(value => /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(value) && !/字幕|中字|简体|繁体|字幕组/.test(value));
+        const ignored = /^(?:動畫瘋|动画疯|CXRAW|KRSUB|DBD[- ]?Raws?|字幕|中字|简体|繁体|中文配音|電影|电影|剧场版|劇場版|BDrip|BDRip|1080P?|720P?|2160P?)$/i;
+        const titles = parts.filter(value => !ignored.test(value) && /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(value));
+        const title = titles.sort((a,b) => b.length - a.length)[0];
         // A leading release-group label must not override a full CJK work title.
         if (!title) return null;
         const prefix = stem.slice(0, stem.indexOf('[')).replace(/\]+$/, '').trim();
         return {title, release: parts[0] !== title ? parts[0] : prefix};
     }
     function parseMediaName(name, folders = []) {
-        const stem = mediaStem(name).normalize('NFKC');
+        const stem = mediaStem(name).normalize('NFKC').replace(/[【】]/g, match => match === '【' ? '[' : ']');
         const brackets = [...stem.matchAll(/\[([^\]]+)\]/g)].map(m => m[1].trim());
         const bracketEpisode = brackets.find(value => /^(?:EP?\s*)?\d{1,3}(?:v\d+)?$/i.test(value));
-        const isReleaseTag = value => /^(?:\d{3,4}p|\d{4}|4k|8k|BDRip|BluRay|WEB[ ._-]?DL|WEBRip|DVD|REMUX|HEVC.*|AVC.*|x26[45].*|H[ .]?26[45].*|FLAC.*|AAC.*|DTS.*|AC3.*|HDR.*|DV|10bit|8bit|CHS|CHT|ENG|简繁.*|简体.*|繁体.*|中字.*)$/i.test(value) || /(?:raws|字幕组|sub|rip)$/i.test(value);
+        const isReleaseTag = value => /^(?:\d{3,4}p|\d{4}|4k|8k|BDRip|BluRay|WEB[ ._-]?DL|WEBRip|DVD|REMUX|HEVC.*|AVC.*|x26[45].*|H[ .]?26[45].*|FLAC.*|AAC.*|DTS.*|AC3.*|HDR.*|DV|10bit|8bit|CHS|CHT|ENG|简繁.*|简体.*|繁体.*|中字.*|動畫瘋|动画疯|CXRAW|KRSUB|DBD[- ]?Raws?|中文配音|电影|電影|剧场版|劇場版)$/i.test(value) || /(?:raws|字幕组|sub|rip)$/i.test(value);
         const workBracket = mediaBracketTitle(name);
         const bracketTitle = workBracket?.title || brackets.find(value => value !== bracketEpisode && !isReleaseTag(value) && !/^(?:S\d+E\d+|Season\s*\d+)$/i.test(value) && /[\p{L}]/u.test(value));
         const ep = stem.match(/(?:^|[. _-])S(\d{1,2})[. _-]*E(\d{1,3})(?:[. _-]*E(\d{1,3}))?/i)
@@ -2801,13 +2963,13 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         evict(tmdbClients, 2);
         return client;
     }
-    function mediaGuangyaPost(token) {
+    function mediaGuangyaPost(token, writeInterval = 650) {
         const request = async (endpoint, body) => {
             const result = await requestGuangya(token, endpoint, body);
             if (guangyaCode(result) !== 0) throw apiError('光鸭整理', result);
             return result;
         };
-        const write = paced(650, request), read = paced(180, request);
+        const write = paced(writeInterval, request), read = paced(180, request);
         return (endpoint, body) => (endpoint === API.task ? read : write)(endpoint, body);
     }
     async function mediaContext(provider, previous) {
@@ -2832,7 +2994,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
     }
     function mediaOrganizerWriter(session, source) {
         const guangya = session.provider === '光鸭';
-        const post = guangya ? mediaGuangyaPost(session.token) : paced(700, async (path, body) => {
+        const post = guangya ? mediaGuangyaPost(session.token, 0) : paced(700, async (path, body) => {
             const result = await requestJson(session.base + path, { method: 'POST', credentials: 'omit', headers: { ...session.headers, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
             if (![0, 200].includes(apiCode(result))) throw apiError('123 ' + path + (body.fileName ? '，请求名称：' + body.fileName : ''), result);
             return result;
@@ -2870,6 +3032,13 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         };
         const scopeKey = nodes => JSON.stringify(nodes.map(node => [node.id,node.parentId,node.name,node.directory,node.size,node.md5]).sort((a,b) => a[0].localeCompare(b[0])));
         const subtitleScopeKey = files => scopeKey(files.map(file => ({...file,id:String(file.id),name:file.name + '\0' + file.suffix})));
+        function linksByDirectory(children) {
+            const pending = new Map();
+            return id => {
+                if (!pending.has(id)) pending.set(id,children(id).then(files => mediaSubtitleLinks(files,id,history).linked));
+                return pending.get(id);
+            };
+        }
         async function prepare(items,check = () => {},log) {
             checkPlan = check;
             bindings.clear(); scopeSnapshots.clear(); targetSnapshots = [];
@@ -2900,9 +3069,10 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 if (!planned.has(id)) planned.set(id,new Set());
                 planned.get(id).add(String(item.node.id));
             }
+            const links = linksByDirectory(children);
             if (typeof MEDIA_SUB !== 'undefined') await batchStage(videos,'预览字幕关联（视频）',log,async ({node}) => {
                 const id = String(node.id);
-                const found = mediaSubtitleLinks(await children(node.parentId),node.parentId,history).linked.get(id) || [];
+                const found = (await links(node.parentId)).get(id) || [];
                 if (found.some(sub => !planned.get(id)?.has(String(sub.id))) || found.length !== (planned.get(id)?.size || 0))
                     throw new Error('关联字幕已变化，请重新生成预览：' + node.name);
                 subtitleSnapshots.set(node,subtitleScopeKey(found));
@@ -2938,17 +3108,18 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             return [...bindings].map(([destination, folder]) => ({folder, destination, contents:scopeSnapshots.get(String(folder.id))}));
         }
         async function validate(log) {
-            const children = targetSnapshots.length || subtitleSnapshots.size ? cachedDriveChildren(source,new Map(),checkPlan) : null;
+            const children = cachedDriveChildren(source,new Map(),checkPlan);
+            const links = linksByDirectory(children);
             if (targetSnapshots.length) await batchStage(targetSnapshots,'执行前复核目标（文件）',log,async ([destination,expected],verify) => {
                 if (await targetScope(destination,children,verify) !== expected) throw new Error('整理目标已变化，请重新生成预览：' + destination);
             },checkPlan);
             await batchStage([...subtitleSnapshots],'执行前复核字幕（视频）',log,async ([node,expected]) => {
-                const found = mediaSubtitleLinks(await children(node.parentId),node.parentId,history).linked.get(String(node.id)) || [];
+                const found = (await links(node.parentId)).get(String(node.id)) || [];
                 if (subtitleScopeKey(found) !== expected) throw new Error('关联字幕在预览后变化，请重新生成预览：' + node.name);
             },checkPlan);
             await batchStage([...bindings.values()],'执行前复核目录（目录）',log,async folder => {
-                const current = (await source.children({id:folder.parentId})).find(node => node.id === folder.id);
-                if (!current || !current.directory || current.name !== folder.name || scopeKey(await scanScope(folder.id, id => source.children({id}))) !== scopeKey(scopeSnapshots.get(String(folder.id)))) throw new Error('文件夹或内容在预览后发生变化，请重新生成预览：' + folder.path);
+                const current = (await children(folder.parentId)).find(node => node.id === folder.id);
+                if (!current || !current.directory || current.name !== folder.name || scopeKey(await scanScope(folder.id, children)) !== scopeKey(scopeSnapshots.get(String(folder.id)))) throw new Error('文件夹或内容在预览后发生变化，请重新生成预览：' + folder.path);
             },checkPlan);
         }
         async function relocateDirectory(folder,parentId,name,verify) {
@@ -3013,12 +3184,16 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         async function execute(item, verify = checkPlan) {
             verify();
             const original = item.node, parts = relativeParts(item.destination), name = parts.pop();
-            if (!hasFileMetadata(original)) throw new Error('原文件缺少可验证的 MD5 或大小，保留原状');
+            if (original.id == null || original.id === '') throw new Error('原文件缺少文件 ID，保留原状');
+            const matchesMetadata = file =>
+                (original.size == null || file.size == null || file.size === original.size) &&
+                (!original.md5 || !file.md5 || file.md5.toLowerCase() === original.md5.toLowerCase());
+            const needsDetail = file => (original.md5 && !file.md5) || (original.size != null && file.size == null);
             const oldNodes = await source.children({ id: original.parentId });
             verify();
             let current = oldNodes.find(node => node.id === original.id);
-            if (current) current = await mediaFileMetadata(current, source);
-            if (!current || current.name !== original.name || current.directory || current.size !== original.size || current.md5?.toLowerCase() !== original.md5?.toLowerCase()) throw new Error('预览后原文件发生变化，请重新识别');
+            if (current && needsDetail(current)) current = await mediaFileMetadata(current, source);
+            if (!current || current.name !== original.name || current.directory || !matchesMetadata(current)) throw new Error('预览后原文件发生变化，请重新识别');
             let parentId = original.parentId;
             verify();
             const targetId = await ensure(parts.join('/'),verify);
@@ -3033,8 +3208,8 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 for (let i = 0; i < 5; i++) {
                     if (i) await sleep(500);
                     let found = (await source.children({ id: parentId })).find(node => node.id === original.id && node.name === expected);
-                    if (found) found = await mediaFileMetadata(found, source);
-                    if (found && found.size === original.size && found.md5?.toLowerCase() === original.md5?.toLowerCase()) { current = found; return; }
+                    if (found && needsDetail(found)) found = await mediaFileMetadata(found, source);
+                    if (found && !found.directory && matchesMetadata(found)) { current = found; return; }
                 }
                 throw new Error('请求已提交但结果未确认，请刷新后重新识别；文件 ID：' + original.id);
             };
@@ -3252,12 +3427,9 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
     }
     function mediaClassificationRoot(source, parentPath) {
         const names = parentPath.split('/').filter(Boolean);
+        if (source.breadcrumbs) return {id:'0', path:''};
         const categoryIndex = names.findIndex(name => ['电影', '剧集', '动漫', '纪录片', '综艺'].includes(name));
         if (categoryIndex < 0) return { id: source.parentId, path: parentPath };
-        if (source.breadcrumbs) {
-            if (source.breadcrumbs.length !== names.length || source.breadcrumbs.at(-1)?.id !== source.parentId) throw new Error('无法确认光鸭分类根目录，请重新打开文件夹');
-            return { id: categoryIndex === 0 ? '0' : source.breadcrumbs[categoryIndex - 1].id, path: names.slice(0, categoryIndex).join('/') };
-        }
         const url = new URL(location.href);
         const raw = url.searchParams.get('homeFilePath') ?? routeHashParams(url.hash).get('homeFilePath') ?? source.parentId;
         const ids = raw.split(',').map(id => decimalId(id.trim())).filter(id => id !== '0');
@@ -3598,7 +3770,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             <div class="panel-actions"><button id="fetchMediaAIModels">获取模型列表</button><button id="saveMediaAI">保存设置</button><button id="testMediaAI">测试连接</button><button id="forgetMediaAI">清除密钥</button></div>
             <label id="mediaAIManualModel" hidden>手动填写模型 ID<input id="mediaAIModel" placeholder="接口不提供列表时手动填写"></label>
             <p id="mediaAIState" role="status"></p></section>
-            <p id="mediaTarget"></p><p id="mediaRecordState" role="status"></p>
+            <p id="mediaRecordState" role="status"></p>
             <div class="panel-actions"><button id="scanMedia">${merged ? '识别并检查' : '识别并预览'}</button>${merged ? '<button id="previewMedia" disabled>生成整理预览</button>' : ''}<button id="runMedia" disabled>确认执行</button><button id="openMediaCleanup" type="button" aria-controls="mediaCleanup" aria-expanded="false">清理文件</button><button id="stopMedia" hidden disabled>停止</button></div>
             ${merged ? '<label id="allowWithoutSubtitles"><input id="mediaAllowMissing" type="checkbox">允许无字幕整理</label>' : ''}
             <p id="mediaProgress" role="status">先在网页勾选视频或文件夹。</p><progress id="mediaBar" aria-label="影视整理进度" max="1" value="0" hidden></progress><p id="mediaSummary" role="status"></p>
@@ -3668,6 +3840,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             bar.setAttribute('aria-valuetext', '本阶段未完成');
         };
         const logLines = [], logBox = ui.get('mediaLog');
+        const displayLog = flow ? null : scheduleLogDisplay(logBox,logLines);
         const clearLog = () => { if (!flow) { logLines.length = 0; logBox.value = ''; } };
         const log = message => {
             if (flow) return flow.log('影视整理',message);
@@ -3676,12 +3849,11 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 const oldest = logLines.findIndex(line => !line.includes(' · 上限 '));
                 logLines.splice(Math.max(0,oldest),1);
             }
-            logBox.value = logLines.join('\n');
-            logBox.scrollTop = logBox.scrollHeight;
+            displayLog();
         };
         if (!flow) ui.get('clearMediaLog').onclick = clearLog;
         if (!flow) ui.get('copyMediaLog').onclick = async () => {
-            try { await navigator.clipboard.writeText(logBox.value || '（暂无影视整理运行日志）'); progress('影视整理运行日志已复制。'); }
+            try { await navigator.clipboard.writeText(logLines.join('\n') || '（暂无影视整理运行日志）'); progress('影视整理运行日志已复制。'); }
             catch (error) { progress('复制日志失败：' + error.message); }
         };
         const invalidate = () => { batch = null; batchWriter = null; ui.get('runMedia').disabled = true; ui.get('mediaPreview').textContent = ''; };
@@ -3819,6 +3991,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             if (!row.detail || row.error || !row.type || !row.title || !row.year) return false;
             try { mediaPath(row); return true; } catch { return false; }
         };
+        if (flow) flow.workReady = readyRow;
         const skipRows = async targets => {
             for (const row of targets) row.include = false;
             invalidate(); render(); progress('已跳过 ' + targets.length + ' 个视频，未修改网盘文件'); await refreshPreview();
@@ -4219,6 +4392,40 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 }
             } catch (error) { if (error.stop) throw error; verify(); for (const row of group) row.error = error.message; }
         }
+        async function recoverWorkFromSubtitle(row, verify) {
+            if (!client || row.detail || row.match || readyRow(row)) return;
+            const hint = flow.subtitleWorkHints(row);
+            if (!hint) return;
+            const preference = mediaCandidatePreference(row);
+            if (preference.conflict || preference.type && preference.type !== hint.type) return;
+            const draft = () => ({...row, sourceYear:row.explicitYear || row.sourceYear || hint.year, aiType:hint.type});
+            const matches = new Map();
+            const add = candidate => {
+                if (readyRow(candidate) && candidate.type === hint.type &&
+                    (hint.type !== 'movie' || !candidate.sourceYear || candidate.year === String(candidate.sourceYear)))
+                    matches.set(candidate.match,candidate);
+            };
+            if (hint.id) {
+                const candidate = draft();
+                await choose(candidate, hint.type + ':' + hint.id);
+                verify();
+                await validateEpisode(candidate);
+                add(candidate);
+            } else {
+                for (const query of hint.queries) {
+                    const candidate = draft();
+                    await matchGroup([candidate],query,false,null,verify);
+                    verify();
+                    if (candidate.matchFailure === 'ambiguous' || candidate.matchFailure === 'lookup-error') return;
+                    add(candidate);
+                    if (matches.size > 1) return;
+                }
+            }
+            if (matches.size !== 1) return;
+            Object.assign(row,matches.values().next().value);
+            flow.acceptSubtitleWork(row);
+            log('已用字幕线索确认作品：' + row.node.name + ' → ' + row.title + '（' + row.year + '）');
+        }
         ui.get('scanMedia').onclick = async () => {
             if (flow) return runTask(scan,true);
             const shouldPreview = await runTask(scan, true);
@@ -4238,10 +4445,15 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 if (!selected.length) throw new Error('请先在 ' + provider + ' 勾选文件或文件夹');
                 const parentPath = context.path;
                 const root = mediaClassificationRoot(source, parentPath); targetPath = root.path; targetSession = { ...session, parent: root.id };
-                const target = ui.get('mediaTarget');
-                target.title = target.textContent = '分类保存到：/' + targetPath + '（纪录片独立分类，动画电影归电影）';
                 history = mediaFileHistory(session);
-                const collected = await collectMediaSelection(selected,source,progress,node => !flow && mediaAlreadyStandard(node,parentPath),checkStopped,false,history,log);
+                const collected = await collectMediaSelection(selected, source, progress, node => {
+                    if (flow) return false;
+                    if (provider === '光鸭') {
+                        const folders = [...parentPath.split('/').filter(Boolean), ...node.folders];
+                        if (!mediaExistingCategory(folders.slice(0,1))) return false;
+                    }
+                    return mediaAlreadyStandard(node,parentPath);
+                }, checkStopped,false,history,log);
                 if (!collected.videos.length) { meter('检查完成', collected.skipped, collected.skipped); progress(`已跳过 ${collected.skipped} 个命名和所在作品目录均规范的视频，没有需要匹配的项目。`); return; }
                 const credential = ui.get('tmdbKey').value.trim();
                 if (!flow && !credential) ui.openSettings('mediaSettings');
@@ -4327,11 +4539,12 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     if (!enabled) await validateEpisode(row);
                     meter('检查命名', ++checked, included.length);
                     if (enabled && !flow.canOrganize(row)) { log('字幕待核对或缺少字幕，已跳过：' + row.node.path); return 'skipped'; }
-                    if (!readyRow(row)) { log('待确认，已跳过：' + row.node.path + '；' + (row.error || '未匹配作品')); return 'skipped'; }
-                    Object.assign(row.node, await mediaFileMetadata(row.node, source));
                     const fresh = mediaSubtitleLinks(await sourceLists(row.node.parentId),row.node.parentId,history);
                     if (enabled && !flow.sameSubtitles(row,fresh.linked.get(String(row.node.id)) || []))
                         throw new Error('目录字幕已变化，请重新识别并检查：' + row.node.name);
+                    if (enabled && !readyRow(row)) await recoverWorkFromSubtitle(row,verify);
+                    if (!readyRow(row)) { log('待确认，已跳过：' + row.node.path + '；' + (row.error || '未匹配作品')); return 'skipped'; }
+                    Object.assign(row.node, await mediaFileMetadata(row.node, source));
                     row.subtitles = (fresh.linked.get(String(row.node.id)) || []).map(sub => ({...sub,
                         originalPath:row.node.originalPath?.replace(/[^/]+$/,() => sub.name),path:sub.name}));
                     mediaRecords.remember(row);
@@ -4722,10 +4935,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         }
         return {start:Number.isFinite(start) ? start : null,end,rawEnd,events,issues,invalid,dialogue,priorEnd,longest,visualEnd};
     }
-    function subtitleEndTime(text, ext) {
-        return subtitleTimeline(text,ext).end;
-    }
-    function subtitleCheckDuration(row, text, ext, log = () => {}, timeline = subtitleTimeline(text,ext)) {
+    function subtitleCheckDuration(row, timeline, log) {
         const {start,end,rawEnd,events,issues,invalid,priorEnd,longest,visualEnd} = timeline;
         const validDuration = value => Number.isFinite(Number(value)) && Number(value) > 0 ? Number(value) : 0;
         const driveSeconds = validDuration(row.node.durationSeconds), runtime = validDuration(row.parsed?.runtimeSeconds);
@@ -5418,27 +5628,21 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
     function subtitleDialogue(text, ext) {
         return subtitleTimeline(text, ext).dialogue.join('\n');
     }
-    function subtitlePayload(bytes, ext, language, onDecoded = () => {}, validateTimeline) {
+    function subtitleValidateContent(row, bytes, ext, language, log = () => {}) {
         if (!bytes.length || bytes.length > SUBTITLE_LIMIT || !['srt','ass','ssa','vtt'].includes(ext)) throw new Error('仅支持单个 SRT、ASS、SSA、VTT 字幕，不导入压缩包或不完整字幕对');
         let decoded;
         try { decoded = subtitleDecode(bytes); }
         catch { throw new Error('字幕文本解码失败（UTF-8 / UTF-16 / GB18030），未上传'); }
         const {text, encoding} = decoded;
-        onDecoded(`编码 ${encoding.toUpperCase()}，${bytes.length} 字节`);
+        const description = `编码 ${encoding.toUpperCase()}，${bytes.length} 字节`;
+        log('字幕解码', description);
         if (/^\s*(?:<!doctype\s+html|<html|\{"(?:error|message)")/i.test(text) || !(/-->|\[Events\][\s\S]*Dialogue\s*:/i.test(text))) throw new Error('下载内容不是可识别的字幕文本（' + encoding.toUpperCase() + '，' + bytes.length + ' 字节，' + (/<!doctype\s+html|<html|<body/i.test(text.slice(0, 1024)) ? '返回了 HTML 页面' : '缺少字幕时间轴或 Dialogue') + '）');
         const timeline = subtitleTimeline(text, ext);
-        if (validateTimeline) validateTimeline(timeline);
-        else if (!timeline.dialogue.length) throw new Error('字幕时间轴没有可用的对白');
+        const timing = subtitleCheckDuration(row, timeline, log);
         const dialogue = timeline.dialogue.join('\n');
         if (language !== 'en' && !/[\u3400-\u9fff]/.test(dialogue)) throw new Error('字幕正文未检测到中文，未上传');
         if (language === 'en' && !/[a-z]{2}/i.test(dialogue)) throw new Error('字幕正文未检测到英文，未上传');
-        return text;
-    }
-    function subtitleValidateContent(row, bytes, ext, language, log = () => {}) {
-        let encoding = '', timing;
-        const text = subtitlePayload(bytes, ext, language, message => { encoding = message; log('字幕解码', message); },
-            timeline => {timing = subtitleCheckDuration(row, '', ext, log, timeline);});
-        return {text, encoding, ...timing, work:{status:'unconfirmed', reason:'正文格式和语言通过，作品归属未确认'}};
+        return {text, encoding:description, ...timing, work:{status:'unconfirmed', reason:'正文格式和语言通过，作品归属未确认'}};
     }
     function subtitleVerificationMessage(result) {
         return `格式/语言通过；${({file:'对白范围与视频文件时长相符', unknown:'无时长参考', reference:'TMDB 仅作作品时长参考', 'reference-difference':'与 TMDB 作品时长参考有差异'})[result.evidence] || '时长证据待确认'}；${result.work?.status === 'supported' ? 'AI 支持作品归属（非实证）' : '作品归属未确认'}；未核对音画同步`;
@@ -5508,10 +5712,11 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         if (subtitleCovered(row)) return 'complete';
         return row.writeBlocked || row.coverageUnconfirmed || row.embedded?.unconfirmed ? 'unconfirmed' : 'missing';
     }
-    const subtitleSearchLabels = {unsearched:'尚未查找',ready:'待补齐',choice:'手动选择',notFound:'已查询来源未找到匹配项',failed:'查询失败'};
+    const subtitleSearchLabels = {unsearched:'尚未查找',ready:'待补齐',choice:'手动选择',notFound:'已查询来源未找到匹配项',unconfirmed:'候选无法确认，请导入字幕',failed:'查询失败'};
     function subtitleSearchState(row) {
-        if (row.selectedCandidate && !row.selectedCandidate.downloadFailed) return 'ready';
-        if (row.candidates?.some(candidate => !candidate.downloadFailed)) return 'choice';
+        if (row.selectedCandidate && !row.selectedCandidate.downloadFailed && !row.selectedCandidate.opaque) return 'ready';
+        if (row.candidates?.some(candidate => !candidate.downloadFailed && !candidate.opaque)) return 'choice';
+        if (row.candidates?.some(candidate => !candidate.downloadFailed && candidate.opaque)) return 'unconfirmed';
         const sources = row.sources || [];
         if (sources.some(source => source.error || source.paused || source.cacheError && source.count == null
             || source.queries?.some(query => query.error) || source.downloadErrors?.length)) return 'failed';
@@ -5719,16 +5924,17 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             }
         });
     }
-    function subtitleSearchSummary(rows) {
+    function subtitleSearchSummary(rows, labels = subtitleSearchLabels) {
         const coverage = {complete:0,missing:0,unconfirmed:0};
-        const search = {unsearched:0,ready:0,choice:0,notFound:0,failed:0};
+        const search = {unsearched:0,ready:0,choice:0,unconfirmed:0,notFound:0,failed:0};
         for (const row of rows) {
             const state = subtitleCoverageState(row);
             coverage[state]++;
             if (state !== 'complete') search[subtitleSearchState(row)]++;
         }
-        const counts = Object.entries(search).filter(([, count]) => count).map(([state, count]) => `${subtitleSearchLabels[state]} ${count}`);
-        return [`视频 ${rows.length} · 有字幕 ${coverage.complete} · 缺可用字幕 ${coverage.missing} · 检查未确认 ${coverage.unconfirmed}`, ...counts].join(' · ');
+        const counts = new Map();
+        for (const [state,count] of Object.entries(search)) if (count) counts.set(labels[state], (counts.get(labels[state]) || 0) + count);
+        return [`视频 ${rows.length} · 有字幕 ${coverage.complete} · 缺可用字幕 ${coverage.missing} · 检查未确认 ${coverage.unconfirmed}`, ...Array.from(counts, ([label,count]) => label + ' ' + count)].join(' · ');
     }
     function subtitleSearchMessage(row) {
         const message = row.selectedCandidate
@@ -5888,7 +6094,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             parsed.query, parsed.year, !!parsed.tv, parsed.tmdbId, parsed.season, parsed.episode, parsed.endEpisode, node.durationSeconds, parsed.runtimeSeconds, !!parsed.standalone]);
     }
     async function inspectExistingSubtitles(row, drive, language, log = () => {}, check = () => {}, {force = false, review = null, observe = () => {}} = {}) {
-        row.complete = false; row.verification = null; row.coverageUnconfirmed = false;
+        row.complete = false; row.verification = null; row.verifiedSubtitle = null; row.verifiedSubtitleCandidate = null; row.coverageUnconfirmed = false;
         const rejected = [];
         for (const sub of row.subtitles.filter(sub => /\.(srt|ass|ssa|vtt)$/i.test(sub.name))) {
             check(); drive.assertReady?.();
@@ -5900,6 +6106,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     log('现有字幕无效', `${row.node.name} · ${sub.name} · 已记录疑似错片：${cached.result.work.reason}`); continue;
                 }
                 row.verification = cached.result;
+                row.verifiedSubtitle = sub;
                 row.complete = true; row.error = ''; row.searchMessage = '已核验记录复用：' + sub.name + ' · ' + subtitleVerificationMessage(cached.result);
                 log('已核验记录复用', `${row.node.name} · ${sub.name} · ${subtitleVerificationMessage(cached.result)}`); return;
             }
@@ -5918,6 +6125,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     rejected.push(sub.name + '：疑似其他作品 · ' + result.work.reason); continue;
                 }
                 row.verification = result;
+                row.verifiedSubtitle = sub;
                 row.complete = true; row.error = ''; row.searchMessage = '已有字幕：' + sub.name + ' · ' + subtitleVerificationMessage(result);
                 log('现有字幕确认', `${row.node.name} · ${sub.name} · ${subtitleVerificationMessage(result)}`); return;
             } catch (error) {
@@ -6299,15 +6507,20 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         row.parsed = parsed;
     }
     function subtitleSearchGroups(rows) {
+        // A season runs sequentially so the first episode can establish shared caches.
+        return [...groupSubtitleRows(rows, row => {
+            const {parsed} = row;
+            return parsed.tv ? JSON.stringify([parsed.tmdbId || '',titleKey(parsed.query),parsed.year || '',parsed.season]) : row;
+        }).values()];
+    }
+    function groupSubtitleRows(rows, keyOf) {
         const groups = new Map();
         for (const row of rows) {
-            const parsed = row.parsed;
-            // A season runs sequentially so the first episode can establish shared caches.
-            const key = parsed.tv ? JSON.stringify([parsed.tmdbId || '',titleKey(parsed.query),parsed.year || '',parsed.season]) : row;
+            const key = keyOf(row);
             if (!groups.has(key)) groups.set(key, []);
             groups.get(key).push(row);
         }
-        return [...groups.values()];
+        return groups;
     }
     async function readSubtitleImport(files, check, log) {
         if (files.length > 200) throw new Error('一次最多选择 200 个本地文件');
@@ -6391,15 +6604,8 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         return {row,reason:'文件名中的作品归属未确认'};
     }
     function subtitleImportGroups(inventory) {
-        const groups = new Map();
-        for (const row of inventory) {
-            const {parsed} = row;
-            if (parsed.tv && (parsed.season == null || parsed.episode == null)) continue;
-            const key = parsed.tv ? row.groupKey : row;
-            if (!groups.has(key)) groups.set(key,[]);
-            groups.get(key).push(row);
-        }
-        return [...groups.values()];
+        const eligible = inventory.filter(({parsed}) => !parsed.tv || parsed.season != null && parsed.episode != null);
+        return [...groupSubtitleRows(eligible, row => row.parsed.tv ? row.groupKey : row).values()];
     }
     function planSubtitleImport(entries, rows, language, confirmed, log) {
         const counts = new Map();
@@ -6437,6 +6643,29 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         const after = (mediaSubtitleLinks(nodes,row.node.parentId,row.history).linked.get(String(row.node.id)) || []).map(signature).sort();
         if (before.length !== after.length || before.some((sub,index) => sub !== after[index]))
             throw new Error('目录中的关联字幕已变化，请重新检查目录后导入');
+    }
+    function subtitleOrganizeHints(row) {
+        const sub = row.verifiedSubtitle, parsed = row.parsed;
+        if (!row.complete || !sub || !row.subtitles.some(file => file.id === sub.id && file.name === sub.name)) return null;
+        const candidate = row.verifiedSubtitleCandidate;
+        const match = subtitleCandidateFilter(parsed,[],sub.name);
+        if (match.hardMismatch || match.opaque || match.excluded && match.excluded !== '无关') return null;
+        const trusted = candidate && !candidate.opaque && !candidate.hardMismatch && (candidate.titleMatched || candidate.identityMatched);
+        if (!match.titleMatched && !trusted) return null;
+        const hint = parseMediaName(sub.name);
+        const year = parsed.year || (!parsed.tv ? hint.year : '');
+        const queries = [...new Set([hint.query,parsed.query,...(parsed.aliases || [])].map(title => subtitleQueryTitle(title,year)).filter(Boolean))].slice(0,3);
+        return {queries,year,type:parsed.tv ? 'tv' : 'movie',id:parsed.workResolved && parsed.tmdbId || ''};
+    }
+    async function savePanelSubtitle(drive, row, {name, bytes, verification, language, candidate}, progress, check) {
+        const target = await drive.save(row,name,bytes,progress,check,
+            {language,beforeWrite:nodes => checkSubtitleImportDirectory(row,name,nodes)});
+        row.subtitles.push(target);
+        row.siblingNames?.add(name.toLowerCase());
+        row.complete = true;
+        row.verification = verification;
+        row.verifiedSubtitle = target;
+        row.verifiedSubtitleCandidate = candidate || null;
     }
     function subtitleCandidateNameIssue(row, candidate) {
         if (!candidate || candidate.ext === 'zip') return '';
@@ -6481,7 +6710,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
     function initSubtitles(provider = '123', flow) {
         const ui = makePanel(provider + (flow ? ' 影视整理' : ' 字幕'), (flow ? mediaOrganizerMarkup(true) : '') + `
             ${flow ? '' : '<p>勾选视频或文件夹后，查找并补齐字幕。</p>'}
-            <div class="panel-actions"><button id="readSubtitles" ${flow ? 'hidden' : ''}>查找字幕</button><button id="fillSubtitles" ${flow ? 'hidden' : ''} disabled>补齐字幕</button><button id="reviewSubtitleDeletes" disabled>删除字幕</button><button id="importSubtitles" type="button" ${flow ? 'hidden' : ''}>导入字幕</button><button id="stopSubtitles" hidden>停止</button></div>
+            <div class="panel-actions"><button id="readSubtitles">查找字幕</button><button id="fillSubtitles" disabled>补齐字幕</button><button id="reviewSubtitleDeletes" disabled>删除字幕</button><button id="importSubtitles" type="button">导入字幕</button><button id="stopSubtitles" hidden>停止</button></div>
             <input id="subtitleImportFiles" type="file" accept=".srt,.ass,.ssa,.vtt,.zip" multiple hidden>
             <p id="subtitleScope"></p>
             <p id="subtitleProgress" role="status">先在网页勾选视频或文件夹。</p>
@@ -6507,7 +6736,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             </section>
             <details id="subtitleDiagnostics" name="subtitleFooter"><summary>${flow ? '详细日志' : '字幕运行日志'}</summary><div class="panel-actions"><button id="copySubtitleLog">复制日志</button><button id="clearSubtitleLog">清空日志</button></div><textarea id="subtitleLog" readonly spellcheck="false" aria-label="字幕运行日志"></textarea></details>
 `, 'subtitle');
-        ui.moveSettings(['subtitleSettings'], '字幕来源与设置');
+        ui.moveSettings(['subtitleSettings'], '字幕来源与设置', '#settingsModels');
         ui.moveSettings(['openSubtitlesSettings'], 'OpenSubtitles', '#settingsModels');
         let inventory = [], drive = null, subtitleContext = null, checkedScope = null, deletePlan = null, busy = false, cancelled = false, reviewCandidates = null;
         const deleteSelection = new Set(), pendingDeletes = new Set();
@@ -6534,6 +6763,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         const status = text => { ui.get('subtitleProgress').textContent = safeDiagnostic(text); };
         const clearDeletePreview = () => { deletePlan = null; const preview = ui.get('subtitleDeletePreview'); preview.hidden = true; preview.open = false; ui.get('subtitleDeleteList').textContent = ''; };
         const logLines = [];
+        const displayLog = flow ? null : scheduleLogDisplay(ui.get('subtitleLog'),logLines);
         const diag = (event, detail = '') => {
             const message = safeDiagnostic(detail);
             const line = `${new Date().toLocaleTimeString()} [${event}]${message ? ' ' + message : ''}`;
@@ -6542,12 +6772,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 const oldest = logLines.findIndex(line => !/\[(批量统计|检查开始|字幕检查|检查复用)\]/.test(line));
                 logLines.splice(Math.max(0,oldest),1);
             }
-            if (flow) flow.flushLog();
-            else {
-                const box = ui.get('subtitleLog');
-                box.value = logLines.join('\n');
-                box.scrollTop = box.scrollHeight;
-            }
+            if (flow) flow.flushLog(); else displayLog();
         };
         const check = () => { if (flow) flow.check(); else if (cancelled) throw new Error('已停止'); };
         const configuredAI = () => {
@@ -6564,10 +6789,14 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         };
         const awaitingCheck = row => row.checkState && row.checkState !== 'done';
         const covered = row => !awaitingCheck(row) && subtitleCovered(row);
-        const needsChoice = row => !awaitingCheck(row) && !covered(row) && !row.writeBlocked && subtitleSearchState(row) === 'choice';
+        const searchLabels = flow ? {...subtitleSearchLabels,choice:subtitleSearchLabels.unconfirmed} : subtitleSearchLabels;
+        const needsChoice = row => !flow && !awaitingCheck(row) && !covered(row) && !row.writeBlocked && !row.seasonManualImportOnly && subtitleSearchState(row) === 'choice';
         const readyToFill = row => searching && checkedScope !== null && !awaitingCheck(row) && !covered(row)
-            && !row.organized && !row.organizePending && !row.writeBlocked && !!row.selectedCandidate && !row.selectedCandidate.downloadFailed
-            && !subtitleCandidateNameIssue(row,row.selectedCandidate);
+            && !row.organized && !row.organizePending && !row.writeBlocked && !row.seasonManualImportOnly && !!row.selectedCandidate && !row.selectedCandidate.downloadFailed && !row.selectedCandidate.opaque
+            && (!subtitleCandidateNameIssue(row,row.selectedCandidate) || !flow && !row.manualCandidate && (
+                row.autoCandidates?.some(candidate => !candidate.downloadFailed && !subtitleCandidateNameIssue(row,candidate))
+                || row.sources?.some(source => source.deferred || source.deferredTerms?.length)
+            ));
         const eligibleFill = rows => mergedSubtitleFillTargets(rows,readyToFill,covered);
         const inView = (row, view) => {
             if (view === 'all') return true;
@@ -6601,7 +6830,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     + (first.parsed.tv ? ' · ' + first.node.name : ''));
             }
             target.value = draft.target;
-            target.disabled = busy || !!draft.cardRows;
+            target.disabled = busy;
             target.onchange = () => {
                 if (busy) return;
                 draft.target = target.value;
@@ -6614,7 +6843,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 importDraft = null;
                 status('已取消导入');
                 render();
-                if (!flow) ui.get('importSubtitles').focus?.();
+                ui.get('importSubtitles').focus?.();
             });
             if (draft.plan) {
                 const label = {ready:'可导入',skip:'已补齐跳过',invalid:'检测失败',unmatched:'待匹配'};
@@ -6670,7 +6899,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             const checked = inventory.filter(row => !awaitingCheck(row));
             const remaining = inventory.length - checked.length;
             summary.hidden = !inventory.length;
-            const coverage = searching ? subtitleSearchSummary(checked) : [
+            const coverage = searching ? subtitleSearchSummary(checked,searchLabels) : [
                 '有字幕 ' + checked.filter(covered).length,
                 '没字幕 ' + checked.filter(row => subtitleCoverageState(row) === 'missing').length,
                 '检查未确认 ' + checked.filter(row => subtitleCoverageState(row) === 'unconfirmed').length
@@ -6704,7 +6933,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 item.dataset.state = needsChoice(row) ? 'choice' : coverage;
                 const badge = document.createElement('span');
                 badge.className = 'subtitle-badge';
-                const state = searching && !pending && !embedded?.chinese && !row.writeBlocked ? subtitleSearchLabels[subtitleSearchState(row)] : '';
+                const state = searching && !pending && !embedded?.chinese && !row.writeBlocked ? searchLabels[subtitleSearchState(row)] : '';
                 badge.textContent = embedded?.chinese ? '内嵌中文 · 已补齐'
                     : (label === '缺可用字幕' && !searching ? '没字幕' : label) + (state && coverage !== 'complete' ? ' · ' + state : '');
                 if (row.parsed.episode != null && mode) {
@@ -6739,11 +6968,11 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     };
                     line.append(checkbox, name); item.append(line);
                 }
-                if ((flow && row.parsed.tv) || !searching || mode === 'delete' || subtitleCovered(row) || row.writeBlocked || checkedScope === null || !row.candidates?.length) return item;
+                if (flow || !searching || mode === 'delete' || subtitleCovered(row) || row.writeBlocked || checkedScope === null || !row.candidates?.some(candidate => !candidate.downloadFailed && !candidate.opaque)) return item;
                 const select = document.createElement('select'); select.disabled = busy || checkedScope === null;
                 trackFocus(select, JSON.stringify(['candidate',row.node.id]));
                 const blank = document.createElement('option'); blank.value = ''; blank.textContent = '跳过此视频 / 请选择字幕'; select.append(blank);
-                const available = row.candidates.filter(candidate => !candidate.downloadFailed);
+                const available = row.candidates.filter(candidate => !candidate.downloadFailed && !candidate.opaque);
                 available.forEach((candidate, index) => {
                     const option = document.createElement('option'); option.value = String(index);
                     const issue = subtitleCandidateNameIssue(row,candidate);
@@ -6767,11 +6996,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 item.append(select);
                 return item;
             };
-            const groups = new Map();
-            for (const row of inventory) {
-                if (!groups.has(row.groupKey)) groups.set(row.groupKey, []);
-                groups.get(row.groupKey).push(row);
-            }
+            const groups = groupSubtitleRows(inventory, row => row.groupKey);
             let visible = 0;
             if (seasonView && !groups.has(seasonView.key)) seasonView = null;
             if (importDraft) {
@@ -6810,16 +7035,22 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 const heading = document.createElement('h5'); heading.textContent = title; heading.title = title;
                 box.append(heading);
                 if (flow) {
-                    const work = document.createElement('p');
-                    const matches = rows.filter(row => row.media?.detail && !row.media.error && row.media.include).length;
                     const finished = rows.filter(row => row.organized).length;
                     const uncertain = rows.filter(row => row.organizePending).length;
-                    work.textContent = (flow.recognizing ? '正在识别' : '作品已匹配 ' + matches + '/' + rows.length)
-                        + (finished ? ' · 已整理 ' + finished : '') + (uncertain ? ' · 整理待核对 ' + uncertain : '');
-                    box.append(work);
-                    const edit = rows.map(row => row.media).filter(row => row?.include);
-                    if (edit.length && !flow.recognizing && !rows.some(row => row.organized || row.organizePending))
-                        addButton(box,'核对作品与季集',JSON.stringify(['work',key]),() => flow.openWork(edit));
+                    const edit = rows.filter(row => !row.organized && !row.organizePending && row.media?.include && !flow.workReady(row.media))
+                        .map(row => row.media);
+                    if (flow.recognizing || finished || uncertain || edit.length) {
+                        const work = document.createElement('p');
+                        work.textContent = [
+                            flow.recognizing ? '正在识别' : edit.length &&
+                                (edit.every(row => !row.detail) ? '未匹配作品' : '整理信息未确认'),
+                            finished && ('已整理 ' + finished),
+                            uncertain && ('整理结果待确认 ' + uncertain)
+                        ].filter(Boolean).join(' · ');
+                        box.append(work);
+                    }
+                    if (edit.length && !flow.recognizing)
+                        addButton(box,season ? '修正作品信息' : '修正片名',JSON.stringify(['work',key]),() => flow.openWork(edit));
                 }
                 const open = (mode, exceptions = []) => {
                     seasonView = {key,mode,exceptions:new Set(exceptions.map(row => row.node.id)),
@@ -6850,8 +7081,18 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     if (unknown.length) count('检查未确认',unknown);
                     if (unchecked.length) count(scan?.interrupted ? '未检查完成' : '待检查／检查中',unchecked);
                     if (searching && !flow) {
-                        const targets = rows.filter(row => !covered(row) && !awaitingCheck(row) && !row.writeBlocked);
+                        const seasonManualImportOnly = season && rows.some(row => row.seasonManualImportOnly);
+                        const seasonFailures = rows.filter(row => !covered(row) && row.sources?.some(source =>
+                            source.error || source.paused || source.cacheError || source.queries?.some(query => query.error)
+                        ));
+                        const targets = rows.filter(row => !covered(row) && !awaitingCheck(row) && !row.writeBlocked && !seasonManualImportOnly);
                         const blocked = shown.filter(row => !covered(row) && row.writeBlocked);
+                        if (seasonManualImportOnly) {
+                            const note = document.createElement('p');
+                            note.textContent = '自动查找未覆盖本季全部缺字幕集，请使用“导入字幕”手动补齐'
+                                + (seasonFailures.length ? ' · 查询失败 ' + seasonFailures.length + ' 集，请查看日志' : '');
+                            box.append(note);
+                        }
                         const unselected = targets.filter(row => !row.selectedCandidate || row.selectedCandidate.downloadFailed);
                         const pending = unselected.filter(row => row.candidates?.some(candidate => !candidate.downloadFailed));
                         const failures = unselected.filter(row => subtitleSearchState(row) === 'failed');
@@ -6864,7 +7105,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                             packs.get(id).choices.set(row,candidate);
                         }
                         const ready = targets.filter(readyToFill);
-                        const nameIssues = shown.filter(row => subtitleCandidateNameIssue(row,row.selectedCandidate));
+                        const nameIssues = shown.filter(row => !readyToFill(row) && subtitleCandidateNameIssue(row,row.selectedCandidate));
                         if (nameIssues.length) {
                             const note = document.createElement('p');
                             note.textContent = nameIssues.length + ' 集原名待处理 · ' + subtitleEpisodeRange(nameIssues)
@@ -6920,11 +7161,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     const actionRows = rows.filter(row => !row.organized && !row.organizePending && !covered(row) && subtitleCoverageState(row) === 'missing');
                     const knownSeason = !season || first.parsed.season != null && actionRows.every(row => row.parsed.episode != null);
                     const fill = eligibleFill(rows);
-                    const actions = document.createElement('div'); actions.className = 'panel-actions';
                     if (actionRows.length && knownSeason) {
-                        addButton(actions,'查找字幕',JSON.stringify(['search',key]),() => searchCard(rows));
-                        addButton(actions,'导入字幕',JSON.stringify(['import',key]),() => openPicker(rows));
-                        if (fill.length) addButton(actions,'补齐字幕（' + fill.length + ' 项）',JSON.stringify(['fill',key]),() => fillCard(rows));
                         if (season && !fill.length && actionRows.some(row => row.cardSearched)) {
                             const note = document.createElement('p');
                             note.textContent = '自动候选未覆盖当前选区的全部缺字幕集，请导入字幕。';
@@ -6935,7 +7172,6 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     } else if (actionRows.length && season) {
                         const note = document.createElement('p'); note.textContent = '请先核对季号和集号，再查找或导入字幕。'; box.append(note);
                     }
-                    box.append(actions);
                 }
                 if (!busy && shown.some(row => row.subtitles.some(sub => canDelete(row,sub)))) {
                     addButton(box, season ? '选择本季外置字幕' : '选择外置字幕',JSON.stringify(['delete',key]),() => open('delete'));
@@ -6971,9 +7207,10 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             }
         };
         const picker = ui.get('subtitleImportFiles');
-        const openPicker = cardRows => {
+        const openPicker = () => {
             if (busy) return;
-            importPicker = {language:settings().language,cardRows};
+            if (flow && !flow.registryReady) { status('请先识别并检查当前选区。'); return; }
+            importPicker = {language:settings().language};
             picker.value = '';
             picker.click();
         };
@@ -6991,8 +7228,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     catch (error) { status(error.message); return; }
                 }
                 else if (!await ensureSubtitleCheck()) return;
-                if (draft.cardRows && !draft.cardRows.every(row => inventory.includes(row))) return;
-                const groups = subtitleImportGroups(draft.cardRows || inventory);
+                const groups = subtitleImportGroups(inventory);
                 if (!groups.length) { status('当前选区没有可导入的电影或季集。'); return; }
                 Object.assign(draft,{scan,drive,groups});
                 importDraft = null;
@@ -7004,8 +7240,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     if (draft.scan !== scan || draft.drive !== drive) throw new Error('检查范围已改变，请重新选择本地文件');
                     clearDeletePreview();
                     seasonView = null;
-                    importDraft = {...draft,entries,target:draft.cardRows ? '0' : '',confirmed:new Set(),showIssues:false,plan:null};
-                    if (draft.cardRows) reviewImport();
+                    importDraft = {...draft,entries,target:'',confirmed:new Set(),showIssues:false,plan:null};
                     for (const entry of entries) if (entry.error) diag('导入读取失败',entry.label + ' · ' + entry.error);
                     results.scrollTop = 0;
                     status('请选择导入目标并核对预览。');
@@ -7034,21 +7269,18 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             };
             const writes = new Map();
             try {
-              await batchStage(targets,'本地字幕上传与核验（视频）',batchLog,async ({row,name,bytes,verification,label,language},verify,_index,observe) => {
+              await batchStage(targets,'本地字幕上传与核验（视频）',batchLog,async (entry,verify,_index,observe) => {
+                const {row,name,verification,label} = entry;
                 let outcome;
                 try {
                     if (!inventory.includes(row) || covered(row) || row.writeBlocked) throw new Error('目标状态已变，请重新检查目录');
                     status('正在导入 · ' + row.node.name);
                     diag('导入开始',label + ' → ' + row.path);
-                    const target = await enqueueByKey(writes,JSON.stringify([row.node.parentId,name.toLowerCase()]),() => draft.drive.save(row,name,bytes,phase => {
+                    await enqueueByKey(writes,JSON.stringify([row.node.parentId,name.toLowerCase()]),() => savePanelSubtitle(draft.drive,row,entry,phase => {
                         status(phase + ' · ' + row.node.name);
                         diag('导入网盘',row.node.name + ' · ' + phase);
-                    },verify,{language,beforeWrite:nodes => checkSubtitleImportDirectory(row,name,nodes)}));
+                    },verify));
                     if (flow) flow.invalidate('导入字幕使整理预览失效');
-                    row.subtitles.push(target);
-                    row.siblingNames?.add(name.toLowerCase());
-                    row.complete = true;
-                    row.verification = verification;
                     row.error = '';
                     row.searchMessage = '已导入，上传内容一致 · ' + subtitleVerificationMessage(verification);
                     done++;
@@ -7119,6 +7351,24 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     }
                   }
                 },check,8,'同季别名顺序复用 TMDB 资料');
+                const seasonGroups = groupSubtitleRows(
+                    rows.filter(row => row.parsed.tv && row.parsed.season == null && row.parsed.episode != null),
+                    row => JSON.stringify([row.node.parentId,titleKey(row.parsed.query),row.parsed.year || ''])
+                );
+                for (const group of seasonGroups.values()) {
+                    const episodes = [...new Set(group.map(row => row.parsed.episode))].sort((a,b) => a - b);
+                    if (group.length < 2 || episodes.length !== group.length || episodes.some(episode => episode < 1)) continue;
+                    if (episodes.at(-1) - episodes[0] + 1 < episodes.length) continue;
+                    for (const row of group) {
+                        row.parsed.season = 1;
+                        row.parsed.seasonInferred = true;
+                        row.groupKey = JSON.stringify([
+                            row.node.parentId, row.node.folders, row.parsed.query,
+                            row.parsed.year, row.parsed.season, row.parsed.tmdbId || ''
+                        ]);
+                    }
+                    diag('季集推断', group[0].parsed.query + ' · 同一选区连续 ' + episodes.length + ' 集且无季号，暂按第 1 季搜索');
+                }
                 const seasons = subtitleSearchGroups(rows).filter(group => group[0]?.parsed.tv);
                 await batchStage(seasons,'整季字幕准备（季）',batchLog,async (group,verify) => {
                     status('查找整季字幕：' + group[0].parsed.query);
@@ -7141,10 +7391,22 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     meter(++done, rows.length); if (flow) flow.requestRender(); else render();
                     return subtitleSearchState(row) === 'failed' ? 'failed' : undefined;
                 },check,8,'复用整季缓存，迅雷、SubDL、OpenSubtitles 和 AI 保持各自限速');
+                for (const group of subtitleSearchGroups(rows)) {
+                    if (!group[0]?.parsed.tv) continue;
+                    const targets = group.filter(row => !covered(row));
+                    const available = targets.filter(row => row.autoCandidates?.some(candidate => !candidate.downloadFailed));
+                    if (!targets.length || available.length === targets.length) continue;
+                    for (const row of targets) {
+                        row.seasonManualImportOnly = !flow;
+                        row.selectedCandidate = null;
+                        row.manualCandidate = false;
+                    }
+                    diag('整季转手动导入', group[0].parsed.query + ' · 自动结果未覆盖全部缺字幕集，保留日志并停止逐集补齐');
+                }
                 const sourceFailures = rows.filter(row => row.sources?.some(source => source.error || source.paused || source.cacheError
                     || source.queries?.some(query => query.error))).length;
                 const message = '已处理 ' + done + '/' + rows.length + ' · ' + (sourceFailures ? sourceFailures + ' 项遇到来源错误 · ' : '')
-                    + subtitleSearchSummary(rows);
+                    + subtitleSearchSummary(rows,searchLabels);
                 status('查找结束 · ' + message); diag('查找结束',message);
             } catch (error) {
                 const message = '已处理 ' + done + '/' + rows.length + ' · ' + error.message;
@@ -7288,19 +7550,17 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             }
             return checkedScope !== null;
         };
-        const searchCard = rows => runTask(async () => {
-            try { await requireCheckedSelection(); }
-            catch (error) { status(error.message); return; }
-            if (!rows.every(row => inventory.includes(row) && !row.organized && !row.organizePending)) return;
-            if (rows[0].parsed.tv && (rows[0].parsed.season == null || rows.some(row => !covered(row) && row.parsed.episode == null))) return;
-            searching = true;
-            for (const row of rows) if (!covered(row)) {
-                row.cardSearched = true;
-                row.candidates = []; row.autoCandidates = []; row.selectedCandidate = null; row.sources = []; row.manualCandidate = false;
-            }
-            await searchRows(rows);
-        },true);
         ui.get('readSubtitles').onclick = () => runTask(async () => {
+            if (flow) {
+                try { await flow.requireScope(); }
+                catch (error) { status(error.message); return; }
+                importDraft = null; importPicker = null; seasonView = null; searching = true;
+                const rows = inventory.filter(row => !row.organized && !row.organizePending && !awaitingCheck(row)
+                    && subtitleCoverageState(row) === 'missing' && (!row.parsed.tv || row.parsed.season != null && row.parsed.episode != null));
+                for (const row of rows) Object.assign(row,{cardSearched:true,candidates:[],autoCandidates:[],selectedCandidate:null,sources:[],manualCandidate:false});
+                await searchRows(rows);
+                return;
+            }
             if (!await ensureSubtitleCheck()) return;
             if (inventory.length && inventory.every(covered)) { meter(0,0); status('全部已补齐'); return; }
             importDraft = null; importPicker = null;
@@ -7441,34 +7701,33 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 status(`删除中断：已移入回收站 ${deleted} 个；${error.message}`);
             }
         }, true);
-        const fillCard = cardRows => runTask(async () => {
+        const fillCard = () => runTask(async () => {
             if (importDraft) return;
             meter(0,0);
             if (!drive) { status('请先查找字幕。'); return; }
-            const rows = typeof flow !== 'undefined' && flow ? eligibleFill(cardRows || []) : inventory.filter(readyToFill), config = settings();
-            if (!rows.length) { status('当前没有可补齐的字幕候选。'); return; }
+            const merged = typeof flow !== 'undefined' && flow;
+            const targets = merged ? eligibleFill(inventory) : inventory.filter(readyToFill), config = settings();
+            if (!targets.length) { status('当前没有可补齐的字幕候选。'); return; }
+            const groups = merged ? [...groupBatch(targets,row => row.parsed.tv ? row.groupKey : null).values()] : [targets];
+            const pausedDownloads = new Set();
+            const fillGroup = async rows => {
             meter(0,rows.length);
             config.reviewCandidates = reviewCandidates;
             let done = 0, failed = 0;
-            const pausedDownloads = new Set();
-            const mergedSeason = typeof flow !== 'undefined' && flow && rows[0].parsed.tv;
+            const mergedSeason = merged && rows[0].parsed.tv;
             const staged = new Map();
             let stagedBytes = 0;
             try {
                 await requireCheckedSelection();
                 const writes = new Map();
                 const save = async (row,payload,verify) => {
-                    const {name,bytes,verification,language} = payload;
-                    const target = await enqueueByKey(writes,JSON.stringify([row.node.parentId,name.toLowerCase()]),() =>
-                        drive.save(row,name,bytes,phase => {
+                    const {name,verification} = payload;
+                    await enqueueByKey(writes,JSON.stringify([row.node.parentId,name.toLowerCase()]),() =>
+                        savePanelSubtitle(drive,row,payload,phase => {
                             status(phase + '：' + row.node.name);
                             diag('网盘写入',row.node.name + ' · ' + phase);
-                        },verify,{language,beforeWrite:nodes => checkSubtitleImportDirectory(row,name,nodes)}));
+                        },verify));
                     if (typeof flow !== 'undefined' && flow) flow.invalidate('补齐字幕使整理预览失效');
-                    row.subtitles.push(target);
-                    row.siblingNames?.add(name.toLowerCase());
-                    row.complete = true;
-                    row.verification = verification;
                     row.searchMessage = '已补齐，上传内容一致：' + name + ' · ' + subtitleVerificationMessage(verification);
                     done++;
                     diag('补齐成功',row.node.name + ' · 上传字节已核验 ' + name);
@@ -7518,7 +7777,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                                 if (row.siblingNames?.has(name.toLowerCase())) throw new Error('目标目录已有同名项目，待处理：' + name);
                                 const detected = subtitleFileInfo(name).language;
                                 const language = detected || candidate.language || (config.language === 'en' ? 'en' : 'zh');
-                                payload = {name, bytes, verification, language}; break;
+                                payload = {name, bytes, verification, language, candidate}; break;
                             } catch (error) {
                                 observe(error);
                                 check();
@@ -7583,7 +7842,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                         for (const row of rows) row.selectedCandidate = null;
                         status(preflightError);
                         diag('整季补齐已拦截',preflightError);
-                        return;
+                        return {done,failed:rows.length};
                     }
                     meter(0,rows.length);
                     await batchStage(rows,'整季上传与逐项核验（视频）',batchLog,async (row,verify,_index,observe) => {
@@ -7594,10 +7853,24 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 }
                 const message = `已处理 ${done + failed}/${rows.length} · 已补齐 ${done} · 未补齐 ${failed}`;
                 status('补齐结束 · ' + message); diag('补齐结束',message);
+                return {done,failed};
             } catch (error) {
                 // An interrupted item may have a receipt, but it did not finish processing.
                 const message = `已处理 ${done + failed}/${rows.length} · 已补齐 ${done} · ${error.message}`;
                 status('补齐中断 · ' + message); diag('补齐中断',message);
+                return null;
+            }
+            };
+            let done = 0, failed = 0;
+            for (const rows of groups) {
+                const result = await fillGroup(rows);
+                if (!result) return;
+                done += result.done;
+                failed += result.failed;
+            }
+            if (groups.length > 1) {
+                const summary = '补齐汇总 · 已补齐 ' + done + ' · 未补齐 ' + failed;
+                status(summary); diag('补齐汇总',summary);
             }
         }, true);
         ui.get('fillSubtitles').onclick = () => fillCard();
@@ -7631,8 +7904,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             } finally { ui.get('subtitlePassword').value = ''; }
         }, true);
         ui.get('copySubtitleLog').onclick = async () => {
-            if (flow) flow.writeLog();
-            try { await navigator.clipboard.writeText(ui.get('subtitleLog').value || '（暂无运行日志）'); status('运行日志已复制。'); }
+            try { await navigator.clipboard.writeText(logLines.join('\n') || '（暂无字幕运行日志）'); status('运行日志已复制。'); }
             catch (error) { status('复制日志失败：' + error.message); }
         };
 
@@ -7767,6 +8039,14 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 const row = byId.get(String(id));
                 if (!row || awaitingCheck(row) || row.writeBlocked || row.organized || row.organizePending) return 'unconfirmed';
                 return subtitleCoverageState(row);
+            };
+            flow.subtitleWorkHints = media => {
+                const row = byId.get(String(media.node.id));
+                return row && row.media === media && flow.coverage(media.node.id) === 'complete' ? subtitleOrganizeHints(row) : null;
+            };
+            flow.acceptSubtitleWork = media => {
+                const row = byId.get(String(media.node.id));
+                if (row?.media === media) updateIdentity(row);
             };
             flow.canOrganize = media => {
                 const state = flow.coverage(media.node.id);

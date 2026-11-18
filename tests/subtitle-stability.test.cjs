@@ -20,7 +20,7 @@ function identities() {
  assert.equal(check({query:'银翼杀手',year:1982},['银翼杀手2049/Blade Runner 2049'],'Blade.Runner.2049.chs.srt').titleMatched,false);
  assert.equal(check({query:'指环王3：王者无敌',year:2003,aliases:['魔戒3：王者归来']},['魔戒2：双塔奇兵'],'魔戒2：双塔奇兵.2002.chs.srt').titleMatched,false);
  const real=new TextEncoder().encode('[Script Info]\nTitle: Synthetic test\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:03.00,Default,,0,0,0,,测试字幕 Test\n');ctx.real=real;
- assert.ok(vm.runInContext('subtitlePayload(real,"ass","zh-cn,zh-tw,zh")',ctx).includes('[Events]'));
+ assert.ok(vm.runInContext('subtitleValidateContent({node:{name:"fixture"}},real,"ass","zh-cn,zh-tw,zh").text',ctx).includes('[Events]'));
  console.log('PASS stability identity: uploader prefixes, Dolby labels and trusted TMDB aliases accepted; wrong sequel/year still rejected; synthetic ASS passes body validation');
 }
 async function drives() {

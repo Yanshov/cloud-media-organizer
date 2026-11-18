@@ -62,7 +62,7 @@ const pick = (candidates, language = 'zh-cn,zh-tw,zh') => {
     assert.equal(transfers[0].anonymous, true);
     assert.deepEqual(Object.keys(transfers[0].headers), []);
     context.bytes = bytes;
-    assert.ok(run('subtitlePayload(bytes, "srt", "zh-cn,zh-tw,zh")').includes('测试字幕'));
+    assert.ok(run('subtitleValidateContent(row, bytes, "srt", "zh-cn,zh-tw,zh").text').includes('测试字幕'));
     assert.throws(() => run('subtitleBinary(download.url)'), /不支持/);
     assert.throws(() => run('subtitleBinary(download.url, {allowHttp:true,method:"PUT",bytes})'), /不支持/);
     assert.throws(() => run('subtitleBinary(download.url, {allowHttp:true,headers:{Authorization:"secret"}})'), /不支持/);
@@ -70,7 +70,7 @@ const pick = (candidates, language = 'zh-cn,zh-tw,zh') => {
     assert.throws(() => run('subtitleDownloadUrl("http://user:password@example.com/file.srt", {allowHttp:true})'), /不支持/);
     assert.equal(run('subtitleDownloadUrl("//subtitles.example/file.srt", {allowHttp:true,base:"https://subtitles.example/"})'), 'https://subtitles.example/file.srt');
     context.bytes = new TextEncoder().encode('<html>download error</html>');
-    assert.throws(() => run('subtitlePayload(bytes, "srt", "zh")'), /不是可识别/);
+    assert.throws(() => run('subtitleValidateContent(row, bytes, "srt", "zh")'), /不是可识别/);
     responseNames = ['Obesity.The.Post.Mortem.S01E02.简体.srt'];
     const mismatch = {parsed:{query:'Obesity: The Post Mortem', tv:true, season:1, episode:1}};
     assert.equal((await service.thunderSearch(mismatch, config)).length, 0, 'Explicit wrong episodes must be excluded entirely');

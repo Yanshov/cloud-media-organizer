@@ -82,9 +82,9 @@ async function bodyReview() {
 function dialogue() {
     const ass = '[Script Info]\nTitle: 中文元数据不算对白\n[Events]\nFormat: Start, End, Text\n  Dialogue: 0:00:00.00,0:03:00.00,{\\b1}合成中文\\NEnglish dialogue\n';
     assert.equal(ctx.subtitleDialogue(ass,'ass'),'合成中文 English dialogue');
-    assert.equal(ctx.subtitleEndTime(ass,'ass'),180);
+    assert.equal(ctx.subtitleTimeline(ass,'ass').end,180);
     assert.doesNotThrow(()=>ctx.subtitleValidateContent(row(),new TextEncoder().encode(ass),'ass',language));
-    assert.throws(()=>ctx.subtitlePayload(new TextEncoder().encode(ass.replace('合成中文','Hello')),'ass',language),/未检测到中文/,'Chinese metadata does not count as Chinese dialogue');
+    assert.throws(()=>ctx.subtitleValidateContent(row(),new TextEncoder().encode(ass.replace('合成中文','Hello')),'ass',language),/未检测到中文/,'Chinese metadata does not count as Chinese dialogue');
     const long = '合成台词'.repeat(10000); let excerpts;
     return ctx.createSubtitleBodyReviewer({reviewSubtitleBody:async payload=>{excerpts=payload.excerpts;return {verdict:'uncertain',confidence:0,evidence:'',reason:'不足'}}})(row(),long,'srt').then(()=>{
         assert.ok(excerpts.join('').length <= 6000,'AI body payload is bounded');

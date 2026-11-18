@@ -48,9 +48,9 @@ async function searchAndDownloads() {
     assert.equal(fetched.result.url,candidates[0].url);assert.equal(fetched.result.ext,'ass');assert.equal(requests.length,1,'Direct downloads need no detail API');
     assert.equal(transfers[0].anonymous,true);assert.deepEqual(Object.keys(transfers[0].headers),[],'No provider/drive credentials on subtitle downloads');
     const srt=await service.download({...candidates[0],ext:'srt'},config);assert.equal(srt.allowHttp,true);
-    assert.match(ctx.subtitlePayload(fetched.bytes,'srt',language),/中文字幕/);
+    assert.match(ctx.subtitleValidateContent(r,fetched.bytes,'srt',language).text,/中文字幕/);
     html=true;const rejected=await service.fetchFile(candidates[0],config);
-    assert.throws(()=>ctx.subtitlePayload(rejected.bytes,'srt',language),/不是可识别/,'Downloaded HTML is never accepted as subtitle text');
+    assert.throws(()=>ctx.subtitleValidateContent(r,rejected.bytes,'srt',language),/不是可识别/,'Downloaded HTML is never accepted as subtitle text');
     await service.thunderSearch(r,config);assert.equal(requests.length,1,'Repeated title query reuses parsed response cache');
     service.logout();await service.thunderSearch(r,config);assert.equal(requests.length,2,'Logout clears search cache');
     service.logout();response={code:0,data:[file('电影.2000.ass',{languages:['英语'],simple_name:'中英[ASS]电影.2000.ass'})]};
@@ -141,14 +141,16 @@ async function thunderOnlyUI() {
         parseMediaName:()=>row().parsed,mediaRecords:{get:()=>null},mediaBonusName:()=>false,mediaStem:name=>name.replace(/\.[^.]+$/,''),
         subtitleDrive:()=>({reconcile:async()=>[],inspectEmbedded:async()=>embedded,save:async()=>{saves++;return {id:'s'}}}),
         GM_xmlhttpRequest:options=>{assert.equal(elements.get('useThunder').disabled,true,'Source switch locked throughout search/download');
-            if(new URL(options.url).hostname==='api-shoulei-ssl.xunlei.com'){searches++;options.onload({status:200,responseText:JSON.stringify({code:0,data:[file('电影.2000.简体&英文.srt')]})});}
+            if(new URL(options.url).hostname==='api-shoulei-ssl.xunlei.com'){searches++;options.onload({status:200,responseText:JSON.stringify({code:0,data:[file('电影.2000.简体&英文.ChsEngA',{ext:'srt'}),file('电影.2000.简体&英文.srt')]})});}
             else options.onload({status:200,response:valid.buffer});return {abort(){}};}
     });
     vm.runInContext(part('    function createPanelTask(', '    function panelControls(')+part('    function subtitleInventory(', '    if (location.hostname'),ctx);ctx.initSubtitles();
     assert.equal(elements.get('useThunder').checked,true,'New source defaults on with older preferences');
     await elements.get('readSubtitles').onclick();assert.equal(searches,1);assert.match(elements.get('subtitleSummary').textContent,/缺可用字幕 1/);
     assert.match(elements.get('subtitleLog').value,/启用来源：迅雷/);assert.equal(elements.get('useThunder').disabled,false);
+    assert.equal(elements.get('fillSubtitles').disabled,false,'An unusable first source name must allow automatic fallback');
     await elements.get('fillSubtitles').onclick();assert.equal(saves,1);assert.match(elements.get('subtitleSummary').textContent,/有字幕 1/);
+    assert.match(elements.get('subtitleLog').value,/候选失败.*字幕原名不可用/);
     embedded={chinese:true,message:'有内嵌中文字幕，跳过补齐'};
     assert.equal(checks,1);
     selected = 'embedded';

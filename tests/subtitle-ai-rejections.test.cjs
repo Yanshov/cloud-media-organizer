@@ -24,7 +24,8 @@ const review = fn => ctx.createSubtitleReviewer({disambiguateSubtitle:fn},langua
     assert.equal(r.candidates.length,1); assert.equal(r.candidates[0],opaque);
     assert.equal(r.sources.find(s=>s.name==='迅雷').count,1);
     assert.equal(r.sources.find(s=>s.name==='迅雷').rejected,2,'Duplicate download URLs are removed by the same explicit work rejection');
-    assert.equal(ctx.subtitleSearchState(r),'choice','Opaque result remains manual');
+    assert.equal(ctx.subtitleSearchState(r),'unconfirmed','An opaque result is reported without asking the user to choose');
+    assert.equal(r.selectedCandidate,null,'An opaque result cannot be selected automatically');
     assert.match(r.searchMessage,/AI 排除 2/);
     assert.ok(logs.some(line=>line.includes('AI 排除候选') && line.includes(wrong)));
     assert.ok(logs.some(line=>line.includes('来源判断') && line.includes('AI 排除 2，保留 1')));

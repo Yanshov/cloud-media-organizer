@@ -92,11 +92,11 @@ async function searchAndTransfer() {
     const query=new URL(requests[0].url).searchParams;assert.equal(query.get('film_name'),'电影');assert.equal(query.get('languages'),'ZH,ZH_BG');assert.equal(query.get('unpack'),'1');assert.equal(query.get('type'),'movie');assert.equal(query.get('bazarr'),null,'Do not impersonate Bazarr');
     assert.ok(requests[0].anonymous);assert.equal(requests[0].headers.Authorization,undefined);assert.ok(logs.every(line=>!line.includes('secret-key')));
     assert.ok(candidates.every(c=>c.titleMatched));r.candidates=candidates;ctx.selectSubtitleCandidate(r,language);assert.match(r.selectedCandidate.name,/简体&英文/);
-    const fetched=await service.fetchFile(r.selectedCandidate,config);assert.equal(ctx.subtitlePayload(fetched.bytes,fetched.result.ext,language),text);
+    const fetched=await service.fetchFile(r.selectedCandidate,config);assert.equal(ctx.subtitleValidateContent(r,fetched.bytes,fetched.result.ext,language).text,text);
     const download=requests.at(-1);assert.equal(new URL(download.url).hostname,'dl.subdl.com');assert.equal(download.anonymous,true);assert.deepEqual(Object.keys(download.headers),[]);assert.ok(!download.url.includes('secret-key'));
     await service.subdlSearch(r,config);assert.equal(requests.filter(o=>new URL(o.url).hostname==='api.subdl.com').length,1);
     const archive=candidates.find(c=>c.ext==='zip');transfer=zip([['电影.2000.繁体.srt',text],['电影.2000.简体&英文.srt',text],['电影2.2000.简体.srt',text]]);
-    const unpacked=await service.fetchFile(archive,config);assert.match(unpacked.result.fileName,/简体&英文/);assert.equal(unpacked.result.ext,'srt');assert.equal(ctx.subtitlePayload(unpacked.bytes,'srt',language),text);
+    const unpacked=await service.fetchFile(archive,config);assert.match(unpacked.result.fileName,/简体&英文/);assert.equal(unpacked.result.ext,'srt');assert.equal(ctx.subtitleValidateContent(r,unpacked.bytes,'srt',language).text,text);
     service.logout();transfer=new TextEncoder().encode('<html>access denied</html>');await assert.rejects(service.fetchFile(archive,config),/ZIP/);
     service.logout();response={status:true,totalPages:10,subtitles:Array.from({length:30},(_,i)=>sub('电影.2000.简体.srt',{url:'/same/'+i}))};
     const before=requests.length;await service.subdlSearch(movie(),config);assert.equal(requests.length-before,2,'At most two pages');

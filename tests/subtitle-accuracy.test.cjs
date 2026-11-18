@@ -11,14 +11,15 @@ assert.equal(ctx.titleKey('仮面ライダー'),'仮面ライダー');
 assert.equal(ctx.titleKey('中文'),'中文');
 const joker={query:'小丑2',year:2024,aliases:['Joker: Folie à Deux'],runtimeSeconds:138*60};
 assert.equal(ctx.subtitleWorkIdentity(joker,[],'Joker.Folie.a.Deux.2024.简体&英文.srt').titleMatched,true);
+const checkDuration = (row,text,ext,log = () => {}) => ctx.subtitleCheckDuration(row,ctx.subtitleTimeline(text,ext),log);
 const logs=[], log=(event,text)=>logs.push(event+' '+text);
 const srt=end=>'1\n00:00:01,000 --> '+end+'\n中文合成测试字幕\n';
 const sized=(length,end)=>srt(end)+'a'.repeat(length-Buffer.byteLength(srt(end)));
 assert.equal(Buffer.byteLength(sized(3381,'00:03:00,000')),3381);
-assert.throws(()=>ctx.subtitleCheckDuration({node:{name:'小丑2.mkv'},parsed:joker},sized(3381,'00:03:00,000'),'srt',log),/字幕不完整/);
-assert.equal(ctx.subtitleEndTime('WEBVTT\n\n00:01.000 --> 01:05.500\n测试','vtt'),65.5);
-assert.equal(ctx.subtitleEndTime('[Events]\nFormat: Layer, Start, End, Text\nDialogue: 0,0:00:01.00,1:40:02.50,中文,comma','ass'),6002.5);
-ctx.subtitleCheckDuration({node:{name:'未知.mkv'},parsed:{}},srt('00:03:00,000'),'srt',log);
+assert.throws(()=>checkDuration({node:{name:'小丑2.mkv'},parsed:joker},sized(3381,'00:03:00,000'),'srt',log),/字幕不完整/);
+assert.equal(ctx.subtitleTimeline('WEBVTT\n\n00:01.000 --> 01:05.500\n测试','vtt').end,65.5);
+assert.equal(ctx.subtitleTimeline('[Events]\nFormat: Layer, Start, End, Text\nDialogue: 0,0:00:01.00,1:40:02.50,中文,comma','ass').end,6002.5);
+checkDuration({node:{name:'未知.mkv'},parsed:{}},srt('00:03:00,000'),'srt',log);
 assert.ok(logs.some(line=>/无时长参考/.test(line)));
 assert.ok(logs.some(line=>/180.0 秒.*TMDB.*8280.0 秒/.test(line)));
 const ass = lines => '[Events]\nFormat: Layer, End, Start, Style, Text\n' + lines.join('\n');
@@ -27,34 +28,34 @@ const cutoff = {node:{name:'双塔奇兵.mkv'},parsed:{runtimeSeconds:14100}};
 const remote = '64:52:05.00';
 const decorated = ass([normal, 'Comment: 0,'+remote+',0:00:00.00,Default,注释',
     'Dialogue: 0,'+remote+',0:00:00.00,Default,{\\p1}m 0 0 l 0 10']);
-const timing = ctx.subtitleCheckDuration(cutoff,decorated,'ass',log);
+const timing = checkDuration(cutoff,decorated,'ass',log);
 assert.equal(timing.end,14040);
 assert.equal(timing.rawEnd,233525);
 assert.equal(timing.events.comment,1);
 assert.equal(timing.events.drawing,1);
 assert.equal(ctx.subtitleDialogue(decorated,'ass'),'最后一句中文,带逗号');
-assert.throws(()=>ctx.subtitleCheckDuration(cutoff,ass([normal,'Dialogue: 0,'+remote+',64:52:00.00,Default,真实对白']),'ass',log),/时间轴.*极端/);
+assert.throws(()=>checkDuration(cutoff,ass([normal,'Dialogue: 0,'+remote+',64:52:00.00,Default,真实对白']),'ass',log),/时间轴.*极端/);
 for (const [start,end,reason] of [['00:00:01,000','00:60:00,000','分秒越界'],
     ['-00:00:01,000','00:00:03,000','负值'],['00:00:03,000','00:00:01,000','先后颠倒'],
     ['00:00:01,000','Infinity','非有限值'],['00:00:01,000','00:00:04,abc','格式']]) {
-    assert.throws(()=>ctx.subtitleCheckDuration(cutoff,'1\n'+start+' --> '+end+'\n真实对白','srt',log),error=>error.message.includes(reason));
+    assert.throws(()=>checkDuration(cutoff,'1\n'+start+' --> '+end+'\n真实对白','srt',log),error=>error.message.includes(reason));
 }
 const cue = 'WEBVTT\n\nNOTE 中文注释\n00:03.000 --> 00:59.000\n\nintro\n00:01.000 --> 00:03.125 align:start\n<b>测试</b>';
-assert.equal(ctx.subtitleEndTime(cue,'vtt'),3.125);
+assert.equal(ctx.subtitleTimeline(cue,'vtt').end,3.125);
 assert.equal(ctx.subtitleDialogue(cue,'vtt'),'测试');
-assert.equal(ctx.subtitleEndTime('[Events]\nDialogue: Marked=0,0:00:01.00,0:00:03.50,Default,,0,0,0,,测试','ssa'),3.5);
+assert.equal(ctx.subtitleTimeline('[Events]\nDialogue: Marked=0,0:00:01.00,0:00:03.50,Default,,0,0,0,,测试','ssa').end,3.5);
 for (const [end,runtime] of [['00:23:15,700',540],['03:17:22,400',15780]]) {
     const parsed = {runtimeSeconds:runtime};
-    assert.equal(ctx.subtitleCheckDuration({node:{name:'参考样例'},parsed},srt(end),'srt').evidence,'reference-difference');
+    assert.equal(checkDuration({node:{name:'参考样例'},parsed},srt(end),'srt').evidence,'reference-difference');
 }
-assert.throws(()=>ctx.subtitleCheckDuration({node:{name:'视频',durationSeconds:100},parsed:{}},srt('00:03:00,000'),'srt'),/视频文件时长冲突/);
+assert.throws(()=>checkDuration({node:{name:'视频',durationSeconds:100},parsed:{}},srt('00:03:00,000'),'srt'),/视频文件时长冲突/);
 const shortCue = srt('00:00:59,200');
 const tiny = shortCue + ' '.repeat(637 - Buffer.byteLength(shortCue));
 const episode = {node:{name:'黄金保龄球.2002.S01E01.mkv'},parsed:{tv:true,season:1,episode:1}};
-assert.throws(()=>ctx.subtitleCheckDuration(episode,tiny,'srt',log),error=>error.subtitleSuspicious && /59.2 秒/.test(error.message));
-assert.doesNotThrow(()=>ctx.subtitleCheckDuration({...episode,node:{...episode.node,durationSeconds:60}},tiny,'srt'));
-assert.doesNotThrow(()=>ctx.subtitleCheckDuration({...episode,parsed:{...episode.parsed,standalone:true}},tiny,'srt'));
-assert.doesNotThrow(()=>ctx.subtitleCheckDuration({node:{name:'一部短片.mkv'},parsed:{tv:false}},tiny,'srt'));
+assert.throws(()=>checkDuration(episode,tiny,'srt',log),error=>error.subtitleSuspicious && /59.2 秒/.test(error.message));
+assert.doesNotThrow(()=>checkDuration({...episode,node:{...episode.node,durationSeconds:60}},tiny,'srt'));
+assert.doesNotThrow(()=>checkDuration({...episode,parsed:{...episode.parsed,standalone:true}},tiny,'srt'));
+assert.doesNotThrow(()=>checkDuration({node:{name:'一部短片.mkv'},parsed:{tv:false}},tiny,'srt'));
 const filter=(query,name)=>ctx.subtitleCandidateFilter({query,tv:false},[],name);
 for(const [query,name] of [
     ['假面骑士极狐','[60帧蓝光剪辑]假面骑士海帕甲斗.合集重制版.ass'],
@@ -77,7 +78,7 @@ async function candidateFallback() {
             if (c === candidates[1]) return {result:{ext:'ass'},bytes:new TextEncoder().encode(ass([normal,'Dialogue: 0,'+remote+',64:52:00.00,Default,真实对白']))};
             return {result:{ext:'srt',fileName:'来源上传原名.srt'},bytes:new TextEncoder().encode(c===candidates[0]?sized(8385,'00:06:16,000'):srt('01:50:00,000'))};
         }}});
-    vm.runInContext(part('    function createPanelTask(', '    function panelControls(') + "const runTask = createPanelTask(ui, () => {});\n" + part('        const fillCard =', "        ui.get('stopSubtitles').onclick"),ctx);
+    vm.runInContext(part('    function createPanelTask(', '    function panelControls(') + "const runTask = createPanelTask(ui, () => {});\n" + part('    async function savePanelSubtitle(', '    function subtitleCandidateNameIssue(') + part('        const fillCard =', "        ui.get('stopSubtitles').onclick"),ctx);
     await elements.fillSubtitles.onclick();
     assert.deepEqual(calls,candidates.map(c=>c.name));assert.equal(saved.length,1);assert.equal(r.complete,true);
     assert.ok(logs.some(line=>/候选失败.*字幕不完整/.test(line)));

@@ -264,10 +264,7 @@
         }
         return {start:Number.isFinite(start) ? start : null,end,rawEnd,events,issues,invalid,dialogue,priorEnd,longest,visualEnd};
     }
-    function subtitleEndTime(text, ext) {
-        return subtitleTimeline(text,ext).end;
-    }
-    function subtitleCheckDuration(row, text, ext, log = () => {}, timeline = subtitleTimeline(text,ext)) {
+    function subtitleCheckDuration(row, timeline, log) {
         const {start,end,rawEnd,events,issues,invalid,priorEnd,longest,visualEnd} = timeline;
         const validDuration = value => Number.isFinite(Number(value)) && Number(value) > 0 ? Number(value) : 0;
         const driveSeconds = validDuration(row.node.durationSeconds), runtime = validDuration(row.parsed?.runtimeSeconds);
@@ -960,27 +957,21 @@
     function subtitleDialogue(text, ext) {
         return subtitleTimeline(text, ext).dialogue.join('\n');
     }
-    function subtitlePayload(bytes, ext, language, onDecoded = () => {}, validateTimeline) {
+    function subtitleValidateContent(row, bytes, ext, language, log = () => {}) {
         if (!bytes.length || bytes.length > SUBTITLE_LIMIT || !['srt','ass','ssa','vtt'].includes(ext)) throw new Error('仅支持单个 SRT、ASS、SSA、VTT 字幕，不导入压缩包或不完整字幕对');
         let decoded;
         try { decoded = subtitleDecode(bytes); }
         catch { throw new Error('字幕文本解码失败（UTF-8 / UTF-16 / GB18030），未上传'); }
         const {text, encoding} = decoded;
-        onDecoded(`编码 ${encoding.toUpperCase()}，${bytes.length} 字节`);
+        const description = `编码 ${encoding.toUpperCase()}，${bytes.length} 字节`;
+        log('字幕解码', description);
         if (/^\s*(?:<!doctype\s+html|<html|\{"(?:error|message)")/i.test(text) || !(/-->|\[Events\][\s\S]*Dialogue\s*:/i.test(text))) throw new Error('下载内容不是可识别的字幕文本（' + encoding.toUpperCase() + '，' + bytes.length + ' 字节，' + (/<!doctype\s+html|<html|<body/i.test(text.slice(0, 1024)) ? '返回了 HTML 页面' : '缺少字幕时间轴或 Dialogue') + '）');
         const timeline = subtitleTimeline(text, ext);
-        if (validateTimeline) validateTimeline(timeline);
-        else if (!timeline.dialogue.length) throw new Error('字幕时间轴没有可用的对白');
+        const timing = subtitleCheckDuration(row, timeline, log);
         const dialogue = timeline.dialogue.join('\n');
         if (language !== 'en' && !/[\u3400-\u9fff]/.test(dialogue)) throw new Error('字幕正文未检测到中文，未上传');
         if (language === 'en' && !/[a-z]{2}/i.test(dialogue)) throw new Error('字幕正文未检测到英文，未上传');
-        return text;
-    }
-    function subtitleValidateContent(row, bytes, ext, language, log = () => {}) {
-        let encoding = '', timing;
-        const text = subtitlePayload(bytes, ext, language, message => { encoding = message; log('字幕解码', message); },
-            timeline => {timing = subtitleCheckDuration(row, '', ext, log, timeline);});
-        return {text, encoding, ...timing, work:{status:'unconfirmed', reason:'正文格式和语言通过，作品归属未确认'}};
+        return {text, encoding:description, ...timing, work:{status:'unconfirmed', reason:'正文格式和语言通过，作品归属未确认'}};
     }
     function subtitleVerificationMessage(result) {
         return `格式/语言通过；${({file:'对白范围与视频文件时长相符', unknown:'无时长参考', reference:'TMDB 仅作作品时长参考', 'reference-difference':'与 TMDB 作品时长参考有差异'})[result.evidence] || '时长证据待确认'}；${result.work?.status === 'supported' ? 'AI 支持作品归属（非实证）' : '作品归属未确认'}；未核对音画同步`;
@@ -1050,10 +1041,11 @@
         if (subtitleCovered(row)) return 'complete';
         return row.writeBlocked || row.coverageUnconfirmed || row.embedded?.unconfirmed ? 'unconfirmed' : 'missing';
     }
-    const subtitleSearchLabels = {unsearched:'尚未查找',ready:'待补齐',choice:'手动选择',notFound:'已查询来源未找到匹配项',failed:'查询失败'};
+    const subtitleSearchLabels = {unsearched:'尚未查找',ready:'待补齐',choice:'手动选择',notFound:'已查询来源未找到匹配项',unconfirmed:'候选无法确认，请导入字幕',failed:'查询失败'};
     function subtitleSearchState(row) {
-        if (row.selectedCandidate && !row.selectedCandidate.downloadFailed) return 'ready';
-        if (row.candidates?.some(candidate => !candidate.downloadFailed)) return 'choice';
+        if (row.selectedCandidate && !row.selectedCandidate.downloadFailed && !row.selectedCandidate.opaque) return 'ready';
+        if (row.candidates?.some(candidate => !candidate.downloadFailed && !candidate.opaque)) return 'choice';
+        if (row.candidates?.some(candidate => !candidate.downloadFailed && candidate.opaque)) return 'unconfirmed';
         const sources = row.sources || [];
         if (sources.some(source => source.error || source.paused || source.cacheError && source.count == null
             || source.queries?.some(query => query.error) || source.downloadErrors?.length)) return 'failed';
@@ -1261,16 +1253,17 @@
             }
         });
     }
-    function subtitleSearchSummary(rows) {
+    function subtitleSearchSummary(rows, labels = subtitleSearchLabels) {
         const coverage = {complete:0,missing:0,unconfirmed:0};
-        const search = {unsearched:0,ready:0,choice:0,notFound:0,failed:0};
+        const search = {unsearched:0,ready:0,choice:0,unconfirmed:0,notFound:0,failed:0};
         for (const row of rows) {
             const state = subtitleCoverageState(row);
             coverage[state]++;
             if (state !== 'complete') search[subtitleSearchState(row)]++;
         }
-        const counts = Object.entries(search).filter(([, count]) => count).map(([state, count]) => `${subtitleSearchLabels[state]} ${count}`);
-        return [`视频 ${rows.length} · 有字幕 ${coverage.complete} · 缺可用字幕 ${coverage.missing} · 检查未确认 ${coverage.unconfirmed}`, ...counts].join(' · ');
+        const counts = new Map();
+        for (const [state,count] of Object.entries(search)) if (count) counts.set(labels[state], (counts.get(labels[state]) || 0) + count);
+        return [`视频 ${rows.length} · 有字幕 ${coverage.complete} · 缺可用字幕 ${coverage.missing} · 检查未确认 ${coverage.unconfirmed}`, ...Array.from(counts, ([label,count]) => label + ' ' + count)].join(' · ');
     }
     function subtitleSearchMessage(row) {
         const message = row.selectedCandidate
@@ -1430,7 +1423,7 @@
             parsed.query, parsed.year, !!parsed.tv, parsed.tmdbId, parsed.season, parsed.episode, parsed.endEpisode, node.durationSeconds, parsed.runtimeSeconds, !!parsed.standalone]);
     }
     async function inspectExistingSubtitles(row, drive, language, log = () => {}, check = () => {}, {force = false, review = null, observe = () => {}} = {}) {
-        row.complete = false; row.verification = null; row.coverageUnconfirmed = false;
+        row.complete = false; row.verification = null; row.verifiedSubtitle = null; row.verifiedSubtitleCandidate = null; row.coverageUnconfirmed = false;
         const rejected = [];
         for (const sub of row.subtitles.filter(sub => /\.(srt|ass|ssa|vtt)$/i.test(sub.name))) {
             check(); drive.assertReady?.();
@@ -1442,6 +1435,7 @@
                     log('现有字幕无效', `${row.node.name} · ${sub.name} · 已记录疑似错片：${cached.result.work.reason}`); continue;
                 }
                 row.verification = cached.result;
+                row.verifiedSubtitle = sub;
                 row.complete = true; row.error = ''; row.searchMessage = '已核验记录复用：' + sub.name + ' · ' + subtitleVerificationMessage(cached.result);
                 log('已核验记录复用', `${row.node.name} · ${sub.name} · ${subtitleVerificationMessage(cached.result)}`); return;
             }
@@ -1460,6 +1454,7 @@
                     rejected.push(sub.name + '：疑似其他作品 · ' + result.work.reason); continue;
                 }
                 row.verification = result;
+                row.verifiedSubtitle = sub;
                 row.complete = true; row.error = ''; row.searchMessage = '已有字幕：' + sub.name + ' · ' + subtitleVerificationMessage(result);
                 log('现有字幕确认', `${row.node.name} · ${sub.name} · ${subtitleVerificationMessage(result)}`); return;
             } catch (error) {
