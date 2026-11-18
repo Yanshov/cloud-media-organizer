@@ -172,33 +172,118 @@
         if (!match.titleMatched && !match.related && !semanticReview) return {...match,excluded:'无关'};
         return match;
     }
-    function subtitleEndTime(text, ext) {
-        const seconds = value => {
-            const parts = value.trim().replace(',', '.').split(':').map(Number);
-            return parts.length >= 2 && parts.length <= 3 && parts.every(Number.isFinite) ? parts.reduce((total,part) => total * 60 + part,0) : 0;
-        };
-        let end = 0;
+    function* subtitleEvents(text, ext) {
+        const lines = text.replace(/^\uFEFF/, '').split(/\r\n?|\n/);
         if (/^(?:ass|ssa)$/i.test(ext)) {
-            let inEvents = false, endColumn = 2;
-            for (const line of text.split(/\r?\n/)) {
-                if (/^\s*\[/.test(line)) inEvents = /^\s*\[Events\]/i.test(line);
+            let inEvents = false, fields = ['layer','start','end','style','name','marginl','marginr','marginv','effect','text'];
+            for (const line of lines) {
+                if (/^\s*\[/.test(line)) inEvents = /^\s*\[Events\]\s*$/i.test(line);
                 if (!inEvents) continue;
-                if (/^\s*Format\s*:/i.test(line)) {
-                    const index = line.replace(/^\s*Format\s*:/i,'').split(',').findIndex(value => value.trim().toLowerCase() === 'end');
-                    if (index >= 0) endColumn = index;
+                const record = /^\s*(Format|Dialogue|Comment)\s*:\s*(.*)$/i.exec(line);
+                if (!record) continue;
+                const type = record[1].toLowerCase();
+                const values = record[2].split(',');
+                if (type === 'format') { fields = values.map(value => value.trim().toLowerCase()); continue; }
+                const column = fields.indexOf('text');
+                if (column >= 0 && values.length >= fields.length) values.splice(column, values.length - fields.length + 1,
+                    values.slice(column, values.length - (fields.length - column - 1)).join(','));
+                let drawing = false, hasDrawing = false, dialogue = '';
+                for (const part of (values[column] || '').match(/\{[^}]*\}|[^{}]+|[{}]/g) || []) {
+                    if (/^\{[^}]*\}$/.test(part)) {
+                        for (const tag of part.matchAll(/\\p(\d+)(?=\D|$)/gi)) drawing = Number(tag[1]) > 0;
+                    } else if (drawing) hasDrawing ||= !!part.trim();
+                    else dialogue += part;
                 }
-                if (/^\s*Dialogue\s*:/i.test(line)) end = Math.max(end,seconds(line.replace(/^\s*Dialogue\s*:/i,'').split(',')[endColumn] || ''));
+                dialogue = dialogue.replace(/\\[Nnh]/g, ' ').trim();
+                const style = (values[fields.indexOf('style')] || '').trim();
+                const kind = type === 'comment' ? 'comment' : !dialogue ? (hasDrawing ? 'drawing' : 'empty')
+                    : /^(?:signs?|typeset(?:ting)?|credits?|招牌|特效)(?:$|[ _-])/i.test(style) ? 'typeset' : 'dialogue';
+                const validFields = ['start','end','text'].every(name => fields.indexOf(name) >= 0 && fields.indexOf(name) === fields.lastIndexOf(name));
+                yield {kind, dialogue, start:values[fields.indexOf('start')], end:values[fields.indexOf('end')],
+                    malformed:!validFields || values.length !== fields.length};
             }
-        } else for (const match of text.matchAll(/-->\s*((?:\d+:)?\d{2}:\d{2}[,.]\d{2,3})/g)) end = Math.max(end,seconds(match[1]));
-        return end;
+            return;
+        }
+        let ignore = false, cue = null;
+        for (const line of [...lines,'']) {
+            if (!line.trim()) { if (cue) yield cue; cue = null; ignore = false; continue; }
+            if (!cue && ext === 'vtt' && /^(?:NOTE(?:[ \t]|$)|STYLE\s*$|REGION\s*$)/.test(line)) ignore = true;
+            if (ignore) continue;
+            if (cue) { cue.dialogue += (cue.dialogue ? '\n' : '') + line.replace(/<[^>]*>/g,'').trim(); continue; }
+            if (line.includes('-->')) {
+                const time = /^\s*(\S+)[ \t]+-->[ \t]+(\S+)(?:[ \t]+[^\r\n]*)?\s*$/.exec(line);
+                cue = {kind:'cue', dialogue:'', start:time?.[1], end:time?.[2], malformed:!time};
+            }
+        }
     }
-    function subtitleCheckDuration(row, text, ext, log = () => {}) {
-        const end = subtitleEndTime(text,ext), driveSeconds = Number(row.node.durationSeconds), runtime = Number(row.parsed?.runtimeSeconds);
-        const duration = driveSeconds > 0 ? driveSeconds : runtime > 0 ? runtime : 0;
-        const source = driveSeconds > 0 ? '网盘已确认时长' : runtime > 0 ? 'TMDB runtime' : '无时长参考';
-        log('字幕时长', `${row.node.name} · 字幕结束 ${end.toFixed(1)} 秒 · 目标 ${duration ? duration.toFixed(1) + ' 秒' : '未知'} · 来源 ${source}${duration ? '' : '，跳过长度检查'}`);
-        if (duration && end < duration * 0.5) throw new Error(`字幕不完整：结束 ${end.toFixed(1)} 秒，不到目标 ${duration.toFixed(1)} 秒的 50%（${source}）`);
-        return {end, duration, source};
+    function subtitleTimestamp(value, ext) {
+        const text = String(value ?? '').trim();
+        if (/(?:^|:)-\d/.test(text)) return {issue:'负值'};
+        if (/(?:infinity|nan)/i.test(text)) return {issue:'非有限值'};
+        const format = ext === 'vtt' ? /^(?:(\d{2,}):)?(\d{2}):(\d{2})\.(\d{3})$/
+            : ext === 'ass' || ext === 'ssa' ? /^(\d+):(\d{2}):(\d{2})\.(\d{2})$/
+            : /^(\d{1,}):(\d{2}):(\d{2})[,.](\d{2,3})$/;
+        const match = format.exec(text);
+        if (!match) return {issue:'时间字段格式'};
+        const [,hours = '0', minutes, seconds, fraction] = match;
+        if (Number(minutes) > 59 || Number(seconds) > 59) return {issue:'分秒越界'};
+        const time = Number(hours) * 3600 + Number(minutes) * 60 + Number(seconds) + Number('0.' + fraction);
+        return Number.isFinite(time) && Number.isSafeInteger(Math.floor(time)) ? {time} : {issue:'非有限值或超出安全范围'};
+    }
+    function subtitleTimeline(text, ext) {
+        const events = {dialogue:0,comment:0,drawing:0,typeset:0,empty:0};
+        const issues = {}, dialogue = [], invalid = {};
+        let start = Infinity, end = 0, rawEnd = 0, priorEnd = 0, longest = 0, visualEnd = 0;
+        for (const event of subtitleEvents(text, ext)) {
+            const kind = event.kind === 'cue' ? (event.dialogue ? 'dialogue' : 'empty') : event.kind;
+            events[kind]++;
+            const a = subtitleTimestamp(event.start, ext), b = subtitleTimestamp(event.end, ext);
+            rawEnd = Math.max(rawEnd,b.time ?? 0);
+            const issue = event.malformed ? '时间字段格式' : a.issue || b.issue || (a.time > b.time ? '开始与结束先后颠倒' : '');
+            if (issue) {
+                issues[issue] = (issues[issue] || 0) + 1;
+                if (kind !== 'comment') invalid[issue] = (invalid[issue] || 0) + 1;
+                continue;
+            }
+            if (kind === 'typeset' || kind === 'drawing') visualEnd = Math.max(visualEnd,b.time);
+            if (kind !== 'dialogue') continue;
+            dialogue.push(event.dialogue);
+            start = Math.min(start,a.time);
+            longest = Math.max(longest,b.time - a.time);
+            if (b.time > end) { priorEnd = end; end = b.time; }
+            else priorEnd = Math.max(priorEnd,b.time);
+        }
+        return {start:Number.isFinite(start) ? start : null,end,rawEnd,events,issues,invalid,dialogue,priorEnd,longest,visualEnd};
+    }
+    function subtitleEndTime(text, ext) {
+        return subtitleTimeline(text,ext).end;
+    }
+    function subtitleCheckDuration(row, text, ext, log = () => {}, timeline = subtitleTimeline(text,ext)) {
+        const {start,end,rawEnd,events,issues,invalid,priorEnd,longest,visualEnd} = timeline;
+        const validDuration = value => Number.isFinite(Number(value)) && Number(value) > 0 ? Number(value) : 0;
+        const driveSeconds = validDuration(row.node.durationSeconds), runtime = validDuration(row.parsed?.runtimeSeconds);
+        const duration = driveSeconds || runtime;
+        const source = driveSeconds ? '视频文件时长' : runtime ? 'TMDB 作品时长参考' : '无时长参考';
+        const counts = Object.entries(issues).map(([reason,count]) => reason + ' ' + count).join('、');
+        log('字幕时长', row.node.name + ' · 对白 ' + (start == null ? '无' : start.toFixed(1) + ' 秒起')
+            + ' · 字幕结束 ' + end.toFixed(1) + ' 秒 · ' + source + (duration ? ' ' + duration.toFixed(1) + ' 秒' : '')
+            + ' · 原始最晚结束 ' + rawEnd.toFixed(1) + ' 秒 · 对白 ' + events.dialogue + '、注释 ' + events.comment
+            + '、绘图 ' + events.drawing + '、排版 ' + events.typeset + '、空事件 ' + events.empty
+            + (visualEnd > end ? ' · 绘图或排版延伸到 ' + visualEnd.toFixed(1) + ' 秒，不计入对白范围' : '')
+            + (counts ? ' · 异常 ' + counts : ''));
+        const uncertain = reason => Object.assign(new Error(reason),{timingUnconfirmed:true});
+        if (Object.keys(invalid).length) throw uncertain('字幕时间轴异常：' + counts + '，待确认');
+        if (!timeline.dialogue.length) throw uncertain('字幕时间轴没有可用的对白，待确认');
+        // Work metadata is advisory. Extreme ranges and isolated hour-scale gaps still need review.
+        const extreme = end > 12 * 3600 || longest > 4 * 3600 || (priorEnd > 0 && end - priorEnd > 3600 && end > priorEnd * 3);
+        if (extreme) throw uncertain('字幕时间轴存在极端对白范围，待确认');
+        if (driveSeconds && end > driveSeconds + Math.max(30,driveSeconds * .1))
+            throw uncertain('字幕时间轴与视频文件时长冲突，待确认');
+        if (driveSeconds && end < driveSeconds * .5 || !driveSeconds && runtime >= 1200 && end <= Math.min(480,runtime * .2))
+            throw uncertain('字幕不完整：对白只到 ' + end.toFixed(1) + ' 秒（' + source + '），待确认');
+        const evidence = driveSeconds ? 'file' : !runtime ? 'unknown'
+            : Math.abs(end - runtime) >= Math.max(120,runtime * .2) ? 'reference-difference' : 'reference';
+        return {start,end,rawEnd,visualEnd,events,issues,duration,source,evidence};
     }
     function subtitleSearchNames(parsed) {
         const names = [parsed.query,...(parsed.aliases || [])].map(name => subtitleQueryTitle(name,parsed.year)).filter(Boolean);
@@ -541,6 +626,7 @@
                         try {
                             const archive = await archiveData(candidate.url,verify);
                             if (!subtitleArchiveChoices(archive.index,candidate,config.language).length) { excluded.压缩包++; continue; }
+                            if (config.seasonSearch && candidate.archiveSeason === parsed.season) candidate.seasonPackVerified = true;
                         } catch (error) { check(); verify(); if (error.stop) throw error; excluded.压缩包++; downloadErrors.push(error.message); continue; }
                     }
                     covered.push(candidate);
@@ -772,41 +858,32 @@
         catch { return decode('gb18030'); }
     }
     function subtitleDialogue(text, ext) {
-        if (!/^(?:ass|ssa)$/i.test(ext)) return text.replace(/<[^>]*>/g, '').split(/\r?\n/).filter(line => !/-->|^\s*\d+\s*$|^WEBVTT/.test(line)).join('\n');
-        let inEvents = false, textColumn = 9;
-        const lines = [];
-        for (const line of text.split(/\r?\n/)) {
-            if (/^\s*\[/.test(line)) inEvents = /^\s*\[Events\]/i.test(line);
-            if (!inEvents) continue;
-            if (/^\s*Format\s*:/i.test(line)) {
-                const index = line.replace(/^\s*Format\s*:/i, '').split(',').findIndex(value => value.trim().toLowerCase() === 'text');
-                if (index >= 0) textColumn = index;
-            }
-            if (/^\s*Dialogue\s*:/i.test(line)) lines.push(line.replace(/^\s*Dialogue\s*:/i, '').split(',').slice(textColumn).join(',').replace(/\{[^}]*\}/g, '').replace(/\\[Nnh]/g, ' '));
-        }
-        return lines.join('\n');
+        return subtitleTimeline(text, ext).dialogue.join('\n');
     }
-    function subtitlePayload(bytes, ext, language, onDecoded = () => {}) {
+    function subtitlePayload(bytes, ext, language, onDecoded = () => {}, validateTimeline) {
         if (!bytes.length || bytes.length > SUBTITLE_LIMIT || !['srt','ass','ssa','vtt'].includes(ext)) throw new Error('仅支持单个 SRT、ASS、SSA、VTT 字幕，不导入压缩包或不完整字幕对');
         let decoded;
         try { decoded = subtitleDecode(bytes); }
         catch { throw new Error('字幕文本解码失败（UTF-8 / UTF-16 / GB18030），未上传'); }
         const {text, encoding} = decoded;
         onDecoded(`编码 ${encoding.toUpperCase()}，${bytes.length} 字节`);
-        if (/^\s*(?:<!doctype\s+html|<html|\{"(?:error|message)")/i.test(text) || !(/\d{1,2}:\d{2}:\d{2}[,.]\d{2,3}\s*-->|\d{2}:\d{2}\.\d{3}\s*-->|\[Events\][\s\S]*Dialogue\s*:/i.test(text))) throw new Error('下载内容不是可识别的字幕文本（' + encoding.toUpperCase() + '，' + bytes.length + ' 字节，' + (/<!doctype\s+html|<html|<body/i.test(text.slice(0, 1024)) ? '返回了 HTML 页面' : '缺少字幕时间轴或 Dialogue') + '）');
-        const dialogue = subtitleDialogue(text, ext);
+        if (/^\s*(?:<!doctype\s+html|<html|\{"(?:error|message)")/i.test(text) || !(/-->|\[Events\][\s\S]*Dialogue\s*:/i.test(text))) throw new Error('下载内容不是可识别的字幕文本（' + encoding.toUpperCase() + '，' + bytes.length + ' 字节，' + (/<!doctype\s+html|<html|<body/i.test(text.slice(0, 1024)) ? '返回了 HTML 页面' : '缺少字幕时间轴或 Dialogue') + '）');
+        const timeline = subtitleTimeline(text, ext);
+        if (validateTimeline) validateTimeline(timeline);
+        else if (!timeline.dialogue.length) throw new Error('字幕时间轴没有可用的对白');
+        const dialogue = timeline.dialogue.join('\n');
         if (language !== 'en' && !/[\u3400-\u9fff]/.test(dialogue)) throw new Error('字幕正文未检测到中文，未上传');
         if (language === 'en' && !/[a-z]{2}/i.test(dialogue)) throw new Error('字幕正文未检测到英文，未上传');
         return text;
     }
     function subtitleValidateContent(row, bytes, ext, language, log = () => {}) {
-        let encoding = '';
-        const text = subtitlePayload(bytes, ext, language, message => { encoding = message; log('字幕解码', message); });
-        const timing = subtitleCheckDuration(row, text, ext, log);
+        let encoding = '', timing;
+        const text = subtitlePayload(bytes, ext, language, message => { encoding = message; log('字幕解码', message); },
+            timeline => {timing = subtitleCheckDuration(row, '', ext, log, timeline);});
         return {text, encoding, ...timing, work:{status:'unconfirmed', reason:'正文格式和语言通过，作品归属未确认'}};
     }
     function subtitleVerificationMessage(result) {
-        return `格式/语言通过；${result.duration ? '长度下限通过' : '无时长参考'}；${result.work?.status === 'supported' ? 'AI 支持作品归属（非实证）' : '作品归属未确认'}；未核对音画同步`;
+        return `格式/语言通过；${({file:'对白范围与视频文件时长相符', unknown:'无时长参考', reference:'TMDB 仅作作品时长参考', 'reference-difference':'与 TMDB 作品时长参考有差异'})[result.evidence] || '时长证据待确认'}；${result.work?.status === 'supported' ? 'AI 支持作品归属（非实证）' : '作品归属未确认'}；未核对音画同步`;
     }
     function createSubtitleBodyReviewer(ai, log = () => {}, check = () => {}) {
         let parseFailures = 0;
@@ -1227,7 +1304,7 @@
     function subtitleVerificationContext(row) {
         if (!row) return '';
         const node = row.node, parsed = row.parsed || {};
-        return JSON.stringify([2, String(node.id), String(node.parentId ?? ''), node.name, node.size, (node.md5 || '').toLowerCase(),
+        return JSON.stringify([3, String(node.id), String(node.parentId ?? ''), node.name, node.size, (node.md5 || '').toLowerCase(),
             parsed.query, parsed.year, !!parsed.tv, parsed.tmdbId, parsed.season, parsed.episode, parsed.endEpisode, node.durationSeconds, parsed.runtimeSeconds]);
     }
     async function inspectExistingSubtitles(row, drive, language, log = () => {}, check = () => {}, {force = false, review = null} = {}) {
@@ -1266,6 +1343,7 @@
             } catch (error) {
                 check(); if (error.stop) throw error;
                 drive.verified?.forget(sub);
+                if (error.timingUnconfirmed) row.coverageUnconfirmed = true;
                 rejected.push(sub.name + '：' + error.message);
                 log('现有字幕无效', `${sub.name}：${error.message}`);
             }

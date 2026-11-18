@@ -4,7 +4,7 @@ const vm = require('node:vm');
 const assert = require('node:assert/strict');
 const source = fs.readFileSync(path.join(__dirname, '../cloud-media-organizer-v3.user.js'), 'utf8');
 const context = vm.createContext({TextDecoder});
-vm.runInContext(source.slice(source.indexOf('    const SUBTITLE_LIMIT'), source.indexOf('    function subtitleLanguageMatch(')), context);
+vm.runInContext(source.slice(source.indexOf('    function* subtitleEvents('), source.indexOf('    function subtitleSearchNames(')) + source.slice(source.indexOf('    const SUBTITLE_LIMIT'), source.indexOf('    function subtitleLanguageMatch(')), context);
 const check = (bytes, ext) => {
     context.bytes = bytes; context.ext = ext;
     return vm.runInContext('subtitlePayload(bytes, ext, "zh-cn,zh-tw,zh")', context);

@@ -334,7 +334,7 @@ async function subtitleUI() {
     await get('auditSubtitles').onclick();assert.equal(reads,3);assert.equal(queries,0);assert.equal(get('subtitleView').value,'incomplete');assert.match(get('subtitleLog').value,/作品归属和音画同步未确认/);
     aiConfig={enabled:true,base:'https://ai.example',model:'test'};
     ctx.createMediaAI=()=>({reviewSubtitleBody:async()=>({verdict:'different',confidence:.99,evidence:'中文字幕 Test',reason:'合成错片证据'})});
-    await get('auditSubtitles').onclick();assert.match(get('subtitleSummary').textContent,/缺可用字幕 1/);assert.equal(queries,0);assert.equal(get('fillSubtitles').disabled,true);
+    await get('auditSubtitles').onclick();assert.match(get('subtitleSummary').textContent,/没字幕 1/);assert.equal(queries,0);assert.equal(get('fillSubtitles').disabled,true);
     aiConfig={};recovered=[sub];readBytes=Buffer.from('<html>not a subtitle</html>');hasSubtitle=false;
     await get('recheckSubtitles').onclick();assert.match(get('subtitleSummary').textContent,/有字幕 0/);assert.equal(queries,0,'Recovered upload must pass body validation, not merely receipt reconciliation');
     recovered=[];readBytes=valid;

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v3.0（重构版）
 // @namespace    local.cloud-media-organizer
-// @version      3.3.13
+// @version      3.3.14
 // @description  百度/123/光鸭跨盘清单，123/光鸭影视整理、字幕搜索与核验上传
 // @match        https://pan.baidu.com/*
 // @match        https://yun.baidu.com/*
@@ -40,7 +40,7 @@
     if (typeof navigator !== 'undefined' && (navigator.userAgentData?.mobile || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
         navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) return;
 
-    const VERSION = '3.3.13';
+    const VERSION = '3.3.14';
     let jsonTaskStopped = false;
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
@@ -501,12 +501,19 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 #subtitleFilters{display:flex;align-items:center;gap:8px;flex:0 0 auto;max-width:100%}#subtitleFilters label{align-items:center;gap:5px;margin:0;font-size:14px;white-space:nowrap;flex:none}#subtitleFilters input[type=checkbox]{margin:0}
 #subtitleResults{flex:1 1 0;min-height:0;overflow:auto;overscroll-behavior:contain;overflow-anchor:none;scrollbar-gutter:stable;container-type:size}#subtitleResults:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 #subtitleSummary{flex:none;padding:10px 12px;font-size:15px;overflow-wrap:anywhere}
-#subtitleRows{position:relative;display:grid;gap:10px}
-.subtitle-pair{min-width:0}
-.subtitle-pair-cards{position:sticky;top:0;height:100cqh;grid-template-rows:minmax(0,1fr);align-items:stretch}
-.subtitle-pair-cards>.sync-item{display:flex;flex-direction:column;min-height:0;overflow-wrap:anywhere}
-.subtitle-card-viewport{flex:1;min-height:0;overflow:hidden;overflow-anchor:none}
-.subtitle-card-content{display:flow-root}
+#subtitlePane .tool-surface{overflow:hidden}
+#subtitleRows{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:stretch}
+#subtitleRows>.subtitle-card{min-height:100cqh;margin:0;overflow-wrap:anywhere}
+.subtitle-action-view{grid-column:1/-1;margin:0;overflow-wrap:anywhere}
+#subtitleRows>.sync-item{padding:12px}
+#subtitleRows h5,#subtitleRows p{margin-block:0 4px}
+#subtitleRows button{margin-top:4px}
+#subtitleRows select{width:100%;min-width:0;text-overflow:ellipsis}
+#subtitleRows .subtitle-result>p{display:flex;align-items:baseline;flex-wrap:wrap;gap:2px 6px}
+#subtitleRows .subtitle-result strong{flex:none}
+#subtitleRows .subtitle-badge{white-space:normal}
+#subtitleRows .subtitle-detail{flex:1 1 100%;font-size:.9em}
+#subtitleRows .subtitle-result select, #subtitleRows .subtitle-result label span{min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #subtitleRows:empty{display:none}
 #subtitleFilters{flex-wrap:wrap}#subtitleDeleteSelectionCount,.subtitle-group-count{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}.subtitle-group-count{margin:4px 0 0;overflow-wrap:anywhere}
 #subtitleRows h5{margin:0;font-size:16px;line-height:1.5;overflow-wrap:anywhere}.subtitle-result{margin-top:8px}.subtitle-result+.subtitle-result{padding-top:8px;border-top:1px solid var(--border)}
@@ -528,8 +535,17 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 #subtitlePane .tool-statusbar:has(#subtitleDiagnostics[open]){max-height:none;overflow:visible}#subtitleDiagnostics .panel-actions{margin:4px 0 8px}#subtitlePane:has(#subtitleDiagnostics[open]) .tool-intro p{display:none}
 #subtitleLog{display:block;width:100%;height:clamp(56px,calc(36cqh - 128px),180px);resize:none;overflow:auto;scrollbar-width:none;overscroll-behavior:contain}
 @container(max-height:660px){
-    #subtitlePane:has(#subtitleDiagnostics[open]) #subtitleSummary{padding:6px 10px;margin-bottom:8px}
-    #subtitlePane:has(#subtitleDiagnostics[open]) #subtitleLog{height:clamp(36px, calc(18cqh - 56px), 68px)}
+    #subtitlePane .tool-intro p{display:none}
+    #subtitlePane .tool-intro h3{font-size:20px}
+    #subtitlePane .tool-commandbar{margin-block:8px}
+    #subtitlePane .tool-list-heading{margin-bottom:6px}
+    #subtitlePane #subtitleSummary{padding:6px 10px;margin-bottom:8px}
+    #subtitleRows>.sync-item{padding:6px 8px}
+    #subtitleRows .subtitle-group-count{margin-top:2px}
+    #subtitleRows .subtitle-result{margin-top:4px}
+    #subtitleRows .subtitle-result+.subtitle-result{padding-top:4px}
+    #subtitleRows .subtitle-result select{padding-block:4px}
+    #subtitlePane:has(#subtitleDiagnostics[open]) #subtitleLog{height:38px}
 }
 .sync-preview{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px}.sync-preview h4{margin:0 0 8px}.sync-preview p{margin:6px 0}#syncList{overflow-wrap:anywhere;font-size:15px}#syncDestination{font-weight:600}
 .export-options{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin:12px 0}.export-options input{width:auto}.export-options button{font-size:14px;padding:7px 12px}.credential-head{display:flex;justify-content:space-between;align-items:center;gap:12px}.credential-head a{font-size:15px;flex-shrink:0}
@@ -3888,33 +3904,118 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         if (!match.titleMatched && !match.related && !semanticReview) return {...match,excluded:'无关'};
         return match;
     }
-    function subtitleEndTime(text, ext) {
-        const seconds = value => {
-            const parts = value.trim().replace(',', '.').split(':').map(Number);
-            return parts.length >= 2 && parts.length <= 3 && parts.every(Number.isFinite) ? parts.reduce((total,part) => total * 60 + part,0) : 0;
-        };
-        let end = 0;
+    function* subtitleEvents(text, ext) {
+        const lines = text.replace(/^\uFEFF/, '').split(/\r\n?|\n/);
         if (/^(?:ass|ssa)$/i.test(ext)) {
-            let inEvents = false, endColumn = 2;
-            for (const line of text.split(/\r?\n/)) {
-                if (/^\s*\[/.test(line)) inEvents = /^\s*\[Events\]/i.test(line);
+            let inEvents = false, fields = ['layer','start','end','style','name','marginl','marginr','marginv','effect','text'];
+            for (const line of lines) {
+                if (/^\s*\[/.test(line)) inEvents = /^\s*\[Events\]\s*$/i.test(line);
                 if (!inEvents) continue;
-                if (/^\s*Format\s*:/i.test(line)) {
-                    const index = line.replace(/^\s*Format\s*:/i,'').split(',').findIndex(value => value.trim().toLowerCase() === 'end');
-                    if (index >= 0) endColumn = index;
+                const record = /^\s*(Format|Dialogue|Comment)\s*:\s*(.*)$/i.exec(line);
+                if (!record) continue;
+                const type = record[1].toLowerCase();
+                const values = record[2].split(',');
+                if (type === 'format') { fields = values.map(value => value.trim().toLowerCase()); continue; }
+                const column = fields.indexOf('text');
+                if (column >= 0 && values.length >= fields.length) values.splice(column, values.length - fields.length + 1,
+                    values.slice(column, values.length - (fields.length - column - 1)).join(','));
+                let drawing = false, hasDrawing = false, dialogue = '';
+                for (const part of (values[column] || '').match(/\{[^}]*\}|[^{}]+|[{}]/g) || []) {
+                    if (/^\{[^}]*\}$/.test(part)) {
+                        for (const tag of part.matchAll(/\\p(\d+)(?=\D|$)/gi)) drawing = Number(tag[1]) > 0;
+                    } else if (drawing) hasDrawing ||= !!part.trim();
+                    else dialogue += part;
                 }
-                if (/^\s*Dialogue\s*:/i.test(line)) end = Math.max(end,seconds(line.replace(/^\s*Dialogue\s*:/i,'').split(',')[endColumn] || ''));
+                dialogue = dialogue.replace(/\\[Nnh]/g, ' ').trim();
+                const style = (values[fields.indexOf('style')] || '').trim();
+                const kind = type === 'comment' ? 'comment' : !dialogue ? (hasDrawing ? 'drawing' : 'empty')
+                    : /^(?:signs?|typeset(?:ting)?|credits?|招牌|特效)(?:$|[ _-])/i.test(style) ? 'typeset' : 'dialogue';
+                const validFields = ['start','end','text'].every(name => fields.indexOf(name) >= 0 && fields.indexOf(name) === fields.lastIndexOf(name));
+                yield {kind, dialogue, start:values[fields.indexOf('start')], end:values[fields.indexOf('end')],
+                    malformed:!validFields || values.length !== fields.length};
             }
-        } else for (const match of text.matchAll(/-->\s*((?:\d+:)?\d{2}:\d{2}[,.]\d{2,3})/g)) end = Math.max(end,seconds(match[1]));
-        return end;
+            return;
+        }
+        let ignore = false, cue = null;
+        for (const line of [...lines,'']) {
+            if (!line.trim()) { if (cue) yield cue; cue = null; ignore = false; continue; }
+            if (!cue && ext === 'vtt' && /^(?:NOTE(?:[ \t]|$)|STYLE\s*$|REGION\s*$)/.test(line)) ignore = true;
+            if (ignore) continue;
+            if (cue) { cue.dialogue += (cue.dialogue ? '\n' : '') + line.replace(/<[^>]*>/g,'').trim(); continue; }
+            if (line.includes('-->')) {
+                const time = /^\s*(\S+)[ \t]+-->[ \t]+(\S+)(?:[ \t]+[^\r\n]*)?\s*$/.exec(line);
+                cue = {kind:'cue', dialogue:'', start:time?.[1], end:time?.[2], malformed:!time};
+            }
+        }
     }
-    function subtitleCheckDuration(row, text, ext, log = () => {}) {
-        const end = subtitleEndTime(text,ext), driveSeconds = Number(row.node.durationSeconds), runtime = Number(row.parsed?.runtimeSeconds);
-        const duration = driveSeconds > 0 ? driveSeconds : runtime > 0 ? runtime : 0;
-        const source = driveSeconds > 0 ? '网盘已确认时长' : runtime > 0 ? 'TMDB runtime' : '无时长参考';
-        log('字幕时长', `${row.node.name} · 字幕结束 ${end.toFixed(1)} 秒 · 目标 ${duration ? duration.toFixed(1) + ' 秒' : '未知'} · 来源 ${source}${duration ? '' : '，跳过长度检查'}`);
-        if (duration && end < duration * 0.5) throw new Error(`字幕不完整：结束 ${end.toFixed(1)} 秒，不到目标 ${duration.toFixed(1)} 秒的 50%（${source}）`);
-        return {end, duration, source};
+    function subtitleTimestamp(value, ext) {
+        const text = String(value ?? '').trim();
+        if (/(?:^|:)-\d/.test(text)) return {issue:'负值'};
+        if (/(?:infinity|nan)/i.test(text)) return {issue:'非有限值'};
+        const format = ext === 'vtt' ? /^(?:(\d{2,}):)?(\d{2}):(\d{2})\.(\d{3})$/
+            : ext === 'ass' || ext === 'ssa' ? /^(\d+):(\d{2}):(\d{2})\.(\d{2})$/
+            : /^(\d{1,}):(\d{2}):(\d{2})[,.](\d{2,3})$/;
+        const match = format.exec(text);
+        if (!match) return {issue:'时间字段格式'};
+        const [,hours = '0', minutes, seconds, fraction] = match;
+        if (Number(minutes) > 59 || Number(seconds) > 59) return {issue:'分秒越界'};
+        const time = Number(hours) * 3600 + Number(minutes) * 60 + Number(seconds) + Number('0.' + fraction);
+        return Number.isFinite(time) && Number.isSafeInteger(Math.floor(time)) ? {time} : {issue:'非有限值或超出安全范围'};
+    }
+    function subtitleTimeline(text, ext) {
+        const events = {dialogue:0,comment:0,drawing:0,typeset:0,empty:0};
+        const issues = {}, dialogue = [], invalid = {};
+        let start = Infinity, end = 0, rawEnd = 0, priorEnd = 0, longest = 0, visualEnd = 0;
+        for (const event of subtitleEvents(text, ext)) {
+            const kind = event.kind === 'cue' ? (event.dialogue ? 'dialogue' : 'empty') : event.kind;
+            events[kind]++;
+            const a = subtitleTimestamp(event.start, ext), b = subtitleTimestamp(event.end, ext);
+            rawEnd = Math.max(rawEnd,b.time ?? 0);
+            const issue = event.malformed ? '时间字段格式' : a.issue || b.issue || (a.time > b.time ? '开始与结束先后颠倒' : '');
+            if (issue) {
+                issues[issue] = (issues[issue] || 0) + 1;
+                if (kind !== 'comment') invalid[issue] = (invalid[issue] || 0) + 1;
+                continue;
+            }
+            if (kind === 'typeset' || kind === 'drawing') visualEnd = Math.max(visualEnd,b.time);
+            if (kind !== 'dialogue') continue;
+            dialogue.push(event.dialogue);
+            start = Math.min(start,a.time);
+            longest = Math.max(longest,b.time - a.time);
+            if (b.time > end) { priorEnd = end; end = b.time; }
+            else priorEnd = Math.max(priorEnd,b.time);
+        }
+        return {start:Number.isFinite(start) ? start : null,end,rawEnd,events,issues,invalid,dialogue,priorEnd,longest,visualEnd};
+    }
+    function subtitleEndTime(text, ext) {
+        return subtitleTimeline(text,ext).end;
+    }
+    function subtitleCheckDuration(row, text, ext, log = () => {}, timeline = subtitleTimeline(text,ext)) {
+        const {start,end,rawEnd,events,issues,invalid,priorEnd,longest,visualEnd} = timeline;
+        const validDuration = value => Number.isFinite(Number(value)) && Number(value) > 0 ? Number(value) : 0;
+        const driveSeconds = validDuration(row.node.durationSeconds), runtime = validDuration(row.parsed?.runtimeSeconds);
+        const duration = driveSeconds || runtime;
+        const source = driveSeconds ? '视频文件时长' : runtime ? 'TMDB 作品时长参考' : '无时长参考';
+        const counts = Object.entries(issues).map(([reason,count]) => reason + ' ' + count).join('、');
+        log('字幕时长', row.node.name + ' · 对白 ' + (start == null ? '无' : start.toFixed(1) + ' 秒起')
+            + ' · 字幕结束 ' + end.toFixed(1) + ' 秒 · ' + source + (duration ? ' ' + duration.toFixed(1) + ' 秒' : '')
+            + ' · 原始最晚结束 ' + rawEnd.toFixed(1) + ' 秒 · 对白 ' + events.dialogue + '、注释 ' + events.comment
+            + '、绘图 ' + events.drawing + '、排版 ' + events.typeset + '、空事件 ' + events.empty
+            + (visualEnd > end ? ' · 绘图或排版延伸到 ' + visualEnd.toFixed(1) + ' 秒，不计入对白范围' : '')
+            + (counts ? ' · 异常 ' + counts : ''));
+        const uncertain = reason => Object.assign(new Error(reason),{timingUnconfirmed:true});
+        if (Object.keys(invalid).length) throw uncertain('字幕时间轴异常：' + counts + '，待确认');
+        if (!timeline.dialogue.length) throw uncertain('字幕时间轴没有可用的对白，待确认');
+        // Work metadata is advisory. Extreme ranges and isolated hour-scale gaps still need review.
+        const extreme = end > 12 * 3600 || longest > 4 * 3600 || (priorEnd > 0 && end - priorEnd > 3600 && end > priorEnd * 3);
+        if (extreme) throw uncertain('字幕时间轴存在极端对白范围，待确认');
+        if (driveSeconds && end > driveSeconds + Math.max(30,driveSeconds * .1))
+            throw uncertain('字幕时间轴与视频文件时长冲突，待确认');
+        if (driveSeconds && end < driveSeconds * .5 || !driveSeconds && runtime >= 1200 && end <= Math.min(480,runtime * .2))
+            throw uncertain('字幕不完整：对白只到 ' + end.toFixed(1) + ' 秒（' + source + '），待确认');
+        const evidence = driveSeconds ? 'file' : !runtime ? 'unknown'
+            : Math.abs(end - runtime) >= Math.max(120,runtime * .2) ? 'reference-difference' : 'reference';
+        return {start,end,rawEnd,visualEnd,events,issues,duration,source,evidence};
     }
     function subtitleSearchNames(parsed) {
         const names = [parsed.query,...(parsed.aliases || [])].map(name => subtitleQueryTitle(name,parsed.year)).filter(Boolean);
@@ -4257,6 +4358,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                         try {
                             const archive = await archiveData(candidate.url,verify);
                             if (!subtitleArchiveChoices(archive.index,candidate,config.language).length) { excluded.压缩包++; continue; }
+                            if (config.seasonSearch && candidate.archiveSeason === parsed.season) candidate.seasonPackVerified = true;
                         } catch (error) { check(); verify(); if (error.stop) throw error; excluded.压缩包++; downloadErrors.push(error.message); continue; }
                     }
                     covered.push(candidate);
@@ -4488,41 +4590,32 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         catch { return decode('gb18030'); }
     }
     function subtitleDialogue(text, ext) {
-        if (!/^(?:ass|ssa)$/i.test(ext)) return text.replace(/<[^>]*>/g, '').split(/\r?\n/).filter(line => !/-->|^\s*\d+\s*$|^WEBVTT/.test(line)).join('\n');
-        let inEvents = false, textColumn = 9;
-        const lines = [];
-        for (const line of text.split(/\r?\n/)) {
-            if (/^\s*\[/.test(line)) inEvents = /^\s*\[Events\]/i.test(line);
-            if (!inEvents) continue;
-            if (/^\s*Format\s*:/i.test(line)) {
-                const index = line.replace(/^\s*Format\s*:/i, '').split(',').findIndex(value => value.trim().toLowerCase() === 'text');
-                if (index >= 0) textColumn = index;
-            }
-            if (/^\s*Dialogue\s*:/i.test(line)) lines.push(line.replace(/^\s*Dialogue\s*:/i, '').split(',').slice(textColumn).join(',').replace(/\{[^}]*\}/g, '').replace(/\\[Nnh]/g, ' '));
-        }
-        return lines.join('\n');
+        return subtitleTimeline(text, ext).dialogue.join('\n');
     }
-    function subtitlePayload(bytes, ext, language, onDecoded = () => {}) {
+    function subtitlePayload(bytes, ext, language, onDecoded = () => {}, validateTimeline) {
         if (!bytes.length || bytes.length > SUBTITLE_LIMIT || !['srt','ass','ssa','vtt'].includes(ext)) throw new Error('仅支持单个 SRT、ASS、SSA、VTT 字幕，不导入压缩包或不完整字幕对');
         let decoded;
         try { decoded = subtitleDecode(bytes); }
         catch { throw new Error('字幕文本解码失败（UTF-8 / UTF-16 / GB18030），未上传'); }
         const {text, encoding} = decoded;
         onDecoded(`编码 ${encoding.toUpperCase()}，${bytes.length} 字节`);
-        if (/^\s*(?:<!doctype\s+html|<html|\{"(?:error|message)")/i.test(text) || !(/\d{1,2}:\d{2}:\d{2}[,.]\d{2,3}\s*-->|\d{2}:\d{2}\.\d{3}\s*-->|\[Events\][\s\S]*Dialogue\s*:/i.test(text))) throw new Error('下载内容不是可识别的字幕文本（' + encoding.toUpperCase() + '，' + bytes.length + ' 字节，' + (/<!doctype\s+html|<html|<body/i.test(text.slice(0, 1024)) ? '返回了 HTML 页面' : '缺少字幕时间轴或 Dialogue') + '）');
-        const dialogue = subtitleDialogue(text, ext);
+        if (/^\s*(?:<!doctype\s+html|<html|\{"(?:error|message)")/i.test(text) || !(/-->|\[Events\][\s\S]*Dialogue\s*:/i.test(text))) throw new Error('下载内容不是可识别的字幕文本（' + encoding.toUpperCase() + '，' + bytes.length + ' 字节，' + (/<!doctype\s+html|<html|<body/i.test(text.slice(0, 1024)) ? '返回了 HTML 页面' : '缺少字幕时间轴或 Dialogue') + '）');
+        const timeline = subtitleTimeline(text, ext);
+        if (validateTimeline) validateTimeline(timeline);
+        else if (!timeline.dialogue.length) throw new Error('字幕时间轴没有可用的对白');
+        const dialogue = timeline.dialogue.join('\n');
         if (language !== 'en' && !/[\u3400-\u9fff]/.test(dialogue)) throw new Error('字幕正文未检测到中文，未上传');
         if (language === 'en' && !/[a-z]{2}/i.test(dialogue)) throw new Error('字幕正文未检测到英文，未上传');
         return text;
     }
     function subtitleValidateContent(row, bytes, ext, language, log = () => {}) {
-        let encoding = '';
-        const text = subtitlePayload(bytes, ext, language, message => { encoding = message; log('字幕解码', message); });
-        const timing = subtitleCheckDuration(row, text, ext, log);
+        let encoding = '', timing;
+        const text = subtitlePayload(bytes, ext, language, message => { encoding = message; log('字幕解码', message); },
+            timeline => {timing = subtitleCheckDuration(row, '', ext, log, timeline);});
         return {text, encoding, ...timing, work:{status:'unconfirmed', reason:'正文格式和语言通过，作品归属未确认'}};
     }
     function subtitleVerificationMessage(result) {
-        return `格式/语言通过；${result.duration ? '长度下限通过' : '无时长参考'}；${result.work?.status === 'supported' ? 'AI 支持作品归属（非实证）' : '作品归属未确认'}；未核对音画同步`;
+        return `格式/语言通过；${({file:'对白范围与视频文件时长相符', unknown:'无时长参考', reference:'TMDB 仅作作品时长参考', 'reference-difference':'与 TMDB 作品时长参考有差异'})[result.evidence] || '时长证据待确认'}；${result.work?.status === 'supported' ? 'AI 支持作品归属（非实证）' : '作品归属未确认'}；未核对音画同步`;
     }
     function createSubtitleBodyReviewer(ai, log = () => {}, check = () => {}) {
         let parseFailures = 0;
@@ -4943,7 +5036,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
     function subtitleVerificationContext(row) {
         if (!row) return '';
         const node = row.node, parsed = row.parsed || {};
-        return JSON.stringify([2, String(node.id), String(node.parentId ?? ''), node.name, node.size, (node.md5 || '').toLowerCase(),
+        return JSON.stringify([3, String(node.id), String(node.parentId ?? ''), node.name, node.size, (node.md5 || '').toLowerCase(),
             parsed.query, parsed.year, !!parsed.tv, parsed.tmdbId, parsed.season, parsed.episode, parsed.endEpisode, node.durationSeconds, parsed.runtimeSeconds]);
     }
     async function inspectExistingSubtitles(row, drive, language, log = () => {}, check = () => {}, {force = false, review = null} = {}) {
@@ -4982,6 +5075,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             } catch (error) {
                 check(); if (error.stop) throw error;
                 drive.verified?.forget(sub);
+                if (error.timingUnconfirmed) row.coverageUnconfirmed = true;
                 rejected.push(sub.name + '：' + error.message);
                 log('现有字幕无效', `${sub.name}：${error.message}`);
             }
@@ -5389,7 +5483,8 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         ui.moveSettings(['openSubtitlesSettings'], 'OpenSubtitles', '#settingsModels');
         let inventory = [], drive = null, subtitleContext = null, checkedScope = null, deletePlan = null, busy = false, cancelled = false, reviewCandidates = null;
         const deleteSelection = new Set(), pendingDeletes = new Set();
-        let scan = null;
+        let scan = null, searching = false, seasonView = null;
+        const seasonChoices = new Map();
         ui.get('subtitleView').value = 'incomplete';
         const service = createSubtitleService({check:() => check(), log:(event, detail) => diag(event, detail)});
         const prefs = GM_getValue('cross-drive-subtitle-settings', {});
@@ -5431,45 +5526,12 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             .flatMap(row => row.subtitles.filter(sub => canDelete(row, sub)).map(sub => String(sub.id)));
         const selectAll = ui.get('selectAllSubtitleDeletes');
         const results = ui.get('subtitleResults'), host = ui.get('subtitleRows');
-        const pairs = [];
-        const scrollCards = () => {
-            for (const {track, cards, overflow} of pairs) {
-                const offset = Math.min(overflow, Math.max(0, results.scrollTop - track.offsetTop));
-                for (const {viewport} of cards) viewport.scrollTop = offset;
-            }
-        };
-        const sizeTracks = () => {
-            for (const pair of pairs) {
-                pair.overflow = Math.max(...pair.cards.map(({viewport}) => viewport.scrollHeight - viewport.clientHeight));
-                // The native scrollbar covers the details plus the travel between card rows.
-                pair.track.style.minHeight = 'calc(100cqh + ' + pair.overflow + 'px)';
-            }
-            scrollCards();
-        };
-        const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(sizeTracks) : null;
-        results.onscroll = scrollCards;
-        results.onfocusin = event => {
-            const viewport = event.target.closest('.subtitle-card-viewport');
-            if (!viewport) return;
-            const track = viewport.closest('.subtitle-pair');
-            const card = viewport.getBoundingClientRect(), control = event.target.getBoundingClientRect();
-            let offset = viewport.scrollTop;
-            if (control.top < card.top) offset += control.top - card.top;
-            else if (control.bottom > card.bottom) offset += control.bottom - card.bottom;
-            // Keyboard navigation can scroll the clipped card before the outer scrollbar moves.
-            const current = Math.max(0, results.scrollTop - track.offsetTop);
-            if (results.scrollTop < track.offsetTop || current >= track.offsetHeight ||
-                Math.abs(offset - Math.min(current, viewport.scrollHeight - viewport.clientHeight)) > 1) {
-                results.scrollTop = track.offsetTop + Math.max(0, offset);
-                scrollCards();
-            }
-        };
         const render = () => {
             const scope = ui.get('subtitleScope');
             scope.textContent = scan?.scope || '';
             scope.title = scope.textContent;
             const missing = inventory.filter(row => !covered(row));
-            const ready = missing.filter(row => !awaitingCheck(row) && !row.writeBlocked && row.selectedCandidate);
+            const ready = searching && missing.some(row => !awaitingCheck(row) && !row.writeBlocked && row.selectedCandidate && !row.selectedCandidate.downloadFailed);
             const view = ui.get('subtitleView').value;
             const visibleIds = viewSubtitleIds(view), selectedCount = visibleIds.filter(id => deleteSelection.has(id)).length;
             selectAll.disabled = busy || !visibleIds.length;
@@ -5481,8 +5543,13 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             const checked = inventory.filter(row => !awaitingCheck(row));
             const remaining = inventory.length - checked.length;
             summary.hidden = !inventory.length;
+            const coverage = searching ? subtitleSearchSummary(checked) : [
+                '有字幕 ' + checked.filter(covered).length,
+                '没字幕 ' + checked.filter(row => subtitleCoverageState(row) === 'missing').length,
+                '检查未确认 ' + checked.filter(row => subtitleCoverageState(row) === 'unconfirmed').length
+            ].join(' · ');
             summary.textContent = '共 ' + inventory.length + ' 项 · 已检查 ' + checked.length + ' · '
-                + (scan?.interrupted ? '未检查完成 ' : '待检查 ') + remaining + ' · ' + subtitleSearchSummary(checked);
+                + (scan?.interrupted ? '未检查完成 ' : '待检查 ') + remaining + ' · ' + coverage;
             const totalSelected = new Set(inventory.flatMap(row => row.subtitles.filter(sub => selectedForDelete(row, sub)).map(sub => String(sub.id)))).size;
             const selectionCount = ui.get('subtitleDeleteSelectionCount');
             selectionCount.hidden = !totalSelected;
@@ -5492,34 +5559,64 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             ui.get('cancelSubtitleDeletes').disabled = busy;
             ui.get('recheckSubtitles').disabled = busy;
             ui.get('auditSubtitles').disabled = busy || !inventory.some(row => row.subtitles.length);
-            ui.get('fillSubtitles').disabled = busy || checkedScope === null || !ready.length;
+            ui.get('fillSubtitles').disabled = busy || checkedScope === null || !ready;
             const scrollTop = results.scrollTop;
-            const anchor = pairs.find(pair => pair.track.offsetTop + pair.track.offsetHeight > scrollTop);
-            const anchorOffset = anchor ? scrollTop - anchor.track.offsetTop : 0;
             const active = host.getRootNode?.().activeElement;
             const focusKey = active && host.contains?.(active) ? active.dataset.subtitleFocus : undefined;
             const trackFocus = (control, key) => { control.dataset.subtitleFocus = key; };
-            observer?.disconnect();
-            pairs.length = 0;
+            const addButton = (box, label, key, click) => {
+                const button = document.createElement('button'); button.type = 'button'; button.textContent = label;
+                trackFocus(button,key); button.disabled = busy; button.onclick = click; box.append(button);
+            };
             host.replaceChildren();
-            const renderRow = row => {
+            const episodeRange = rows => {
+                const ranges = [];
+                const episodes = rows.map(({parsed}) => [parsed.episode, parsed.endEpisode ?? parsed.episode]).filter(([start]) => start != null)
+                    .sort(([a],[b]) => a - b);
+                for (const [start,end] of episodes) {
+                    const last = ranges.at(-1);
+                    if (last && start <= last[1] + 1) last[1] = Math.max(last[1],end);
+                    else ranges.push([start,end]);
+                }
+                const pad = value => String(value).padStart(2,'0');
+                return ranges.length ? ranges.map(([a,b]) => a === b ? pad(a) : pad(a) + '—' + pad(b)).join('、') + ' 集' : '';
+            };
+            const renderRow = (row, mode) => {
                 const item = document.createElement('div'); item.className = 'subtitle-result';
                 const text = document.createElement('p');
                 const pending = awaitingCheck(row);
                 const coverage = pending ? row.checkState : subtitleCoverageState(row);
                 const embedded = pending ? null : row.embedded;
                 const label = {complete:'有字幕',missing:'缺可用字幕',unconfirmed:'检查未确认',waiting:'待检查',checking:'检查中',interrupted:'未检查完成'}[coverage];
-                const messages = pending ? [] : [coverage !== 'complete' && subtitleSearchLabels[subtitleSearchState(row)],
-                    embedded?.message, row.error, !embedded?.chinese && row.searchMessage];
-                text.textContent = safeDiagnostic([label + '：' + row.node.name, row.path, ...messages].filter(Boolean).join('\n'));
+                item.dataset.state = needsChoice(row) ? 'choice' : coverage;
+                const badge = document.createElement('span');
+                badge.className = 'subtitle-badge';
+                const state = searching && !pending && !embedded?.chinese && !row.writeBlocked ? subtitleSearchLabels[subtitleSearchState(row)] : '';
+                badge.textContent = embedded?.chinese ? '内嵌中文 · 已补齐'
+                    : (label === '缺可用字幕' && !searching ? '没字幕' : label) + (state && coverage !== 'complete' ? ' · ' + state : '');
+                if (row.parsed.episode != null && mode) {
+                    const episode = document.createElement('strong');
+                    episode.textContent = episodeRange([row]);
+                    text.append(episode);
+                }
+                text.append(badge);
+                const failedSource = row.sources?.find(source => source.error || source.paused);
+                const reason = !pending && (row.error || embedded?.unconfirmed && embedded.message
+                    || row.coverageUnconfirmed && row.searchMessage || failedSource?.error || failedSource?.paused);
+                if (reason && !embedded?.chinese) {
+                    const detail = document.createElement('span'); detail.className = 'subtitle-detail';
+                    const message = safeDiagnostic(reason).split(/\r?\n/,1)[0];
+                    detail.textContent = message.length > 64 ? message.slice(0,61) + '…' : message;
+                    text.append(detail);
+                }
                 item.append(text);
                 if (pending) return item;
-                for (const sub of row.subtitles) {
+                if (mode === 'delete') for (const sub of row.subtitles) {
                     if (row.embedded?.chinese) break;
                     const line = document.createElement('label'), checkbox = document.createElement('input'), name = document.createElement('span');
                     checkbox.type = 'checkbox'; checkbox.checked = selectedForDelete(row, sub); checkbox.disabled = busy || !canDelete(row, sub);
                     trackFocus(checkbox, JSON.stringify(['delete',row.node.id,sub.id]));
-                    name.textContent = '移入回收站：' + sub.name;
+                    name.textContent = '移入回收站：' + sub.name; name.title = name.textContent;
                     checkbox.onchange = () => {
                         if (busy || !canDelete(row, sub)) return;
                         if (checkbox.checked) deleteSelection.add(String(sub.id));
@@ -5529,18 +5626,30 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     };
                     line.append(checkbox, name); item.append(line);
                 }
-                if (subtitleCovered(row) || row.writeBlocked || checkedScope === null) return item;
+                if (!searching || mode === 'delete' || subtitleCovered(row) || row.writeBlocked || checkedScope === null || !row.candidates?.length) return item;
                 const select = document.createElement('select'); select.disabled = busy || checkedScope === null;
                 trackFocus(select, JSON.stringify(['candidate',row.node.id]));
                 const blank = document.createElement('option'); blank.value = ''; blank.textContent = '跳过此视频 / 请选择字幕'; select.append(blank);
-                (row.candidates || []).forEach((candidate, index) => {
+                const available = row.candidates.filter(candidate => !candidate.downloadFailed);
+                available.forEach((candidate, index) => {
                     const option = document.createElement('option'); option.value = String(index);
                     option.textContent = subtitleCandidateLabel(candidate);
                     option.title = option.textContent;
                     select.append(option);
                 });
-                select.value = row.selectedCandidate ? String(row.candidates.indexOf(row.selectedCandidate)) : '';
-                select.onchange = () => { row.selectedCandidate = select.value === '' ? null : row.candidates[Number(select.value)]; row.error = ''; row.manualCandidate = true; row.aiSuggested = false; row.searchMessage = subtitleSearchMessage(row); diag('手动选择', `${row.node.name} · ${row.selectedCandidate ? row.selectedCandidate.source + ' · ' + (row.selectedCandidate.name || row.selectedCandidate.release) : '跳过此视频'}`); render(); };
+                const selected = available.indexOf(row.selectedCandidate);
+                select.value = selected < 0 ? '' : String(selected);
+                select.title = selected < 0 ? blank.textContent : subtitleCandidateLabel(row.selectedCandidate);
+                select.onchange = () => {
+                    if (busy) return;
+                    row.selectedCandidate = select.value === '' ? null : available[Number(select.value)];
+                    row.error = '';
+                    row.manualCandidate = true;
+                    row.aiSuggested = false;
+                    row.searchMessage = subtitleSearchMessage(row);
+                    diag('手动选择', row.node.name + ' · ' + (row.selectedCandidate ? subtitleCandidateLabel(row.selectedCandidate) : '跳过此视频'));
+                    render();
+                };
                 item.append(select);
                 return item;
             };
@@ -5550,53 +5659,135 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 groups.get(row.groupKey).push(row);
             }
             let visible = 0;
-            let pair;
-            for (const [key, rows] of groups) {
+            if (seasonView && !groups.has(seasonView.key)) seasonView = null;
+            if (seasonView) {
+                const {key,mode,exceptions:exceptionIds} = seasonView;
+                const rows = groups.get(key);
+                const box = document.createElement('section'); box.className = 'sync-item subtitle-action-view';
+                const heading = document.createElement('h5');
+                heading.textContent = (rows[0].parsed.query || rows[0].node.name) + (mode === 'delete' ? ' · 选择外置字幕' : ' · 处理待确认项');
+                box.append(heading);
+                addButton(box,'返回结果','subtitle-back',() => {
+                    const origin = seasonView;
+                    seasonView = null;
+                    render();
+                    results.scrollTop = origin.scrollTop;
+                    [...host.querySelectorAll('[data-subtitle-focus]')].find(control => control.dataset.subtitleFocus === origin.focus)?.focus({preventScroll:true});
+                });
+                const exceptions = rows.filter(row => mode === 'delete' ? inView(row,view) && row.subtitles.some(sub => canDelete(row,sub))
+                    : exceptionIds.has(row.node.id) && !covered(row) && !row.writeBlocked && row.candidates?.length);
+                for (const row of exceptions) box.append(renderRow(row,mode));
+                if (!exceptions.length) {
+                    const empty = document.createElement('p'); empty.textContent = '当前没有可处理的项目。'; box.append(empty);
+                }
+                host.append(box);
+                visible++;
+            } else for (const [key, rows] of groups) {
                 const shown = rows.filter(row => inView(row, view));
                 if (!shown.length) continue;
                 visible += shown.length;
-                if (!pair || pair.cards.length === 2) {
-                    const track = document.createElement('div'); track.className = 'subtitle-pair';
-                    const grid = document.createElement('div'); grid.className = 'tool-results subtitle-pair-cards';
-                    track.append(grid);
-                    host.append(track);
-                    pair = {key,track,grid,cards:[],overflow:0};
-                    pairs.push(pair);
-                }
-                const box = document.createElement('section'); box.className = 'sync-item';
-                const viewport = document.createElement('div'); viewport.className = 'subtitle-card-viewport';
-                const content = document.createElement('div'); content.className = 'subtitle-card-content';
-                viewport.append(content);
-                pair.grid.append(box);
-                pair.cards.push({viewport,content});
-                const heading = document.createElement('h5'), first = rows[0];
-                const episodes = first.parsed.tv && first.parsed.season != null && rows.every(row => row.parsed.episode != null);
-                heading.textContent = (first.parsed.query || first.node.name) + (first.parsed.season != null ? ' · 第 ' + first.parsed.season + ' 季' : '');
+                const first = rows[0];
+                const season = first.parsed.tv && first.parsed.season != null;
+                const title = (first.parsed.query || first.node.name) + (season ? ' · 第 ' + first.parsed.season + ' 季' : '');
+                const box = document.createElement('section'); box.className = 'sync-item subtitle-card';
+                const heading = document.createElement('h5'); heading.textContent = title; heading.title = title;
                 box.append(heading);
-                if (rows.length > 1) {
+                const open = (mode, exceptions = []) => {
+                    seasonView = {key,mode,exceptions:new Set(exceptions.map(row => row.node.id)),
+                        scrollTop:results.scrollTop,focus:JSON.stringify([mode,key])};
+                    results.scrollTop = 0;
+                    render();
+                    [...host.querySelectorAll('[data-subtitle-focus]')].find(control => control.dataset.subtitleFocus === 'subtitle-back')?.focus({preventScroll:true});
+                };
+                if (!season) {
+                    for (const row of shown) box.append(renderRow(row));
+                } else {
                     const completed = rows.filter(covered);
-                    const unfinished = rows.filter(awaitingCheck).length;
-                    const embedded = completed.filter(row => row.embedded?.chinese).length;
+                    const unchecked = rows.filter(awaitingCheck);
+                    const unknown = rows.filter(row => !covered(row) && !awaitingCheck(row) && subtitleCoverageState(row) === 'unconfirmed');
+                    const missing = rows.filter(row => !covered(row) && !awaitingCheck(row) && subtitleCoverageState(row) === 'missing');
                     const summary = document.createElement('p'); summary.className = 'subtitle-group-count';
-                    const unit = episodes ? '集' : '项';
-                    summary.textContent = '共 ' + rows.length + ' ' + unit + ' · 已补齐 ' + completed.length + ' · 未补齐 ' + (rows.length - completed.length - unfinished)
-                        + (unfinished ? ' · 已检查 ' + (rows.length - unfinished) + ' · ' + (scan?.interrupted ? '未检查完成 ' : '待检查 ') + unfinished : '')
-                        + (embedded ? ' · 内嵌中文 ' + embedded : '') + (view !== 'all' ? ' · 当前筛选 ' + shown.length + ' ' + unit : '');
+                    summary.textContent = '共 ' + rows.length + ' 集' + (shown.length !== rows.length ? ' · 当前筛选 ' + shown.length + ' 集' : '');
                     box.append(summary);
+                    const count = (label, subset, includeRange = true) => {
+                        const line = document.createElement('p');
+                        const range = includeRange ? episodeRange(subset) : '';
+                        line.textContent = label + ' ' + subset.length + ' 集' + (range ? ' · ' + range : '');
+                        box.append(line);
+                    };
+                    const allEmbedded = completed.length && completed.every(row => row.embedded?.chinese);
+                    count(allEmbedded ? '有字幕（内嵌中文）' : '有字幕',completed);
+                    count('没字幕',missing);
+                    if (unknown.length) count('检查未确认',unknown);
+                    if (unchecked.length) count(scan?.interrupted ? '未检查完成' : '待检查／检查中',unchecked);
+                    if (searching) {
+                        const targets = rows.filter(row => !covered(row) && !awaitingCheck(row) && !row.writeBlocked);
+                        const blocked = shown.filter(row => !covered(row) && row.writeBlocked);
+                        const unselected = targets.filter(row => !row.selectedCandidate || row.selectedCandidate.downloadFailed);
+                        const pending = unselected.filter(row => row.candidates?.some(candidate => !candidate.downloadFailed));
+                        const failures = unselected.filter(row => subtitleSearchState(row) === 'failed');
+                        const packs = new Map();
+                        for (const row of targets) for (const candidate of row.autoCandidates || []) {
+                            if (!candidate.seasonPackVerified || candidate.downloadFailed || candidate.hardMismatch || !candidate.url
+                                || candidate.parsed?.season !== row.parsed.season || candidate.parsed?.episode !== row.parsed.episode) continue;
+                            const id = JSON.stringify([candidate.source,candidate.url,candidate.language]);
+                            if (!packs.has(id)) packs.set(id,{candidate,choices:new Map()});
+                            packs.get(id).choices.set(row,candidate);
+                        }
+                        const ready = targets.filter(row => row.selectedCandidate && !row.selectedCandidate.downloadFailed);
+                        if (ready.length || pending.length || packs.size) {
+                            const select = document.createElement('select'); select.disabled = busy;
+                            trackFocus(select,JSON.stringify(['plan',key]));
+                            select.setAttribute?.('aria-label','字幕方案 · ' + title);
+                            const option = (value, label) => {
+                                const entry = document.createElement('option'); entry.value = value; entry.textContent = label; entry.title = label; select.append(entry);
+                            };
+                            const automatic = targets.filter(row => row.autoCandidates?.some(candidate => !candidate.downloadFailed)).length;
+                            option('', '自动逐集择优（可能跨来源或版本） · ' + automatic + '/' + targets.length + ' 集');
+                            const plans = [...packs].map(([id,pack], index) => ({...pack,id,value:String(index)}));
+                            for (const pack of plans) option(pack.value, safeDiagnostic(subtitleCandidateLabel(pack.candidate)) + ' · 覆盖待补 ' + pack.choices.size + '/' + targets.length + ' 集');
+                            select.value = plans.find(plan => plan.id === seasonChoices.get(key))?.value ?? '';
+                            select.title = select.children[select.value === '' ? 0 : Number(select.value)+1].title;
+                            select.onchange = () => {
+                                if (busy) return;
+                                const plan = select.value === '' ? null : plans[Number(select.value)];
+                                if (plan) seasonChoices.set(key,plan.id);
+                                else seasonChoices.delete(key);
+                                for (const row of targets) {
+                                    row.selectedCandidate = plan ? plan.choices.get(row) || null : row.autoCandidates?.find(candidate => !candidate.downloadFailed) || null;
+                                    row.manualCandidate = !!plan;
+                                    row.aiSuggested = !!row.selectedCandidate?.aiAccepted;
+                                    row.searchMessage = subtitleSearchMessage(row);
+                                }
+                                diag('季字幕方案', title + ' · ' + (plan ? subtitleCandidateLabel(plan.candidate) : '自动逐集择优'));
+                                render();
+                            };
+                            box.append(select);
+                        }
+                        if (ready.length) count('待补齐',ready,false);
+                        if (pending.length || failures.length || blocked.length) {
+                            const note = document.createElement('p');
+                            note.textContent = [
+                                pending.length && ('需手选 ' + pending.length + ' 集 · ' + episodeRange(pending)),
+                                failures.length && ('查询失败 ' + failures.length + ' 集，请查看日志'),
+                                blocked.length && ('结果待核对 ' + blocked.length + ' 集，请重新检查')
+                            ].filter(Boolean).join(' / ');
+                            box.append(note);
+                        }
+                        const unmatched = unselected.filter(row => !row.candidates?.some(candidate => !candidate.downloadFailed)
+                            && subtitleSearchState(row) === 'notFound');
+                        if (unmatched.length) count('未找到匹配项',unmatched,false);
+                        if (pending.length) addButton(box,'处理待确认项',JSON.stringify(['choice',key]),() => open('choice',pending));
+                    }
                 }
-                box.append(viewport);
-                for (const row of shown) content.append(renderRow(row));
+                if (!busy && shown.some(row => row.subtitles.some(sub => canDelete(row,sub)))) {
+                    addButton(box, season ? '选择本季外置字幕' : '选择外置字幕',JSON.stringify(['delete',key]),() => open('delete'));
+                }
+                host.append(box);
             }
             ui.get('subtitleEmpty').hidden = visible > 0;
             ui.get('subtitleEmpty').textContent = !inventory.length ? '本次检查没有视频，或尚未检查。请勾选目录或视频，再点击“检查目录字幕”。' : view === 'incomplete' && !missing.length ? '所选范围内的视频都有字幕。' : view === 'choice' ? '没有需要手动选择的字幕。' : '当前筛选下没有视频。';
-            if (observer) {
-                observer.observe(results);
-                for (const {cards} of pairs) for (const {content} of cards) observer.observe(content);
-                sizeTracks();
-            }
-            const restored = anchor && pairs.find(pair => pair.key === anchor.key);
-            results.scrollTop = restored ? restored.track.offsetTop + Math.min(anchorOffset, restored.track.offsetHeight - 1) : scrollTop;
-            if (observer) scrollCards();
+            results.scrollTop = scrollTop;
             if (focusKey) [...host.querySelectorAll('[data-subtitle-focus]')].find(control => control.dataset.subtitleFocus === focusKey)?.focus({preventScroll:true});
         };
         const runTask = createPanelTask(ui, (value, stoppable) => {
@@ -5657,7 +5848,9 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     diag('作品别名', row.parsed.aliases?.length ? row.parsed.aliases.join('；') : '无');
                     await searchSubtitleSources(row, config, service, drive, diag, check);
                     await applySubtitleWorkCorrection(row, correctWork, config, service, drive, diag, check);
-                    if (!row.selectedCandidate && row.candidates.length) diag('待选样例', row.candidates.slice(0, 8).map(candidate => subtitleCandidateLabel(candidate) + (candidate.matchReason ? '' : ' · 待确认：未满足自动选择条件')).join('；'));
+                    if (row.candidates.length) diag('字幕候选', row.node.name + ' · ' + row.candidates.map(candidate =>
+                        subtitleCandidateLabel(candidate) + (!candidate.titleMatched && !candidate.identityMatched && !candidate.aiAccepted
+                            ? ' · ' + (candidate.matchReason || '需确认作品或语言') : '')).join('；'));
                     diag('视频结果', `${row.node.name} · ${subtitleSearchLabels[subtitleSearchState(row)]}${row.selectedCandidate ? ' · ' + subtitleCandidateLabel(row.selectedCandidate) : ''}`);
                     diag('单片耗时', `${row.node.name} · ${((Date.now() - started) / 1000).toFixed(1)} 秒`);
                     meter(++done, rows.length); render();
@@ -5680,6 +5873,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         };
         const checkDirectory = async (force = false) => {
             diag('检查开始', force ? '强制复查已有字幕：跳过缓存，重读正文' : '读取当前选中的视频与已有字幕');
+            searching = false; seasonView = null; seasonChoices.clear();
             const batch = scan = {scope:'', interrupted:false};
             let framePending = false;
             const refresh = () => {
@@ -5731,6 +5925,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     row.checkState = 'checking';
                     refresh();
                     const node = row.node;
+                    diag('检查文件', row.path);
                     try {
                         await mediaRecords.restore?.(node, context.source, verify);
                         verify();
@@ -5788,6 +5983,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         };
         ui.get('readSubtitles').onclick = () => runTask(async () => {
             if (checkedScope === null && !await checkDirectory()) return;
+            searching = true; seasonView = null; seasonChoices.clear();
             await searchRows(inventory);
         }, true);
         ui.get('recheckSubtitles').onclick = () => runTask(checkDirectory, true);
@@ -5844,7 +6040,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         }, true);
         ui.get('fillSubtitles').onclick = () => runTask(async () => {
             if (!drive) return;
-            const rows = inventory.filter(row => !subtitleCovered(row) && !row.writeBlocked && row.selectedCandidate), config = settings();
+            const rows = inventory.filter(row => !subtitleCovered(row) && !row.writeBlocked && row.selectedCandidate && !row.selectedCandidate.downloadFailed), config = settings();
             config.reviewCandidates = reviewCandidates;
             let done = 0, failed = 0;
             try {
@@ -5870,7 +6066,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                                 diag('候选下载', `${row.node.name} · ${subtitleCandidateLabel(candidate)} 开始`);
                                 const {result, bytes} = await service.fetchFile(candidate, config, (phase, message) => diag(phase, `${row.node.name} · ${message}`), check); check();
                                 const {text, ...verification} = subtitleValidateContent(row, bytes, result.ext, config.language, diag);
-                                diag('正文校验', `${row.node.name} · ${candidate.source} 通过，${bytes.length} 字节，${result.ext.toUpperCase()}`);
+                                diag('正文校验', `${row.node.name} · ${candidate.source} 格式与语言通过，${bytes.length} 字节，${result.ext.toUpperCase()} · ${subtitleVerificationMessage(verification)}`);
                                 payload = {candidate, result, bytes, verification}; break;
                             } catch (error) {
                                 candidate.downloadFailed = true;
@@ -5890,7 +6086,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                         const name = mediaStem(row.node.name) + '.' + language.replace(/[^a-z0-9-]/gi, '') + '.' + result.ext;
                         const target = await drive.save(row, name, bytes, phase => { status(phase + '：' + row.node.name); diag('网盘写入', `${row.node.name} · ${phase}`); }, check);
                         row.subtitles.push(target); row.complete = true; row.verification = verification; row.searchMessage = '已补齐，上传内容一致：' + name + ' · ' + subtitleVerificationMessage(verification); done++;
-                        diag('补齐成功', `${row.node.name} · 已核验 ${name}`);
+                        diag('补齐成功', `${row.node.name} · 上传字节已核验 ${name}`);
                     } catch (error) {
                         row.error = error.message;
                         if (error.pendingUpload) row.writeBlocked = true;
@@ -5913,9 +6109,9 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             }
             clearDeletePreview(); render();
         };
-        ui.get('subtitleView').onchange = () => { results.scrollTop = 0; render(); };
+        ui.get('subtitleView').onchange = () => { seasonView = null; results.scrollTop = 0; render(); };
         ui.get('openSubtitlesKey').onchange = () => { service.logout(); ui.get('subtitleLoginState').textContent = '未登录'; };
-        ui.get('subtitleLanguage').onchange = () => { scan = null; inventory = []; drive = null; subtitleContext = null; checkedScope = null; deleteSelection.clear(); clearDeletePreview(); render(); status('语言已更改，请重新查找。'); };
+        ui.get('subtitleLanguage').onchange = () => { scan = null; searching = false; seasonView = null; seasonChoices.clear(); inventory = []; drive = null; subtitleContext = null; checkedScope = null; deleteSelection.clear(); clearDeletePreview(); render(); status('语言已更改，请重新查找。'); };
         ui.get('saveSubtitleSettings').onclick = () => { GM_setValue('cross-drive-subtitle-settings', settings()); status('设置已保存。'); };
         ui.get('forgetSubtitleKey').onclick = () => {
             const currentDrive = drive || subtitleDrive({session:provider === '光鸭' ? {provider,token:capture.token} : recover123Session(),source:{}});

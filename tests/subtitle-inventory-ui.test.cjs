@@ -17,7 +17,8 @@ const siblings = new Map(videos.map(video => [video.parentId,[video,...(linked.g
 const elements = new Map(), queried = [], deleted = [];
 let reads = 0, saves = 0, empty = false, collectionError = false, pauseRead = null, recycleResult = null, panelBusy = false;
 let season = [], missingEpisodes = new Set(), protectedEpisodes = new Set();
-let trackResult, restoreResult, listResult, reconcileResult;
+let trackResult, restoreResult, listResult, reconcileResult, candidateResult;
+const uploaded = [];
 const get = id => { assert.ok(elements.has(id),id); return elements.get(id); };
 const ctx = vm.createContext({URL, TextEncoder, TextDecoder, Uint8Array, Date,
     document:{createElement:element},
@@ -44,6 +45,7 @@ const ctx = vm.createContext({URL, TextEncoder, TextDecoder, Uint8Array, Date,
     }, mediaBonusName:() => false, mediaRecords:{get:() => null,restore:(...args)=>restoreResult?.(...args)}, mediaStem:name => name.replace(/\.[^.]+$/,''),
     createSubtitleService:() => ({thunderSearch:async row => {
         queried.push(row.node.id);
+        if (candidateResult) return candidateResult(row);
         if (row.node.id === 'failure' || row.node.id === 'ep-48') throw Error('来源连接失败');
         if (row.node.id === 'ep-47') return [{source:'迅雷',name:'假面骑士双骑.S01E47.简体.srt',language:'zh-cn'}];
         if (row.node.id === 'invalid') return [{source:'迅雷',name:'未确认字幕.srt',language:'zh-cn'}];
@@ -60,14 +62,17 @@ const ctx = vm.createContext({URL, TextEncoder, TextDecoder, Uint8Array, Date,
             reads++; if (pauseRead) await pauseRead;
             if (sub.id === 's-pending') throw Error('读取连接失败');
             return sub.id === 's-invalid' || protectedEpisodes.has(sub.id) ? new TextEncoder().encode('<html>错误页</html>') : valid;
-        },save:async () => {saves++; return {id:'uploaded',name:'同名影片.2020.zh-cn.srt'};}})
+        },save:async row => {saves++; uploaded.push(row.node.id); return {id:'uploaded',name:'同名影片.2020.zh-cn.srt'};}})
 });
 const serviceFactory = ctx.createSubtitleService;
 vm.runInContext(part('    function evict(', '    function nonNegativeInteger(') + part('    function subtitleDownloadUrl(', '    function subtitleDrive(') + part('    function createPanelTask(', '    function panelControls(') + part('    function subtitleInventory(', '    if (location.hostname'),ctx);
 ctx.createSubtitleService = serviceFactory;
-const cards = () => get('subtitleRows').children.flatMap(pair => pair.children[0].children);
-const cardContent = () => cards()[0].children.at(-1).children[0];
+const cards = () => get('subtitleRows').children;
 const shown = () => get('subtitleRows').querySelectorAll('p').map(row => row.textContent).join('\n');
+const action = (label, root=get('subtitleRows')) => {
+    const button = root.querySelectorAll('button').find(node => node.textContent === label);
+    assert.ok(button,label); button.onclick();
+};
 const view = value => {get('subtitleView').value = value; get('subtitleView').onchange();};
 
 (async () => {
@@ -89,21 +94,21 @@ const view = value => {get('subtitleView').value = value; get('subtitleView').on
     assert.equal(get('subtitleSummary').hidden,false);
     assert.match(get('subtitleSummary').textContent,/已检查 5 · 待检查 0/);
     assert.equal(get('subtitleView').value,'incomplete'); assert.equal(cards().length,4);
-    assert.doesNotMatch(shown(),/\/目录0\//);
+    assert.ok(!cards()[0].textContent.includes('有字幕'));
     view('all'); assert.equal(cards().length,5);
     assert.equal(get('subtitleRows').querySelectorAll('details').length,0,'Results show details without disclosure controls');
-    assert.match(shown(),/有字幕：/); assert.match(shown(),/缺可用字幕：/); assert.match(shown(),/读取连接失败/);
+    assert.match(shown(),/有字幕\n/); assert.match(shown(),/没字幕/); assert.match(shown(),/读取连接失败/);
     assert.equal(elements.has('subtitleViewPending'),false);
-    for (const [index] of videos.entries()) assert.ok(shown().includes('/影视库/目录' + index + '/同名影片.2020.mkv'),'Full paths distinguish duplicate filenames');
+    for (const [index] of videos.entries()) assert.ok(get('subtitleLog').value.includes('/影视库/目录' + index + '/同名影片.2020.mkv'),'Full paths remain in the copyable log');
     assert.match(get('subtitleScope').textContent,/影视库.*本次所选文件夹.*视频 5/);
     await get('readSubtitles').onclick();
     assert.equal(reads,3,'Searching reuses the checked inventory without reading subtitle bodies again');
     assert.deepEqual(queried,['ready','failure','invalid','pending'],'Only files with usable subtitles are skipped');
     assert.equal(get('subtitleSummary').hidden,false);
     assert.equal(cards().length,5,'All results remain visible after searching');
-    assert.match(shown(),/缺可用字幕：/); assert.match(shown(),/手动选择\n/); assert.match(shown(),/来源连接失败/);
-    view('choice'); assert.equal(cards().length,1); assert.match(shown(),/\/目录3\//);
-    view('complete'); assert.equal(cards().length,1); assert.match(shown(),/\/目录0\//);
+    assert.match(shown(),/缺可用字幕/); assert.match(shown(),/手动选择/); assert.match(shown(),/来源连接失败/);
+    view('choice'); assert.equal(cards().length,1); assert.match(shown(),/手动选择/);
+    view('complete'); assert.equal(cards().length,1); assert.match(shown(),/有字幕/);
     view('all'); assert.equal(cards().length,5);
     view('incomplete'); await get('fillSubtitles').onclick();
     assert.equal(saves,1);
@@ -116,18 +121,20 @@ const view = value => {get('subtitleView').value = value; get('subtitleView').on
     collectionError = false; await get('recheckSubtitles').onclick();
     view('all');
     const checkboxes=()=>get('subtitleRows').querySelectorAll('input');
-    assert.equal(checkboxes().length,3,'Only subtitle files linked to a unique video are offered for deletion');
+    assert.equal(checkboxes().length,0,'Cards do not show individual deletion checkboxes');
     const selectAll = get('selectAllSubtitleDeletes');
     const toggleAll = checked => {selectAll.checked = checked; selectAll.onchange();};
     assert.equal(selectAll.disabled,false); assert.equal(selectAll.checked,false);
-    toggleAll(true); assert.ok(checkboxes().every(box => box.checked));
+    toggleAll(true); assert.equal(get('subtitleDeleteSelectionCount').textContent,'已选 3 项');
     get('reviewSubtitleDeletes').onclick(); assert.equal(get('subtitleDeletePreview').open,true);
     view('incomplete'); assert.equal(selectAll.checked,true);
     toggleAll(false); assert.equal(get('subtitleDeletePreview').hidden,true,'Changing selection invalidates the previous confirmation');
     view('all'); assert.equal(selectAll.indeterminate,true);
-    assert.deepEqual(checkboxes().map(box => box.checked),[true,false,false],'Cancelling the visible selection keeps selections under other filters');
+    assert.equal(get('subtitleDeleteSelectionCount').textContent,'已选 1 项');
     view('choice'); assert.equal(selectAll.disabled,true);
-    view('all'); toggleAll(false); assert.ok(checkboxes().every(box => !box.checked));
+    view('all'); toggleAll(false); assert.equal(get('subtitleDeleteSelectionCount').hidden,true);
+    action('选择外置字幕',cards()[0]);
+    assert.equal(checkboxes().length,1);
     get('subtitleResults').scrollTop = 80;
     checkboxes()[0].checked=true;checkboxes()[0].onchange();assert.equal(get('reviewSubtitleDeletes').disabled,false);
     assert.equal(get('subtitleResults').scrollTop,80,'Subtitle selection preserves the list scroll position');
@@ -152,16 +159,17 @@ const view = value => {get('subtitleView').value = value; get('subtitleView').on
     assert.equal(panelBusy,false);
     view('all');
     assert.match(shown(),/字幕删除结果不明/);
-    assert.equal(checkboxes()[0].disabled,true,'An unconfirmed recycle result cannot be selected again');
-    checkboxes()[0].checked=true;checkboxes()[0].onchange();
+    assert.equal(cards()[0].querySelectorAll('button').length,0,'An unconfirmed recycle result cannot be selected again');
     assert.equal(get('reviewSubtitleDeletes').disabled,true);
     await get('recheckSubtitles').onclick();
     view('complete');
+    action('选择外置字幕');
     checkboxes()[0].checked=true;checkboxes()[0].onchange();
     get('reviewSubtitleDeletes').onclick();await get('confirmSubtitleDeletes').onclick();
     assert.deepEqual(deleted,['s-complete']);assert.match(get('subtitleProgress').textContent,/已移入回收站 1 个/,'A fresh check lets the user confirm a new deletion plan');
     await seasonSummary();
     await incrementalChecks();
+    await seasonPlans();
     console.log('PASS subtitle directory inventory: scan makes no provider/write calls; expanded results, full paths, filters/empty states, fill updates, stale-scan clearing and previewed safe batch deletion (mocked API/DOM)');
 })().catch(error => {console.error(error); process.exitCode = 1;});
 
@@ -172,15 +180,16 @@ async function seasonSummary() {
     });
     const results = get('subtitleRows');
     const summary = () => cards()[0].children.find(node => node.className === 'subtitle-group-count').textContent;
-    const direct = () => cardContent().children.filter(node => node.className === 'subtitle-result');
+    const controls = () => results.querySelectorAll('select');
     const queriesBefore = queried.length;
     await get('recheckSubtitles').onclick();
     view('all');
     assert.equal(cards().length,1);
-    assert.match(summary(),/共 49 集 · 已补齐 49 · 未补齐 0 · 内嵌中文 49/);
-    assert.equal(direct().length,49);
-    assert.equal(results.querySelectorAll('details').length,0,'Every completed episode is shown directly');
-    assert.match(direct().at(-1).textContent,/\/影视库\/双骑\/.*S01E49\.mkv/);
+    assert.match(summary(),/共 49 集/);
+    assert.match(shown(),/有字幕（内嵌中文） 49 集 · 01—49 集/);
+    assert.equal(controls().length,0);
+    assert.equal(results.querySelectorAll('details').length,0,'Completed episodes use a summary without disclosure');
+    assert.match(get('subtitleLog').value,/\/影视库\/双骑\/.*S01E49\.mkv/);
     await get('readSubtitles').onclick();
     assert.equal(queried.length,queriesBefore);
 
@@ -190,9 +199,11 @@ async function seasonSummary() {
     siblings.set('season-1',[...season,sub]);
     await get('recheckSubtitles').onclick();
     view('all');
-    assert.match(summary(),/共 49 集 · 已补齐 46 · 未补齐 3 · 内嵌中文 45/);
-    assert.equal(direct().length,49);
-    assert.match(direct().at(-1).textContent,/检查未确认/);
+    assert.match(summary(),/共 49 集/);
+    assert.match(shown(),/有字幕 46 集 · 01—46 集/);
+    assert.match(shown(),/没字幕 2 集 · 47—48 集/);
+    assert.match(shown(),/检查未确认 1 集 · 49 集/);
+    assert.equal(controls().length,0);
     assert.equal(results.querySelectorAll('details').length,0);
     const protectedSub = {id:'protected-sub',name:season[1].name.replace('.mkv','.zh-cn.srt'),parentId:'season-1',size:30};
     protectedEpisodes.add(protectedSub.id);
@@ -200,7 +211,10 @@ async function seasonSummary() {
     siblings.set('season-1',[...season,sub,protectedSub]);
     await get('recheckSubtitles').onclick();
     view('all');
-    assert.equal(results.querySelectorAll('input').length,1,'Known embedded Chinese hides even associated external subtitle controls');
+    assert.equal(results.querySelectorAll('input').length,0);
+    action('选择本季外置字幕');
+    assert.equal(results.querySelectorAll('input').length,1,'Protected embedded items stay out of the deletion view');
+    action('返回结果');
     let checkedRow;
     reconcileResult = row => { if (row.node.id === 'ep-1') checkedRow = row; };
     await get('recheckSubtitles').onclick();
@@ -219,7 +233,6 @@ async function seasonSummary() {
     selectAll.checked = true; selectAll.onchange();
     assert.equal(get('subtitleDeleteSelectionCount').textContent,'已选 1 项');
     view('incomplete');
-    assert.equal(direct().length,3);
     assert.match(summary(),/共 49 集.*当前筛选 3 集/);
     assert.equal(get('subtitleDeleteSelectionCount').textContent,'已选 1 项 · 当前筛选 0 项');
     get('reviewSubtitleDeletes').onclick();
@@ -234,21 +247,23 @@ async function seasonSummary() {
 
     view('complete');
     assert.match(summary(),/共 49 集.*当前筛选 46 集/);
-    assert.equal(direct().length,46);
     view('incomplete'); view('all');
-    assert.equal(direct().length,49);
     get('subtitleResults').scrollTop = 100;
     await get('readSubtitles').onclick();
     assert.deepEqual(queried.slice(queriesBefore).sort(),['ep-47','ep-48','ep-49']);
-    assert.match(direct()[46].textContent,/手动选择/);
-    assert.match(direct()[47].textContent,/查询失败/);
-    const candidate = direct()[46].querySelectorAll('select')[0];
+    assert.match(shown(),/需手选 1 集 · 47 集/);
+    assert.match(shown(),/查询失败 1 集，请查看日志/);
+    assert.equal(controls().length,1);
+    action('处理待确认项');
+    const candidate = controls()[0];
+    get('subtitleResults').scrollTop = 100;
     candidate.value = '0'; candidate.onchange();
     assert.equal(get('subtitleResults').scrollTop,100,'Candidate changes retain scroll position');
     await get('fillSubtitles').onclick();
     assert.equal(saves,2);
     assert.equal(get('subtitleResults').scrollTop,100);
-    assert.match(summary(),/已补齐 47 · 未补齐 2/);
+    action('返回结果');
+    assert.match(shown(),/有字幕 47 集 · 01—47 集/);
     await get('recheckSubtitles').onclick();
     assert.equal(get('subtitleResults').scrollTop,0,'A new check resets the list');
 
@@ -258,9 +273,37 @@ async function seasonSummary() {
     await get('recheckSubtitles').onclick();
     view('all');
     assert.equal(cards().length,4,'Same-title directories and different releases remain separate');
-    assert.deepEqual(results.children.map(pair => pair.children[0].children.length),[2,2]);
     assert.equal(results.querySelectorAll('details').length,0,'Single results show their details directly');
     console.log('PASS season summaries: 49 episodes, mixed states, direct details, filtered selection and confirmed deletion');
+}
+
+async function seasonPlans() {
+    trackResult = node => ({chinese:node.id === 'plan-4'});
+    candidateResult = row => {
+        const {episode} = row.parsed;
+        return [{source:'SubDL',name:'假面骑士双骑.S01.zip',url:'https://example.com/season.zip',language:'zh-cn',
+            titleMatched:episode < 4,seasonPackVerified:episode < 4,parsed:{...row.parsed,episode:episode === 3 ? 2 : episode}}];
+    };
+    season = Array.from({length:49}, (_,index) => {
+        const name = '假面骑士双骑.S01E' + String(index+1).padStart(2,'0') + '.mkv';
+        return {id:'plan-'+(index+1),parentId:'plan-season',name,size:10000,folders:['方案'],path:'方案/'+name};
+    });
+    const controls = () => get('subtitleRows').querySelectorAll('select');
+    await get('recheckSubtitles').onclick();
+    assert.equal(cards().length,1);
+    assert.equal(controls().length,0);
+    assert.match(shown(),/没字幕 48 集 · 01—03、05—49 集/);
+    await get('readSubtitles').onclick();
+    assert.equal(cards().length,1);
+    assert.equal(controls().length,1);
+    assert.match(controls()[0].children[1].textContent,/覆盖待补 2\/48 集/);
+    controls()[0].value = '0'; controls()[0].onchange();
+    const before = uploaded.length;
+    await get('fillSubtitles').onclick();
+    assert.deepEqual(uploaded.slice(before),['plan-1','plan-2'],'An explicit pack only fills verified episodes');
+    await get('recheckSubtitles').onclick();
+    assert.equal(controls().length,0,'A new inventory removes all plan controls');
+    assert.equal(get('fillSubtitles').disabled,true);
 }
 
 function gate() {
@@ -301,9 +344,9 @@ async function incrementalChecks() {
     assert.match(shown(),/检查中/);
     assert.match(shown(),/待检查/);
     view('all');
-    const displayed = () => cardContent().children.filter(row => row.className === 'subtitle-result');
-    assert.equal(displayed().length,49);
-    const paths = displayed().map(row => row.textContent.match(/S01E\d+\.mkv/)[0]);
+    assert.equal(cards().length,1);
+    assert.match(shown(),/有字幕（内嵌中文） 1 集 · 01 集/);
+    assert.match(shown(),/待检查／检查中 48 集 · 02—49 集/);
     get('subtitleResults').scrollTop = 73;
     assert.equal(get('selectAllSubtitleDeletes').disabled,true);
     assert.equal(get('fillSubtitles').disabled,true);
@@ -320,7 +363,7 @@ async function incrementalChecks() {
     assert.equal(panelBusy,false);
     assert.deepEqual(started,['row-0','row-1','row-2','row-3'],'Authorization failure stops new rows');
     assert.match(get('subtitleSummary').textContent,/已检查 1 · 未检查完成 48/);
-    assert.deepEqual(displayed().map(row => row.textContent.match(/S01E\d+\.mkv/)[0]),paths);
+    assert.match(shown(),/未检查完成 48 集 · 02—49 集/);
     assert.equal(get('subtitleResults').scrollTop,73);
     assert.doesNotMatch(shown(),/旧检查不得追加/);
     assert.equal(get('fillSubtitles').disabled,true);
@@ -346,7 +389,8 @@ async function incrementalChecks() {
     assert.match(get('subtitleSummary').textContent,/已检查 49 · 待检查 0/);
     assert.equal(cards().length,0);
     view('all');
-    assert.equal(displayed().length,49);
+    assert.equal(cards().length,1);
+    assert.match(shown(),/有字幕（内嵌中文） 49 集 · 01—49 集/);
     assert.equal(get('subtitleRows').querySelectorAll('details').length,0);
     assert.equal(get('selectAllSubtitleDeletes').disabled,true);
     console.log('PASS incremental inventory: placeholders, row streaming, authorization drain, stop, and clean restart');

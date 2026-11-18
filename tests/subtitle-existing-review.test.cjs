@@ -27,19 +27,22 @@ async function durationAndCache() {
     await ctx.inspectExistingSubtitles(r,reloaded,language,log); assert.equal(reads,3,'New runtime invalidates no-runtime record');
     assert.equal(r.complete,false); assert.match(r.searchMessage,/字幕不完整/);
     assert.throws(()=>ctx.subtitleValidateContent(r,bytes,'srt',language,log),/字幕不完整/,'Existing and new downloads share validator');
-    assert.ok(logs.some(message=>/字幕结束 180.0 秒.*8280.0 秒.*TMDB/.test(message)));
-    delete r.parsed.runtimeSeconds; r.node.durationSeconds = 100;
+    assert.ok(logs.some(message=>/字幕结束 180.0 秒.*TMDB.*8280.0 秒/.test(message)));
+    delete r.parsed.runtimeSeconds; r.node.durationSeconds = 185;
     await ctx.inspectExistingSubtitles(r,reloaded,language,log); assert.equal(r.complete,true,'Drive duration is used when present');
-    assert.match(r.searchMessage,/长度下限通过/);
+    assert.match(r.searchMessage,/与视频文件时长相符/);
     r.parsed.runtimeSeconds = 9000;
     await ctx.inspectExistingSubtitles(r,reloaded,language,log); assert.equal(r.complete,true,'Known drive duration takes precedence over TMDB');
     const before = reads;
     r.node.id = 'other-video'; await ctx.inspectExistingSubtitles(r,reloaded,language); assert.equal(reads,before+1,'Same subtitle linked to another video must be reread');
     r.parsed.tmdbId = '42'; await ctx.inspectExistingSubtitles(r,reloaded,language); assert.equal(reads,before+2,'Work identity changes invalidate cache');
     const key = [...storage.keys()].find(key=>key.startsWith('cross-drive-subtitle-verified-v1:'));
-    storage.set(key,[[JSON.stringify(['s',sub.size,sub.md5]),{time:Date.now(),encoding:'UTF-8',language}]]);
+    const current = reloaded.verified.get(sub,language,r);
+    const oldContext = JSON.parse(current.context);
+    oldContext[0] = 2;
+    storage.set(key,[[JSON.stringify(['s',sub.size,sub.md5]),{...current,context:JSON.stringify(oldContext)}]]);
     const legacy = makeDrive(); legacy.read = drive.read;
-    await ctx.inspectExistingSubtitles(r,legacy,language); assert.equal(reads,before+3,'Legacy format-only records cannot bypass new policy');
+    await ctx.inspectExistingSubtitles(r,legacy,language); assert.equal(reads,before+3,'Earlier timing policy cannot bypass new checks');
     assert.ok(!JSON.stringify([...storage]).includes('test-account'),'Stored account identity is a digest');
     legacy.verified.clear(); assert.equal(legacy.verified.get(sub,language,r),undefined);
 }

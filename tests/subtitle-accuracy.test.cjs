@@ -19,8 +19,35 @@ assert.throws(()=>ctx.subtitleCheckDuration({node:{name:'小丑2.mkv'},parsed:jo
 assert.equal(ctx.subtitleEndTime('WEBVTT\n\n00:01.000 --> 01:05.500\n测试','vtt'),65.5);
 assert.equal(ctx.subtitleEndTime('[Events]\nFormat: Layer, Start, End, Text\nDialogue: 0,0:00:01.00,1:40:02.50,中文,comma','ass'),6002.5);
 ctx.subtitleCheckDuration({node:{name:'未知.mkv'},parsed:{}},srt('00:03:00,000'),'srt',log);
-assert.ok(logs.some(line=>/无时长参考.*跳过/.test(line)));
-assert.ok(logs.some(line=>/180.0 秒.*8280.0 秒.*TMDB/.test(line)));
+assert.ok(logs.some(line=>/无时长参考/.test(line)));
+assert.ok(logs.some(line=>/180.0 秒.*TMDB.*8280.0 秒/.test(line)));
+const ass = lines => '[Events]\nFormat: Layer, End, Start, Style, Text\n' + lines.join('\n');
+const normal = 'Dialogue: 0,3:54:00.00,3:53:57.00,Default,最后一句中文,带逗号';
+const cutoff = {node:{name:'双塔奇兵.mkv'},parsed:{runtimeSeconds:14100}};
+const remote = '64:52:05.00';
+const decorated = ass([normal, 'Comment: 0,'+remote+',0:00:00.00,Default,注释',
+    'Dialogue: 0,'+remote+',0:00:00.00,Default,{\\p1}m 0 0 l 0 10']);
+const timing = ctx.subtitleCheckDuration(cutoff,decorated,'ass',log);
+assert.equal(timing.end,14040);
+assert.equal(timing.rawEnd,233525);
+assert.equal(timing.events.comment,1);
+assert.equal(timing.events.drawing,1);
+assert.equal(ctx.subtitleDialogue(decorated,'ass'),'最后一句中文,带逗号');
+assert.throws(()=>ctx.subtitleCheckDuration(cutoff,ass([normal,'Dialogue: 0,'+remote+',64:52:00.00,Default,真实对白']),'ass',log),/时间轴.*极端/);
+for (const [start,end,reason] of [['00:00:01,000','00:60:00,000','分秒越界'],
+    ['-00:00:01,000','00:00:03,000','负值'],['00:00:03,000','00:00:01,000','先后颠倒'],
+    ['00:00:01,000','Infinity','非有限值'],['00:00:01,000','00:00:04,abc','格式']]) {
+    assert.throws(()=>ctx.subtitleCheckDuration(cutoff,'1\n'+start+' --> '+end+'\n真实对白','srt',log),error=>error.message.includes(reason));
+}
+const cue = 'WEBVTT\n\nNOTE 中文注释\n00:03.000 --> 00:59.000\n\nintro\n00:01.000 --> 00:03.125 align:start\n<b>测试</b>';
+assert.equal(ctx.subtitleEndTime(cue,'vtt'),3.125);
+assert.equal(ctx.subtitleDialogue(cue,'vtt'),'测试');
+assert.equal(ctx.subtitleEndTime('[Events]\nDialogue: Marked=0,0:00:01.00,0:00:03.50,Default,,0,0,0,,测试','ssa'),3.5);
+for (const [end,runtime] of [['00:23:15,700',540],['03:17:22,400',15780]]) {
+    const parsed = {runtimeSeconds:runtime};
+    assert.equal(ctx.subtitleCheckDuration({node:{name:'参考样例'},parsed},srt(end),'srt').evidence,'reference-difference');
+}
+assert.throws(()=>ctx.subtitleCheckDuration({node:{name:'视频',durationSeconds:100},parsed:{}},srt('00:03:00,000'),'srt'),/视频文件时长冲突/);
 const filter=(query,name)=>ctx.subtitleCandidateFilter({query,tv:false},[],name);
 for(const [query,name] of [
     ['假面骑士极狐','[60帧蓝光剪辑]假面骑士海帕甲斗.合集重制版.ass'],
@@ -32,15 +59,22 @@ assert.equal(filter('假面骑士极狐','18F440E6'+'0'.repeat(32)+'.ssa').opaqu
 // Run the production fill handler, with synthetic downloaded bodies and no drive mutations.
 async function candidateFallback() {
     const r={node:{name:'路西法.2019.mkv'},parsed:{query:'路西法',year:2019,runtimeSeconds:120*60},subtitles:[],sources:[],complete:false};
-    const candidates=[{source:'迅雷',name:'短字幕.srt'},{source:'迅雷',name:'路西法印度版.Lucifer.2019.Malayalam.CHS.srt'}];
+    const candidates=[{source:'迅雷',name:'短字幕.srt'},{source:'迅雷',name:'异常时间轴.ass'},
+        {source:'迅雷',name:'路西法印度版.Lucifer.2019.Malayalam.CHS.srt'}];
     r.selectedCandidate=candidates[0];r.autoCandidates=candidates;
     const calls=[],saved=[],elements={fillSubtitles:{}},logs=[];
     Object.assign(ctx,{inventory:[r],reviewCandidates:null,mediaStem:name=>name.replace(/\.[^.]+$/,''),ui:{get:id=>elements[id]||(elements[id]={}),busy(){}},settings:()=>({language:'zh-cn,zh-tw,zh'}),check(){},status(){},meter(){},render(){},diag:(a,b)=>logs.push(a+' '+b),
         drive:{assertReady(){},save:async(row,name,bytes)=>{saved.push(bytes);return {name};}},
-        service:{fetchFile:async c=>{calls.push(c.name);return {result:{ext:'srt'},bytes:new TextEncoder().encode(c===candidates[0]?sized(8385,'00:03:00,000'):srt('01:50:00,000'))};}}});
+        service:{fetchFile:async c=>{
+            calls.push(c.name);
+            if (c === candidates[1]) return {result:{ext:'ass'},bytes:new TextEncoder().encode(ass([normal,'Dialogue: 0,'+remote+',64:52:00.00,Default,真实对白']))};
+            return {result:{ext:'srt'},bytes:new TextEncoder().encode(c===candidates[0]?sized(8385,'00:06:16,000'):srt('01:50:00,000'))};
+        }}});
     vm.runInContext(part('    function createPanelTask(', '    function panelControls(') + "const runTask = createPanelTask(ui, () => {});\n" + part("        ui.get('fillSubtitles').onclick =", "        ui.get('stopSubtitles').onclick"),ctx);
     await elements.fillSubtitles.onclick();
     assert.deepEqual(calls,candidates.map(c=>c.name));assert.equal(saved.length,1);assert.equal(r.complete,true);
     assert.ok(logs.some(line=>/候选失败.*字幕不完整/.test(line)));
+    assert.ok(logs.some(line=>/候选失败.*时间轴存在极端对白范围/.test(line)));
+    assert.equal(Buffer.from(saved[0]).toString(),srt('01:50:00,000'));
 }
 candidateFallback().then(()=>console.log('PASS subtitle accuracy: real resource filters, Latin accents/kana, subtitle timing and production candidate fallback')).catch(error=>{console.error(error);process.exitCode=1;});

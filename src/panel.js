@@ -191,12 +191,19 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 #subtitleFilters{display:flex;align-items:center;gap:8px;flex:0 0 auto;max-width:100%}#subtitleFilters label{align-items:center;gap:5px;margin:0;font-size:14px;white-space:nowrap;flex:none}#subtitleFilters input[type=checkbox]{margin:0}
 #subtitleResults{flex:1 1 0;min-height:0;overflow:auto;overscroll-behavior:contain;overflow-anchor:none;scrollbar-gutter:stable;container-type:size}#subtitleResults:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 #subtitleSummary{flex:none;padding:10px 12px;font-size:15px;overflow-wrap:anywhere}
-#subtitleRows{position:relative;display:grid;gap:10px}
-.subtitle-pair{min-width:0}
-.subtitle-pair-cards{position:sticky;top:0;height:100cqh;grid-template-rows:minmax(0,1fr);align-items:stretch}
-.subtitle-pair-cards>.sync-item{display:flex;flex-direction:column;min-height:0;overflow-wrap:anywhere}
-.subtitle-card-viewport{flex:1;min-height:0;overflow:hidden;overflow-anchor:none}
-.subtitle-card-content{display:flow-root}
+#subtitlePane .tool-surface{overflow:hidden}
+#subtitleRows{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:stretch}
+#subtitleRows>.subtitle-card{min-height:100cqh;margin:0;overflow-wrap:anywhere}
+.subtitle-action-view{grid-column:1/-1;margin:0;overflow-wrap:anywhere}
+#subtitleRows>.sync-item{padding:12px}
+#subtitleRows h5,#subtitleRows p{margin-block:0 4px}
+#subtitleRows button{margin-top:4px}
+#subtitleRows select{width:100%;min-width:0;text-overflow:ellipsis}
+#subtitleRows .subtitle-result>p{display:flex;align-items:baseline;flex-wrap:wrap;gap:2px 6px}
+#subtitleRows .subtitle-result strong{flex:none}
+#subtitleRows .subtitle-badge{white-space:normal}
+#subtitleRows .subtitle-detail{flex:1 1 100%;font-size:.9em}
+#subtitleRows .subtitle-result select, #subtitleRows .subtitle-result label span{min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #subtitleRows:empty{display:none}
 #subtitleFilters{flex-wrap:wrap}#subtitleDeleteSelectionCount,.subtitle-group-count{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}.subtitle-group-count{margin:4px 0 0;overflow-wrap:anywhere}
 #subtitleRows h5{margin:0;font-size:16px;line-height:1.5;overflow-wrap:anywhere}.subtitle-result{margin-top:8px}.subtitle-result+.subtitle-result{padding-top:8px;border-top:1px solid var(--border)}
@@ -218,8 +225,17 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 #subtitlePane .tool-statusbar:has(#subtitleDiagnostics[open]){max-height:none;overflow:visible}#subtitleDiagnostics .panel-actions{margin:4px 0 8px}#subtitlePane:has(#subtitleDiagnostics[open]) .tool-intro p{display:none}
 #subtitleLog{display:block;width:100%;height:clamp(56px,calc(36cqh - 128px),180px);resize:none;overflow:auto;scrollbar-width:none;overscroll-behavior:contain}
 @container(max-height:660px){
-    #subtitlePane:has(#subtitleDiagnostics[open]) #subtitleSummary{padding:6px 10px;margin-bottom:8px}
-    #subtitlePane:has(#subtitleDiagnostics[open]) #subtitleLog{height:clamp(36px, calc(18cqh - 56px), 68px)}
+    #subtitlePane .tool-intro p{display:none}
+    #subtitlePane .tool-intro h3{font-size:20px}
+    #subtitlePane .tool-commandbar{margin-block:8px}
+    #subtitlePane .tool-list-heading{margin-bottom:6px}
+    #subtitlePane #subtitleSummary{padding:6px 10px;margin-bottom:8px}
+    #subtitleRows>.sync-item{padding:6px 8px}
+    #subtitleRows .subtitle-group-count{margin-top:2px}
+    #subtitleRows .subtitle-result{margin-top:4px}
+    #subtitleRows .subtitle-result+.subtitle-result{padding-top:4px}
+    #subtitleRows .subtitle-result select{padding-block:4px}
+    #subtitlePane:has(#subtitleDiagnostics[open]) #subtitleLog{height:38px}
 }
 .sync-preview{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px}.sync-preview h4{margin:0 0 8px}.sync-preview p{margin:6px 0}#syncList{overflow-wrap:anywhere;font-size:15px}#syncDestination{font-weight:600}
 .export-options{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin:12px 0}.export-options input{width:auto}.export-options button{font-size:14px;padding:7px 12px}.credential-head{display:flex;justify-content:space-between;align-items:center;gap:12px}.credential-head a{font-size:15px;flex-shrink:0}
