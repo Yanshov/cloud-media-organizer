@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v3.0（重构版）
 // @namespace    local.cloud-media-organizer
-// @version      3.3.6
+// @version      3.3.7
 // @description  百度/123/光鸭跨盘清单，123/光鸭影视整理、字幕搜索与核验上传
 // @match        https://pan.baidu.com/*
 // @match        https://yun.baidu.com/*
@@ -40,7 +40,7 @@
     if (typeof navigator !== 'undefined' && (navigator.userAgentData?.mobile || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
         navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) return;
 
-    const VERSION = '3.3.6';
+    const VERSION = '3.3.7';
     let jsonTaskStopped = false;
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
@@ -86,6 +86,31 @@
         // Drain active work before allowing another UI task to start.
         await Promise.all(Array.from({length:Math.min(limit, items.length)}, worker));
         verify();
+    }
+    async function walkTree(roots, keyOf, visit, check) {
+        const stack = roots.slice().reverse(), seen = new Set();
+        let visited = 0;
+        while (stack.length) {
+            check();
+            const node = stack.pop(), key = keyOf(node);
+            if (seen.has(key)) continue;
+            seen.add(key);
+            const children = await visit(node);
+            for (let i = (children?.length ?? 0) - 1; i >= 0; i--) stack.push(children[i]);
+            if (++visited % 128 === 0) await sleep(0);
+        }
+        check();
+    }
+    function cachedDriveChildren(source, cache = new Map(), check) {
+        return async id => {
+            check?.();
+            if (!cache.has(id)) {
+                const nodes = await source.children({id});
+                check?.();
+                cache.set(id, nodes);
+            }
+            return cache.get(id);
+        };
     }
     function titleKey(value) {
         // Strip Latin accents without removing Japanese dakuten/handakuten.
@@ -256,8 +281,11 @@
         }
         return { status: 'pending', message: `接口已报告秒传命中，8 次查询仍在处理；请稍后刷新目录核对。任务 ID：${taskId}` };
     }
-    async function requestJson(url, options = {}) {
+    function checkJsonTask() {
         if (jsonTaskStopped) throw Object.assign(new Error('已停止后续请求；已提交的操作请刷新目录核对'), {stop:true, cancelled:true});
+    }
+    async function requestJson(url, options = {}) {
+        checkJsonTask();
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 30000);
         try {
@@ -703,6 +731,21 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         if (tabs.size === 1) activate(id);
         return ui;
     }
+    function createPanelTask(ui, updateControls) {
+        let active = false;
+        return async (work, stoppable = false) => {
+            if (active) return;
+            ui.busy(true);
+            active = true;
+            try {
+                updateControls(true, stoppable);
+                return await work();
+            } finally {
+                try { updateControls(false); }
+                finally { active = false; ui.busy(false); }
+            }
+        };
+    }
     function panelControls(ui) {
         return ['json', 'manifest', 'jsonFile', 'historyFile', 'generate', 'exportManifest', 'transfer', 'start', 'chooseManifest', 'chooseJsonFile', 'copyJson', 'save', 'saveJson', 'incremental', 'resetHistory', 'importHistory', 'syncExisting'].map(ui.get).filter(Boolean);
     }
@@ -860,25 +903,26 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         if (nonNegativeInteger(data.errno) === 0 && typeof data.result?.bdstoken === 'string' && data.result.bdstoken) return data.result.bdstoken;
         throw new Error('没有获取到 bdstoken，请确认已登录百度网盘');
     }
-    async function collectTree(roots, source, progress = () => {}, parentPath = '') {
-        const stack = roots.slice().reverse().map(node => ({ node, path: relativeParts(node.exportPath || (parentPath ? parentPath + '/' + node.name : node.name)).join('/') }));
-        const seen = new Set(), paths = new Map(), entries = [], skipped = [];
-        let files = 0, directories = 0, processed = 0, lastProgress = 0;
-        while (stack.length) {
-            const { node, path } = stack.pop();
+    async function collectTree(roots, source, progress = () => {}, parentPath = '', check = () => {}) {
+        const start = roots.map(node => ({ node, path: relativeParts(node.exportPath || (parentPath ? parentPath + '/' + node.name : node.name)).join('/') }));
+        const paths = new Map(), entries = [], skipped = [];
+        let files = 0, directories = 0, lastProgress = 0, lastPath = '', reportedPath = '';
+        const report = path => {
+            progress({ files, directories, skipped: skipped.length, path });
+            lastProgress = Date.now(); reportedPath = path;
+        };
+        await walkTree(start, ({node}) => {
             if (relativeParts(node.name).length !== 1) throw new Error('云盘返回了包含路径分隔符的文件名');
             if (!node.key) throw new Error('文件列表缺少项目 ID');
-            if (seen.has(node.key)) continue;
-            seen.add(node.key);
+            return node.key;
+        }, async ({node, path}) => {
             if (paths.has(path) && paths.get(path) !== node.key) throw new Error(`不同项目导出为同一路径：${path}；请分开导出`);
             paths.set(path, node.key);
+            let children;
             if (node.directory) {
                 entries.push({ path, type: 'directory' });
                 directories++;
-                const children = await source.children(node);
-                for (let i = children.length - 1; i >= 0; i--) {
-                    stack.push({ node: children[i], path: path + '/' + children[i].name });
-                }
+                children = (await source.children(node)).map(child => ({ node: child, path: path + '/' + child.name }));
             } else {
                 const file = hasFileMetadata(node) ? node : await source.metadata?.(node);
                 if (!hasFileMetadata(file)) skipped.push(path);
@@ -888,12 +932,12 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     entries.push(entry); files++;
                 }
             }
-            if (Date.now() - lastProgress >= 100 || !stack.length) {
-                progress({ files, directories, skipped: skipped.length, path });
-                lastProgress = Date.now();
-            }
-            if (++processed % 128 === 0) await sleep(0);
-        }
+            check();
+            lastPath = path;
+            if (Date.now() - lastProgress >= 100) report(path);
+            return children;
+        }, check);
+        if (lastPath !== reportedPath) report(lastPath);
         return { entries, files, directories, skipped };
     }
     async function readPages(load, keyOf) {
@@ -1221,7 +1265,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 if (!roots.length) throw new Error('当前目录没有可导出的项目');
                 const result = await collectTree(roots, source, state => {
                     ui.get('status').textContent = `范围：${scope}；已读 ${state.files} 个文件、${state.directories} 个目录，跳过 ${state.skipped} 项；正在处理：${state.path}`;
-                }, parentPath);
+                }, parentPath, checkJsonTask);
                 if (!result.entries.length) throw new Error('没有可导出的文件信息');
                 const summary = exportManifestJson(ui, provider, result);
                 ui.get('status').textContent = `完成（${scope}）：${summary}。` + (!ui.get('json').value ? '没有可导出的内容。' : '请下载 JSON，到目标盘导入。') + (result.skipped.length ? ` 缺少有效 MD5/大小，已跳过 ${result.skipped.length} 项：${result.skipped.slice(0, 5).join('、')}` : '');
@@ -1288,10 +1332,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     const post = paced(750, (path, body) => requestJson(`${base}${path}`, { method: 'POST', credentials: 'omit', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(body) }));
                     const folders = new Map([['', target.id]]), childLists = new Map(), source = pan123Source(session);
                     const unresolvedFolders = new Map();
-                    const children = async parentId => {
-                        if (!childLists.has(parentId)) childLists.set(parentId, await source.children({ id: parentId }));
-                        return childLists.get(parentId);
-                    };
+                    const children = cachedDriveChildren(source, childLists);
                     await children(target.id);
                     const locateDirectory = async (parent, name, path) => {
                         try {
@@ -2091,7 +2132,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 if (!roots.length) throw new Error('选中项目不在当前目录中，请重新选择');
                 const result = await collectTree(roots, source, state => {
                     ui.get('status').textContent = `正在导出：${state.path}；文件 ${state.files}，目录 ${state.directories}`;
-                }, target.exportPath);
+                }, target.exportPath, checkJsonTask);
                 if (!result.entries.length) throw new Error('没有可导出的项目');
                 const summary = exportManifestJson(ui, '光鸭', result);
                 ui.get('status').textContent = `导出完成：选中 ${roots.length} 项，${summary}；缺少有效 MD5 的文件 ${result.skipped.length} 个。` + (!ui.get('json').value ? '没有可导出的内容。' : '');
@@ -2350,20 +2391,18 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
     }
     async function collectSelectedTree(selected, source, progress = () => {}, check = () => {}) {
         if (!selected.length) throw new Error('请先勾选文件或文件夹');
-        check();
-        const listed = new Map(), nodes = [], seen = new Set();
-        const children = async id => { check(); if (!listed.has(id)) listed.set(id, await source.children({ id })); return listed.get(id); };
-        const visit = async (node, parentId, folders, ancestors = []) => {
-            check();
-            if (seen.has(node.id)) return;
-            seen.add(node.id);
+        const nodes = [], children = cachedDriveChildren(source, new Map(), check);
+        const roots = matchSelected(await children(source.parentId), selected);
+        await walkTree(roots.map(node => ({node, parentId: source.parentId, folders: [], ancestors: []})), entry => entry.node.id, async ({node, parentId, folders, ancestors}) => {
             const path = [...folders, node.name].join('/');
             progress('读取选中内容：' + path);
-            if (node.directory) for (const child of await children(node.id)) await visit(child, node.id, [...folders, node.name], [...ancestors, { id: node.id, parentId, name: node.name, path, depth: ancestors.length }]);
-            else nodes.push({ ...node, parentId, folders, path, ancestors });
-        };
-        for (const node of matchSelected(await children(source.parentId), selected)) await visit(node, source.parentId, []);
-        check();
+            if (node.directory) {
+                const childFolders = [...folders, node.name];
+                const childAncestors = [...ancestors, { id: node.id, parentId, name: node.name, path, depth: ancestors.length }];
+                return (await children(node.id)).map(child => ({node: child, parentId: node.id, folders: childFolders, ancestors: childAncestors}));
+            }
+            nodes.push({ ...node, parentId, folders, path, ancestors });
+        }, check);
         return { nodes, children };
     }
     async function collectMediaSelection(selected, source, progress = () => {}, skip = () => false, check = () => {}, enrich = true) {
@@ -2389,8 +2428,12 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         for (const video of enrich ? pending : []) {
             check();
             Object.assign(video, await mediaFileMetadata(video, source));
-            for (const subtitle of linked.get(video.id)) Object.assign(subtitle, await mediaFileMetadata(subtitle, source));
+            for (const subtitle of linked.get(video.id)) {
+                check();
+                Object.assign(subtitle, await mediaFileMetadata(subtitle, source));
+            }
         }
+        check();
         const pendingParents = new Set(pending.map(video => video.parentId));
         return { videos: pending, linked, unmatched: unmatched.filter(sub => pendingParents.has(sub.parentId)), skipped: videos.length - pending.length };
     }
@@ -3162,9 +3205,19 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         };
         const log = message => appendLog(ui, message);
         const invalidate = () => { batch = null; batchWriter = null; ui.get('runMedia').disabled = true; ui.get('mediaPreview').textContent = ''; };
-        const lock = (busy, stoppable = false) => { ui.busy(busy); ui.get('stopMedia').hidden = !busy || !stoppable; if (busy) cancelled = false; ui.get('stopMedia').disabled = !busy || !stoppable || cancelled; for (const id of ['scanMedia', 'clearMedia', 'saveMediaKey', 'forgetMediaKey', 'tmdbKey', 'forceMedia', 'checkCleanup', 'cleanupMode', 'cleanupSubtitles', 'enableMediaAI', 'mediaAIProvider', 'mediaAIBase', 'mediaAIKey', 'mediaAIModel', 'mediaAIModelSelect', 'fetchMediaAIModels', 'saveMediaAI', 'testMediaAI', 'forgetMediaAI']) ui.get(id).disabled = busy; for (const control of ui.get('mediaRows').querySelectorAll('input,select,button')) control.disabled = busy; ui.get('skipPendingMedia').disabled = busy || !rows.some(row => row.include && !readyRow(row)); ui.get('restoreSkippedMedia').disabled = busy || !rows.some(row => !row.include); ui.get('runMedia').disabled = busy || !batch; ui.get('runEmpty').disabled = busy || !emptyPlan.length; };
-        const previewCleanup = async (extras = false) => {
-            emptyPlan = []; ui.get('emptyPreview').textContent = ''; lock(true, true); meter(extras ? '检查非正片与附件' : '检查不规范项目');
+        const runTask = createPanelTask(ui, (busy, stoppable = false) => {
+            if (busy) cancelled = false;
+            ui.get('stopMedia').hidden = !busy || !stoppable;
+            ui.get('stopMedia').disabled = !busy || !stoppable;
+            for (const id of ['scanMedia', 'clearMedia', 'saveMediaKey', 'forgetMediaKey', 'tmdbKey', 'forceMedia', 'checkCleanup', 'cleanupMode', 'cleanupSubtitles', 'enableMediaAI', 'mediaAIProvider', 'mediaAIBase', 'mediaAIKey', 'mediaAIModel', 'mediaAIModelSelect', 'fetchMediaAIModels', 'saveMediaAI', 'testMediaAI', 'forgetMediaAI']) ui.get(id).disabled = busy;
+            for (const control of ui.get('mediaRows').querySelectorAll('input,select,button')) control.disabled = busy;
+            ui.get('skipPendingMedia').disabled = busy || !rows.some(row => row.include && !readyRow(row));
+            ui.get('restoreSkippedMedia').disabled = busy || !rows.some(row => !row.include);
+            ui.get('runMedia').disabled = busy || !batch;
+            ui.get('runEmpty').disabled = busy || !emptyPlan.length;
+        });
+        const previewCleanup = (extras = false) => runTask(async () => {
+            emptyPlan = []; ui.get('emptyPreview').textContent = ''; meter(extras ? '检查非正片与附件' : '检查不规范项目');
             try {
                 const context = await mediaContext(provider); emptySession = context.session; emptySource = context.source; checkStopped();
                 const canonical = extras ? null : mediaCanonicalResolver(tmdbClient(ui.get('tmdbKey').value));
@@ -3172,8 +3225,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 ui.get('emptyPreview').textContent = emptyPlan.map(item => `${item.directory ? '删除整个文件夹及全部内容' : '删除文件'}：${item.path}${item.reason ? '\n原因：' + item.reason : ''}${item.expectedName ? '\n应为标准名称：' + item.expectedName : ''}`).join('\n\n') || (extras ? '未发现非正片文件。' : '没有已确认不符合标准的项目；无法匹配的作品见日志。');
                 meter('检查结束', emptyPlan.length, emptyPlan.length); progress(`可清理 ${emptyPlan.length} 个${extras ? '非正片文件' : '不规范项目（文件夹包含全部内容）'}；尚未删除`);
             } catch (error) { stopMeter(); progress('检查失败：' + error.message); }
-            finally { lock(false); }
-        };
+        }, true);
         const changeCleanupRule = () => {
             emptyPlan = []; ui.get('runEmpty').disabled = true; ui.get('emptyPreview').textContent = '';
             ui.get('cleanupRule').textContent = ui.get('cleanupMode').value === 'extras'
@@ -3183,10 +3235,10 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         ui.get('cleanupMode').onchange = () => { ui.get('cleanupSubtitleOption').hidden = ui.get('cleanupMode').value !== 'extras'; changeCleanupRule(); };
         ui.get('cleanupSubtitles').onchange = changeCleanupRule;
         ui.get('checkCleanup').onclick = () => previewCleanup(ui.get('cleanupMode').value === 'extras');
-        ui.get('runEmpty').onclick = async () => {
+        ui.get('runEmpty').onclick = () => runTask(async () => {
             if (!emptyPlan.length) return;
 
-            const plan = emptyPlan; emptyPlan = []; invalidate(); lock(true, true); let deleted = 0, retained = 0, failed = 0, pending = 0;
+            const plan = emptyPlan; emptyPlan = []; invalidate(); let deleted = 0, retained = 0, failed = 0, pending = 0;
             for (const item of plan) {
                 if (cancelled) break;
                 try { log(item.path + '：' + await removeMediaNonstandard(item, emptySession, emptySource)); deleted++; }
@@ -3194,8 +3246,8 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 meter('清理所选项目', deleted + retained + failed + pending, plan.length);
             }
 
-            progress(`清理结束：已清理 ${deleted}，保留 ${retained}，删除失败 ${failed}，结果待确认 ${pending}，未处理 ${plan.length - deleted - retained - failed - pending}。具体原因见日志。`); lock(false);
-        };
+            progress(`清理结束：已清理 ${deleted}，保留 ${retained}，删除失败 ${failed}，结果待确认 ${pending}，未处理 ${plan.length - deleted - retained - failed - pending}。具体原因见日志。`);
+        }, true);
         ui.get('mediaAIProvider').onchange = () => {
             const preset = aiPresets[ui.get('mediaAIProvider').value];
             if (preset) { ui.get('mediaAIBase').value = preset.base; ui.get('mediaAIModel').value = preset.model; }
@@ -3210,29 +3262,38 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         };
         ui.get('mediaAIModel').oninput = invalidate;
         for (const id of ['mediaAIBase', 'mediaAIKey']) ui.get(id).oninput = () => { showAIModels(); invalidate(); };
-        ui.get('fetchMediaAIModels').onclick = async () => {
-            lock(true); ui.get('mediaAIState').textContent = '正在获取模型列表…';
+        ui.get('fetchMediaAIModels').onclick = () => runTask(async () => {
+            ui.get('mediaAIState').textContent = '正在获取模型列表…';
             try {
                 const models = await createMediaAI(aiSettings()).models();
                 showAIModels(models);
                 ui.get('mediaAIState').textContent = models.length ? `已获取 ${models.length} 个模型，请下拉选择后保存；模型能否用于识别请测试连接。` : '接口返回空列表，可选择手动填写模型 ID。';
             } catch (error) { ui.get('mediaAIState').textContent = '获取模型失败：' + error.message + '；接口不提供列表时可选择手动填写模型 ID。'; }
-            finally { lock(false); }
-        };
+        });
         ui.get('saveMediaAI').onclick = () => {
             try { const config = aiSettings(); if (config.enabled) mediaAIEndpoint(config); GM_setValue('cross-drive-media-ai',config); invalidate(); ui.get('mediaAIState').textContent = config.enabled ? '已保存并启用；仅在作品未匹配或字幕候选待选择时使用大模型。' : '设置已保存，大模型未启用。'; }
             catch (error) { ui.get('mediaAIState').textContent = error.message; }
         };
         ui.get('forgetMediaAI').onclick = () => { ui.get('mediaAIKey').value = ''; ui.get('enableMediaAI').checked = false; GM_setValue('cross-drive-media-ai',aiSettings()); invalidate(); ui.get('mediaAIState').textContent = '已清除大模型密钥并停用。'; };
-        ui.get('testMediaAI').onclick = async () => {
-            lock(true); ui.get('mediaAIState').textContent = '正在测试，发送一次简短请求…';
+        ui.get('testMediaAI').onclick = () => runTask(async () => {
+            ui.get('mediaAIState').textContent = '正在测试，发送一次简短请求…';
             try { const result = await createMediaAI(aiSettings()).ask({test:true}); if (result.ok !== true) throw new Error('接口可响应，但没有返回预期 JSON，请检查模型兼容性'); ui.get('mediaAIState').textContent = '连接成功，模型能返回识别所需 JSON。'; }
             catch (error) { ui.get('mediaAIState').textContent = '连接失败：' + error.message; }
-            finally { lock(false); }
-        };
+        });
         ui.get('saveMediaKey').onclick = () => { GM_setValue('cross-drive-tmdb-key', ui.get('tmdbKey').value.trim()); progress('TMDB 密钥已保存在脚本设置中'); };
         ui.get('forgetMediaKey').onclick = () => { GM_setValue('cross-drive-tmdb-key', ''); ui.get('tmdbKey').value = ''; progress('已清除密钥'); };
         const refreshPreview = async () => { mediaWorkCounts(rows); if (rows.some(row => row.include && readyRow(row)) && !cancelled) await generatePreview(); };
+        const editRows = async work => {
+            let started = false;
+            try {
+                await runTask(async () => {
+                    started = true;
+                    invalidate();
+                    try { await work(); }
+                    finally { render(); }
+                });
+            } finally { if (started) await refreshPreview(); }
+        };
         const field = (box, label, value, change, type = 'text') => {
             const wrapper = document.createElement('label'), input = document.createElement('input'); wrapper.textContent = label; input.type = type; input.value = value ?? ''; wrapper.appendChild(input); box.appendChild(wrapper);
             input.oninput = () => { change(input.value); invalidate(); };
@@ -3265,17 +3326,15 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 select.appendChild(option);
             }
             select.value = wholeGroup ? '' : String(row.season ?? ''); label.appendChild(select); box.appendChild(label);
-            select.onchange = async () => {
+            select.onchange = () => {
                 if (select.value === '') return;
                 const season = Number(select.value);
                 const targets = wholeGroup ? peers(row).filter(item => item.include && item.type === 'tv' && item.detail?.id === row.detail.id && item.season == null) : [row];
-                invalidate(); lock(true);
-                try {
+                return editRows(async () => {
                     for (const item of targets) { if (item.episodeInferred) { item.episode = null; item.episodeInferred = false; } item.season = season; await validateEpisode(item); }
                     const ready = targets.filter(readyRow).length;
                     progress('已应用第 ' + season + ' 季：' + ready + ' 个文件就绪，' + (targets.length - ready) + ' 个仍需处理；集号已自动提取或按标题匹配，无法对应的可直接下拉选集');
-                }
-                finally { render(); lock(false); await refreshPreview(); }
+                });
             };
         };
         const episodePicker = (box, row) => {
@@ -3291,11 +3350,9 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 const option = document.createElement('option'); option.value = String(row.episode); option.textContent = '原集号 ' + row.episode + '（本季未找到）'; select.appendChild(option);
             }
             select.value = String(row.episode ?? ''); select.disabled = row.season == null; label.appendChild(select); box.appendChild(label);
-            select.onchange = async () => {
+            select.onchange = () => {
                 if (!select.value) return;
-                invalidate(); lock(true);
-                try { row.episode = Number(select.value); row.episodeInferred = false; row.endEpisode = null; await validateEpisode(row); progress(readyRow(row) ? '已应用季集，此文件已就绪，预览会自动更新' : row.error); }
-                finally { render(); lock(false); await refreshPreview(); }
+                return editRows(async () => { row.episode = Number(select.value); row.episodeInferred = false; row.endEpisode = null; await validateEpisode(row); progress(readyRow(row) ? '已应用季集，此文件已就绪，预览会自动更新' : row.error); });
             };
         };
         const candidatePicker = (box, row, wholeGroup = false) => {
@@ -3356,8 +3413,8 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 const select = candidatePicker(box, row, true);
                 const missingSeason = pending.find(item => item.detail && item.type === 'tv' && item.season == null);
                 if (missingSeason) seasonPicker(box, missingSeason, true);
-                search.onclick = async () => { invalidate(); lock(true); try { await matchGroup(peers(row), row.query); progress('已重新匹配同组，明确的结果自动采用'); } catch (e) { progress('匹配失败：' + e.message); } finally { render(); lock(false); await refreshPreview(); } };
-                select.onchange = async () => { invalidate(); lock(true); try { for (const item of peers(row)) { await choose(item, select.value); await validateEpisode(item); } } catch (e) { progress('读取作品失败：' + e.message); } finally { render(); lock(false); await refreshPreview(); } };
+                search.onclick = () => editRows(async () => { try { await matchGroup(peers(row), row.query); progress('已重新匹配同组，明确的结果自动采用'); } catch (e) { progress('匹配失败：' + e.message); } });
+                select.onchange = () => editRows(async () => { try { for (const item of peers(row)) { await choose(item, select.value); await validateEpisode(item); } } catch (e) { progress('读取作品失败：' + e.message); } });
                 if (row.detail) {
                     field(edits, '标准片名（整组）', row.title, value => { for (const item of group) item.title = value; }); field(edits, '年份（整组，剧集用首播年份）', row.year, value => { for (const item of group) item.year = value; });
 
@@ -3389,14 +3446,14 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     field(edits, '搜索片名（仅本文件）', item.query, value => { item.query = value; item.detail = null; item.match = ''; item.aiType = ''; item.aiAssisted = false; item.error = '搜索片名已修改，请重新匹配'; });
                     const search = document.createElement('button'); search.textContent = '查询候选作品'; edits.appendChild(search);
                     const select = candidatePicker(edits, item);
-                    search.onclick = async () => { invalidate(); lock(true); try { item.candidates = await client.search(item.query); } catch (e) { progress('查询失败：' + e.message); } finally { render(); lock(false); await refreshPreview(); } };
-                    select.onchange = async () => { invalidate(); lock(true); try { await choose(item, select.value); await validateEpisode(item); } catch (e) { item.error = e.message; } finally { render(); lock(false); await refreshPreview(); } };
+                    search.onclick = () => editRows(async () => { try { item.candidates = await client.search(item.query); } catch (e) { progress('查询失败：' + e.message); } });
+                    select.onchange = () => editRows(async () => { try { await choose(item, select.value); await validateEpisode(item); } catch (e) { item.error = e.message; } });
                     field(edits, '标准片名（仅本文件）', item.title, v => { item.title = v; });
                     field(edits, '年份（仅本文件）', item.year, v => { item.year = v; });
                     card.appendChild(edits);
                     const actions = document.createElement('div'); actions.className = 'panel-actions';
                     const validate = document.createElement('button'); validate.textContent = '检查此文件';
-                    validate.onclick = async () => { invalidate(); lock(true); try { await validateEpisode(item); progress(readyRow(item) ? '此文件已通过季集与命名检查，已从异常列表移除；预览会自动更新' : item.error || '仍需处理'); } finally { render(); lock(false); await refreshPreview(); } };
+                    validate.onclick = () => editRows(async () => { await validateEpisode(item); progress(readyRow(item) ? '此文件已通过季集与命名检查，已从异常列表移除；预览会自动更新' : item.error || '仍需处理'); });
                     const skip = document.createElement('button'); skip.textContent = '跳过此文件'; skip.onclick = () => skipRows([item]);
                     actions.appendChild(validate); actions.appendChild(skip); card.appendChild(actions); ui.get('mediaRows').appendChild(card);
                 }
@@ -3507,8 +3564,12 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             } catch (error) { for (const row of group) row.error = error.message; }
         }
         ui.get('scanMedia').onclick = async () => {
-            cancelled = false; reused = 0; let shouldPreview = false;
-            invalidate(); lock(true, true); ui.get('log').textContent = ''; rows = []; render();
+            const shouldPreview = await runTask(scan, true);
+            if (shouldPreview && !cancelled) await generatePreview();
+        };
+        async function scan() {
+            reused = 0;
+            invalidate(); ui.get('log').textContent = ''; rows = []; render();
             meter('读取选中内容');
             try {
                 const context = await mediaContext(provider); session = context.session; source = context.source;
@@ -3562,17 +3623,15 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 for (const row of rows) if (readyRow(row)) mediaRecords.remember(row);
                 mediaRecords.save();
                 ui.get('mediaRecordState').textContent = `本次复用 ${reused} 个已确认视频；识别记录已保存，刷新后仍可复用。`;
-                shouldPreview = rows.some(readyRow);
                 meter('识别结束', matched, groups.size);
                 for (const sub of collected.unmatched) log('字幕未唯一关联，保留原状：' + sub.path);
                 progress(`已跳过 ${collected.skipped} 个规范视频；待处理 ${rows.length} 个视频，按 ${groups.size} 组识别；已匹配 ${rows.filter(readyRow).length} 个。正在自动生成预览，待确认项跳过。`);
+                return rows.some(readyRow);
             } catch (error) { stopMeter(); progress('识别失败：' + error.message); }
-            finally { render(); lock(false); }
-            if (shouldPreview && !cancelled) await generatePreview();
-        };
-        async function generatePreview() {
-            cancelled = false;
-            invalidate(); lock(true, true);
+            finally { render(); }
+        }
+        const generatePreview = () => runTask(async () => {
+            invalidate();
             meter('检查命名', 0, rows.filter(r => r.include).length);
             try {
                 if (!rows.length) throw new Error('请先识别选中的视频');
@@ -3599,8 +3658,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     }
                 }
                 if (!items.length) throw new Error('没有可执行的已匹配视频，请处理待确认项');
-                const previewLists = new Map();
-                const children = async id => { checkStopped(); if (!previewLists.has(id)) previewLists.set(id, await source.children({ id })); return previewLists.get(id); };
+                const children = cachedDriveChildren(source, new Map(), checkStopped);
                 let checkedPaths = 0; meter('检查目标路径', 0, items.length);
                 for (const item of items) {
                     let parentId = targetSession.parent;
@@ -3628,18 +3686,17 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 meter('预览就绪', items.length, items.length);
                 progress(`预览 ${accepted.length} 个文件（含字幕），跳过 ${rows.filter(r => r.include && (!readyRow(r) || conflicts.has(r.node.id))).length} 个待确认视频。点击确认执行即可整批处理。`);
             } catch (error) { stopMeter(); progress('无法生成预览：' + error.message); }
-            finally { render(); lock(false); }
-        }
-        ui.get('runMedia').onclick = async () => {
+            finally { render(); }
+        }, true);
+        ui.get('runMedia').onclick = () => runTask(async () => {
             if (!batch) return;
-            cancelled = false;
 
-            const items = batch, writer = batchWriter; lock(true, true); batch = null; batchWriter = null;
+            const items = batch, writer = batchWriter; batch = null; batchWriter = null;
             meter('重命名文件', 0, items.length);
             let completed = 0, failed = 0; const failedVideos = new Set();
             const rowsById = new Map(rows.map(row => [row.node.id, row]));
             try { if (!writer) throw new Error('执行计划已失效，请重新生成预览'); checkStopped(); await writer.validate(); }
-            catch (error) { progress('无法执行：' + error.message); lock(false); return; }
+            catch (error) { progress('无法执行：' + error.message); return; }
             for (let i = 0; i < items.length; i++) {
                 if (cancelled) break;
                 const item = items[i]; progress(`重命名 ${i + 1}/${items.length}：${item.node.name}`);
@@ -3650,8 +3707,8 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             }
             meter(failed || completed + failed < items.length ? '处理结束（含未完成项）' : '整理完成', completed + failed, items.length);
 
-            progress(`整理结束：已确认 ${completed}，未完成 ${failed}，未处理 ${items.length - completed - failed}。原文件夹直接改名，分类时整体移动；本次未自动删除任何项目。`); lock(false);
-        };
+            progress(`整理结束：已确认 ${completed}，未完成 ${failed}，未处理 ${items.length - completed - failed}。原文件夹直接改名，分类时整体移动；本次未自动删除任何项目。`);
+        }, true);
         ui.get('clearMedia').onclick = () => { rows = []; emptyPlan = []; ui.get('emptyPreview').textContent = ''; ui.get('runEmpty').disabled = true; invalidate(); render(); ui.get('log').textContent = ''; ui.get('mediaMeter').hidden = true; progress('已清除'); };
     }
 
@@ -5060,7 +5117,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         ui.moveSettings(['subtitleSettings'], '字幕来源与设置');
         ui.moveSettings(['openSubtitlesSettings'], 'OpenSubtitles', '#settingsModels');
         let inventory = [], drive = null, subtitleContext = null, checkedScope = null, deletePlan = null, busy = false, cancelled = false, reviewCandidates = null;
-        const deleteSelection = new Set();
+        const deleteSelection = new Set(), pendingDeletes = new Set();
         ui.get('subtitleView').value = 'all';
         const service = createSubtitleService({check:() => check(), log:(event, detail) => diag(event, detail)});
         const prefs = GM_getValue('cross-drive-subtitle-settings', {});
@@ -5097,7 +5154,9 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         };
         const meter = (done, total) => { const bar = ui.get('subtitleMeter'); bar.hidden = false; bar.max = total || 1; bar.value = done; };
         const inView = (row, view) => view === 'all' || (view === 'incomplete' ? !subtitleCovered(row) : subtitleSearchState(row) === view);
-        const viewSubtitleIds = view => inventory.filter(row => inView(row, view)).flatMap(row => row.subtitles.map(sub => String(sub.id)));
+        const canDelete = sub => !pendingDeletes.has(String(sub.id));
+        const selectedForDelete = sub => canDelete(sub) && deleteSelection.has(String(sub.id));
+        const viewSubtitleIds = view => inventory.filter(row => inView(row, view)).flatMap(row => row.subtitles.filter(canDelete).map(sub => String(sub.id)));
         const selectAll = ui.get('selectAllSubtitleDeletes');
         const render = () => {
             const scope = ui.get('subtitleScope');
@@ -5112,7 +5171,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             for (const [id,label,count] of [['Incomplete','未补齐',missing.length],['Choice','手动选择',choices],['Complete','有字幕',inventory.length - missing.length],['All','全部',inventory.length]]) ui.get('subtitleView' + id).textContent = `${label}（${count}）`;
             ui.get('subtitleSummary').hidden = !inventory.some(row => row.sources?.length);
             ui.get('subtitleSummary').textContent = subtitleSearchSummary(inventory);
-            ui.get('reviewSubtitleDeletes').disabled = busy || !inventory.some(row => row.subtitles.some(sub => deleteSelection.has(String(sub.id))));
+            ui.get('reviewSubtitleDeletes').disabled = busy || !inventory.some(row => row.subtitles.some(selectedForDelete));
             ui.get('confirmSubtitleDeletes').disabled = busy || !deletePlan?.length;
             ui.get('cancelSubtitleDeletes').disabled = busy;
             ui.get('recheckSubtitles').disabled = busy;
@@ -5144,7 +5203,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     text.textContent = [ `${label}：${row.node.name}`, row.path, embedded?.message, row.error || (!embedded?.chinese && row.searchMessage) ].filter(Boolean).join('\n'); item.append(text);
                     for (const sub of row.subtitles) {
                         const line = document.createElement('label'), checkbox = document.createElement('input'), name = document.createElement('span');
-                        checkbox.type = 'checkbox'; checkbox.checked = deleteSelection.has(String(sub.id)); checkbox.disabled = busy;
+                        checkbox.type = 'checkbox'; checkbox.checked = selectedForDelete(sub); checkbox.disabled = busy || !canDelete(sub);
                         name.textContent = '移入回收站：' + sub.name;
                         checkbox.onchange = () => { if (checkbox.checked) deleteSelection.add(String(sub.id)); else deleteSelection.delete(String(sub.id)); clearDeletePreview(); render(); };
                         line.append(checkbox, name); item.append(line);
@@ -5167,11 +5226,14 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             ui.get('subtitleEmpty').hidden = visible > 0;
             ui.get('subtitleEmpty').textContent = !inventory.length ? '本次检查没有视频，或尚未检查。请勾选目录或视频，再点击“检查目录字幕”。' : view === 'incomplete' && !missing.length ? '所选范围内的视频都有字幕。' : view === 'choice' ? '没有需要手动选择的字幕。' : '当前筛选下没有视频。';
         };
-        const lock = value => {
-            busy = value; ui.busy(value);
+        const runTask = createPanelTask(ui, (value, stoppable) => {
+            busy = value;
+            if (value) cancelled = false;
             for (const id of ['readSubtitles','recheckSubtitles','auditSubtitles','reviewSubtitleDeletes','confirmSubtitleDeletes','cancelSubtitleDeletes','saveSubtitleSettings','forgetSubtitleKey','loginSubtitles','openSubtitlesKey','subtitleUsername','subtitlePassword','useOpenSubtitles','useThunder','subtitleLanguage','useSubdl','subdlKey']) ui.get(id).disabled = value;
-            ui.get('stopSubtitles').hidden = !value; ui.get('stopSubtitles').disabled = !value; render();
-        };
+            const stop = ui.get('stopSubtitles');
+            stop.hidden = stop.disabled = !value || !stoppable;
+            render();
+        });
         const searchRows = async rows => {
             rows = rows.filter(row => !subtitleCovered(row) && !row.writeBlocked);
             if (!rows.length) { status(inventory.length ? '本次检查范围内没有可查找的缺字幕项目。' : '本次检查范围内没有正片视频。'); return; }
@@ -5181,7 +5243,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             if (!config.thunder) diag('来源跳过', '迅雷 已关闭');
             if (!config.open) diag('来源跳过', 'OpenSubtitles 已关闭');
             else if (!config.key) diag('来源跳过', 'OpenSubtitles 未配置 API Key');
-            cancelled = false; lock(true); let done = 0;
+            let done = 0;
             const ai = configuredAI();
             service.resetSearchBatch?.();
             reviewCandidates = ai ? createSubtitleReviewer(ai, config.language, diag, check) : null;
@@ -5223,8 +5285,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                   }
                 }, check);
                 status('查找结束：' + subtitleSearchSummary(inventory) + '。'); diag('查找结束', subtitleSearchSummary(inventory));
-            } catch (error) { render(); status(error.message); diag(cancelled ? '已停止' : '查找中断', error.message); }
-            finally { lock(false); }
+            } catch (error) { status(error.message); diag(cancelled ? '已停止' : '查找中断', error.message); }
         };
         const inspectEmbedded = async (row, check) => {
             if (row.embedded) return;
@@ -5234,8 +5295,8 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         };
         const checkDirectory = async (force = false) => {
             diag('检查开始', force ? '强制复查已有字幕：跳过缓存，重读正文' : '读取当前选中的视频与已有字幕');
-            cancelled = false; inventory = []; drive = null; subtitleContext = null; checkedScope = null; deleteSelection.clear(); clearDeletePreview();
-            ui.get('subtitleView').value = 'all'; ui.get('subtitleResults').scrollTop = 0; lock(true);
+            inventory = []; drive = null; subtitleContext = null; checkedScope = null; deleteSelection.clear(); clearDeletePreview();
+            ui.get('subtitleView').value = 'all'; ui.get('subtitleResults').scrollTop = 0; render();
             try {
                 const context = subtitleContext = await mediaContext(provider); check(); drive = subtitleDrive(context);
                 const collected = await collectMediaSelection(context.selected, context.source, status, () => false, check, false); check();
@@ -5270,30 +5331,30 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     meter(++done, rows.length);
                 }, check);
                 inventory = rows;
+                pendingDeletes.clear();
                 const names = context.selected.slice(0, 3).map(item => item.name).filter(Boolean);
                 const selection = names.length ? '（' + names.join('、') + (context.selected.length > names.length ? '等' : '') + '）' : '';
                 checkedScope = `本次范围：/${context.path || ''} · 选中 ${context.selected.length} 项${selection} · 视频 ${inventory.length}`;
                 status(inventory.length ? '已检查选中范围。' : '选中范围没有正片视频。'); diag('字幕检查', inventory.length ? `完成，已有字幕确认 ${inventory.filter(subtitleCovered).length}/${inventory.length}` : '选中范围没有正片视频');
             } catch (error) { inventory = []; drive = null; subtitleContext = null; status('检查结束：' + error.message); diag('检查失败', error.message); }
-            finally { lock(false); }
             return checkedScope !== null;
         };
-        ui.get('readSubtitles').onclick = async () => {
-            if (busy || (checkedScope === null && !await checkDirectory())) return;
+        ui.get('readSubtitles').onclick = () => runTask(async () => {
+            if (checkedScope === null && !await checkDirectory()) return;
             await searchRows(inventory);
-        };
-        ui.get('recheckSubtitles').onclick = () => checkDirectory();
-        ui.get('auditSubtitles').onclick = () => checkDirectory(true);
+        }, true);
+        ui.get('recheckSubtitles').onclick = () => runTask(checkDirectory, true);
+        ui.get('auditSubtitles').onclick = () => runTask(() => checkDirectory(true), true);
         ui.get('reviewSubtitleDeletes').onclick = () => {
-            deletePlan = inventory.flatMap(row => row.subtitles.filter(sub => deleteSelection.has(String(sub.id))).map(sub => ({row,sub})));
+            deletePlan = inventory.flatMap(row => row.subtitles.filter(selectedForDelete).map(sub => ({row,sub})));
             if (!deletePlan.length) return;
             ui.get('subtitleDeleteList').textContent = deletePlan.map(({row,sub}) => `${row.path.slice(0,row.path.lastIndexOf('/') + 1)}${sub.name}`).join('\n');
             const preview = ui.get('subtitleDeletePreview'); preview.hidden = false; preview.open = true; render();
         };
         ui.get('cancelSubtitleDeletes').onclick = clearDeletePreview;
-        ui.get('confirmSubtitleDeletes').onclick = async () => {
+        ui.get('confirmSubtitleDeletes').onclick = () => runTask(async () => {
             if (!deletePlan?.length || !subtitleContext || !drive) return;
-            const targets = [...deletePlan]; clearDeletePreview(); cancelled = false; lock(true);
+            const targets = deletePlan.filter(({sub}) => canDelete(sub)); clearDeletePreview();
             let deleted = 0; const touched = new Set(), failures = [];
             try {
                 drive.assertReady?.();
@@ -5307,27 +5368,33 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                         const linkedVideos = current && siblings.filter(node => !node.directory && MEDIA_VIDEO.test(node.name) && mediaSubtitleSuffix(node.name,current.name) !== null);
                         if (!sameFile(current,sub) || !sameFile(video,row.node) || linkedVideos.length !== 1 || String(linkedVideos[0].id) !== String(row.node.id) || !MEDIA_SUB.test(current.name))
                             throw new Error('字幕或关联视频已变化，未删除；请重新检查目录');
-                        await recycleMedia({...current,parentId:row.node.parentId},subtitleContext.session,subtitleContext.source); check();
+                        await recycleMedia({...current,parentId:row.node.parentId},subtitleContext.session,subtitleContext.source);
                         try { drive.verified?.forget(sub); } catch (error) { diag('核验缓存清理失败', `${sub.name} · ${error.message}`); }
                         row.subtitles = row.subtitles.filter(item => String(item.id) !== String(sub.id)); deleteSelection.delete(String(sub.id)); touched.add(row); deleted++;
                         diag('字幕已删除', `${row.node.name} · ${sub.name} · 已移入回收站`);
                     } catch (error) {
+                        if (error.pending) {
+                            pendingDeletes.add(String(sub.id)); deleteSelection.delete(String(sub.id));
+                            row.writeBlocked = true; row.complete = false; row.error = '字幕删除结果不明，请重新检查目录：' + error.message;
+                        }
                         check();
                         if (error.stop || [401,403].includes(error.status)) throw error;
                         failures.push(`${sub.name}：${error.message}`); diag('字幕删除失败', `${row.node.name} · ${sub.name} · ${error.message}`);
-                        if (error.pending) { deleteSelection.delete(String(sub.id)); row.writeBlocked = true; row.complete = false; row.error = '字幕删除结果不明，请重新检查目录：' + error.message; }
                     }
                 }
                 for (const row of touched) { check(); if (row.writeBlocked) continue; await inspectExistingSubtitles(row,drive,settings().language,(event,detail)=>diag(event,`${row.node.name} · ${detail}`),check); await inspectEmbedded(row,check); }
-                render();
                 status(`批量删除结束：已移入回收站 ${deleted} 个，失败 ${failures.length} 个。` + (failures.length ? ` ${failures.slice(0,5).join('；')}` : ''));
-            } catch (error) { render(); status(`删除中断：已移入回收站 ${deleted} 个；${error.message}`); }
-            finally { lock(false); }
-        };
-        ui.get('fillSubtitles').onclick = async () => {
+            } catch (error) {
+                if (cancelled) for (const row of touched) if (!row.writeBlocked) {
+                    row.complete = false; row.writeBlocked = true; row.error = '请重新检查目录，确认剩余字幕。';
+                }
+                status(`删除中断：已移入回收站 ${deleted} 个；${error.message}`);
+            }
+        }, true);
+        ui.get('fillSubtitles').onclick = () => runTask(async () => {
             const rows = inventory.filter(row => !subtitleCovered(row) && !row.writeBlocked && row.selectedCandidate), config = settings();
             config.reviewCandidates = reviewCandidates;
-            cancelled = false; lock(true); let done = 0, failed = 0;
+            let done = 0, failed = 0;
             try {
                 drive.assertReady?.();
                 for (const row of rows) {
@@ -5377,9 +5444,8 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     meter(done + failed, rows.length); render();
                 }
                 status(`补齐结束：已补齐 ${done}，未补齐 ${failed}。`); diag('补齐结束', `已补齐 ${done}，未补齐 ${failed}`);
-            } catch (error) { render(); status(`已中断：已补齐 ${done}，未补齐 ${rows.length - done}；${error.message}`); diag('补齐中断', error.message); }
-            finally { lock(false); }
-        };
+            } catch (error) { status(`已中断：已补齐 ${done}，未补齐 ${rows.length - done}；${error.message}`); diag('补齐中断', error.message); }
+        }, true);
         ui.get('stopSubtitles').onclick = () => { cancelled = true; ui.get('stopSubtitles').disabled = true; status('等待当前请求结束后停止…'); };
         ui.get('clearSubtitleLog').onclick = () => { logLines.length = 0; ui.get('subtitleLog').value = ''; diag('日志', '已清空'); };
         selectAll.onchange = () => {
@@ -5398,12 +5464,17 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             currentDrive.verified?.clear();
             ui.get('openSubtitlesKey').value = ''; ui.get('subdlKey').value = ''; ui.get('subtitlePassword').value = ''; service.logout(); ui.get('subtitleLoginState').textContent = '未登录'; GM_setValue('cross-drive-subtitle-settings', settings()); status('已清除凭证和当前账号的字幕核验记录。');
         };
-        ui.get('loginSubtitles').onclick = async () => {
-            lock(true);
-            try { await service.login(ui.get('subtitleUsername').value.trim(), ui.get('subtitlePassword').value, settings()); ui.get('subtitleLoginState').textContent = '已登录（仅本页有效）'; status('登录成功。'); }
-            catch (error) { status('登录失败：' + error.message); }
-            finally { ui.get('subtitlePassword').value = ''; lock(false); }
-        };
+        ui.get('loginSubtitles').onclick = () => runTask(async () => {
+            try {
+                await service.login(ui.get('subtitleUsername').value.trim(), ui.get('subtitlePassword').value, settings());
+                check();
+                ui.get('subtitleLoginState').textContent = '已登录（仅本页有效）';
+                status('登录成功。');
+            } catch (error) {
+                if (cancelled) { service.logout(); ui.get('subtitleLoginState').textContent = '未登录'; status('登录已停止。'); }
+                else status('登录失败：' + error.message);
+            } finally { ui.get('subtitlePassword').value = ''; }
+        }, true);
         ui.get('copySubtitleLog').onclick = async () => {
             try { await navigator.clipboard.writeText(ui.get('subtitleLog').value || '（暂无字幕运行日志）'); status('字幕运行日志已复制。'); }
             catch (error) { status('复制日志失败：' + error.message); }

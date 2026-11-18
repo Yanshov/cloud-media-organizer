@@ -11,12 +11,18 @@ const part = (a, b) => {
 
 function fixture() {
     const elements = Object.fromEntries(['runMedia', 'mediaPreview', 'mediaRecordState'].map(id => [id, {disabled: true, textContent: ''}]));
-    const state = {locks: [], messages: [], preparations: 0, writes: 0};
+    const state = {locks: [], messages: [], preparations: 0, writes: 0, owner: null};
+    const claim = (pane, busy) => {
+        if (busy && state.owner && state.owner !== pane) throw Error('another task is active');
+        if (busy) state.owner = pane;
+        else if (state.owner === pane) state.owner = null;
+    };
     const ctx = vm.createContext({
         rows: [{include: true, ready: true, destination: 'Movie.2000.mkv', node: {id: 'v', path: 'old.mkv'}, subtitles: [{id: 's', name: 'old.zh-cn.srt', suffix: '.zh-cn'}]}],
         cancelled: false, batch: null, batchWriter: null, reused: 0,
-        ui: {get: id => {assert.ok(elements[id], 'Unexpected UI dependency: ' + id); return elements[id];}},
-        lock: busy => {state.locks.push(busy); elements.runMedia.disabled = busy || !ctx.batch;},
+        ui: {busy: busy => claim('media', busy), get: id => {assert.ok(elements[id], 'Unexpected UI dependency: ' + id); return elements[id];}},
+        otherUi: {busy: busy => claim('subtitles', busy)},
+        updateControls: busy => {state.locks.push(busy); elements.runMedia.disabled = busy || !ctx.batch;},
         meter: () => {}, stopMeter: () => {}, render: () => {},
         progress: message => state.messages.push(message), log: message => state.messages.push(message),
         checkStopped: () => {if (ctx.cancelled) throw Error('stopped');},
@@ -29,9 +35,12 @@ function fixture() {
         mediaOrganizerWriter: () => ({prepare: async () => {state.preparations++; return [];}, execute: async () => {state.writes++;}})
     });
     vm.runInContext(
-        part('        const invalidate =', '        const lock =') +
-        part('        const refreshPreview =', '        const field =') +
-        part('        async function generatePreview()', "        ui.get('runMedia').onclick =") +
+        part('    function createPanelTask(', '    function panelControls(') +
+        part('    function cachedDriveChildren(', '    function titleKey(') +
+        '\nconst runTask = createPanelTask(ui, updateControls); this.runOther = createPanelTask(otherUi, () => {});\n' +
+        part('        const invalidate =', '        const runTask =') +
+        part('        const refreshPreview =', '        const editRows =') +
+        part('        const generatePreview =', "        ui.get('runMedia').onclick =") +
         '\nthis.refresh = refreshPreview;', ctx);
     return {ctx, state, elements};
 }
@@ -61,11 +70,23 @@ function fixture() {
 
     ctx.source.children = async () => [];
     await ctx.refresh();
-    ctx.mediaOrganizerWriter = () => ({prepare: async () => {ctx.cancelled = true; return [];}});
+    let entered, finish;
+    const reading = new Promise(resolve => {entered = resolve;});
+    const inFlight = new Promise(resolve => {finish = resolve;});
+    ctx.mediaOrganizerWriter = () => ({prepare: async () => {entered(); await inFlight; return [];}});
+    const interrupted = ctx.refresh();
+    await reading;
+    // A second event in the same pane must not replace or unlock the running task.
     await ctx.refresh();
+    ctx.cancelled = true;
+    assert.equal(state.owner, 'media');
+    await assert.rejects(ctx.runOther(() => assert.fail('conflicting task started')), /another task is active/);
+    assert.equal(elements.runMedia.disabled, true);
+    finish(); await interrupted;
     assert.equal(ctx.batch, null); assert.equal(ctx.batchWriter, null);
     assert.equal(elements.runMedia.disabled, true); assert.equal(state.locks.at(-1), false);
     assert.match(state.messages.at(-1), /stopped/);
+    assert.equal(await ctx.runOther(() => 'resumed'), 'resumed');
 
     ctx.cancelled = false;
     ctx.mediaOrganizerWriter = () => ({prepare: async () => []});

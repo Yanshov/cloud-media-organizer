@@ -35,10 +35,10 @@ async function candidateFallback() {
     const candidates=[{source:'迅雷',name:'短字幕.srt'},{source:'迅雷',name:'路西法印度版.Lucifer.2019.Malayalam.CHS.srt'}];
     r.selectedCandidate=candidates[0];r.autoCandidates=candidates;
     const calls=[],saved=[],elements={fillSubtitles:{}},logs=[];
-    Object.assign(ctx,{inventory:[r],reviewCandidates:null,mediaStem:name=>name.replace(/\.[^.]+$/,''),ui:{get:id=>elements[id]||(elements[id]={})},settings:()=>({language:'zh-cn,zh-tw,zh'}),lock(){},check(){},status(){},meter(){},render(){},diag:(a,b)=>logs.push(a+' '+b),
+    Object.assign(ctx,{inventory:[r],reviewCandidates:null,mediaStem:name=>name.replace(/\.[^.]+$/,''),ui:{get:id=>elements[id]||(elements[id]={}),busy(){}},settings:()=>({language:'zh-cn,zh-tw,zh'}),check(){},status(){},meter(){},render(){},diag:(a,b)=>logs.push(a+' '+b),
         drive:{assertReady(){},save:async(row,name,bytes)=>{saved.push(bytes);return {name};}},
         service:{fetchFile:async c=>{calls.push(c.name);return {result:{ext:'srt'},bytes:new TextEncoder().encode(c===candidates[0]?sized(8385,'00:03:00,000'):srt('01:50:00,000'))};}}});
-    vm.runInContext(part("        ui.get('fillSubtitles').onclick =", "        ui.get('stopSubtitles').onclick"),ctx);
+    vm.runInContext(part('    function createPanelTask(', '    function panelControls(') + "const runTask = createPanelTask(ui, () => {});\n" + part("        ui.get('fillSubtitles').onclick =", "        ui.get('stopSubtitles').onclick"),ctx);
     await elements.fillSubtitles.onclick();
     assert.deepEqual(calls,candidates.map(c=>c.name));assert.equal(saved.length,1);assert.equal(r.complete,true);
     assert.ok(logs.some(line=>/候选失败.*字幕不完整/.test(line)));

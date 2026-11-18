@@ -284,14 +284,18 @@ async function cleanup() {
     const protectedPlan=await ctx.planMediaExtras([{}],source);assert.deepEqual(Array.from(protectedPlan,n=>n.id),['i','b']);
     const all=await ctx.planMediaExtras([{}],source,()=>{},true);assert.deepEqual(Array.from(all,n=>n.id),['s','f','a','i','b']);
     const button={},messages=[];let deletes=0;
-    const start=sourceText=>sourceText.indexOf("        ui.get('runEmpty').onclick = async () => {");
-    const script=fs.readFileSync(require('node:path').join(__dirname,'../cloud-media-organizer-v3.user.js'),'utf8');
-    const handler=script.slice(start(script),script.indexOf("        ui.get('mediaAIProvider').onchange",start(script)));
-    const run=load(handler,{ui:{get:()=>button},emptyPlan:[{path:'a'},{path:'b'}],emptySession:{},emptySource:{},selectedTreeCache:null,cancelled:false,
-        invalidate(){},lock(){},meter(){},log:m=>messages.push(m),progress:m=>messages.push(m),
+    const handler = part("        ui.get('runEmpty').onclick =", "        ui.get('mediaAIProvider').onchange");
+    const lifecycle = part('    function createPanelTask(', '    function panelControls(');
+    const locks = [];
+    const run=load(lifecycle + '\nconst runTask = createPanelTask(ui, () => {});\n' + handler,{ui:{get:()=>button,busy: value => locks.push(value)},emptyPlan:[{path:'a'},{path:'b'}],emptySession:{},emptySource:{},cancelled:false,
+        invalidate(){},meter(){},log:m=>messages.push(m),progress:m=>messages.push(m),
         removeMediaNonstandard:async()=>{deletes++;throw Object.assign(Error('HTTP 403'),{stop:true})}
     });
     await button.onclick();assert.equal(deletes,1);assert.ok(messages.some(m=>m.includes('未处理 1')));
+    run.emptyPlan = [{path:'c'}];
+    run.progress = () => {throw Error('render failed');};
+    await assert.rejects(button.onclick(), /render failed/);
+    assert.deepEqual(locks, [true, false, true, false]);
     console.log('PASS cleanup: subtitles, font files and named font packs preserved by default; explicit include restores full attachment cleaning');
 }
 
@@ -318,7 +322,7 @@ async function subtitleUI() {
     subtitleBinary:async()=>valid,
     subtitleDrive:()=>({sample:async()=>'',read:async()=>{reads++;if(broken)throw Error('连接失败');return readBytes},reconcile:async()=>recovered,save:async()=>{saves++;hasSubtitle=true;throw Object.assign(Error('上传已提交，核验连接失败'),{pendingUpload:true})}})
     });
-    vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'../src/works.js'),'utf8')+part('    function subtitleInventory(', '    if (location.hostname'),ctx);
+    vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'../src/works.js'),'utf8')+part('    function createPanelTask(', '    function panelControls(')+part('    function subtitleInventory(', '    if (location.hostname'),ctx);
     ctx.initSubtitles();
     assert.doesNotMatch(panelMarkup,/重搜未完成项|复制完整报告|复制未补齐路径/);assert.match(panelMarkup,/id="openSubtitlesSettings"/);assert.match(panelMarkup,/id="subtitleAccountSettings"/);
     const openSettings=panelMarkup.slice(panelMarkup.indexOf('<details id="openSubtitlesSettings"'),panelMarkup.indexOf('<label>字幕语言'));

@@ -167,20 +167,18 @@
     }
     async function collectSelectedTree(selected, source, progress = () => {}, check = () => {}) {
         if (!selected.length) throw new Error('请先勾选文件或文件夹');
-        check();
-        const listed = new Map(), nodes = [], seen = new Set();
-        const children = async id => { check(); if (!listed.has(id)) listed.set(id, await source.children({ id })); return listed.get(id); };
-        const visit = async (node, parentId, folders, ancestors = []) => {
-            check();
-            if (seen.has(node.id)) return;
-            seen.add(node.id);
+        const nodes = [], children = cachedDriveChildren(source, new Map(), check);
+        const roots = matchSelected(await children(source.parentId), selected);
+        await walkTree(roots.map(node => ({node, parentId: source.parentId, folders: [], ancestors: []})), entry => entry.node.id, async ({node, parentId, folders, ancestors}) => {
             const path = [...folders, node.name].join('/');
             progress('读取选中内容：' + path);
-            if (node.directory) for (const child of await children(node.id)) await visit(child, node.id, [...folders, node.name], [...ancestors, { id: node.id, parentId, name: node.name, path, depth: ancestors.length }]);
-            else nodes.push({ ...node, parentId, folders, path, ancestors });
-        };
-        for (const node of matchSelected(await children(source.parentId), selected)) await visit(node, source.parentId, []);
-        check();
+            if (node.directory) {
+                const childFolders = [...folders, node.name];
+                const childAncestors = [...ancestors, { id: node.id, parentId, name: node.name, path, depth: ancestors.length }];
+                return (await children(node.id)).map(child => ({node: child, parentId: node.id, folders: childFolders, ancestors: childAncestors}));
+            }
+            nodes.push({ ...node, parentId, folders, path, ancestors });
+        }, check);
         return { nodes, children };
     }
     async function collectMediaSelection(selected, source, progress = () => {}, skip = () => false, check = () => {}, enrich = true) {
@@ -206,8 +204,12 @@
         for (const video of enrich ? pending : []) {
             check();
             Object.assign(video, await mediaFileMetadata(video, source));
-            for (const subtitle of linked.get(video.id)) Object.assign(subtitle, await mediaFileMetadata(subtitle, source));
+            for (const subtitle of linked.get(video.id)) {
+                check();
+                Object.assign(subtitle, await mediaFileMetadata(subtitle, source));
+            }
         }
+        check();
         const pendingParents = new Set(pending.map(video => video.parentId));
         return { videos: pending, linked, unmatched: unmatched.filter(sub => pendingParents.has(sub.parentId)), skipped: videos.length - pending.length };
     }

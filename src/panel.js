@@ -426,6 +426,21 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         if (tabs.size === 1) activate(id);
         return ui;
     }
+    function createPanelTask(ui, updateControls) {
+        let active = false;
+        return async (work, stoppable = false) => {
+            if (active) return;
+            ui.busy(true);
+            active = true;
+            try {
+                updateControls(true, stoppable);
+                return await work();
+            } finally {
+                try { updateControls(false); }
+                finally { active = false; ui.busy(false); }
+            }
+        };
+    }
     function panelControls(ui) {
         return ['json', 'manifest', 'jsonFile', 'historyFile', 'generate', 'exportManifest', 'transfer', 'start', 'chooseManifest', 'chooseJsonFile', 'copyJson', 'save', 'saveJson', 'incremental', 'resetHistory', 'importHistory', 'syncExisting'].map(ui.get).filter(Boolean);
     }

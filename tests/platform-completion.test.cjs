@@ -52,17 +52,22 @@ async function stop(){
 async function manifestUI(){
  for(const provider of ['百度','123']){
   const elements=new Map(),writes=[],video={id:'v',key:'v',name:'small.txt',size:2,md5:'a'.repeat(32),directory:false};
+  let lists123=0;
   const ui={get:id=>{if(!elements.has(id))elements.set(id,{value:'',disabled:false,textContent:''});return elements.get(id)},busy(){}};
   const start=script.indexOf('    function initManifestImporter('),end=script.indexOf('    function installHooks(',start);
   const ctx=vm.createContext({URL,URLSearchParams,location:{origin:'https://pan.baidu.com'},sleep:async()=>{},panelControls:()=>[],appendLog(){},normalizeFiles:x=>x,relativeParts:x=>x.split('/'),
    current123Parent:()=> '42',currentBaiduPath:()=>'/target',recover123Session:()=>({base:'https://www.123pan.com/b/api',headers:{}}),getBdstoken:async()=> 'test',paced:(_ms,f)=>f,
-   pan123Source:()=>({children:async()=>writes.length?[video]:[]}),baiduSource:()=>({children:async()=>[]}),apiCode:r=>r.code,nonNegativeInteger:Number,hasFileMetadata:()=>true,existingFileMessage:()=>'',
+   pan123Source:()=>({children:async()=>{lists123++;return writes.length?[video]:[]}}),baiduSource:()=>({children:async()=>[]}),apiCode:r=>r.code,nonNegativeInteger:Number,hasFileMetadata:()=>true,existingFileMessage:()=>'',
    requestJson:async(url,options)=>{writes.push({url,body:options.body});return provider==='123'?{code:0,data:{Reuse:true}}:{errno:0}}
   });
-  vm.runInContext(script.slice(start,end),ctx);ctx.initManifestImporter(provider,ui);
+  vm.runInContext(script.slice(script.indexOf('    function cachedDriveChildren('),script.indexOf('    function titleKey('))+script.slice(start,end),ctx);ctx.initManifestImporter(provider,ui);
   ui.get('json').value=JSON.stringify([{name:'small.txt',path:'small.txt',size:2,md5:'a'.repeat(32)}]);await ui.get('transfer').onclick();
   assert.equal(writes.length,1,provider);assert.ok(!writes[0].url.includes('userres'),provider+' must not use Guangya endpoints');
-  if(provider==='123'){assert.equal(JSON.parse(writes[0].body).parentFileId,'42');assert.match(writes[0].url,/\/b\/api\/file\/upload_request$/)}
+  if(provider==='123'){
+   assert.equal(JSON.parse(writes[0].body).parentFileId,'42');assert.match(writes[0].url,/\/b\/api\/file\/upload_request$/);
+   assert.equal(lists123,2,'Reuse the initial listing before upload and refresh it for readback');
+   assert.match(ui.get('progress').textContent,/确认复用 1/);
+  }
   else{assert.equal(new URLSearchParams(writes[0].body).get('path'),'/target/small.txt');assert.match(writes[0].url,/\/api\/rapidupload\?/)}
  }
  console.log('PASS JSON UI: pasted manifest imports directly; Baidu/123 use their own endpoints and current folder, not hard-coded root or Guangya API');

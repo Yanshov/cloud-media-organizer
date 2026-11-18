@@ -14,7 +14,8 @@ const videos = ['complete','ready','failure','invalid','pending'].map((id,index)
 const valid = new TextEncoder().encode('1\n00:00:01,000 --> 00:00:03,000\n合成中文字幕 Test\n');
 const linked = new Map(['complete','invalid','pending'].map(id => [id,[{id:'s-' + id, parentId:'folder-' + id, name:'同名影片.2020.zh-cn.srt',size:30}]]));
 const siblings = new Map(videos.map(video => [video.parentId,[video,...(linked.get(video.id)||[])]]));
-const elements = new Map(), queried = [], deleted = []; let reads = 0, saves = 0, empty = false, collectionError = false, pauseRead = null;
+const elements = new Map(), queried = [], deleted = [];
+let reads = 0, saves = 0, empty = false, collectionError = false, pauseRead = null, recycleResult = null, panelBusy = false;
 const get = id => { assert.ok(elements.has(id),id); return elements.get(id); };
 const ctx = vm.createContext({URL, TextEncoder, TextDecoder, Uint8Array, Date,
     document:{createElement:element},
@@ -23,13 +24,17 @@ const ctx = vm.createContext({URL, TextEncoder, TextDecoder, Uint8Array, Date,
         for (const tag of html.matchAll(/<([^\s>]+)[^>]*\bid="([^"]+)"[^>]*>/g)) {
             const el = element(tag[1]); el.checked = /\bchecked\b/.test(tag[0]); el.disabled = /\bdisabled\b/.test(tag[0]); elements.set(tag[2],el);
         }
-        return {get,moveSettings(){},busy(){}};
+        return {get,moveSettings(){},busy(value){panelBusy = value;}};
     },
     mediaContext:async () => ({selected:[{id:'chosen',name:'本次所选文件夹'}],source:{},path:'影视库'}),
     collectMediaSelection:async () => { if (collectionError) throw Error('目录读取失败'); return {videos:empty ? [] : videos,linked}; },
     MEDIA_VIDEO:/\.(?:mkv|mp4)$/i, MEDIA_SUB:/\.(?:srt|ass|ssa|vtt)$/i,
     mediaSubtitleSuffix:(video,subtitle)=>{const stem=video.replace(/\.[^.]+$/,''),candidate=subtitle.replace(/\.[^.]+$/,'');return candidate.startsWith(stem)?candidate.slice(stem.length):null;},
-    recycleMedia:async item=>{deleted.push(item.id);siblings.set(item.parentId,siblings.get(item.parentId).filter(node=>node.id!==item.id));},
+    recycleMedia:async item=>{
+        if (recycleResult) await recycleResult();
+        deleted.push(item.id);
+        siblings.set(item.parentId,siblings.get(item.parentId).filter(node=>node.id!==item.id));
+    },
     mediaContext:async()=>({selected:[{id:'chosen',name:'本次所选文件夹'}],session:{provider:'123',token:'test',base:'https://drive.example',headers:{}},source:{children:async({id})=>siblings.get(id)||[]},path:'影视库'}),
     parseMediaName:() => ({query:'同名影片',year:2020,tv:false}), mediaBonusName:() => false, mediaRecords:{get:() => null}, mediaStem:name => name.replace(/\.[^.]+$/,''),
     createSubtitleService:() => ({thunderSearch:async row => {
@@ -46,7 +51,7 @@ const ctx = vm.createContext({URL, TextEncoder, TextDecoder, Uint8Array, Date,
         },save:async () => {saves++; return {id:'uploaded',name:'同名影片.2020.zh-cn.srt'};}})
 });
 const serviceFactory = ctx.createSubtitleService;
-vm.runInContext(part('    function evict(', '    function nonNegativeInteger(') + part('    function subtitleDownloadUrl(', '    function subtitleDrive(') + part('    function subtitleInventory(', '    if (location.hostname'),ctx);
+vm.runInContext(part('    function evict(', '    function nonNegativeInteger(') + part('    function subtitleDownloadUrl(', '    function subtitleDrive(') + part('    function createPanelTask(', '    function panelControls(') + part('    function subtitleInventory(', '    if (location.hostname'),ctx);
 ctx.createSubtitleService = serviceFactory;
 const shown = () => get('subtitleRows').querySelectorAll('p').map(row => row.textContent).join('\n');
 const view = value => {get('subtitleView').value = value; get('subtitleView').onchange();};
@@ -109,6 +114,30 @@ const view = value => {get('subtitleView').value = value; get('subtitleView').on
     get('reviewSubtitleDeletes').onclick();assert.match(get('subtitleDeleteList').textContent,/目录0\/同名影片\.2020\.zh-cn\.srt/);assert.equal(get('subtitleDeletePreview').open,true);
     const original=siblings.get('folder-complete')[1];original.name='其他影片.zh-cn.srt';await get('confirmSubtitleDeletes').onclick();assert.equal(deleted.length,0,'Stale subtitle name blocks deletion');assert.match(get('subtitleProgress').textContent,/失败 1 个/);
     original.name='同名影片.2020.zh-cn.srt';siblings.get('folder-complete')[0].name='另一个作品.mkv';get('reviewSubtitleDeletes').onclick();await get('confirmSubtitleDeletes').onclick();assert.equal(deleted.length,0,'Changed associated video blocks deletion');
-    siblings.get('folder-complete')[0].name='同名影片.2020.mkv';get('reviewSubtitleDeletes').onclick();await get('confirmSubtitleDeletes').onclick();assert.deepEqual(deleted,['s-complete']);assert.match(get('subtitleProgress').textContent,/已移入回收站 1 个/,'Deletion triggers a fresh subtitle status check');
+    siblings.get('folder-complete')[0].name='同名影片.2020.mkv';
+    let finishRecycle, recycleStarted;
+    const started = new Promise(resolve => {recycleStarted = resolve;});
+    const outcome = new Promise(resolve => {finishRecycle = resolve;});
+    recycleResult = async () => {recycleStarted(); await outcome; throw Object.assign(Error('回收站结果待确认'), {pending:true});};
+    get('reviewSubtitleDeletes').onclick();
+    const deleting = get('confirmSubtitleDeletes').onclick();
+    await started;
+    get('stopSubtitles').onclick();
+    const readsBeforeStop = reads;
+    await get('recheckSubtitles').onclick();
+    assert.equal(reads,readsBeforeStop,'Stopping waits for the recycle result before starting a new scan');
+    assert.equal(panelBusy,true);
+    finishRecycle(); await deleting; recycleResult = null;
+    assert.equal(panelBusy,false);
+    view('all');
+    assert.match(shown(),/字幕删除结果不明/);
+    assert.equal(checkboxes()[0].disabled,true,'An unconfirmed recycle result cannot be selected again');
+    checkboxes()[0].checked=true;checkboxes()[0].onchange();
+    assert.equal(get('reviewSubtitleDeletes').disabled,true);
+    await get('recheckSubtitles').onclick();
+    view('complete');
+    checkboxes()[0].checked=true;checkboxes()[0].onchange();
+    get('reviewSubtitleDeletes').onclick();await get('confirmSubtitleDeletes').onclick();
+    assert.deepEqual(deleted,['s-complete']);assert.match(get('subtitleProgress').textContent,/已移入回收站 1 个/,'A fresh check lets the user confirm a new deletion plan');
     console.log('PASS subtitle directory inventory: scan makes no provider/write calls; expanded results, full paths, filters/empty states, fill updates, stale-scan clearing and previewed safe batch deletion (mocked API/DOM)');
 })().catch(error => {console.error(error); process.exitCode = 1;});

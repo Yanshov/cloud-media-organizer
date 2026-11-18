@@ -87,25 +87,26 @@
         if (nonNegativeInteger(data.errno) === 0 && typeof data.result?.bdstoken === 'string' && data.result.bdstoken) return data.result.bdstoken;
         throw new Error('没有获取到 bdstoken，请确认已登录百度网盘');
     }
-    async function collectTree(roots, source, progress = () => {}, parentPath = '') {
-        const stack = roots.slice().reverse().map(node => ({ node, path: relativeParts(node.exportPath || (parentPath ? parentPath + '/' + node.name : node.name)).join('/') }));
-        const seen = new Set(), paths = new Map(), entries = [], skipped = [];
-        let files = 0, directories = 0, processed = 0, lastProgress = 0;
-        while (stack.length) {
-            const { node, path } = stack.pop();
+    async function collectTree(roots, source, progress = () => {}, parentPath = '', check = () => {}) {
+        const start = roots.map(node => ({ node, path: relativeParts(node.exportPath || (parentPath ? parentPath + '/' + node.name : node.name)).join('/') }));
+        const paths = new Map(), entries = [], skipped = [];
+        let files = 0, directories = 0, lastProgress = 0, lastPath = '', reportedPath = '';
+        const report = path => {
+            progress({ files, directories, skipped: skipped.length, path });
+            lastProgress = Date.now(); reportedPath = path;
+        };
+        await walkTree(start, ({node}) => {
             if (relativeParts(node.name).length !== 1) throw new Error('云盘返回了包含路径分隔符的文件名');
             if (!node.key) throw new Error('文件列表缺少项目 ID');
-            if (seen.has(node.key)) continue;
-            seen.add(node.key);
+            return node.key;
+        }, async ({node, path}) => {
             if (paths.has(path) && paths.get(path) !== node.key) throw new Error(`不同项目导出为同一路径：${path}；请分开导出`);
             paths.set(path, node.key);
+            let children;
             if (node.directory) {
                 entries.push({ path, type: 'directory' });
                 directories++;
-                const children = await source.children(node);
-                for (let i = children.length - 1; i >= 0; i--) {
-                    stack.push({ node: children[i], path: path + '/' + children[i].name });
-                }
+                children = (await source.children(node)).map(child => ({ node: child, path: path + '/' + child.name }));
             } else {
                 const file = hasFileMetadata(node) ? node : await source.metadata?.(node);
                 if (!hasFileMetadata(file)) skipped.push(path);
@@ -115,12 +116,12 @@
                     entries.push(entry); files++;
                 }
             }
-            if (Date.now() - lastProgress >= 100 || !stack.length) {
-                progress({ files, directories, skipped: skipped.length, path });
-                lastProgress = Date.now();
-            }
-            if (++processed % 128 === 0) await sleep(0);
-        }
+            check();
+            lastPath = path;
+            if (Date.now() - lastProgress >= 100) report(path);
+            return children;
+        }, check);
+        if (lastPath !== reportedPath) report(lastPath);
         return { entries, files, directories, skipped };
     }
     async function readPages(load, keyOf) {
@@ -448,7 +449,7 @@
                 if (!roots.length) throw new Error('当前目录没有可导出的项目');
                 const result = await collectTree(roots, source, state => {
                     ui.get('status').textContent = `范围：${scope}；已读 ${state.files} 个文件、${state.directories} 个目录，跳过 ${state.skipped} 项；正在处理：${state.path}`;
-                }, parentPath);
+                }, parentPath, checkJsonTask);
                 if (!result.entries.length) throw new Error('没有可导出的文件信息');
                 const summary = exportManifestJson(ui, provider, result);
                 ui.get('status').textContent = `完成（${scope}）：${summary}。` + (!ui.get('json').value ? '没有可导出的内容。' : '请下载 JSON，到目标盘导入。') + (result.skipped.length ? ` 缺少有效 MD5/大小，已跳过 ${result.skipped.length} 项：${result.skipped.slice(0, 5).join('、')}` : '');
@@ -515,10 +516,7 @@
                     const post = paced(750, (path, body) => requestJson(`${base}${path}`, { method: 'POST', credentials: 'omit', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(body) }));
                     const folders = new Map([['', target.id]]), childLists = new Map(), source = pan123Source(session);
                     const unresolvedFolders = new Map();
-                    const children = async parentId => {
-                        if (!childLists.has(parentId)) childLists.set(parentId, await source.children({ id: parentId }));
-                        return childLists.get(parentId);
-                    };
+                    const children = cachedDriveChildren(source, childLists);
                     await children(target.id);
                     const locateDirectory = async (parent, name, path) => {
                         try {

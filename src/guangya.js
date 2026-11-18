@@ -604,7 +604,7 @@
                 if (!roots.length) throw new Error('选中项目不在当前目录中，请重新选择');
                 const result = await collectTree(roots, source, state => {
                     ui.get('status').textContent = `正在导出：${state.path}；文件 ${state.files}，目录 ${state.directories}`;
-                }, target.exportPath);
+                }, target.exportPath, checkJsonTask);
                 if (!result.entries.length) throw new Error('没有可导出的项目');
                 const summary = exportManifestJson(ui, '光鸭', result);
                 ui.get('status').textContent = `导出完成：选中 ${roots.length} 项，${summary}；缺少有效 MD5 的文件 ${result.skipped.length} 个。` + (!ui.get('json').value ? '没有可导出的内容。' : '');

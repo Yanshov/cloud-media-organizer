@@ -1,7 +1,7 @@
     if (typeof navigator !== 'undefined' && (navigator.userAgentData?.mobile || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
         navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) return;
 
-    const VERSION = '3.3.6';
+    const VERSION = '3.3.7';
     let jsonTaskStopped = false;
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
@@ -47,6 +47,31 @@
         // Drain active work before allowing another UI task to start.
         await Promise.all(Array.from({length:Math.min(limit, items.length)}, worker));
         verify();
+    }
+    async function walkTree(roots, keyOf, visit, check) {
+        const stack = roots.slice().reverse(), seen = new Set();
+        let visited = 0;
+        while (stack.length) {
+            check();
+            const node = stack.pop(), key = keyOf(node);
+            if (seen.has(key)) continue;
+            seen.add(key);
+            const children = await visit(node);
+            for (let i = (children?.length ?? 0) - 1; i >= 0; i--) stack.push(children[i]);
+            if (++visited % 128 === 0) await sleep(0);
+        }
+        check();
+    }
+    function cachedDriveChildren(source, cache = new Map(), check) {
+        return async id => {
+            check?.();
+            if (!cache.has(id)) {
+                const nodes = await source.children({id});
+                check?.();
+                cache.set(id, nodes);
+            }
+            return cache.get(id);
+        };
     }
     function titleKey(value) {
         // Strip Latin accents without removing Japanese dakuten/handakuten.
@@ -217,8 +242,11 @@
         }
         return { status: 'pending', message: `接口已报告秒传命中，8 次查询仍在处理；请稍后刷新目录核对。任务 ID：${taskId}` };
     }
-    async function requestJson(url, options = {}) {
+    function checkJsonTask() {
         if (jsonTaskStopped) throw Object.assign(new Error('已停止后续请求；已提交的操作请刷新目录核对'), {stop:true, cancelled:true});
+    }
+    async function requestJson(url, options = {}) {
+        checkJsonTask();
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 30000);
         try {

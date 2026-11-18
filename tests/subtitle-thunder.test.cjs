@@ -122,7 +122,7 @@ async function thunderOnlyUI() {
             if(new URL(options.url).hostname==='api-shoulei-ssl.xunlei.com'){searches++;options.onload({status:200,responseText:JSON.stringify({code:0,data:[file('电影.2000.简体&英文.srt')]})});}
             else options.onload({status:200,response:valid.buffer});return {abort(){}};}
     });
-    vm.runInContext(part('    function subtitleInventory(', '    if (location.hostname'),ctx);ctx.initSubtitles();
+    vm.runInContext(part('    function createPanelTask(', '    function panelControls(')+part('    function subtitleInventory(', '    if (location.hostname'),ctx);ctx.initSubtitles();
     assert.equal(elements.get('useThunder').checked,true,'New source defaults on with older preferences');
     await elements.get('readSubtitles').onclick();assert.equal(searches,1);assert.match(elements.get('subtitleSummary').textContent,/没有字幕 1/);
     assert.match(elements.get('subtitleLog').value,/启用来源：迅雷/);assert.equal(elements.get('useThunder').disabled,false);
@@ -134,7 +134,8 @@ async function thunderOnlyUI() {
     assert.equal(searches,1,'Chinese track prevents searching');
     assert.equal(saves,1,'Chinese track prevents writing');
     assert.equal(elements.get('fillSubtitles').disabled,true);
-    assert.ok(elements.get('subtitleRows').children[0].children[1].children[0].textContent.includes(embedded.message));
+    const subtitleText = elements.get('subtitleRows').children[0].children[1].children[0];
+    assert.ok([subtitleText, ...subtitleText.children].some(node => node.textContent.includes(embedded.message)));
     const view=elements.get('subtitleView');view.value='incomplete';view.onchange();
     assert.equal(elements.get('subtitleRows').children.length,0,'Chinese track is excluded from incomplete results');
     for (const message of ['未发现内嵌中文字幕','未读取到 MKV 字幕轨']) {

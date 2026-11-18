@@ -42,7 +42,7 @@ async function fillFallback() {
  collectMediaSelection:async()=>({videos:[video],linked:new Map()}),parseMediaName:()=>row().parsed,mediaBonusName:()=>false,mediaRecords:{get:()=>null},mediaStem:name=>name.replace(/\.[^.]+$/,''),
  subtitleDrive:()=>({reconcile:async()=>[],save:async(_row,name)=>{saves++;calls.push('save');return {id:'s',name}}})});
  ctx.createSubtitleService=()=>({thunderSearch:async()=>{calls.push('thunder');return [{...bi,source:'迅雷'}]},subdlSearch:async()=>{calls.push('subdl');return [{...bi,source:'SubDL'}]},fetchFile:async c=>{calls.push('download-'+c.source);if(c.source==='迅雷')throw Error('正文无效');return {result:{ext:'srt'},bytes:valid}}});
- vm.runInContext(part('    function subtitleInventory(', '    if (location.hostname'),ctx);ctx.initSubtitles();elements.get('subdlKey').value='test';elements.get('useSubdl').checked=true;
+ vm.runInContext(part('    function createPanelTask(', '    function panelControls(')+part('    function subtitleInventory(', '    if (location.hostname'),ctx);ctx.initSubtitles();elements.get('subdlKey').value='test';elements.get('useSubdl').checked=true;
  await elements.get('readSubtitles').onclick();assert.deepEqual(calls,['thunder']);
  await elements.get('fillSubtitles').onclick();assert.deepEqual(calls,['thunder','download-迅雷','subdl','download-SubDL','save']);assert.equal(saves,1);assert.match(elements.get('subtitleSummary').textContent,/有字幕 1/);
  assert.match(elements.get('subtitleLog').value,/来源补查/);

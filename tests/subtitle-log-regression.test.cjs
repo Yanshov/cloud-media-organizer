@@ -50,7 +50,7 @@ async function uiAuth(){
  collectMediaSelection:async()=>({videos,linked:new Map()}),parseMediaName:name=>row(Number(name.match(/E(\d+)/)[1])).parsed,mediaBonusName:()=>false,mediaRecords:{get:()=>null}});
  loadDrive(ctx,null); // Install actual drive factory without invoking its operations.
   ctx.createSubtitleService=()=>({thunderSearch:async()=>{searches++;return []},fetchFile:async()=>{downloads++;throw Error('Must not download')}});
- vm.runInContext(part('    function subtitleInventory(','    if (location.hostname'),ctx);ctx.initSubtitles();
+ vm.runInContext(part('    function createPanelTask(', '    function panelControls(')+part('    function subtitleInventory(','    if (location.hostname'),ctx);ctx.initSubtitles();
   await elements.get('readSubtitles').onclick();assert.equal(searches,2);assert.equal(apiCalls,0);assert.match(elements.get('subtitleLog').value,/查找结束/);
   await elements.get('readSubtitles').onclick();assert.equal(searches,4);assert.equal(apiCalls,0);
   await elements.get('fillSubtitles').onclick();assert.equal(downloads,0);assert.equal(apiCalls,0);
@@ -67,7 +67,7 @@ async function uiStop(){
  collectMediaSelection:async()=>({videos,linked:new Map()}),parseMediaName:name=>row(Number(name.match(/E(\d+)/)[1])).parsed,mediaBonusName:()=>false,mediaRecords:{get:()=>null},
   subtitleDrive:()=>({assertReady(){},reconcile:async()=>[],save:async()=>{saves++}})});
   ctx.createSubtitleService=()=>({thunderSearch:async r=>[1,2,3].map(id=>({source:'迅雷',fileId:id,name:`Love.Death.and.Robots.S01E0${r.parsed.episode}.简体&英文.ass`,language:'zh-cn',bilingual:true,titleMatched:true})),fetchFile:async()=>{downloads++;throw Object.assign(Error('限流重试已停止'),{stop:true})}});
- vm.runInContext(part('    function subtitleInventory(','    if (location.hostname'),ctx);ctx.initSubtitles();
+ vm.runInContext(part('    function createPanelTask(', '    function panelControls(')+part('    function subtitleInventory(','    if (location.hostname'),ctx);ctx.initSubtitles();
  await elements.get('readSubtitles').onclick();assert.match(elements.get('subtitleSummary').textContent,/没有字幕 2/);
   await elements.get('fillSubtitles').onclick();assert.equal(downloads,1,'Do not burn siblings or later videos');assert.equal(saves,0);
  assert.match(elements.get('subtitleLog').value,/补齐中断/);assert.ok(!elements.get('subtitleLog').value.includes('[候选失败]'));
