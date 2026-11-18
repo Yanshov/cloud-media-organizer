@@ -7,41 +7,6 @@ function load(extra={}) {
   paced:(_ms,fn)=>fn,sleep:async()=>{},GM_getValue:(_key,value)=>value,GM_setValue:()=>{},...extra});
  vm.runInContext(part('    function evict(', '    function nonNegativeInteger(') + part('    function subtitleDownloadUrl(', '    function subtitleDrive('),ctx);return ctx;
 }
-const config={assrtToken:'test',language:'zh-cn,zh-tw,zh'};
-const makeRow=(query='路西法',year=2019)=>({node:{name:query+'.'+year+'.mkv'},parsed:{query,year,tv:false}});
-async function pagination() {
- const calls=[],logs=[],fileLogs=[];
- const wrong=Array.from({length:15},(_,i)=>({id:100+i,native_name:'路西法/Lucifer',lang:{langlist:{langchs:true}},filelist:Array.from({length:120},(_,j)=>({f:`Lucifer.S01E02.2019.track${j}_[spa].srt`}))}));
- const good=[{id:500,native_name:'路西法/Lucifer',lang:{langlist:{langchs:true}},filelist:[{f:'Lucifer.2019.简&英.ass'},{f:'track36_[chi].srt'},{f:'track3_[eng].srt'},...['spa','fin','fil','heb','hun','may','nob','rum','swe','ukr','cze','dan','gre','baq','glg','hrv','cat','tam','tel'].map(code=>({f:`track5_[${code}].srt`}))]},
- {id:501,native_name:'路西法/Lucifer',lang:{langlist:{langchs:true}},filelist:[{f:'Lucifer.2019.简体&英文.srt'}]}];
- const ctx=load({subtitleRemoteJson:async raw=>{const u=new URL(raw);calls.push(u);return {status:0,sub:{subs:u.searchParams.get('pos')==='0'?wrong:good}}},record:(...args)=>logs.push(args)});
- const service=vm.runInContext('createSubtitleService({log:record})',ctx),row=makeRow();
- const candidates=await service.assrtSearch(row,config,message=>fileLogs.push(message));
- assert.deepEqual(calls.map(u=>u.searchParams.get('pos')),['0','15']);
- assert.ok(calls.every(u=>u.searchParams.get('q')==='路西法'),'Search terms have no release year');
- assert.equal(candidates.length,4);assert.ok(candidates.every(c=>c.titleMatched));
- assert.equal(candidates.find(c=>c.name.includes('[chi]')).language,'zh');
- assert.equal(candidates.find(c=>c.name.includes('[eng]')).language,'en');
- assert.equal(candidates[0].bilingual,true);assert.equal(candidates[0].language,'zh-cn');
- row.candidates=candidates;ctx.row=row;vm.runInContext('selectSubtitleCandidate(row,"zh-cn,zh-tw,zh")',ctx);
- assert.equal(row.selectedCandidate.name,'Lucifer.2019.简&英.ass');
- assert.ok(logs.length+fileLogs.length<10,'1800 irrelevant files must not create 1800 log lines');
- assert.ok(logs.at(-1)[1].includes('1819'));
- const snapshots=calls.length;await service.assrtSearch(makeRow(),config);assert.equal(calls.length,snapshots,'Search pages reused in current service');
- console.log('PASS stability pagination: first 15 irrelevant TV packages skipped; page two finds movie; 1800 episode/19 foreign files excluded; bracket chi/eng and 简&英 parsed; concise logs; cache; no year in search');
-}
-async function limits() {
- let calls=0;const logs=[];
- const packs=Array.from({length:15},(_,i)=>({id:i+1,native_name:'路西法 候选合集',lang:{langlist:{langchs:true}},filelist:Array.from({length:120},(_,j)=>({f:`路西法.未确认版本${j}.2019.chs.srt`}))}));
- const ctx=load({subtitleRemoteJson:async raw=>{calls++;return {status:0,sub:{subs:new URL(raw).searchParams.get('pos')==='0'?packs:[]}}},record:(...args)=>logs.push(args)});
- const service=vm.runInContext('createSubtitleService({log:record})',ctx);
- const candidates=await service.assrtSearch(makeRow(),config);assert.equal(candidates.length,60);assert.equal(calls,2);
- assert.ok(!candidates.some(c=>c.titleMatched));assert.ok(!logs.some(l=>l[0]==='候选待确认'));
- let n=0;
- const deep=load({subtitleRemoteJson:async()=>({status:0,sub:{subs:Array.from({length:15},()=>({id:++n,native_name:'错片',filelist:[{f:'Wrong.2018.chs.srt'}]}))}})});
- assert.equal((await vm.runInContext('createSubtitleService()',deep).assrtSearch(makeRow(),config)).length,0);assert.equal(n,75,'Pagination cannot exceed 5 pages per term');
- console.log('PASS stability bounds: at most 60 ambiguous files, 5 pages per term, no per-file mismatch log flood');
-}
 function identities() {
  const ctx=load();
  const check=(parsed,fields,name)=>{Object.assign(ctx,{parsed,fields,name});return vm.runInContext('subtitleWorkIdentity(parsed,fields,name)',ctx)};
@@ -58,19 +23,6 @@ function identities() {
  assert.ok(vm.runInContext('subtitlePayload(real,"ass","zh-cn,zh-tw,zh")',ctx).includes('[Events]'));
  console.log('PASS stability identity: uploader prefixes, Dolby labels and trusted TMDB aliases accepted; wrong sequel/year still rejected; synthetic ASS passes body validation');
 }
-async function transfers() {
- let calls=0,downloads=0,mode='expired';const logs=[];
- const ctx=load({GM_xmlhttpRequest:opts=>{calls++;queueMicrotask(()=>mode==='expired'&&calls===1?opts.onload({status:403}):mode==='493'?opts.onload({status:493}):opts.onload({status:200,response:valid.buffer}));return {abort(){}}}});
- const service=vm.runInContext('createSubtitleService()',ctx);
- service.download=async()=>{downloads++;return {url:'https://file0.assrt.net/fresh'+downloads,ext:'srt'}};
- const candidate={source:'Assrt',assrtId:1},data=await service.fetchFile(candidate,config,(...args)=>logs.push(args));
- assert.equal(data.bytes.length,valid.length);assert.equal(downloads,2);assert.equal(calls,2);assert.equal(logs.length,1);
- calls=downloads=0;mode='493';await assert.rejects(service.fetchFile(candidate,config),/单文件提取失败.*493/);assert.equal(calls,1);assert.equal(downloads,1,'493 must move to another candidate instead of repeating same bad extraction');
- calls=0;ctx.url='https://file0.assrt.net/test';await assert.rejects(vm.runInContext('subtitleBinary(url)',ctx),error=>error.status===493&&error.phase==='transfer');
- let apiCalls=0;const retry=load({subtitleRemoteJson:async()=>{if(++apiCalls===1)throw Error('字幕来源请求超时（30 秒）');return {status:0,sub:{subs:[]}}}});
- await vm.runInContext('createSubtitleService()',retry).assrtSearch(makeRow(),config);assert.equal(apiCalls,2);
- console.log('PASS stability transfer: signed 403 refreshes URL once; 493 skips broken file; HTTP status/phase preserved; transient API timeout retries once');
-}
 async function drives() {
  let details=0,gets=0,transfers=0,waits=0,apiFatal=false;
  const md5=crypto.createHash('md5').update(valid).digest('hex'),video={id:'v',parentId:'p',name:'电影.2019.mkv',size:100000},sub={id:'s',parentId:'p',name:'电影.2019.zh-cn.srt',size:valid.length};
@@ -85,4 +37,4 @@ async function drives() {
  apiFatal=true;gets=transfers=waits=0;await assert.rejects(drive.read(sub),e=>e.stop&&/获取网盘下载地址失败/.test(e.message));assert.equal(gets,1);assert.equal(transfers,0);assert.equal(waits,0,'API auth failure stops immediately');
  console.log('PASS stability drive: exact file-detail MD5 and size avoid readback; signed URL 401 refreshes; API authentication 401 stops without pointless retries');
 }
-(async()=>{await pagination();await limits();identities();await transfers();await drives()})().catch(e=>{console.error(e);process.exitCode=1});
+(async()=>{identities();await drives()})().catch(e=>{console.error(e);process.exitCode=1});

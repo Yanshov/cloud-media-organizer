@@ -563,9 +563,8 @@
             <p id="status"></p><p id="target"></p><p id="progress"></p>
             <textarea id="json" placeholder="导出的 JSON 会显示在这里；也可粘贴待导入 JSON"></textarea>
             <input id="jsonFile" type="file" accept=".json,application/json" hidden>
-            <div class="export-options"><label><input id="syncExisting" type="checkbox" checked>导入新版，成功后删除对应旧版</label></div>
             <div id="syncPreview" class="sync-preview" hidden><h4>导入预览</h4><p id="syncDestination"></p><p id="syncSummary"></p><div id="syncList"></div><div class="sync-actions"><button id="confirmSync">确认执行</button><button id="cancelSync">取消</button></div></div>
-            <div class="panel-actions"><button id="exportManifest">导出 JSON</button><button id="start">导入 JSON</button><button id="chooseJsonFile">选择文件</button></div>
+            <div class="panel-actions"><button id="exportManifest">导出 JSON</button><details class="manifest-import" id="manifestImport"><summary>导入清单</summary><div class="manifest-import-actions"><label><input id="syncExisting" type="checkbox">替换旧版（核验新版后清理旧版）</label><button id="start">导入粘贴内容</button><button id="chooseJsonFile">选择文件并导入</button></div></details></div>
             <div class="panel-actions" style="padding-top:0;border-top:0;margin-top:0"><button id="saveJson">下载 JSON</button><button id="copyJson">复制 JSON</button></div>
             <div id="log"></div>`);
         bindExportHistory(ui, '光鸭');
@@ -621,14 +620,17 @@
         ui.get('jsonFile').onchange = event => { const file = event.target.files?.[0]; if (file) return startImport(file); };
         ui.get('chooseJsonFile').onclick = () => ui.get('jsonFile').click();
         const startImport = async file => {
+            const replaceExisting = ui.get('syncExisting').checked;
+            ui.get('syncExisting').checked = false;
+            ui.get('manifestImport').open = false;
             ui.busy(true); controls.forEach(control => { control.disabled = true; });
             try {
                 if (file) { ui.get('json').value = await file.text(); }
-                await importIntoTarget();
+                await importIntoTarget(replaceExisting);
             } catch (error) { log('导入失败：' + error.message); ui.get('progress').textContent = '导入失败：' + error.message; }
             finally { ui.get('jsonFile').value = ''; controls.forEach(control => { control.disabled = false; }); ui.busy(false); }
         };
-        const importIntoTarget = async () => {
+        const importIntoTarget = async replaceExisting => {
             const target = currentGuangyaFolder();
             const parentId = target?.id;
             let files, alignedPath;
@@ -655,7 +657,7 @@
             log(`开始处理 ${files.length} 个项目；固定目标：${target.path}；目录 ID：${parentId}`);
             ui.get('progress').textContent = `准备导入 ${files.length} 项…`;
             try {
-                if (ui.get('syncExisting').checked) {
+                if (replaceExisting) {
                     const source = guangyaSource(token, false);
                     const plan = await buildGuangyaReplacementPlan(files, target, source, message => { ui.get('progress').textContent = message; });
                     ui.get('progress').textContent = '预览已生成，等待确认；尚未修改网盘文件';

@@ -8,7 +8,7 @@ const part = (a,b) => {
     assert.ok(start >= 0 && end > start,a);
     return source.slice(start,end);
 };
-const language = 'zh-cn,zh-tw,zh', config = {assrtToken:'mock',language};
+const language = 'zh-cn,zh-tw,zh';
 function load(extra = {}) {
     const ctx = vm.createContext({URL,URLSearchParams,Date,TextEncoder,TextDecoder,Uint8Array,ArrayBuffer,Blob,
         paced:(_ms,fn)=>fn,sleep:async()=>{},GM_getValue:(_key,value)=>value,GM_setValue(){},...extra});
@@ -41,68 +41,6 @@ function identityAndLanguages() {
     assert.equal(ctx.subtitleFileInfo('Film.简体&英文.ass','zh-tw').language,'zh-cn');
     console.log('PASS matching identity: numbered subtitles, mixed-script alias learning, sequel/year guards and all 26 foreign language names');
 }
-async function realLogSamples() {
-    const tlf = 'The.Lord.of.the.Rings.The.Two.Towers.2002.EE.BDRip.X264.iNT-TLF';
-    const chd = '[指环王2：双塔奇兵].The.Lord.Of.The.Rings.The.Two.Towers.2002.BluRay.1080p.DTSMA.2Audio.x264-CHD';
-    const samples = [
-        pack(1,'魔戒2：双塔奇兵/魔戒二部曲：双塔奇兵/魔戒二部曲：双城奇谋/指环王2：双塔奇谋/The Lord of the Rings: The Two Towers（加长版）', [tlf+'.chs.srt',tlf+'.cht.srt',tlf+'.eng.srt'],tlf),
-        pack(2,'The lord of the ring/魔戒1-3/指环王1-3',[chd+'.中文.srt',chd+'.中英文双语.srt',
-            '[指环王3：王者无敌].The.Lord.Of.The.Rings.The.Return.of.the.King.2003.BluRay.1080p.DTSMA.2Audio.x264-CHD.英文.srt',
-            '[指环王1：护戒使者].The.Lord.Of.The.Rings.The.Fellowship.of.the.Ring.2001.BluRay.1080p.DTSHD-MA.DualAudio.x264-CHD.中英文双语.srt'])
-    ];
-    for (const sample of samples) {
-        // TLF uses another Chinese translation; supply the English original verified by TMDB below.
-        const ctx = load({subtitleRemoteJson:async()=>({status:0,sub:{subs:[sample]}})}), r = row(undefined,undefined,sample.id===1?['The Lord of the Rings: The Two Towers']:[]);
-        r.candidates = await ctx.createSubtitleService().assrtSearch(r,config); ctx.selectSubtitleCandidate(r,language);
-        assert.ok(r.selectedCandidate,'Real TLF/CHD resource must auto-select');
-        assert.ok(r.selectedCandidate.language==='zh-cn' || r.selectedCandidate.bilingual);
-        assert.ok(r.candidates.every(c=>c.titleMatched && !/\.200[13]\./.test(c.name)));
-        if (sample.id===2) assert.equal(r.selectedCandidate.bilingual,true,'CHD bilingual outranks plain Chinese');
-    }
-    console.log('PASS matching log samples: TLF simplified and CHD bilingual auto-select; other trilogy years excluded');
-}
-async function queryFallbacks() {
-    const queries=[];
-    const ctx = load({subtitleRemoteJson:async raw=>{
-        const q = new URL(raw).searchParams.get('q'); queries.push(q);
-        return {status:0,sub:{subs:q==='Eight Immortals' ? [pack(5,'Eight Immortals',['Eight.Immortals.2026.chs.srt'])] : []}};
-    }});
-    const service=ctx.createSubtitleService(), r=row('八仙！',2026,['Eight Immortals']);
-    r.candidates=await service.assrtSearch(r,config); ctx.selectSubtitleCandidate(r,language);
-    assert.deepEqual(queries,['八仙','Eight Immortals']); assert.ok(r.selectedCandidate);
-    assert.equal(r.parsed.query,'八仙！','Identity title is untouched');
-    await service.assrtSearch(row('八仙！',2026,['Eight Immortals']),config);
-    assert.equal(queries.length,2,'Each fallback uses the normal search-page cache');
-    const dirty='片名！：＂（）｜＠～＾／＜＞＝＊!"()|@~^/<> =*“”';
-    const punctuation=load({subtitleRemoteJson:async raw=>{const q=new URL(raw).searchParams.get('q');assert.equal(q,'片名');return {status:0,sub:{subs:[]}}}});
-    await punctuation.createSubtitleService().assrtSearch(row(dirty),config);
-    const manualQueries=[];
-    const manual=load({subtitleRemoteJson:async raw=>{const q=new URL(raw).searchParams.get('q');manualQueries.push(q);return {status:0,sub:{subs:q==='指环王2'?[pack(10,'指环王2：双塔奇兵',['指环王2：双塔奇兵.2002.chs.srt'])]:[]}}}});
-    const m=row(undefined,undefined,['The Lord of the Rings The Two Towers']);
-    m.candidates=await manual.createSubtitleService().assrtSearch(m,config);manual.selectSubtitleCandidate(m,language);
-    assert.deepEqual(manualQueries,['指环王2 双塔奇兵','The Lord of the Rings The Two Towers','指环王2']);
-    assert.equal(m.candidates.length,1);assert.equal(m.selectedCandidate,null);
-    assert.equal(m.candidates[0].mainTitleFallback,true);assert.equal(m.candidates[0].titleMatched,false);
-    assert.equal(manual.subtitleAICandidate({index:0,confidence:1},m,language),null,'Main-title fallback must also require confirmation when AI is enabled');
-    let pageCalls=0;
-    const bounded=load({subtitleRemoteJson:async raw=>{const u=new URL(raw);pageCalls++;return {status:0,sub:{subs:Array.from({length:15},(_,i)=>pack(u.searchParams.get('q')+u.searchParams.get('pos')+i,'错片.1990',['错片.1990.chs.srt']))}}}});
-    await bounded.createSubtitleService().assrtSearch(row(undefined,undefined,['English Original']),config);
-    assert.equal(pageCalls,15,'Every one of three search terms has its own five-page bound');
-    console.log('PASS matching queries: fullwidth/ASCII punctuation removed only outbound; English then main-title fallback; cached pages, per-term bound and manual-only main fallback');
-}
-async function unrelatedCandidates() {
-    const logs=[], noise=['里番合集','动画 OP ED 合集','Schmigadoon'];
-    const items=noise.map((name,i)=>pack(i+1,name,Array.from({length:30},(_,j)=>`${name}.${j}.2002.chs.srt`)));
-    items.push(pack(9,'指环王2：双塔奇兵 候选合集',Array.from({length:65},(_,j)=>`指环王2：双塔奇兵.待确认版本${j}.2002.chs.srt`)));
-    const ctx=load({subtitleRemoteJson:async()=>({status:0,sub:{subs:items}})});
-    const found=await ctx.createSubtitleService({log:(...args)=>logs.push(args)}).assrtSearch(row(),config);
-    assert.equal(found.length,60,'Unrelated resources do not consume the 60 related-uncertain slots');
-    assert.ok(found.every(c=>!noise.some(name=>c.name.includes(name)) && !c.titleMatched));
-    assert.match(logs.at(-1)[1],/内容 60，无关 30/);assert.match(logs.at(-1)[1],/待确认上限 5/);
-    const failed=load({subtitleRemoteJson:async raw=>new URL(raw).pathname.endsWith('/detail')?Promise.reject(Error('HTTP 509')):{status:0,sub:{subs:[{id:1,native_name:'Schmigadoon'}]}}});
-    assert.equal((await failed.createSubtitleService().assrtSearch(row(),config)).length,0,'Unrelated detail errors do not become choices');
-    console.log('PASS matching relevance: hentai, anime OP/ED and Schmigadoon excluded and counted before uncertain cap; unrelated detail failure excluded');
-}
 async function tmdbAliases() {
     const ctx=load(), calls=[];
     vm.runInContext('const tmdbClients = new Map();'+part('    function tmdbClient(', '    function mediaGuangyaPost('),ctx);
@@ -133,4 +71,4 @@ async function tmdbAliases() {
     const tv={query:'测试剧',year:2020,tv:true};assert.equal(await ctx.resolveMediaWork(tv,'tv-key'),true);assert.ok(tv.aliases.includes('Test Show'));
     console.log('PASS matching TMDB aliases: unique same-type/title/year, English names, real client cache, no-key skip, ambiguous/year/type/ID rejection and cancellation');
 }
-(async()=>{identityAndLanguages();await realLogSamples();await queryFallbacks();await unrelatedCandidates();await tmdbAliases()})().catch(error=>{console.error(error);process.exitCode=1});
+(async()=>{identityAndLanguages();await tmdbAliases()})().catch(error=>{console.error(error);process.exitCode=1});

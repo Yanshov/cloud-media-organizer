@@ -65,59 +65,13 @@ for (const args of [
 ]) assert.equal(match(...args).titleMatched, true, JSON.stringify(args));
 console.log('PASS identity: 7 numeric/year parsing cases; 13 wrong files rejected; 11 correct files accepted, including missing-year and numeric titles');
 
-async function quotas() {
-    let now = Date.UTC(2026,10,16), cancel = false;
-    const calls = [], logs = [], sleeps = [];
-    let responses = [];
-    class FakeDate extends Date { static now() { return now; } }
-    const ctx = vm.createContext({URL, URLSearchParams, Date:FakeDate,
-        sleep:async ms => { now += ms; sleeps.push(ms); },
-        subtitleRemoteJson:async url => { calls.push({url, now}); const response = responses.shift(); if (response instanceof Error) throw response; return response || {status:0,sub:{subs:[]}}; },
-        stopped:() => { if (cancel) throw Error('已停止'); },
-        record:(...args) => logs.push(args)
-    });
-    vm.runInContext(part('    function paced(', '    function nonNegativeInteger('), ctx);
-    vm.runInContext(part('    function subtitleDownloadUrl(', '    const SUBTITLE_LIMIT'), ctx);
-    const service = vm.runInContext('createSubtitleService({check:stopped,log:record})', ctx);
-    const config = {assrtToken:'test-token',language:'zh-cn,zh-tw,zh'};
-    const row = query => ({parsed:{query,year:2000,tv:false}});
-    await Promise.all(['a','b','c'].map(q => service.assrtSearch(row(q), config)));
-    for (let i = 1; i < calls.length; i++) assert.ok(calls[i].now - calls[i-1].now >= 3500);
-    const limited = status => Object.assign(Error('HTTP '+status), {status});
-    responses = [limited(509), {status:0,sub:{subs:[]}}];
-    let before = calls.length;
-    await service.assrtSearch(row('509 recovery'), config);
-    assert.equal(calls.length-before, 2);
-    assert.ok(calls.at(-1).now-calls.at(-2).now >= 60000);
-    responses = [{status:30900,errmsg:'quota'}, {status:0,sub:{subs:[]}}];
-    await service.assrtSearch(row('api quota'), config);
-    assert.ok(logs.some(line => line.join(' ').includes('30900')));
-    responses = [Object.assign(limited(429), {retryAfterMs:90000}), {status:0,sub:{subs:[]}}];
-    await service.assrtSearch(row('retry after'), config);
-    assert.ok(calls.at(-1).now-calls.at(-2).now >= 90000);
-    responses = [limited(509),limited(509),limited(509)];
-    before = calls.length;
-    await assert.rejects(service.assrtSearch(row('exhausted'), config), /限流重试已停止/);
-    assert.equal(calls.length-before, 3);
-    await assert.rejects(service.assrtSearch(row('next row'), config), /仍在冷却/);
-    assert.equal(calls.length-before, 3, 'Cooling circuit must not send another API call');
-    now += 180001;
-    ctx.sleep = async ms => { now += ms; if (ms <= 500) cancel = true; };
-    responses = [limited(509)];
-    before = calls.length;
-    await assert.rejects(service.assrtSearch(row('cancel'), config), /已停止/);
-    assert.equal(calls.length-before, 1);
-    assert.ok(sleeps.every(ms => ms <= 3500), 'Cooldown sleeps must yield frequently');
-    console.log('PASS quota: real serialized 3500ms spacing; HTTP509/429 and API30900 recovery; Retry-After; bounded retries; shared cooldown; cancellation');
-}
-
 async function remoteErrors() {
     let reply;
     const ctx = vm.createContext({URL, ArrayBuffer, Uint8Array, TextDecoder, Date,
         GM_xmlhttpRequest:options => options.onload(reply)
     });
     vm.runInContext(part('    function subtitleRemoteJson(', '    function subtitleMd5('), ctx);
-    const request = () => vm.runInContext('subtitleRemoteJson("https://api.assrt.net/v1/sub/search")', ctx);
+    const request = () => vm.runInContext('subtitleRemoteJson("https://api.subdl.com/api/v1/subtitles")', ctx);
     reply = {status:509,responseText:'<html>quota exceeded</html>',responseHeaders:'Retry-After: 80\r\n'};
     await assert.rejects(request(), error => error.status === 509 && error.retryAfterMs === 80000);
     reply = {status:200,responseText:'<html>error</html>'};
@@ -174,4 +128,4 @@ async function driveVerification() {
     console.log('PASS drive: transient read/list recovery; fresh signed URLs; bounded permanent failure; mismatches and duplicate names rejected; existing file safe; cancellation; exactly one upload');
 }
 
-(async () => { await quotas(); await remoteErrors(); await driveVerification(); })().catch(error => { console.error(error); process.exitCode=1; });
+(async () => { await remoteErrors(); await driveVerification(); })().catch(error => { console.error(error); process.exitCode=1; });

@@ -34,16 +34,17 @@ const review = fn => ctx.createSubtitleReviewer({disambiguateSubtitle:fn},langua
     assert.equal(uncertain.candidates.length,1,'Null selection or free-form rejection prose never clears candidates');
     assert.equal(uncertain.selectedCandidate,null);
 
-    const fallback = row(); let assrtCalls=0;
-    const replacement = {...file('Kamen Rider Geats Jyamato Awaking.2024.CHS.srt'),source:'Assrt',titleMatched:true};
-    await ctx.searchSubtitleSources(fallback,{thunder:true,assrt:true,assrtToken:'test',language,
+    const fallback = row(); let subdlCalls=0;
+    const replacement = {...file('Kamen Rider Geats Jyamato Awaking.2024.CHS.srt'),source:'SubDL',titleMatched:true};
+    await ctx.searchSubtitleSources(fallback,{thunder:true,subdl:true,subdlKey:'test',language,
         reviewCandidates:review(async p=>({index:null,confidence:0,rejected:p.candidates.map(c=>reject(c.index))}))},
-        {thunderSearch:async()=>[file(wrong)],assrtSearch:async()=>{assrtCalls++;return [replacement];}}, {},log);
-    assert.equal(assrtCalls,1,'Rejecting all thunder candidates continues to Assrt');
+        {thunderSearch:async()=>[file(wrong)],subdlSearch:async()=>{subdlCalls++;return [replacement];}}, {},log);
+    assert.equal(subdlCalls,1,'Rejecting all thunder candidates continues to SubDL');
     assert.equal(fallback.selectedCandidate,replacement);
     assert.equal(fallback.candidates.includes(replacement),true);
     assert.equal(fallback.sources.find(s=>s.name==='迅雷').count,0);
-    assert.equal(ctx.subtitleSearchState(fallback),'ready');
+    assert.equal(ctx.subtitleSearchState(fallback),'missing');
+    assert.ok(fallback.selectedCandidate);
     const absent=row();
     await ctx.searchSubtitleSources(absent,{thunder:true,language,reviewCandidates:review(async()=>({index:null,rejected:[reject(0)]}))},
         {thunderSearch:async()=>[file(wrong)]},{},log);

@@ -1,7 +1,7 @@
     function subtitleRemoteJson(url, options = {}) {
         const timeout = options.timeout || 30000;
         const hostname = new URL(url).hostname;
-        if (!['api.opensubtitles.com', 'api.assrt.net', 'api-shoulei-ssl.xunlei.com', 'api.subdl.com'].includes(hostname)) throw new Error('不支持的字幕接口地址');
+        if (!['api.opensubtitles.com', 'api-shoulei-ssl.xunlei.com', 'api.subdl.com'].includes(hostname)) throw new Error('不支持的字幕接口地址');
         if (typeof GM_xmlhttpRequest !== 'function') throw new Error('需要 Tampermonkey 的跨域请求权限，请更新并保存完整脚本');
         return new Promise((resolve, reject) => GM_xmlhttpRequest({
             url, method: options.method || 'GET', headers: options.headers || {}, data: options.body,
@@ -124,7 +124,6 @@
         const aliases = new Set([target, ...[subtitleQueryTitle(parsed.query, parsed.year), ...(parsed.aliases || [])].flatMap(variants)]);
         let packMatched = false;
         const splitMixed = part => {
-            // Common Assrt display: Chinese title + English release name, without a slash.
             const mixed = part.normalize('NFKC').replace(/^(?:【[^】]*(?:字幕组|字幕社|工作室)[^】]*】|\[[^\]]*(?:字幕组|字幕社|工作室)\])[. _-]*/i, '').trim().match(/^([\p{Script=Han}\p{N}\p{P}\s]+?)[.\s]+([a-z].*)$/iu);
             return mixed ? [mixed[1], mixed[2]] : [part];
         };
@@ -198,7 +197,7 @@
         const duration = driveSeconds > 0 ? driveSeconds : runtime > 0 ? runtime : 0;
         const source = driveSeconds > 0 ? '网盘已确认时长' : runtime > 0 ? 'TMDB runtime' : '无时长参考';
         log('字幕时长', `${row.node.name} · 字幕结束 ${end.toFixed(1)} 秒 · 目标 ${duration ? duration.toFixed(1) + ' 秒' : '未知'} · 来源 ${source}${duration ? '' : '，跳过长度检查'}`);
-        if (duration && end < duration * 0.5) throw Object.assign(new Error(`字幕不完整：结束 ${end.toFixed(1)} 秒，不到目标 ${duration.toFixed(1)} 秒的 50%（${source}）`), {subtitleIncomplete:true});
+        if (duration && end < duration * 0.5) throw new Error(`字幕不完整：结束 ${end.toFixed(1)} 秒，不到目标 ${duration.toFixed(1)} 秒的 50%（${source}）`);
         return {end, duration, source};
     }
     function subtitleSearchNames(parsed) {
@@ -234,10 +233,8 @@
     }
     function createSubtitleService({wait = ms => sleep(ms), check = () => {}, log = () => {}} = {}) {
         let token = '', tokenKey = '';
-        const failedAssrtPackages = new Set();
         const unavailableSources = new Map();
-        let assrtDownloadBlocked = false;
-        const searchCache = new Map(), seasonCache = new Map(), detailCache = new Map(), pendingDetails = new Map();
+        const searchCache = new Map();
         const seasonPreparations = new Map(), archiveCache = new Map();
         const archiveData = async (url,verify) => {
             check(); verify();
@@ -276,72 +273,7 @@
             });
         });
         const pause = async ms => { for (let left = ms; left > 0; left -= 500) { check(); await wait(Math.min(left, 500)); } check(); };
-        let assrtBlockedUntil = 0;
-        const assrtRequest = paced(3500, async (path, config, params) => {
-            check();
-            if (config.nonBlockingSearch && unavailableSources.has('Assrt 片名搜索')) throw new Error('Assrt 本批搜索已暂停');
-            if (!config.assrtToken) throw new Error('请在设置填写 Assrt Token，片名搜索尚未执行');
-            if (Date.now() < assrtBlockedUntil) throw Object.assign(new Error('Assrt 仍在冷却，请约 ' + Math.ceil((assrtBlockedUntil - Date.now()) / 1000) + ' 秒后重搜失败项'), {assrtCooldown:true});
-            const query = new URLSearchParams({...params, token:config.assrtToken});
-            for (let attempt = 0; attempt < 3; attempt++) {
-                check();
-                try {
-                    const result = await subtitleRemoteJson('https://api.assrt.net/v1/sub/' + path + '?' + query);
-                    if (Number(result?.status) !== 0) {
-                        const error = new Error('Assrt 返回码 ' + result?.status + '：' + (result?.errmsg || '搜索或下载受限'));
-                        error.apiStatus = Number(result?.status); throw error;
-                    }
-                    return result;
-                } catch (error) {
-                    check();
-                    if (config.nonBlockingSearch && ([429,509].includes(error.status) || error.apiStatus === 30900)) {
-                        assrtBlockedUntil = Date.now() + Math.max(60000, error.retryAfterMs || 0);
-                        unavailableSources.set('Assrt 片名搜索', error.message);
-                        log('来源暂停', `Assrt ${error.message}；本批跳过该来源，立即继续其他来源`);
-                        throw error;
-                    }
-                    if (![429,509].includes(error.status) && error.apiStatus !== 30900) {
-                        if (attempt === 0 && (/连接|超时|网络/i.test(error.message) || [408,500,502,503,504].includes(error.status))) {
-                            log('Assrt 请求重试', `${error.message}；等待 3.5 秒后重试一次`); await pause(3500); continue;
-                        }
-                        throw error;
-                    }
-                    const delay = Math.max(60000 * (attempt + 1), error.retryAfterMs || 0);
-                    assrtBlockedUntil = Date.now() + delay;
-                    if (attempt === 2 || delay > 120000) {
-                        log('Assrt 限流', `${error.message}；暂停请求，约 ${Math.ceil(delay / 1000)} 秒后可重搜失败项`);
-                        throw Object.assign(new Error(error.message + '；限流重试已停止，请冷却后重搜失败项'), {assrtCooldown:true});
-                    }
-                    log('Assrt 限流', `${error.message}；等待 ${Math.ceil(delay / 1000)} 秒后重试 ${attempt + 1}/2，可点击停止`);
-                    await pause(delay);
-                }
-            }
-        });
-        const assrtFiles = item => Array.isArray(item.filelist) && item.filelist.length ? item.filelist : [{f:item.filename, url:item.url}];
-        const detailKey = (id, config) => JSON.stringify([config.assrtToken,String(id)]);
-        const assrtDetail = async (id, config, reuse = false) => {
-            check();
-            const key = detailKey(id,config), cached = detailCache.get(key);
-            // Signed URLs live only in this bounded, short-lived memory cache.
-            if (reuse && cached && Date.now() - cached.time < 60000) {
-                log('Assrt 详情复用', `资源 #${id} · 使用一分钟内的文件列表与下载地址`);
-                return cached.item;
-            }
-            if (reuse && Date.now() < assrtBlockedUntil) {
-                log('Assrt 下载等待', `正在冷却，等待约 ${Math.ceil((assrtBlockedUntil - Date.now()) / 1000)} 秒再获取下载地址，可点击停止`);
-                while (Date.now() < assrtBlockedUntil) await pause(assrtBlockedUntil - Date.now());
-            }
-            if (!pendingDetails.has(key)) pendingDetails.set(key, (async () => {
-                const result = await assrtRequest('detail',config,{id});
-                const item = result.sub?.subs?.find(item => String(item.id) === String(id));
-                if (!item) throw new Error('Assrt 未返回对应字幕详情');
-                detailCache.delete(key); detailCache.set(key,{time:Date.now(),item});
-                evict(detailCache, 24);
-                return item;
-            })().finally(() => pendingDetails.delete(key)));
-            return pendingDetails.get(key);
-        };
-        const assrtEpisode = (name, parsed) => {
+        const exactSubtitleEpisode = (name, parsed) => {
             const found = [...String(name).matchAll(/S(\d{1,2})[ ._-]*E(\d{1,3})(?!\d)/gi)];
             return found.length === 1 && Number(found[0][1]) === parsed.season && Number(found[0][2]) === parsed.episode && !/E\d+[ ._-]*[-~][ ._-]*(?:E)?\d+/i.test(name);
         };
@@ -350,13 +282,12 @@
                 const row = rows.find(row => row.parsed.episode != null && (!row.parsed.endEpisode || row.parsed.endEpisode === row.parsed.episode)), parsed = row?.parsed;
                 if (!parsed?.tv || parsed.season == null || !parsed.query) return;
                 const key = JSON.stringify([parsed.tmdbId || '',parsed.query,parsed.year,parsed.season,subtitleSearchNames(parsed),config.language,
-                    config.thunder,config.assrt,config.assrtToken,config.subdl,config.subdlKey]);
+                    config.thunder,config.subdl,config.subdlKey]);
                 if (!seasonPreparations.has(key)) {
                     const task = (async () => {
                         log('整季搜索', `${parsed.query} · S${String(parsed.season).padStart(2,'0')} · 优先取得整季文件列表，逐集复核，缺集再补查`);
                         const sources = [
                             ['迅雷',config.thunder,() => this.thunderSearch(row,{...config,seasonSearch:true},() => {},verify)],
-                            ['Assrt 片名搜索',config.assrt && config.assrtToken,() => this.assrtSearch(row,{...config,seasonSearch:true,nonBlockingSearch:true},() => {},verify)],
                             ['SubDL',config.subdl && config.subdlKey,async () => {
                                 const found = await this.subdlSearch(row,{...config,seasonSearch:true},() => {},verify);
                                 // Index archives once so missing episodes are found before selecting a pack.
@@ -393,137 +324,6 @@
             resetSearchBatch() { unavailableSources.clear(); seasonPreparations.clear(); },
             searchUnavailable(name) { return unavailableSources.get(name); },
             pauseSearchSource(name, reason) { unavailableSources.set(name, reason); },
-            resetDownloadBatch() { failedAssrtPackages.clear(); assrtDownloadBlocked = false; },
-            assrtDownloadUnavailable() { return assrtDownloadBlocked; },
-            assrtCachedEpisode(row, config, onFiles = () => {}, check = () => {}) {
-                const parsed = row.parsed;
-                if (!parsed.tv || !subtitleQueryTitle(parsed.query, parsed.year) || parsed.season == null || parsed.episode == null || parsed.endEpisode && parsed.endEpisode !== parsed.episode) return [];
-                return this.assrtSearch(row, {...config,assrtCacheOnly:true}, onFiles, check, false);
-            },
-            async assrtSearch(row, config, onFiles = () => {}, check = () => {}, allowFallback = true) {
-                const parsed = row.parsed;
-                const title = subtitleQueryTitle(parsed.query, parsed.year);
-                if (!title) throw new Error('缺少可搜索的作品名');
-                if (parsed.tv && (parsed.season == null || parsed.episode == null)) throw new Error('缺少明确季集，未按片名搜索');
-                if (parsed.endEpisode && parsed.endEpisode !== parsed.episode) throw new Error('合并多集视频需单独选字幕');
-                const episode = parsed.tv ? 'S' + String(parsed.season).padStart(2,'0') + 'E' + String(parsed.episode).padStart(2,'0') : '';
-                // Assrt query punctuation is cleaned independently of the identity title.
-                const queryText = value => String(value).normalize('NFKC').replace(/[!:"“”()|@~^/<>=*]/g, ' ').replace(/\s+/g, ' ').trim();
-                const mainTitle = title.includes(':') ? title.slice(0,title.indexOf(':')).trim() : '';
-                const terms = [
-                    {q:title + (config.seasonSearch && parsed.tv ? ' S' + String(parsed.season).padStart(2,'0') : episode ? ' ' + episode : ''), main:false}, {q:title, main:false},
-                    ...(allowFallback ? subtitleSearchNames(parsed).slice(1) : []).map(value => ({q:value + (config.seasonSearch && parsed.tv ? ' S' + String(parsed.season).padStart(2,'0') : ''), main:false})),
-                    ...(allowFallback && mainTitle ? [{q:mainTitle, main:true}] : [])
-                ].map(term => ({...term,q:queryText(term.q)})).filter((term,index,all) => term.q && all.findIndex(other => other.q === term.q) === index);
-                const candidates = [], seen = new Map(), aliases = new Set(parsed.aliases || []);
-                const excluded = {年份:0,季集:0,语言:0,内容:0,无关:0,待确认上限:0};
-                let mainSearch = false;
-                let pages = 0, rejected = 0, uncertain = 0;
-                const rejectionSamples = [];
-                const sampleRejection = (name, reason) => { if (rejectionSamples.length < 8) rejectionSamples.push(`${name}（${reason}）`); };
-                const wanted = (config.language || 'zh-cn,zh-tw,zh').split(',');
-                const preferred = candidate => candidate.titleMatched && (wanted.includes(candidate.language) || candidate.bilingual && wanted.includes('en'));
-                const seasonKey = parsed.tv ? JSON.stringify([config.assrtToken,title.toLowerCase(),parsed.year || '',parsed.tmdbId || '',parsed.season]) : '';
-                let cacheMiss = false;
-                const collect = async item => {
-                    check();
-                    if (config.nonBlockingSearch && unavailableSources.has('Assrt 片名搜索')) return false;
-                    if (!item.id) return false;
-                    const id = String(item.id), fileSignature = Array.isArray(item.filelist) && item.filelist.length ? JSON.stringify(item.filelist.map(file => file.f)) : '';
-                    if (seen.has(id) && (!fileSignature || seen.get(id) === fileSignature)) return false;
-                    seen.set(id, fileSignature || seen.get(id) || '');
-                    const release = [item.native_name,item.videoname].filter(value => value && !/^(?:不知道|未知|不详|unknown)$/i.test(value.trim())).join(' · '), langs = item.lang?.langlist || {};
-                    const language = langs.langchs ? 'zh-cn' : langs.langcht ? 'zh-tw' : langs.langdou ? 'zh' : langs.langeng ? 'en' : '';
-                    const pack = {source:'Assrt', assrtId:item.id, release, language, parsed:{...parsed,aliases:[...aliases]}};
-                    try {
-                        const detail = Array.isArray(item.filelist) && item.filelist.length ? item : await assrtDetail(item.id, config);
-                        check();
-                        const files = assrtFiles(detail).filter(file => /\.(srt|ass|ssa|vtt)$/i.test(file.f || ''));
-                        if (!files.length) throw new Error('来源未提供 SRT、ASS、SSA 或 VTT 文件列表');
-                        const kept = []; let dropped = 0, confirmed = false;
-                        for (const file of files) {
-                            const name = String(file.f), identity = release + ' ' + name;
-                            const episodeMismatch = parsed.tv ? !(assrtEpisode(name, parsed) || !/S\d+[ ._-]*E\d+/i.test(name) && assrtEpisode(release, parsed)) : /S\d+[ ._-]*E\d+/i.test(identity);
-                            if (episodeMismatch) { excluded.季集++; dropped++; sampleRejection(name, '季集不符'); continue; }
-                            const info = subtitleFileInfo(name, language);
-                            if (info.language && !['zh-cn','zh-tw','zh','en'].includes(info.language) && !wanted.includes(info.language)) { excluded.语言++; dropped++; sampleRejection(name, '语言 ' + info.language); continue; }
-                            const match = subtitleCandidateFilter({...parsed,aliases:[...aliases]}, [item.native_name,item.videoname,detail.native_name,detail.title], name, !!config.reviewCandidates);
-                            if (match.excluded) { excluded[match.excluded]++; dropped++; sampleRejection(name, match.matchReason || match.excluded); continue; }
-                            if (mainSearch) { match.titleMatched = false; match.matchReason = '主名兜底搜索，需确认完整片名'; }
-                            if (files.length === 1 && langs.langdou && info.language.startsWith('zh')) info.bilingual = true;
-                            if (!match.titleMatched && ++uncertain > 60) { excluded.待确认上限++; dropped++; continue; }
-                            if (match.titleMatched) { confirmed = true; for (const alias of match.aliases) aliases.add(alias); }
-                            candidates.push({...pack, ...info, name, assrtFileName:name, fileSize:file.s || '', titleMatched:match.titleMatched, opaque:!!match.opaque, mainTitleFallback:mainSearch, matchReason:match.matchReason});
-                            kept.push(name);
-                        }
-                        // Keep complete file lists, not another episode's selected candidate or signed URL.
-                        if (seasonKey && (confirmed || config.seasonSearch && subtitleWorkIdentity(parsed,[item.native_name,item.videoname,detail.native_name,detail.title],'').titleMatched)) {
-                            const packs = seasonCache.get(seasonKey) || new Map();
-                            packs.set(String(item.id), {id:item.id, native_name:[...new Set([item.native_name,detail.native_name].filter(Boolean))].join('/'),
-                                videoname:item.videoname || detail.videoname, title:detail.title, lang:item.lang, filelist:files.map(file => ({f:file.f,s:file.s}))});
-                            while (packs.size > 8) packs.delete(packs.keys().next().value);
-                            seasonCache.delete(seasonKey); seasonCache.set(seasonKey,packs);
-                            evict(seasonCache, 24);
-                        }
-                        rejected += dropped;
-                        if (kept.length) onFiles(`${release || 'Assrt #' + item.id} · 保留 ${kept.length}/${files.length} 份：${kept.slice(0,12).join('；')}${kept.length > 12 ? '；其余 ' + (kept.length - 12) + ' 份见候选列表' : ''}${dropped ? '；排除年份/季集/语言不符、无关或超出待确认上限 ' + dropped + ' 份' : ''}`);
-                    } catch (error) {
-                        check();
-                        const match = subtitleWorkIdentity({...parsed,aliases:[...aliases]}, [item.native_name,item.videoname], item.filename || release);
-                        if (match.hardMismatch) { excluded.年份++; rejected++; }
-                        else if (!match.related) { excluded.无关++; rejected++; }
-                        if (!match.hardMismatch && match.related && candidates.filter(candidate => candidate.detailError).length < 10) candidates.push({...pack, name:item.filename || release || 'Assrt #' + item.id, titleMatched:false, mainTitleFallback:mainSearch, detailError:error.message});
-                        onFiles(`${release || 'Assrt #' + item.id} · 文件列表读取失败：${error.message}`);
-                    }
-                    return true;
-                };
-                const cached = seasonCache.get(seasonKey);
-                if (config.assrtCacheOnly && !cached) return [];
-                if (cached) {
-                    // Snapshot: collect refreshes the bounded cache while rechecking each episode.
-                    for (const item of [...cached.values()]) await collect(item);
-                    log('Assrt 整季复用', `${title} · ${episode} · 复查 ${cached.size} 组已确认资源 · 匹配 ${candidates.filter(preferred).length} 份`);
-                    const selection = {node:row.node || {name:''}, candidates:[...candidates]};
-                    selectSubtitleCandidate(selection, config.language || 'zh-cn,zh-tw,zh');
-                    // Keep cached IDs and candidates so fresh search pages do not re-expand the same packages.
-                    cacheMiss = !selection.selectedCandidate;
-                }
-                if (!config.assrtCacheOnly && (cacheMiss || !candidates.some(preferred))) for (const term of terms) {
-                    if (unavailableSources.has('Assrt 片名搜索')) break;
-                    const q = term.q; mainSearch = term.main;
-                    for (let pos = 0; pos < 75; pos += 15) {
-                        if (unavailableSources.has('Assrt 片名搜索')) break;
-                        check(); pages++;
-                        const key = JSON.stringify(['assrt',config.assrtToken,q,pos]);
-                        const cachedSearch = searchCache.has(key);
-                        if (!cachedSearch) {
-                            searchCache.set(key, assrtRequest('search',config,{q,cnt:15,pos,filelist:1}).catch(error => {searchCache.delete(key); throw error;}));
-                            evict(searchCache, 200);
-                        }
-                        let result;
-                        try { result = await searchCache.get(key); }
-                        catch (error) {
-                            if (!candidates.length) throw error;
-                            log('Assrt 分页中断', `${error.message}；保留已取得的 ${candidates.length} 个候选`); break;
-                        }
-                        let items;
-                        if (Array.isArray(result.sub?.subs)) items = result.sub.subs;
-                        else if (result.sub && result.sub.subs != null && !Object.keys(result.sub.subs).length) items = [];
-                        else throw new Error('Assrt 搜索返回格式异常');
-                        log('Assrt 搜索页', `搜索片名：${q} · 起始 ${pos} · 返回 ${items.length} 组资源 · ${cachedSearch ? '使用缓存' : '请求来源'}`);
-                        let fresh = 0;
-                        for (const item of items) if (await collect(item)) fresh++;
-                        const reliable = candidates.filter(preferred);
-                        // Stop on a useful first page too, keeping alternative packages for failed downloads.
-                        if (items.length < 15 || !fresh || reliable.some(candidate => wanted.includes('en') && !wanted.some(lang => lang.startsWith('zh')) || candidate.bilingual) && new Set(reliable.map(candidate => candidate.assrtId)).size >= 2) break;
-                    }
-                    if (candidates.some(candidate => candidate.titleMatched)) break;
-                }
-                for (const candidate of candidates) candidate.parsed.aliases = [...aliases];
-                if (rejectionSamples.length) log('Assrt 排除样例', rejectionSamples.join('；'));
-                log('Assrt 筛选', `查询 ${pages} 页 · 保留 ${candidates.length} 份 · 排除 ${rejected} 份（${Object.entries(excluded).map(([reason,count]) => reason + ' ' + count).join('，')}）· 待确认 ${candidates.filter(candidate => !candidate.titleMatched).length} 份`);
-                return candidates;
-            },
             thunderCachedEpisode(row, config, onFiles = () => {}, verify = () => {}) {
                 const parsed = row.parsed;
                 if (!parsed.tv || !subtitleQueryTitle(parsed.query, parsed.year) || parsed.season == null || parsed.episode == null || parsed.endEpisode && parsed.endEpisode !== parsed.episode) return [];
@@ -584,7 +384,7 @@
                     if (seen.has(url)) continue;
                     seen.add(url);
                     const episodeTagged = /S\d+[ ._-]*E\d+/i.test(name);
-                    if (episodeTagged && (!parsed.tv || !assrtEpisode(name, parsed))) { excluded.季集++; sampleRejection(name, '季集不符'); continue; }
+                    if (episodeTagged && (!parsed.tv || !exactSubtitleEpisode(name, parsed))) { excluded.季集++; sampleRejection(name, '季集不符'); continue; }
                     const match = subtitleCandidateFilter(parsed, [], name, !!config.reviewCandidates);
                     if (match.excluded) { excluded[match.excluded]++; sampleRejection(name, match.matchReason || match.excluded); continue; }
                     const labels = [Array.isArray(item.languages) ? item.languages.join(' ') : '', item.simple_name || ''].join(' ').replace(/\\u0026/gi, '&').replace(/英语/g, '英文');
@@ -647,7 +447,7 @@
                             if (seen.has(url)) continue;
                             seen.add(url);
                             const tagged = /S\d+[ ._-]*E\d+/i.test(name);
-                            const exactEpisode = tagged ? assrtEpisode(name,parsed) : Number(file.season) === parsed.season && Number(file.episode) === parsed.episode && (unpacked.length > 0 || !item.full_season && !(Number(item.episode_end) > Number(item.episode_from)));
+                            const exactEpisode = tagged ? exactSubtitleEpisode(name,parsed) : Number(file.season) === parsed.season && Number(file.episode) === parsed.episode && (unpacked.length > 0 || !item.full_season && !(Number(item.episode_end) > Number(item.episode_from)));
                             // SubDL uses season=0 for unknown metadata; an explicit SxxExx filename still identifies the episode.
                             if ((!parsed.tv && tagged) || parsed.tv && (tagged && !exactEpisode || !exactEpisode && ext !== 'zip' || Number(file.season) > 0 && Number(file.season) !== parsed.season
                                 || unpacked.length > 0 && Number(file.episode) > 0 && Number(file.episode) !== parsed.episode)) { reject('季集',name); continue; }
@@ -687,7 +487,7 @@
                 if (!row.parsed.tv || row.parsed.season == null || row.parsed.episode == null || row.parsed.endEpisode && row.parsed.endEpisode !== row.parsed.episode) return [];
                 return this.subdlSearch(row,{...config,seasonSearch:true,subdlCacheOnly:true},onFiles,verify);
             },
-            logout() { token = ''; tokenKey = ''; searchCache.clear(); seasonCache.clear(); detailCache.clear(); seasonPreparations.clear(); archiveCache.clear(); },
+            logout() { token = ''; tokenKey = ''; searchCache.clear(); seasonPreparations.clear(); archiveCache.clear(); },
             async login(username, password, config) {
                 token = ''; tokenKey = '';
                 if (!username || !password) throw new Error('请输入 OpenSubtitles 用户名和密码');
@@ -731,7 +531,7 @@
                     let result;
                     try {
                         result = await this.download(candidate, config); verify();
-                        if (result.fileName) progress('文件选择', `${candidate.assrtId || candidate.source} · ${result.fileName}`);
+                        if (result.fileName) progress('文件选择', `${candidate.source} · ${result.fileName}`);
                         const archive = candidate.source === 'SubDL' && result.ext === 'zip' ? await archiveData(result.url,verify) : null;
                         let bytes = archive ? archive.bytes : await subtitleBinary(result.url, {allowHttp:result.allowHttp === true}); verify();
                         if (archive) {
@@ -742,41 +542,14 @@
                         return {result, bytes};
                     } catch (error) {
                         verify();
-                        if (error.status === 493 && candidate.source === 'Assrt') {
-                            failedAssrtPackages.add(String(candidate.assrtId));
-                            if (!assrtDownloadBlocked && failedAssrtPackages.size >= 2) {
-                                assrtDownloadBlocked = true;
-                                log('下载熔断', `Assrt 下载已熔断：本批已有 ${failedAssrtPackages.size} 个资源包返回 493，剩余 Assrt 候选跳过`);
-                            }
-                            throw Object.assign(new Error(`Assrt 单文件提取失败（HTTP 493，资源 #${candidate.assrtId}）；优先尝试其他资源包`), {status:493});
-                        }
                         if (attempt || error.phase !== 'transfer' || !([401,403,408,429,500,502,503,504].includes(error.status) || error.retryable)) throw error;
                         progress('下载重试', `${candidate.source} · ${new URL(result.url).hostname} · ${error.message}；刷新下载地址后重试一次`);
-                        if (candidate.source === 'Assrt') detailCache.delete(detailKey(candidate.assrtId,config));
                         if (candidate.source === 'SubDL') archiveCache.delete(candidate.url);
                         await pause(1500);
                     }
                 }
             },
             async download(candidate, config) {
-                if (candidate.source === 'Assrt') {
-                    if (assrtDownloadBlocked) throw Object.assign(new Error('Assrt 下载已熔断，本批跳过'), {assrtDownloadBlocked:true});
-                    let item;
-                    try { item = await assrtDetail(candidate.assrtId, config, true); }
-                    catch (error) {
-                        // Quota exhaustion pauses the batch instead of burning sibling candidates.
-                        if (error.assrtCooldown) error.stop = true;
-                        throw error;
-                    }
-                    let files = assrtFiles(item).filter(file => /\.(srt|ass|ssa|vtt)$/i.test(file.f || '') && file.url);
-                    if (candidate.parsed.tv) files = files.filter(file => !/S\d+[ ._-]*E\d+/i.test(file.f) || assrtEpisode(file.f,candidate.parsed));
-                    if (candidate.assrtFileName) files = files.filter(file => file.f === candidate.assrtFileName);
-                    if (!files.length) throw new Error('未提供可直接下载的字幕文件（压缩包暂不支持）');
-                    const fileScore = file => subtitlePreference({name:file.f, language:candidate.language}, config.language);
-                    files.sort((a, b) => fileScore(b) - fileScore(a) || String(a.f).localeCompare(String(b.f)));
-                    const file = files[0];
-                    return {url:subtitleDownloadUrl(file.url,{allowHttp:true,base:'https://assrt.net/'}),ext:file.f.split('.').pop().toLowerCase(),fileName:file.f,allowHttp:true};
-                }
                 if (candidate.source === '迅雷') return {url:subtitleDownloadUrl(candidate.url,{allowHttp:true}), ext:candidate.ext,allowHttp:true};
                 if (candidate.source === 'SubDL') return {url:subtitleDownloadUrl(candidate.url),ext:candidate.ext,fileName:candidate.name};
                 const result = await request('/download', config, {file_id:candidate.fileId});
@@ -1010,19 +783,11 @@
         row.aiSuggested = !!row.selectedCandidate?.aiAccepted;
     }
     function subtitleCovered(row) {
-        return row.complete || row.embedded?.status === 'present';
-    }
-    function subtitleNeedsVerification(row) {
-        return !subtitleCovered(row) && (row.pendingVerification || row.embedded?.status === 'unknown');
+        return row.complete || row.embedded?.chinese;
     }
     function subtitleSearchState(row) {
         if (subtitleCovered(row)) return 'complete';
-        if (subtitleNeedsVerification(row)) return 'pending';
-        if (row.error) return 'failed';
-        if (row.selectedCandidate) return 'ready';
-        if (row.candidates?.length) return 'choice';
-        if (!row.sources?.some(source => !source.skipped)) return 'unsearched';
-        return row.sources.some(source => source.error) ? 'failed' : 'missing';
+        return !row.writeBlocked && !row.selectedCandidate && row.candidates?.length ? 'choice' : 'missing';
     }
     function subtitleAICandidate(result, row, language, onReject = () => {}) {
         const deny = reason => { onReject(reason); return null; };
@@ -1122,20 +887,15 @@
         });
     }
     function subtitleSearchSummary(rows) {
-        const count = {complete:0,pending:0,ready:0,choice:0,failed:0,missing:0,unsearched:0};
+        const count = {complete:0,missing:0,choice:0};
         for (const row of rows) count[subtitleSearchState(row)]++;
-        const external = rows.filter(row => row.complete), embedded = count.complete - external.length;
-        const supported = external.filter(row => row.verification?.work?.status === 'supported').length;
-        return `视频 ${rows.length} · 已有/已补齐 ${count.complete} · 待核验 ${count.pending} · 可补齐 ${count.ready} · 待选择 ${count.choice} · 未找到 ${count.missing} · 失败 ${count.failed} · 未查询 ${count.unsearched}`
-            + (embedded ? ` · 内嵌字幕轨 ${embedded}` : '')
-            + (external.length ? ` · 其中作品归属未确认 ${external.length - supported}，AI 支持 ${supported}（未核对音画同步）` : '');
+        return `视频 ${rows.length} · 有字幕 ${count.complete} · 没有字幕 ${count.missing} · 手动选择 ${count.choice}`;
     }
     function subtitleSearchMessage(row) {
-        if (row.pendingVerification) return row.error || '字幕文件或上传结果待核验，请先重新检查目录；本次不重复上传。';
         const message = row.selectedCandidate
             ? row.aiSuggested ? 'AI 建议了这份字幕，请核对候选名称；可在下拉框更改后补齐。' : row.manualCandidate ? '已手动选择字幕，点击“补齐字幕”下载并写入视频目录。' : `已自动择优，${row.autoCandidates.length} 个可靠候选；点击“补齐字幕”下载并写入视频目录，下载内容不符时尝试下一份。`
             : row.manualCandidate ? '已跳过此视频；重新选择字幕后可补齐。'
-            : row.candidates.length ? '找到候选，但作品或语言未确认，请展开选择。'
+            : row.candidates.length ? '找到候选，但作品或语言未确认，需手动选择。'
             : row.sources.some(source => source.error) ? '查询有失败，不能判定为没有字幕。' : !row.sources.some(source => !source.skipped) ? '尚未查询任何来源，请启用并配置字幕来源。' : '已查询的来源未收录匹配字幕。';
         return message + (row.selectedCandidate ? '\n所选字幕：' + subtitleCandidateLabel(row.selectedCandidate) : '') + '\n' + row.sources.map(source => source.name + '：' + (source.skipped ? '跳过 · ' + source.skipped : source.error ? '失败 · ' + source.error : `保留 ${source.count} 个候选` + (source.rejected ? ` · AI 排除 ${source.rejected} 个其他作品候选` : ''))).join('\n');
     }
@@ -1143,7 +903,7 @@
         if (!resume) { row.error = ''; row.candidates = []; row.selectedCandidate = null; row.manualCandidate = false; row.aiSuggested = false; row.sources = []; }
         const title = subtitleQueryTitle(row.parsed.query, row.parsed.year);
         if (!resume && row.parsed.tv) {
-            for (const [name,enabled,method] of [['SubDL',config.subdl && config.subdlKey,'subdlCachedEpisode'],['迅雷',config.thunder,'thunderCachedEpisode'],['Assrt 片名搜索',config.assrt && config.assrtToken && !service.assrtDownloadUnavailable?.(),'assrtCachedEpisode']]) {
+            for (const [name,enabled,method] of [['SubDL',config.subdl && config.subdlKey,'subdlCachedEpisode'],['迅雷',config.thunder,'thunderCachedEpisode']]) {
                 if (!enabled || !service[method] || service.searchUnavailable?.(name)) continue;
                 check();
                 const cached = await service[method](row, config, message => log(name + ' 缓存文件列表', message), check);
@@ -1191,7 +951,7 @@
                 log('来源判断', `${row.node.name} · ${name} · 返回 ${found.length}，AI 排除 ${source.rejected}，保留 ${source.count} · ${row.selectedCandidate ? '产生可靠候选，后续来源暂缓' : source.count ? '只有待确认候选，继续下一来源' : '没有可用候选，继续下一来源'}`);
             } catch (error) {
                 check(); row.sources.push({name,error:error.message});
-                if ([429,509].includes(error.status) || name === 'SubDL' && [401,403].includes(error.status) || error.apiStatus === 30900 || error.assrtCooldown) service.pauseSearchSource?.(name,error.message);
+                if ([429,509].includes(error.status) || name === 'SubDL' && [401,403].includes(error.status)) service.pauseSearchSource?.(name,error.message);
                 log(error.phase === 'drive-auth' ? '网盘授权失败' : '来源失败', `${row.node.name} · ${name}：${error.message}`);
                 if (error.phase === 'drive-auth') { row.error = error.message; row.searchMessage = subtitleSearchMessage(row); throw error; }
             } finally {
@@ -1201,11 +961,6 @@
         if (!row.selectedCandidate) log('查找阶段', `${row.node.name} · 迅雷片名搜索`);
         await run('迅雷', config.thunder, true, () => service.thunderSearch(row, config, message => log('迅雷 文件列表', message), check));
         if (config.subdl) await run('SubDL', true, config.subdlKey, () => service.subdlSearch(row, config, message => log('SubDL 文件列表',message),check));
-        if (!row.selectedCandidate && !row.candidates.some(candidate => candidate.source === '迅雷' && candidate.titleMatched && !candidate.downloadFailed)) {
-            log('查找阶段', `${row.node.name} · 迅雷没有可靠候选，补查 Assrt 片名搜索`);
-        }
-        await run('Assrt 片名搜索', config.assrt, config.assrtToken, () => service.assrtSearch(row, {...config,nonBlockingSearch:true}, message => log('Assrt 文件列表', message), check,
-            !row.candidates.some(candidate => candidate.source === '迅雷' && candidate.titleMatched && !candidate.downloadFailed)));
         await run('OpenSubtitles', config.open, config.key, () => service.search(row, config));
         check(); selectSubtitleCandidate(row, config.language);
         row.searchMessage = subtitleSearchMessage(row);
@@ -1217,16 +972,16 @@
             parsed.query, parsed.year, !!parsed.tv, parsed.tmdbId, parsed.season, parsed.episode, parsed.endEpisode, node.durationSeconds, parsed.runtimeSeconds]);
     }
     async function inspectExistingSubtitles(row, drive, language, log = () => {}, check = () => {}, {force = false, review = null} = {}) {
-        row.complete = false; row.pendingVerification = false; row.verification = null;
-        const unreadable = [], invalid = [], suspicious = [];
+        row.complete = false; row.verification = null;
+        const rejected = [];
         for (const sub of row.subtitles.filter(sub => /\.(srt|ass|ssa|vtt)$/i.test(sub.name))) {
             check(); drive.assertReady?.();
             if (force) drive.verified?.forget(sub);
             const cached = !force && drive.verified?.get(sub,language,row);
             if (cached) {
                 if (cached.result.work?.status === 'mismatch') {
-                    suspicious.push(sub.name + '：' + cached.result.work.reason);
-                    log('现有字幕待核验', `${row.node.name} · ${sub.name} · 已记录疑似错片：${cached.result.work.reason}`); continue;
+                    rejected.push(sub.name + '：疑似其他作品 · ' + cached.result.work.reason);
+                    log('现有字幕无效', `${row.node.name} · ${sub.name} · 已记录疑似错片：${cached.result.work.reason}`); continue;
                 }
                 row.verification = cached.result;
                 row.complete = true; row.error = ''; row.searchMessage = '已核验记录复用：' + sub.name + ' · ' + subtitleVerificationMessage(cached.result);
@@ -1235,16 +990,16 @@
             log('正文检查', `${row.node.name} · 读取现有字幕 ${sub.name}`);
             let bytes;
             try { bytes = await drive.read(sub, message => log('核验重试', message), check); check(); }
-            catch (error) { check(); if (error.stop) throw error; unreadable.push(sub.name + '：' + error.message); log('现有字幕待核验', `${sub.name}：${error.message}`); continue; }
+            catch (error) { check(); if (error.stop) throw error; rejected.push(sub.name + '：读取失败 · ' + error.message); log('现有字幕读取失败', `${sub.name}：${error.message}`); continue; }
             try {
                 const ext = sub.name.split('.').pop().toLowerCase();
                 const {text, ...result} = subtitleValidateContent(row, bytes, ext, language, log);
-                if (language !== 'zh-cn,zh-tw,zh' && language !== 'en' && !subtitleLanguageMatch(sub.name, language)) { invalid.push(sub.name + '：正文含中文，但所选简繁标记未确认'); continue; }
+                if (language !== 'zh-cn,zh-tw,zh' && language !== 'en' && !subtitleLanguageMatch(sub.name, language)) { rejected.push(sub.name + '：正文含中文，但所选简繁标记未确认'); continue; }
                 if (review) result.work = await review(row, text, ext, check);
                 check();
                 try { drive.verified?.remember(sub,bytes,language,result.encoding,row,result); } catch (error) { log('核验记录', '保存失败：' + error.message); }
                 if (result.work.status === 'mismatch') {
-                    suspicious.push(sub.name + '：' + result.work.reason); continue;
+                    rejected.push(sub.name + '：疑似其他作品 · ' + result.work.reason); continue;
                 }
                 row.verification = result;
                 row.complete = true; row.error = ''; row.searchMessage = '已有字幕：' + sub.name + ' · ' + subtitleVerificationMessage(result);
@@ -1252,14 +1007,21 @@
             } catch (error) {
                 check(); if (error.stop) throw error;
                 drive.verified?.forget(sub);
-                if (error.subtitleIncomplete) suspicious.push(sub.name + '：' + error.message);
-                else invalid.push(sub.name + '：' + error.message);
+                rejected.push(sub.name + '：' + error.message);
                 log('现有字幕无效', `${sub.name}：${error.message}`);
             }
         }
-        if (suspicious.length) { row.pendingVerification = true; row.error = '已有字幕疑似不完整或属于其他作品，暂停自动补齐，请人工核对原字幕：' + suspicious.join('；'); }
-        else if (unreadable.length) { row.pendingVerification = true; row.error = '已有字幕读取失败，尚未确认是否可用；先重新检查目录，暂停自动补齐：' + unreadable.join('；'); }
-        else { row.error = ''; row.searchMessage = invalid.length ? '已有字幕未通过检查：' + invalid.join('；') : '未发现可核验的外置文本字幕'; }
+        row.error = '';
+        row.searchMessage = rejected.length ? '已有字幕未通过检查：' + rejected.join('；') : '未发现可用外置字幕';
+    }
+    function mkvChineseSubtitle(tag, name) {
+        if (tag) {
+            try {
+                const {language} = new Intl.Locale(tag);
+                if (language && language !== 'und' && language !== 'mul') return language === 'zh' || language === 'yue';
+            } catch { return false; }
+        }
+        return /中文|汉语|漢語|中英|[简簡繁][体體中英]|\b(?:chinese|mandarin|cantonese)\b/i.test(name);
     }
     async function inspectMkvSubtitleTracks(size, readRange, check = () => {}) {
         if (!Number.isSafeInteger(size) || size < 1) throw new Error('视频大小未知，无法安全分段读取');
@@ -1334,18 +1096,24 @@
                 const length = field.end - field.data;
                 if (length > windowSize * 8) throw new Error('MKV 轨道表超过读取上限');
                 const tracks = await read(field.data, length);
-                let subtitles = 0, entries = 0;
+                let chinese = false, entries = 0;
                 for (const entry of children(tracks)) {
                     if (entry.id !== 0xae) continue;
                     entries++;
-                    const types = [...children(tracks, entry.data, entry.end)].filter(item => item.id === 0x83);
+                    const fields = [...children(tracks, entry.data, entry.end)];
+                    const types = fields.filter(item => item.id === 0x83);
                     const type = types[0];
                     if (types.length !== 1 || type.end - type.data < 1 || type.end - type.data > 8) throw new Error('MKV 轨道缺少有效的类型信息');
                     const bytes = tracks.subarray(type.data, type.end);
-                    if (bytes.at(-1) === 0x11 && bytes.subarray(0, -1).every(value => value === 0)) subtitles++;
+                    if (bytes.at(-1) !== 0x11 || !bytes.subarray(0, -1).every(value => value === 0)) continue;
+                    const enabled = fields.find(item => item.id === 0xb9);
+                    if (enabled && tracks.subarray(enabled.data, enabled.end).every(value => value === 0)) continue;
+                    const readText = field => field ? new TextDecoder().decode(tracks.subarray(field.data, field.end)).replace(/\0+$/, '').trim() : '';
+                    const tag = fields.find(item => item.id === 0x22b59d) || fields.find(item => item.id === 0x22b59c);
+                    if (mkvChineseSubtitle(readText(tag), readText(fields.find(item => item.id === 0x536e)))) chinese = true;
                 }
                 if (!entries) throw new Error('MKV 轨道表没有有效轨道');
-                return subtitles;
+                return chinese;
             }
             next = field.end;
         }
@@ -1485,18 +1253,17 @@
         return {
             read, reconcile, assertReady, verified,
             async inspectEmbedded(node, check = () => {}) {
-                if (!/\.mkv$/i.test(node.name)) return {status:'skipped', message:'未检查内嵌字幕：非 MKV 格式，未读取视频'};
+                if (!/\.mkv$/i.test(node.name)) return {chinese:false, message:'非 MKV 格式，未读取视频'};
                 try {
                     let url;
-                    const count = await inspectMkvSubtitleTracks(node.size, async (start, end) => {
+                    const chinese = await inspectMkvSubtitleTracks(node.size, async (start, end) => {
                         url ||= await downloadUrl(node); check();
                         return subtitleBinary(url, {headers:{Range:`bytes=${start}-${end}`}, range:[start,end,node.size], limit:end - start + 1});
                     }, check);
-                    return count ? {status:'present', message:`发现 ${count} 条内嵌字幕轨，跳过搜索和补齐（未检查语言或同步）`}
-                        : {status:'absent', message:'MKV 轨道表中未发现内嵌字幕轨'};
+                    return {chinese, message:chinese ? '有内嵌中文字幕，跳过补齐' : '未发现内嵌中文字幕'};
                 } catch (error) {
                     check(); if (error.stop || error.phase === 'drive-auth') throw error;
-                    return {status:'unknown', message:'无法确认 MKV 内嵌字幕，暂停补齐：' + error.message};
+                    return {chinese:false, message:'未读取到 MKV 字幕轨：' + error.message};
                 }
             },
             async save(row, name, bytes, progress = () => {}, check = () => {}) {
@@ -1526,7 +1293,7 @@
                         uploadAccepted = true;
                         if (guangyaCode(result) !== 156) { check(); await ossUpload(result.data || {}, bytes); }
                         const taskId = taskIdOf(result.data);
-                        if (!taskId) throw new Error('上传请求已提交，但未返回任务 ID，结果待核验');
+                        if (!taskId) throw new Error('上传请求已提交，但未返回任务 ID');
                         for (let attempt = 0; attempt < 20; attempt++) {
                             check(); progress('等待网盘处理字幕');
                             const task = await post(API.info, {taskId}, [0,145,146,147,155,163]);
@@ -1551,7 +1318,7 @@
                 } catch (error) {
                     if (!uploadAccepted && (error.submissionRejected || [400,401,403,404,405,413,415,422,429].includes(error.status))) { receipts.delete(receiptId); persistReceipts(); throw error; }
                     checkSubmitted();
-                    throw Object.assign(new Error('上传请求可能已提交，结果待核验：' + error.message + '；先重新检查目录，不重复上传'), {pendingUpload:true, stop:!!error.stop});
+                    throw Object.assign(new Error('上传请求可能已提交：' + error.message + '；先重新检查目录，不重复上传'), {pendingUpload:true, stop:!!error.stop});
                 }
                 progress('核验网盘字幕');
                 try {

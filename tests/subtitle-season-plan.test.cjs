@@ -62,16 +62,14 @@ async function seasonLists() {
     const requests=[];
     const ctx=load({subtitleRemoteJson:async raw=>{
         const u=new URL(raw);requests.push(u);
-        if(u.hostname.includes('assrt'))return {status:0,sub:{subs:[{id:9,native_name:'剧名 S01',lang:{langlist:{langchs:true}},filelist:[{f:'剧名.S01E02.简体.srt'}]}]}};
         return {code:0,data:[{name:'剧名.S01E02.简体.srt',ext:'srt',url:'https://example.com/2.srt',languages:['简体']}]};
-    }}),service=ctx.createSubtitleService(),config={language,thunder:true,assrt:true,assrtToken:'key'};
+    }}),service=ctx.createSubtitleService(),config={language,thunder:true};
     await service.prepareSeason([row(1),row(2)],config);
     assert.equal(requests.filter(u=>u.hostname.includes('xunlei')).length,1);
     assert.equal(requests.find(u=>u.hostname.includes('xunlei')).searchParams.get('name'),'剧名 S01');
     assert.equal((await service.thunderCachedEpisode(row(2),config)).length,1);
-    assert.equal((await service.assrtCachedEpisode(row(2),config)).length,1,'Pack identity caches sibling files even when first episode is absent');
     const n=requests.length;await ctx.searchSubtitleSources(row(2),config,service,{});assert.equal(requests.length,n);
-    console.log('PASS seasonal file lists: Thunder/Assrt query a season and reuse sibling episodes without first-episode match');
+    console.log('PASS seasonal file lists: Thunder query a season and reuse sibling episodes without first-episode match');
 }
 async function namesAndConcurrency() {
     const pending=[],started=[];let stopped=false;

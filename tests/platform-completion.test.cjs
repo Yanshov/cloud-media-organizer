@@ -91,9 +91,18 @@ function startup(){
   const calls=[],callbacks=[];const ctx=vm.createContext({location:{hostname},installHooks:()=>calls.push('hooks'),ready:fn=>{calls.push('ready');callbacks.push(fn)},is123Host:h=>h.includes('123pan'),initGuangya:()=>calls.push('json'),initExporter:()=> 'panel',initManifestImporter:()=>calls.push('json'),initMediaOrganizer:()=>calls.push('media'),initSubtitles:()=>calls.push('subtitles')});
   vm.runInContext(boot,ctx);assert.deepEqual(calls,expected);callbacks.forEach(fn=>fn());assert.ok(calls.includes('json'));if(hostname!=='pan.baidu.com'){assert.ok(calls.includes('media'));assert.ok(calls.includes('subtitles'))}
  }
+ for(const navigator of [
+  {userAgentData:{mobile:true}}, {userAgent:'Mozilla/5.0 (Linux; Android 15)'}, {userAgent:'Mozilla/5.0 (iPhone)'},
+  {userAgent:'Mozilla/5.0 (iPad)'}, {userAgent:'Mozilla/5.0 (Macintosh)',platform:'MacIntel',maxTouchPoints:5}
+ ]) vm.runInNewContext(script,{navigator,window:{get fetch(){assert.fail('Mobile must exit before initializing the script');}}});
+ const desktop=core({navigator:{userAgent:'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',maxTouchPoints:10}});
+ assert.ok(desktop.api,'Touch-capable PCs still initialize');
+ assert.doesNotMatch(script,/@container(max-width:760px)/,'Mobile layout is removed');
  const names=[...script.matchAll(/^    (?:async )?function (\w+)\(/gm)].map(m=>m[1]);assert.equal(new Set(names).size,names.length,'No duplicate function declarations');
  assert.ok(script.includes('id="subtitleViewChoice" value="choice"'));assert.ok(script.includes('// @version      '+version));
- assert.doesNotMatch(script,/窗口与外观|appearance\.innerHTML/,'Appearance controls no longer display the removed heading or explanatory line');
+ assert.match(script,/id="settingsBasics"/,'Window and appearance share the compact basic settings column');
+ assert.equal((script.match(/<summary>导入清单<\/summary>/g)||[]).length,2,'Both import implementations expose one combined entry');
+ assert.match(script,/<input id="syncExisting" type="checkbox">/,'Replacing old copies is opt-in');
  console.log('PASS complete startup: hooks before DOM ready; media/subtitle panels on 123/Guangya; JSON on all three; no duplicate declarations; choice filter and version present');
 }
 (async()=>{await hooks();await imports();await stop();await manifestUI();await guangyaExisting();startup()})().catch(e=>{console.error(e);process.exitCode=1});

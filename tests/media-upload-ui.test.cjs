@@ -117,25 +117,25 @@ function aiProviderKey() {
 async function subtitles() {
     const ctx=load(part('    function subtitleDownloadUrl(', '    function subtitleDrive('),{Blob});
     const video={id:'v',parentId:'p',name:'电影.2000.mkv',size:10000};
-    const mono={source:'Assrt',name:'电影.2000.简体.srt',language:'zh-cn',titleMatched:true};
+    const mono={source:'SubDL',name:'电影.2000.简体.srt',language:'zh-cn',titleMatched:true};
     const bilingual={source:'迅雷',name:'电影.2000.简体&英文.ass',language:'zh-cn',bilingual:true,titleMatched:true};
     let calls=[],stop=false;
     const row=()=>({node:video,parsed:{query:'电影',year:2000},candidates:[],sources:[]});
-    const service={thunderSearch:async()=>{calls.push('thunder');return [bilingual]},assrtSearch:async()=>{calls.push('assrt');return [mono]},search:async()=>{calls.push('open');return []}};
+    const service={thunderSearch:async()=>{calls.push('thunder');return [bilingual]},subdlSearch:async()=>{calls.push('subdl');return [mono]},search:async()=>{calls.push('open');return []}};
     const drive={};
     let r=row();
-    await ctx.searchSubtitleSources(r,{thunder:true,assrt:true,assrtToken:'k',open:false,language},service,drive);
+    await ctx.searchSubtitleSources(r,{thunder:true,subdl:true,subdlKey:'k',open:false,language},service,drive);
     assert.deepEqual(calls,['thunder']);assert.equal(r.selectedCandidate,bilingual);
-    bilingual.downloadFailed=true;await ctx.searchSubtitleSources(r,{thunder:true,assrt:true,assrtToken:'k',open:false,language},service,drive,()=>{},()=>{},true);assert.equal(r.selectedCandidate,mono);delete bilingual.downloadFailed;
-    assert.deepEqual(calls,['thunder','assrt']);
-    calls=[];service.thunderSearch=async()=>{calls.push('thunder');return []};service.search=async()=>{calls.push('open');return [bilingual]};service.assrtSearch=async()=>{calls.push('assrt');throw Error('HTTP 509')};
-    r=row();await ctx.searchSubtitleSources(r,{thunder:true,assrt:true,assrtToken:'k',open:true,key:'k',language},service,drive);
-    assert.equal(r.sources.find(s=>s.name==='Assrt 片名搜索').error,'HTTP 509');assert.equal(r.selectedCandidate,bilingual);assert.equal(calls.at(-1),'open');
-    calls=[];service.assrtSearch=async()=>{calls.push('assrt');stop=true;return []};
-    await assert.rejects(ctx.searchSubtitleSources(row(),{thunder:true,assrt:true,assrtToken:'k',language},service,drive,()=>{},()=>{if(stop)throw Error('已停止')}),/已停止/);
-    assert.deepEqual(calls,['thunder','assrt']);
-    r=row();await ctx.searchSubtitleSources(r,{language},service,drive);assert.equal(ctx.subtitleSearchState(r),'unsearched');assert.match(ctx.subtitleSearchMessage(r),/尚未查询/);
-    r=row();await ctx.searchSubtitleSources(r,{assrt:true,language},service,drive);assert.equal(ctx.subtitleSearchState(r),'failed');assert.match(ctx.subtitleSearchMessage(r),/未配置密钥/);
+    bilingual.downloadFailed=true;await ctx.searchSubtitleSources(r,{thunder:true,subdl:true,subdlKey:'k',open:false,language},service,drive,()=>{},()=>{},true);assert.equal(r.selectedCandidate,mono);delete bilingual.downloadFailed;
+    assert.deepEqual(calls,['thunder','subdl']);
+    calls=[];service.thunderSearch=async()=>{calls.push('thunder');return []};service.search=async()=>{calls.push('open');return [bilingual]};service.subdlSearch=async()=>{calls.push('subdl');throw Error('HTTP 509')};
+    r=row();await ctx.searchSubtitleSources(r,{thunder:true,subdl:true,subdlKey:'k',open:true,key:'k',language},service,drive);
+    assert.equal(r.sources.find(s=>s.name==='SubDL').error,'HTTP 509');assert.equal(r.selectedCandidate,bilingual);assert.equal(calls.at(-1),'open');
+    calls=[];service.subdlSearch=async()=>{calls.push('subdl');stop=true;return []};
+    await assert.rejects(ctx.searchSubtitleSources(row(),{thunder:true,subdl:true,subdlKey:'k',language},service,drive,()=>{},()=>{if(stop)throw Error('已停止')}),/已停止/);
+    assert.deepEqual(calls,['thunder','subdl']);
+    r=row();await ctx.searchSubtitleSources(r,{language},service,drive);assert.equal(ctx.subtitleSearchState(r),'missing');assert.match(ctx.subtitleSearchMessage(r),/尚未查询/);
+    r=row();await ctx.searchSubtitleSources(r,{subdl:true,language},service,drive);assert.equal(ctx.subtitleSearchState(r),'missing');assert.match(ctx.subtitleSearchMessage(r),/未配置密钥/);
 
     vm.runInContext(part('    function subtitleInventory(', '    function initSubtitles('),ctx);
     Object.assign(ctx,{parseMediaName:()=>({query:'电影',year:2000}),mediaBonusName:()=>false,mediaRecords:{get:()=>null}});
@@ -144,11 +144,11 @@ async function subtitles() {
     r=ctx.subtitleInventory(collected)[0];assert.equal(r.complete,false,'Language filename is not proof of content');
     await ctx.inspectExistingSubtitles(r,{read:async()=>valid},language);assert.equal(r.complete,true);
     for(const bytes of [Buffer.alloc(0),Buffer.from('<html>错误页面</html>'),Buffer.from('random 中文')]) {
-        r={subtitles:[sub],node:video};await ctx.inspectExistingSubtitles(r,{read:async()=>bytes},language);assert.equal(r.complete,false);assert.equal(r.pendingVerification,false);
+        r={subtitles:[sub],node:video};await ctx.inspectExistingSubtitles(r,{read:async()=>bytes},language);assert.equal(r.complete,false);
     }
-    r={subtitles:[sub],node:video};await ctx.inspectExistingSubtitles(r,{read:async()=>{throw Error('连接失败')}},language);assert.equal(r.complete,false);assert.equal(r.pendingVerification,true);assert.equal(ctx.subtitleSearchState(r),'pending');
+    r={subtitles:[sub],node:video};await ctx.inspectExistingSubtitles(r,{read:async()=>{throw Error('连接失败')}},language);assert.equal(r.complete,false);assert.equal(ctx.subtitleSearchState(r),'missing');assert.match(r.searchMessage,/读取失败/);
     r={subtitles:[sub,{...sub,name:'another.srt'}],node:video};let read=0;
-    await ctx.inspectExistingSubtitles(r,{read:async()=>++read===1?Promise.reject(Error('连接失败')):valid},language);assert.equal(r.complete,true);assert.equal(r.pendingVerification,false);
+    await ctx.inspectExistingSubtitles(r,{read:async()=>++read===1?Promise.reject(Error('连接失败')):valid},language);assert.equal(r.complete,true);
     r={subtitles:[{name:'untagged.srt'}],node:video};await ctx.inspectExistingSubtitles(r,{read:async()=>valid},'zh-cn');assert.equal(r.complete,false);
     await assert.rejects(ctx.inspectExistingSubtitles({subtitles:[sub],node:video},{read:async()=>valid},language,()=>{},()=>{throw Error('已停止')}),/已停止/);
     console.log('PASS subtitles: all enabled sources queried and bilingual wins; failed source fallback; stop propagation; skipped/missing-key states; existing tagged subtitles require valid body; unreadable files pause filling');
@@ -308,42 +308,42 @@ async function subtitleUI() {
     Object.assign(ctx,{mediaAIEndpoint:()=> 'https://ai.example/v1/chat/completions',document:{createElement:element},makePanel:(_title,html)=>{
         panelMarkup=html;
         for(const tag of html.matchAll(/<[^>]+\bid="([^"]+)"[^>]*>/g)){const el=element();el.checked=/\bchecked\b/.test(tag[0]);el.disabled=/\bdisabled\b/.test(tag[0]);elements.set(tag[1],el)}
-        return {get,moveSettings(ids){movedSettings = [...movedSettings, ...ids]},openSettings(){},busy(){}};
+        return {get,moveSettings(ids){movedSettings.push(...ids)},openSettings(){},busy(){}};
     },mediaContext:async()=>({selected:[video],source:{},path:'电影'}),selectedTreeCache:{stale:true},
     collectMediaSelection:async()=>({videos:[video],linked:new Map([['v',hasSubtitle?[sub]:[]]])}),
     parseMediaName:()=>({query:'电影',year:2000}),mediaBonusName:()=>false,mediaRecords:{get:()=>({query:'电影',year:2000,type:'movie',match:'movie:7'})},mediaStem:name=>name.replace(/\.[^.]+$/,''),
     GM_getValue:(key,def)=>key==='cross-drive-tmdb-key'?'fixture-key':key==='cross-drive-media-ai'?aiConfig:def,
     tmdbClient:()=>({get:async(path,params)=>{aliasCalls++;assert.equal(path,'/movie/7');assert.ok(params.append_to_response === 'alternative_titles' || params.language === 'en-US');return {id:7,title:'电影完整名',original_title:'Film',release_date:'2000-01-01',alternative_titles:{titles:[{iso_3166_1:'TW',title:'电影别名'},{iso_3166_1:'FR',title:'Un film'}]}}}}),
-    createSubtitleService:()=>({assrtSearch:async row=>{queries++;assert.equal(row.parsed.query,'电影');assert.ok(row.parsed.aliases.includes('Film'));assert.ok(row.parsed.aliases.includes('电影别名'));assert.ok(!row.parsed.aliases.includes('Un film'));if(aiCandidates)return [{source:'Assrt',assrtId:11,name:'Different.Translation.简体.srt',release:'First release',language:'zh-cn',titleMatched:false},{source:'Assrt',assrtId:12,name:'Another.Translation.简体.srt',release:'Second release',language:'zh-cn',titleMatched:false}];return ['A1','A2','B'].map(name=>({source:'Assrt',assrtId:name[0],name,language:'zh-cn',titleMatched:true}))},fetchFile:async candidate=>{downloads.push(candidate.name);if(candidate.name==='A1')throw Object.assign(Error('HTTP 493'),{status:493});return {result:{url:'https://example.com/subtitle',ext:'srt'},bytes:valid}}}),
+    createSubtitleService:()=>({thunderSearch:async row=>{queries++;assert.equal(row.parsed.query,'电影');assert.ok(row.parsed.aliases.includes('Film'));assert.ok(row.parsed.aliases.includes('电影别名'));assert.ok(!row.parsed.aliases.includes('Un film'));if(aiCandidates)return [{source:'迅雷',name:'Different.Translation.简体.srt',release:'First release',language:'zh-cn',titleMatched:false},{source:'迅雷',name:'Another.Translation.简体.srt',release:'Second release',language:'zh-cn',titleMatched:false}];return ['A1','A2','B'].map(name=>({source:'迅雷',name,language:'zh-cn',titleMatched:true}))},fetchFile:async candidate=>{downloads.push(candidate.name);if(candidate.name==='A1')throw Error('下载失败');return {result:{url:'https://example.com/subtitle',ext:'srt'},bytes:valid}}}),
     subtitleBinary:async()=>valid,
     subtitleDrive:()=>({sample:async()=>'',read:async()=>{reads++;if(broken)throw Error('连接失败');return readBytes},reconcile:async()=>recovered,save:async()=>{saves++;hasSubtitle=true;throw Object.assign(Error('上传已提交，核验连接失败'),{pendingUpload:true})}})
     });
     vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'../src/works.js'),'utf8')+part('    function subtitleInventory(', '    if (location.hostname'),ctx);
-    ctx.initSubtitles();get('assrtToken').value='test';get('useThunder').checked=false;
-    assert.doesNotMatch(panelMarkup,/重搜未完成项|复制完整报告|复制未补齐路径/);
+    ctx.initSubtitles();
+    assert.doesNotMatch(panelMarkup,/重搜未完成项|复制完整报告|复制未补齐路径/);assert.match(panelMarkup,/id="openSubtitlesSettings"/);assert.match(panelMarkup,/id="subtitleAccountSettings"/);
     const openSettings=panelMarkup.slice(panelMarkup.indexOf('<details id="openSubtitlesSettings"'),panelMarkup.indexOf('<label>字幕语言'));
     assert.match(openSettings,/useOpenSubtitles[\s\S]*openSubtitlesKey[\s\S]*subtitleAccountSettings/);assert.doesNotMatch(openSettings,/^<details[^>]*\bopen\b/);
     assert.deepEqual(Array.from(movedSettings),['subtitleSettings','openSubtitlesSettings']);
-    await get('readSubtitles').onclick();
-    assert.match(get('subtitleSummary').textContent,/待核验 1/);assert.equal(queries,0);assert.equal(get('fillSubtitles').disabled,true);assert.equal(get('recheckSubtitles').disabled,false);
-    broken=false;await get('recheckSubtitles').onclick();assert.match(get('subtitleSummary').textContent,/已有\/已补齐 1/);assert.equal(queries,0);assert.equal(reads,2);
+    await get('recheckSubtitles').onclick();
+    assert.match(get('subtitleSummary').textContent,/没有字幕 1/);assert.equal(queries,0);assert.equal(get('fillSubtitles').disabled,true);assert.equal(get('recheckSubtitles').disabled,false);
+    broken=false;await get('recheckSubtitles').onclick();assert.match(get('subtitleSummary').textContent,/有字幕 1/);assert.equal(queries,0);assert.equal(reads,2);
     await get('auditSubtitles').onclick();assert.equal(reads,3);assert.equal(queries,0);assert.equal(get('subtitleView').value,'all');assert.match(get('subtitleLog').value,/作品归属和音画同步未确认/);
     aiConfig={enabled:true,base:'https://ai.example',model:'test'};
     ctx.createMediaAI=()=>({reviewSubtitleBody:async()=>({verdict:'different',confidence:.99,evidence:'中文字幕 Test',reason:'合成错片证据'})});
-    await get('auditSubtitles').onclick();assert.match(get('subtitleSummary').textContent,/待核验 1/);assert.equal(queries,0);assert.equal(get('fillSubtitles').disabled,true);
+    await get('auditSubtitles').onclick();assert.match(get('subtitleSummary').textContent,/没有字幕 1/);assert.equal(queries,0);assert.equal(get('fillSubtitles').disabled,true);
     aiConfig={};recovered=[sub];readBytes=Buffer.from('<html>not a subtitle</html>');hasSubtitle=false;
-    await get('recheckSubtitles').onclick();assert.match(get('subtitleSummary').textContent,/已有\/已补齐 0/);assert.equal(queries,0,'Recovered upload must pass body validation, not merely receipt reconciliation');
+    await get('recheckSubtitles').onclick();assert.match(get('subtitleSummary').textContent,/有字幕 0/);assert.equal(queries,0,'Recovered upload must pass body validation, not merely receipt reconciliation');
     recovered=[];readBytes=valid;
     hasSubtitle=false;await get('recheckSubtitles').onclick();await get('readSubtitles').onclick();assert.equal(queries,1);assert.equal(get('fillSubtitles').disabled,false);
-    await get('fillSubtitles').onclick();assert.equal(saves,1);assert.match(get('subtitleProgress').textContent,/待核验 1，失败 0/);assert.equal(get('fillSubtitles').disabled,true);
-    assert.deepEqual(downloads,['A1','B'],'493 prioritizes another package before siblings of broken package');assert.equal(aliasCalls,2,'Shared work detail and English aliases are fetched once then persisted');
-    await get('readSubtitles').onclick();assert.equal(queries,1,'Pending upload cannot be searched/refilled');
-    await get('recheckSubtitles').onclick();assert.match(get('subtitleSummary').textContent,/已有\/已补齐 1/);assert.equal(saves,1);assert.equal(queries,1,'Recheck only reads drive inventory');
+    await get('fillSubtitles').onclick();assert.equal(saves,1);assert.match(get('subtitleProgress').textContent,/未补齐 1/);assert.equal(get('fillSubtitles').disabled,true);
+    assert.deepEqual(downloads,['A1','A2'],'Failed downloads fall back to the next candidate');assert.equal(aliasCalls,2,'Shared work detail and English aliases are fetched once then persisted');
+    await get('fillSubtitles').onclick();assert.equal(saves,1,'Pending upload cannot be refilled');
+    await get('recheckSubtitles').onclick();assert.match(get('subtitleSummary').textContent,/有字幕 1/);assert.equal(saves,1);assert.equal(queries,1,'Recheck only reads drive inventory');
     hasSubtitle=false;aiConfig={enabled:true,base:'https://ai.example',model:'test'};
     ctx.createMediaAI=()=>({disambiguateSubtitle:async payload=>{assert.equal(payload.candidates.length,2);assert.equal(payload.work.tmdbId,'7');return {index:1,confidence:.96}}});
-    aiCandidates=true;
-    await get('recheckSubtitles').onclick();await get('readSubtitles').onclick();assert.match(get('subtitleSummary').textContent,/可补齐 1/);assert.match(get('subtitleLog').value,/AI 字幕建议.*Another\.Translation/);
-    console.log('PASS subtitle UI flow: existing-read failure disables search/fill; old records resolve trusted TMDB aliases without changing search title; 493 moves to another package; pending upload recheck recovers without repeated upload');
+    aiCandidates=true;await get('recheckSubtitles').onclick();
+    await get('readSubtitles').onclick();assert.equal(get('fillSubtitles').disabled,false);assert.match(get('subtitleLog').value,/AI 字幕建议.*Another\.Translation/);
+    console.log('PASS subtitle UI flow: readable and missing coverage, trusted TMDB aliases, failed candidate fallback, and pending upload recovery without duplicate writes');
 }
 
 async function guangyaReceipts() {

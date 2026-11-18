@@ -412,10 +412,10 @@
     }
     function initExporter(provider) {
         const ui = makePanel(`${provider} 跨盘 JSON ${VERSION}`, `
-            <p id="scope">先在网盘页面选中文件/文件夹，再导出 JSON；可粘贴后导入，也可点“选择文件”。</p>
+            <p id="scope">先在网盘页面选中文件或文件夹，再导出 JSON。</p>
             <textarea id="json" placeholder="导出的 JSON 会显示在这里；导入时也可粘贴 JSON"></textarea>
             <input id="manifest" type="file" accept=".json,application/json" hidden>
-            <div class="panel-actions"><button id="generate">导出 JSON</button><button id="transfer">导入 JSON</button><button id="chooseManifest">选择文件</button></div>
+            <div class="panel-actions"><button id="generate">导出 JSON</button><details class="manifest-import" id="manifestImport"><summary>导入清单</summary><div class="manifest-import-actions"><button id="transfer">导入粘贴内容</button><button id="chooseManifest">选择文件并导入</button></div></details></div>
             <div class="panel-actions" style="padding-top:0;border-top:0;margin-top:0"><button id="save">下载 JSON</button></div>
             <p id="status"></p><p id="progress"></p><div id="log"></div>`);
         bindExportHistory(ui, provider);
@@ -502,6 +502,7 @@
         ui.get('manifest').onchange = event => { const file = event.target.files?.[0]; if (file) return runImport(file); };
         ui.get('chooseManifest').onclick = () => ui.get('manifest').click();
         const runImport = async file => {
+            ui.get('manifestImport').open = false;
             ui.busy(true); controls.forEach(control => { control.disabled = true; });
             ui.get('log').textContent = '';
             try {

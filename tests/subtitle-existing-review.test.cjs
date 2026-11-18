@@ -25,7 +25,7 @@ async function durationAndCache() {
     await ctx.inspectExistingSubtitles(r,reloaded,language,log); assert.equal(reads,2,'Persisted current-policy record survives reload');
     r.parsed.runtimeSeconds = 138*60;
     await ctx.inspectExistingSubtitles(r,reloaded,language,log); assert.equal(reads,3,'New runtime invalidates no-runtime record');
-    assert.equal(r.complete,false); assert.equal(r.pendingVerification,true); assert.match(r.error,/字幕不完整/);
+    assert.equal(r.complete,false); assert.match(r.searchMessage,/字幕不完整/);
     assert.throws(()=>ctx.subtitleValidateContent(r,bytes,'srt',language,log),/字幕不完整/,'Existing and new downloads share validator');
     assert.ok(logs.some(message=>/字幕结束 180.0 秒.*8280.0 秒.*TMDB/.test(message)));
     delete r.parsed.runtimeSeconds; r.node.durationSeconds = 100;
@@ -52,7 +52,7 @@ async function bodyReview() {
         return {verdict:'different',confidence:.99,evidence:'另一部电影的人物',reason:'合成样例指向另一部作品'};
     }},log);
     await ctx.inspectExistingSubtitles(r,drive,language,log,()=>{}, {force:true,review:reviewer});
-    assert.equal(calls,1); assert.equal(r.complete,false); assert.equal(r.pendingVerification,true); assert.match(r.error,/其他作品/);
+    assert.equal(calls,1); assert.equal(r.complete,false); assert.match(r.searchMessage,/其他作品/);
     await ctx.inspectExistingSubtitles(r,drive,language,log); assert.equal(reads,1,'Remembered explicit mismatch stays blocked without a new AI call'); assert.equal(r.complete,false);
     const uncertain = ctx.createSubtitleBodyReviewer({reviewSubtitleBody:async()=>({verdict:'same',confidence:.99,evidence:'模型编造的证据',reason:'猜测'})},log);
     await ctx.inspectExistingSubtitles(r,drive,language,log,()=>{}, {force:true,review:uncertain});
@@ -60,7 +60,7 @@ async function bodyReview() {
     const supported = ctx.createSubtitleBodyReviewer({reviewSubtitleBody:async()=>({verdict:'same',confidence:.96,evidence:'另一部电影的人物',reason:'合成确认样例'})},log);
     await ctx.inspectExistingSubtitles(r,drive,language,log,()=>{}, {force:true,review:supported});
     assert.equal(r.verification.work.status,'supported'); assert.match(r.searchMessage,/AI 支持.*非实证/); assert.match(r.searchMessage,/未核对音画同步/);
-    assert.match(ctx.subtitleSearchSummary([r]),/AI 支持 1/);
+    assert.equal(ctx.subtitleSearchSummary([r]),'视频 1 · 有字幕 1 · 没有字幕 0 · 手动选择 0');
     const unsupported = ctx.createSubtitleBodyReviewer({reviewSubtitleBody:async()=>({verdict:'different',confidence:.5,evidence:'另一部电影的人物',reason:'低置信度'})},log);
     assert.equal((await unsupported(r,new TextDecoder().decode(bytes),'srt')).status,'unconfirmed');
     let brokenCalls = 0;

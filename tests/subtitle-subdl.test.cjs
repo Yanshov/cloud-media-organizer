@@ -71,10 +71,10 @@ async function episodesAndArchives() {
     console.log('PASS SubDL episodes/archives: exact episode only, stored/deflated ZIP, CRC/encryption rejection and cancellation');
 }
 async function orchestration() {
-    const ctx=load(),calls=[],config={language,thunder:true,subdl:true,subdlKey:'key',assrt:true,assrtToken:'token'},good={source:'SubDL',name:'电影.2000.简体.srt',language:'zh-cn',titleMatched:true};
-    const service={thunderSearch:async()=>{calls.push('thunder');return []},subdlSearch:async()=>{calls.push('subdl');return [good]},assrtSearch:async()=>{calls.push('assrt');return []}};
-    const r=movie();await ctx.searchSubtitleSources(r,config,service,{});assert.deepEqual(calls,['thunder','subdl']);assert.equal(r.selectedCandidate,good);assert.ok(r.sources.find(s=>s.name==='Assrt 片名搜索').deferred);
-    good.downloadFailed=true;await ctx.searchSubtitleSources(r,config,service,{},()=>{},()=>{},true);assert.deepEqual(calls,['thunder','subdl','assrt']);
+    const ctx=load(),calls=[],config={language,thunder:true,subdl:true,subdlKey:'key',open:true,key:'token'},good={source:'SubDL',name:'电影.2000.简体.srt',language:'zh-cn',titleMatched:true};
+    const service={thunderSearch:async()=>{calls.push('thunder');return []},subdlSearch:async()=>{calls.push('subdl');return [good]},search:async()=>{calls.push('open');return []}};
+    const r=movie();await ctx.searchSubtitleSources(r,config,service,{});assert.deepEqual(calls,['thunder','subdl']);assert.equal(r.selectedCandidate,good);assert.ok(r.sources.find(s=>s.name==='OpenSubtitles').deferred);
+    good.downloadFailed=true;await ctx.searchSubtitleSources(r,config,service,{},()=>{},()=>{},true);assert.deepEqual(calls,['thunder','subdl','open']);
     const paused=new Map();service.searchUnavailable=n=>paused.get(n);service.pauseSearchSource=(n,e)=>paused.set(n,e);service.subdlSearch=async()=>{calls.push('bad-key');throw Object.assign(Error('Not authorized'),{status:403})};
     await ctx.searchSubtitleSources(movie(),config,service,{});await ctx.searchSubtitleSources(movie(),config,service,{});assert.equal(calls.filter(c=>c==='bad-key').length,1,'Invalid key pauses remaining batch');
     console.log('PASS SubDL orchestration: after Thunder, reliable deferral, download fallback and invalid-key batch pause');

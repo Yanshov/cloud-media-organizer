@@ -84,31 +84,32 @@ async function episodesAndErrors() {
 }
 
 async function sourceOrder() {
-    const ctx=load(),calls=[],mono={source:'Assrt',name:'电影.2000.简体.srt',language:'zh-cn',titleMatched:true};
+    const ctx=load(),calls=[],mono={source:'SubDL',name:'电影.2000.简体.srt',language:'zh-cn',titleMatched:true};
     const bilingual={source:'迅雷',name:'电影.2000.繁体&英文.ass',language:'zh-tw',bilingual:true,titleMatched:true};
-    const config={assrt:true,assrtToken:'test',thunder:true,open:true,key:'test',language};
-    const service={assrtSearch:async()=>{calls.push('assrt');return [mono]},thunderSearch:async()=>{calls.push('thunder');return [bilingual]},search:async()=>{calls.push('open');return []}};
+    const config={subdl:true,subdlKey:'test',thunder:true,open:true,key:'test',language};
+    const service={subdlSearch:async()=>{calls.push('subdl');return [mono]},thunderSearch:async()=>{calls.push('thunder');return [bilingual]},search:async()=>{calls.push('open');return []}};
     const drive={};
     let r=row();await ctx.searchSubtitleSources(r,config,service,drive);
-    assert.deepEqual(calls,['thunder']);assert.equal(r.selectedCandidate,bilingual,'Bilingual thunder outranks simplified monolingual Assrt');
-    assert.deepEqual(Array.from(r.sources.filter(s=>s.deferred),s=>s.name),['Assrt 片名搜索','OpenSubtitles']);
+    assert.deepEqual(calls,['thunder']);assert.equal(r.selectedCandidate,bilingual,'Bilingual thunder outranks simplified monolingual SubDL');
+    assert.deepEqual(Array.from(r.sources.filter(s=>s.deferred),s=>s.name),['SubDL','OpenSubtitles']);
     calls.length=0;service.thunderSearch=async()=>{calls.push('thunder');return [{...bilingual,bilingual:false}]};
-    await ctx.searchSubtitleSources(row(),config,service,drive);assert.deepEqual(calls,['thunder'],'Reliable monolingual thunder also makes zero Assrt requests');
+    await ctx.searchSubtitleSources(row(),config,service,drive);assert.deepEqual(calls,['thunder'],'Reliable monolingual thunder also makes zero SubDL requests');
     service.thunderSearch=async()=>{calls.push('thunder');return [bilingual]};
-    calls.length=0;service.assrtSearch=async()=>{calls.push('assrt');return [{...mono,bilingual:true}]};
-    r=row();await ctx.searchSubtitleSources(r,config,service,drive);assert.deepEqual(calls,['thunder']);assert.ok(r.sources.find(s=>s.name==='Assrt 片名搜索').deferred);r.candidates.forEach(c=>c.downloadFailed=true);
+    calls.length=0;service.subdlSearch=async()=>{calls.push('subdl');return [{...mono,bilingual:true}]};
+    r=row();await ctx.searchSubtitleSources(r,config,service,drive);assert.deepEqual(calls,['thunder']);assert.ok(r.sources.find(s=>s.name==='SubDL').deferred);r.candidates.forEach(c=>c.downloadFailed=true);
     await ctx.searchSubtitleSources(r,config,service,drive,()=>{},()=>{},true);
-    assert.deepEqual(calls,['thunder','assrt'],'Download fallback stops as soon as a reliable alternative is found');
+    assert.deepEqual(calls,['thunder','subdl'],'Download fallback stops as soon as a reliable alternative is found');
     await ctx.searchSubtitleSources(r,config,service,drive,()=>{},()=>{},true);assert.equal(calls.length,2,'Repeated resume makes no request after the deferred fallback was checked');
-    calls.length=0;service.assrtSearch=async()=>{calls.push('assrt');return []};service.thunderSearch=async()=>{calls.push('thunder');throw Error('HTTP 429')};
+    calls.length=0;service.subdlSearch=async()=>{calls.push('subdl');return []};service.thunderSearch=async()=>{calls.push('thunder');throw Error('HTTP 429')};
     r=row();await ctx.searchSubtitleSources(r,config,service,drive);
-    assert.deepEqual(calls,['thunder','assrt','open']);assert.equal(r.sources.find(s=>s.name==='迅雷').error,'HTTP 429');
-    assert.equal(ctx.subtitleSearchState(r),'failed','Source failure never becomes a definitive not-found result');
-    console.log('PASS subtitle provider order: Thunder/Assrt/OpenSubtitles ranking, deferred fallback, one-time resume and isolated source failure');
+    assert.deepEqual(calls,['thunder','subdl','open']);assert.equal(r.sources.find(s=>s.name==='迅雷').error,'HTTP 429');
+    assert.equal(ctx.subtitleSearchState(r),'missing');
+    assert.match(r.searchMessage,/查询有失败/);
+    console.log('PASS subtitle provider order: Thunder/SubDL/OpenSubtitles ranking, deferred fallback, one-time resume and isolated source failure');
 }
 
 async function thunderOnlyUI() {
-    const elements=new Map(),stored=new Map([['cross-drive-subtitle-settings',{assrt:false,open:false}]]);
+    const elements=new Map(),stored=new Map([['cross-drive-subtitle-settings',{subdl:false,open:false}]]);
     const element=()=>({value:'',checked:false,disabled:false,hidden:false,style:{},dataset:{},textContent:'',children:[],append(...c){this.children.push(...c)},appendChild(c){this.children.push(c)},replaceChildren(...c){this.children=c},querySelectorAll(){return []}});
     const video={id:'v',parentId:'p',name:'电影.2000.mkv',folders:[],path:'电影.2000.mkv',size:1000};
     let searches=0,saves=0, embedded;
@@ -123,18 +124,26 @@ async function thunderOnlyUI() {
     });
     vm.runInContext(part('    function subtitleInventory(', '    if (location.hostname'),ctx);ctx.initSubtitles();
     assert.equal(elements.get('useThunder').checked,true,'New source defaults on with older preferences');
-    await elements.get('readSubtitles').onclick();assert.equal(searches,1);assert.match(elements.get('subtitleSummary').textContent,/可补齐 1/);
+    await elements.get('readSubtitles').onclick();assert.equal(searches,1);assert.match(elements.get('subtitleSummary').textContent,/没有字幕 1/);
     assert.match(elements.get('subtitleLog').value,/启用来源：迅雷/);assert.equal(elements.get('useThunder').disabled,false);
-    await elements.get('fillSubtitles').onclick();assert.equal(saves,1);assert.match(elements.get('subtitleSummary').textContent,/已有\/已补齐 1/);
-    for (const status of ['present','unknown']) {
-        embedded={status,message:status === 'present' ? '发现 1 条内嵌字幕轨' : '无法确认 MKV 内嵌字幕'};
+    await elements.get('fillSubtitles').onclick();assert.equal(saves,1);assert.match(elements.get('subtitleSummary').textContent,/有字幕 1/);
+    embedded={chinese:true,message:'有内嵌中文字幕，跳过补齐'};
+    await elements.get('recheckSubtitles').onclick();
+    await elements.get('readSubtitles').onclick();
+    await elements.get('fillSubtitles').onclick();
+    assert.equal(searches,1,'Chinese track prevents searching');
+    assert.equal(saves,1,'Chinese track prevents writing');
+    assert.equal(elements.get('fillSubtitles').disabled,true);
+    assert.ok(elements.get('subtitleRows').children[0].children[1].children[0].textContent.includes(embedded.message));
+    const view=elements.get('subtitleView');view.value='incomplete';view.onchange();
+    assert.equal(elements.get('subtitleRows').children.length,0,'Chinese track is excluded from incomplete results');
+    for (const message of ['未发现内嵌中文字幕','未读取到 MKV 字幕轨']) {
+        embedded={chinese:false,message};
         await elements.get('recheckSubtitles').onclick();
         await elements.get('readSubtitles').onclick();
-        await elements.get('fillSubtitles').onclick();
-        assert.equal(searches,1,'Embedded or unknown MKV never queries a source');
-        assert.equal(saves,1,'Embedded or unknown MKV never writes a subtitle');
-        assert.equal(elements.get('fillSubtitles').disabled,true);
-        assert.ok(elements.get('subtitleLog').value.includes(embedded.message));
+        assert.equal(searches,1,'Search reuses the prior source response');
+        assert.equal(elements.get('fillSubtitles').disabled,false,'No Chinese track leaves the video eligible for fill');
+        assert.match(elements.get('subtitleSummary').textContent,/没有字幕 1/);
     }
     elements.get('useThunder').checked=false;await elements.get('saveSubtitleSettings').onclick();assert.equal(stored.get('cross-drive-subtitle-settings').thunder,false);
     ctx.initSubtitles();assert.equal(elements.get('useThunder').checked,false,'Explicit off preference survives reload');
