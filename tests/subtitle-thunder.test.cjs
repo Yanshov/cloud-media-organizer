@@ -111,12 +111,12 @@ async function thunderOnlyUI() {
     const elements=new Map(),stored=new Map([['cross-drive-subtitle-settings',{assrt:false,open:false}]]);
     const element=()=>({value:'',checked:false,disabled:false,hidden:false,style:{},dataset:{},textContent:'',children:[],append(...c){this.children.push(...c)},appendChild(c){this.children.push(c)},replaceChildren(...c){this.children=c},querySelectorAll(){return []}});
     const video={id:'v',parentId:'p',name:'电影.2000.mkv',folders:[],path:'电影.2000.mkv',size:1000};
-    let searches=0,saves=0;
+    let searches=0,saves=0, embedded;
     const ctx=load({GM_getValue:(key,def)=>stored.has(key)?stored.get(key):def,GM_setValue:(key,value)=>stored.set(key,value),document:{createElement:element},
         makePanel:(_title,html)=>{for(const tag of html.matchAll(/<[^>]+\bid="([^"]+)"[^>]*>/g)){const e=element();e.checked=/\bchecked\b/.test(tag[0]);elements.set(tag[1],e);}return {get:id=>elements.get(id),moveSettings(){},openSettings(){},busy(){}}},
         mediaContext:async()=>({selected:[video],source:{},path:'电影'}),collectMediaSelection:async()=>({videos:[video],linked:new Map()}),selectedTreeCache:null,
         parseMediaName:()=>row().parsed,mediaRecords:{get:()=>null},mediaBonusName:()=>false,mediaStem:name=>name.replace(/\.[^.]+$/,''),
-        subtitleDrive:()=>({reconcile:async()=>[],save:async()=>{saves++;return {id:'s'}}}),
+        subtitleDrive:()=>({reconcile:async()=>[],inspectEmbedded:async()=>embedded,save:async()=>{saves++;return {id:'s'}}}),
         GM_xmlhttpRequest:options=>{assert.equal(elements.get('useThunder').disabled,true,'Source switch locked throughout search/download');
             if(new URL(options.url).hostname==='api-shoulei-ssl.xunlei.com'){searches++;options.onload({status:200,responseText:JSON.stringify({code:0,data:[file('电影.2000.简体&英文.srt')]})});}
             else options.onload({status:200,response:valid.buffer});return {abort(){}};}
@@ -126,6 +126,16 @@ async function thunderOnlyUI() {
     await elements.get('readSubtitles').onclick();assert.equal(searches,1);assert.match(elements.get('subtitleSummary').textContent,/可补齐 1/);
     assert.match(elements.get('subtitleLog').value,/启用来源：迅雷/);assert.equal(elements.get('useThunder').disabled,false);
     await elements.get('fillSubtitles').onclick();assert.equal(saves,1);assert.match(elements.get('subtitleSummary').textContent,/已有\/已补齐 1/);
+    for (const status of ['present','unknown']) {
+        embedded={status,message:status === 'present' ? '发现 1 条内嵌字幕轨' : '无法确认 MKV 内嵌字幕'};
+        await elements.get('recheckSubtitles').onclick();
+        await elements.get('searchSubtitles').onclick();
+        await elements.get('fillSubtitles').onclick();
+        assert.equal(searches,1,'Embedded or unknown MKV never queries a source');
+        assert.equal(saves,1,'Embedded or unknown MKV never writes a subtitle');
+        assert.equal(elements.get('fillSubtitles').disabled,true);
+        assert.ok(elements.get('subtitleLog').value.includes(embedded.message));
+    }
     elements.get('useThunder').checked=false;await elements.get('saveSubtitleSettings').onclick();assert.equal(stored.get('cross-drive-subtitle-settings').thunder,false);
     ctx.initSubtitles();assert.equal(elements.get('useThunder').checked,false,'Explicit off preference survives reload');
     console.log('PASS thunder-only UI: no key or video sample, busy lock, search/download/save flow and explicit disabled preference');

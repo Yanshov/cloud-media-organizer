@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v3.0（重构版）
 // @namespace    local.cloud-media-organizer
-// @version      3.3.3
+// @version      3.3.4
 // @description  百度/123/光鸭跨盘清单，123/光鸭影视整理、字幕搜索与核验上传
 // @match        https://pan.baidu.com/*
 // @match        https://yun.baidu.com/*
@@ -38,7 +38,7 @@
 (() => {
     'use strict';
 
-    const VERSION = '3.3.3';
+    const VERSION = '3.3.4';
     let jsonTaskStopped = false;
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
@@ -4519,7 +4519,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     if (range) {
                         const contentRange = String(response.responseHeaders || '').match(/^content-range:\s*bytes\s+(\d+)-(\d+)\/(\d+)/im);
                         if (response.status !== 206 || !contentRange || Number(contentRange[1]) !== range[0] || Number(contentRange[2]) !== range[1] || Number(contentRange[3]) !== range[2] || data.length !== range[1] - range[0] + 1) {
-                            reject(new Error('网盘返回的视频片段范围不正确，未计算哈希')); return;
+                            reject(new Error('网盘返回的视频片段范围不正确')); return;
                         }
                     }
                     resolve(data);
@@ -4634,9 +4634,15 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         row.selectedCandidate = row.autoCandidates[0] || null;
         row.aiSuggested = !!row.selectedCandidate?.aiAccepted;
     }
+    function subtitleCovered(row) {
+        return row.complete || row.embedded?.status === 'present';
+    }
+    function subtitleNeedsVerification(row) {
+        return !subtitleCovered(row) && (row.pendingVerification || row.embedded?.status === 'unknown');
+    }
     function subtitleSearchState(row) {
-        if (row.complete) return 'complete';
-        if (row.pendingVerification) return 'pending';
+        if (subtitleCovered(row)) return 'complete';
+        if (subtitleNeedsVerification(row)) return 'pending';
         if (row.error) return 'failed';
         if (row.selectedCandidate) return 'ready';
         if (row.candidates?.length) return 'choice';
@@ -4743,9 +4749,11 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
     function subtitleSearchSummary(rows) {
         const count = {complete:0,pending:0,ready:0,choice:0,failed:0,missing:0,unsearched:0};
         for (const row of rows) count[subtitleSearchState(row)]++;
-        const supported = rows.filter(row => row.complete && row.verification?.work?.status === 'supported').length;
+        const external = rows.filter(row => row.complete), embedded = count.complete - external.length;
+        const supported = external.filter(row => row.verification?.work?.status === 'supported').length;
         return `视频 ${rows.length} · 已有/已补齐 ${count.complete} · 待核验 ${count.pending} · 可补齐 ${count.ready} · 待选择 ${count.choice} · 未找到 ${count.missing} · 失败 ${count.failed} · 未查询 ${count.unsearched}`
-            + (count.complete ? ` · 其中作品归属未确认 ${count.complete - supported}，AI 支持 ${supported}（未核对音画同步）` : '');
+            + (embedded ? ` · 内嵌字幕轨 ${embedded}` : '')
+            + (external.length ? ` · 其中作品归属未确认 ${external.length - supported}，AI 支持 ${supported}（未核对音画同步）` : '');
     }
     function subtitleSearchMessage(row) {
         if (row.pendingVerification) return row.error || '字幕文件或上传结果待核验，请先重新检查目录；本次不重复上传。';
@@ -4877,6 +4885,96 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         if (suspicious.length) { row.pendingVerification = true; row.error = '已有字幕疑似不完整或属于其他作品，暂停自动补齐，请人工核对原字幕：' + suspicious.join('；'); }
         else if (unreadable.length) { row.pendingVerification = true; row.error = '已有字幕读取失败，尚未确认是否可用；先重新检查目录，暂停自动补齐：' + unreadable.join('；'); }
         else { row.error = ''; row.searchMessage = invalid.length ? '已有字幕未通过检查：' + invalid.join('；') : '未发现可核验的外置文本字幕'; }
+    }
+    async function inspectMkvSubtitleTracks(size, readRange, check = () => {}) {
+        if (!Number.isSafeInteger(size) || size < 1) throw new Error('视频大小未知，无法安全分段读取');
+        const windowSize = 64 * 1024, windows = new Map();
+        const read = async (offset, length) => {
+            if (!Number.isSafeInteger(offset + length) || offset + length > size) throw new Error('MKV 元素超出文件范围');
+            const result = new Uint8Array(length);
+            for (let written = 0; written < length;) {
+                check();
+                const position = offset + written, start = Math.floor(position / windowSize) * windowSize;
+                if (!windows.has(start)) {
+                    if (windows.size >= 8) throw new Error('达到 512 KiB 分段读取上限');
+                    const end = Math.min(start + windowSize, size);
+                    const bytes = await readRange(start, end - 1); check();
+                    if (bytes.length !== end - start) throw new Error('MKV 片段长度不正确');
+                    windows.set(start, bytes);
+                }
+                const chunk = windows.get(start).subarray(position - start, position - start + length - written);
+                result.set(chunk, written); written += chunk.length;
+            }
+            return result;
+        };
+        const header = (bytes, start, limit) => {
+            let cursor = 0;
+            const vint = (identifier, max) => {
+                const first = bytes[cursor];
+                if (!first) throw new Error('MKV 元素头无效或不完整');
+                let width = 1, marker = 128;
+                while (!(first & marker)) { width++; marker >>= 1; }
+                if (width > max || cursor + width > bytes.length) throw new Error('MKV 元素头无效或不完整');
+                let value = identifier ? first : first & (marker - 1);
+                let unknown = !identifier && value === marker - 1;
+                for (let index = 1; index < width; index++) {
+                    const next = bytes[cursor + index];
+                    value = value * 256 + next; unknown = unknown && next === 255;
+                }
+                cursor += width;
+                if (!unknown && !Number.isSafeInteger(value)) throw new Error('MKV 元素大小超出可处理范围');
+                return unknown ? null : value;
+            };
+            const id = vint(true, 4), length = vint(false, 8), data = start + cursor;
+            const end = length === null ? limit : data + length;
+            if (!Number.isSafeInteger(end) || data > end || end > limit) throw new Error('MKV 元素超出容器范围');
+            return {id, data, end, unknown:length === null};
+        };
+        const at = async (start, limit) => header(await read(start, Math.min(12, limit - start)), start, limit);
+        function* children(bytes, start = 0, limit = bytes.length) {
+            for (let offset = start; offset < limit;) {
+                const field = header(bytes.subarray(offset, limit), offset, limit);
+                if (field.unknown) throw new Error('MKV 元数据包含未知长度的元素');
+                yield field;
+                offset = field.end;
+            }
+        }
+        const ebml = await at(0, size);
+        if (ebml.id !== 0x1a45dfa3 || ebml.unknown || ebml.end - ebml.data > windowSize) throw new Error('不是有效的 MKV 文件头');
+        const metadata = await read(ebml.data, ebml.end - ebml.data);
+        const docType = [...children(metadata)].find(field => field.id === 0x4282);
+        if (!docType || new TextDecoder().decode(metadata.subarray(docType.data, docType.end)) !== 'matroska') throw new Error('视频容器不是 Matroska');
+        let segment;
+        for (let next = ebml.end, count = 0; next < size && count < 32; count++) {
+            const field = await at(next, size);
+            if (field.id === 0x18538067) { segment = field; break; }
+            if (field.unknown) break;
+            next = field.end;
+        }
+        if (!segment) throw new Error('未找到 MKV Segment');
+        for (let next = segment.data, count = 0; next < segment.end && count < 128; count++) {
+            const field = await at(next, segment.end);
+            if (field.unknown) throw new Error('遇到未知长度的 MKV 元素，无法继续定位轨道表');
+            if (field.id === 0x1654ae6b) {
+                const length = field.end - field.data;
+                if (length > windowSize * 8) throw new Error('MKV 轨道表超过读取上限');
+                const tracks = await read(field.data, length);
+                let subtitles = 0, entries = 0;
+                for (const entry of children(tracks)) {
+                    if (entry.id !== 0xae) continue;
+                    entries++;
+                    const types = [...children(tracks, entry.data, entry.end)].filter(item => item.id === 0x83);
+                    const type = types[0];
+                    if (types.length !== 1 || type.end - type.data < 1 || type.end - type.data > 8) throw new Error('MKV 轨道缺少有效的类型信息');
+                    const bytes = tracks.subarray(type.data, type.end);
+                    if (bytes.at(-1) === 0x11 && bytes.subarray(0, -1).every(value => value === 0)) subtitles++;
+                }
+                if (!entries) throw new Error('MKV 轨道表没有有效轨道');
+                return subtitles;
+            }
+            next = field.end;
+        }
+        throw new Error('在读取限制内未找到 MKV 轨道表');
     }
     function subtitleDrive(context, wait = sleep) {
         const {session, source} = context, guangya = session.provider === '光鸭';
@@ -5011,6 +5109,21 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         }
         return {
             read, reconcile, assertReady, verified,
+            async inspectEmbedded(node, check = () => {}) {
+                if (!/\.mkv$/i.test(node.name)) return {status:'skipped', message:'未检查内嵌字幕：非 MKV 格式，未读取视频'};
+                try {
+                    let url;
+                    const count = await inspectMkvSubtitleTracks(node.size, async (start, end) => {
+                        url ||= await downloadUrl(node); check();
+                        return subtitleBinary(url, {headers:{Range:`bytes=${start}-${end}`}, range:[start,end,node.size], limit:end - start + 1});
+                    }, check);
+                    return count ? {status:'present', message:`发现 ${count} 条内嵌字幕轨，跳过搜索和补齐（未检查语言或同步）`}
+                        : {status:'absent', message:'MKV 轨道表中未发现内嵌字幕轨'};
+                } catch (error) {
+                    check(); if (error.stop || error.phase === 'drive-auth') throw error;
+                    return {status:'unknown', message:'无法确认 MKV 内嵌字幕，暂停补齐：' + error.message};
+                }
+            },
             async save(row, name, bytes, progress = () => {}, check = () => {}) {
                 check();
                 if (pendingFor(row).length) {
@@ -5107,7 +5220,10 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         });
     }
     function subtitleCoverageState(row) {
-        return row.complete ? 'complete' : row.pendingVerification ? 'pending' : row.inspected ? 'missing' : 'unchecked';
+        return subtitleCovered(row) ? 'complete' : subtitleNeedsVerification(row) ? 'pending' : row.inspected ? 'missing' : 'unchecked';
+    }
+    function subtitleRowDetail(row, fallback) {
+        return [row.embedded?.message, row.error || (row.embedded?.status !== 'present' && row.searchMessage)].filter(Boolean).join('\n') || fallback;
     }
     function subtitleSearchGroups(rows) {
         const groups = new Map();
@@ -5194,7 +5310,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         };
         const meter = (done, total) => { const bar = ui.get('subtitleMeter'); bar.hidden = false; bar.max = total || 1; bar.value = done; };
         const render = (resetGroups = false) => {
-            const missing = inventory.filter(row => !row.complete), searchable = missing.filter(row => !row.pendingVerification), ready = searchable.filter(row => row.selectedCandidate);
+            const missing = inventory.filter(row => !subtitleCovered(row)), searchable = missing.filter(row => !subtitleNeedsVerification(row)), ready = searchable.filter(row => row.selectedCandidate);
             const coverage = {complete:0,missing:0,pending:0,unchecked:0};
             for (const row of inventory) coverage[subtitleCoverageState(row)]++;
             const view = ui.get('subtitleView').value;
@@ -5222,7 +5338,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             }
             let visible = 0;
             for (const [key, rows] of groups) {
-                const shown = rows.filter(row => view === 'all' || (view === 'incomplete' ? !row.complete : view === 'choice' ? subtitleSearchState(row) === 'choice' : subtitleCoverageState(row) === view));
+                const shown = rows.filter(row => view === 'all' || (view === 'incomplete' ? !subtitleCovered(row) : view === 'choice' ? subtitleSearchState(row) === 'choice' : subtitleCoverageState(row) === view));
                 if (!shown.length) continue;
                 visible += shown.length;
                 const box = document.createElement('details'); box.className = 'sync-item'; box.dataset.group = key;
@@ -5230,13 +5346,14 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 const summary = document.createElement('summary'), first = rows[0];
                 const counts = [['ready','可补齐'],['pending','待核验'],['choice','待选择'],['missing','未找到'],['failed','失败']]
                     .map(([state,label]) => { const count = rows.filter(row => subtitleSearchState(row) === state).length; return count ? `${label} ${count}` : ''; }).filter(Boolean);
-                summary.textContent = `${first.parsed.query || first.node.name}${first.parsed.season != null ? ' · 第 ' + first.parsed.season + ' 季' : ''} · 待补齐 ${rows.filter(row => !row.complete).length}/${rows.length}` + (counts.length ? ' · ' + counts.join(' · ') : '');
+                summary.textContent = `${first.parsed.query || first.node.name}${first.parsed.season != null ? ' · 第 ' + first.parsed.season + ' 季' : ''} · 待补齐 ${rows.filter(row => !subtitleCovered(row)).length}/${rows.length}` + (counts.length ? ' · ' + counts.join(' · ') : '');
                 box.append(summary);
                 for (const row of shown) {
                     const text = document.createElement('p'); text.style.whiteSpace = 'pre-wrap';
                     const state = subtitleCoverageState(row), searchState = subtitleSearchState(row);
                     const label = state === 'missing' ? '缺字幕 · ' + ({ready:'可补齐',choice:'待选择',missing:'未找到',failed:'失败',unsearched:'未查询'})[searchState] : ({complete:'已有字幕',pending:'待核验',unchecked:'尚未检查'})[state];
-                    text.textContent = `${label}：${row.node.name}\n${row.path}\n${row.error || row.searchMessage || '尚未搜索字幕'}`; box.append(text);
+                    const coverageLabel = row.embedded?.status === 'present' && !row.complete ? '有内嵌字幕' : label;
+                    text.textContent = `${coverageLabel}：${row.node.name}\n${row.path}\n${subtitleRowDetail(row, '尚未搜索字幕')}`; box.append(text);
                     for (const sub of row.subtitles) {
                         const line = document.createElement('label'), checkbox = document.createElement('input'), name = document.createElement('span');
                         checkbox.type = 'checkbox'; checkbox.checked = deleteSelection.has(String(sub.id)); checkbox.disabled = busy;
@@ -5244,7 +5361,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                         checkbox.onchange = () => { if (checkbox.checked) deleteSelection.add(String(sub.id)); else deleteSelection.delete(String(sub.id)); clearDeletePreview(); render(); };
                         line.append(checkbox, name); box.append(line);
                     }
-                    if (row.complete || row.pendingVerification) continue;
+                    if (subtitleCovered(row) || subtitleNeedsVerification(row)) continue;
                     const select = document.createElement('select'); select.disabled = busy;
                     const blank = document.createElement('option'); blank.value = ''; blank.textContent = '跳过此视频 / 请选择字幕'; select.append(blank);
                     (row.candidates || []).forEach((candidate, index) => {
@@ -5260,7 +5377,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 host.append(box);
             }
             ui.get('subtitleEmpty').hidden = visible > 0;
-            ui.get('subtitleEmpty').textContent = !inventory.length ? '本次检查没有视频，或尚未检查。请勾选目录或视频，再点击“检查目录字幕”。' : view === 'incomplete' && !missing.length ? '所选范围内的视频均已有可用外置字幕。' : view === 'choice' ? '没有待选择项。缺字幕但未找到候选的视频，请切换到“未补齐”查看。' : '当前筛选下没有视频。';
+            ui.get('subtitleEmpty').textContent = !inventory.length ? '本次检查没有视频，或尚未检查。请勾选目录或视频，再点击“检查目录字幕”。' : view === 'incomplete' && !missing.length ? (inventory.some(row => row.embedded?.status === 'present') ? '所选范围内的视频均已有内嵌字幕轨或可用外置字幕。' : '所选范围内的视频均已有可用外置字幕。') : view === 'choice' ? '没有待选择项。缺字幕但未找到候选的视频，请切换到“未补齐”查看。' : '当前筛选下没有视频。';
         };
         const lock = value => {
             busy = value; ui.busy(value);
@@ -5268,7 +5385,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             ui.get('stopSubtitles').hidden = !value; ui.get('stopSubtitles').disabled = !value; render();
         };
         const searchRows = async rows => {
-            rows = rows.filter(row => !row.complete && !row.pendingVerification);
+            rows = rows.filter(row => !subtitleCovered(row) && !subtitleNeedsVerification(row));
             if (!rows.length) return;
             const config = settings();
             if (!config.thunder && !(config.assrt && config.assrtToken) && !(config.open && config.key) && !(config.subdl && config.subdlKey)) { ui.openSettings('subtitleSettings'); status('请启用迅雷免 Key 搜索，或配置其他字幕来源。'); return; }
@@ -5322,6 +5439,11 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             } catch (error) { render(); status(error.message); diag(cancelled ? '已停止' : '查找中断', error.message); }
             finally { lock(false); }
         };
+        const inspectEmbedded = async (row, check) => {
+            if (row.embedded || (/\.mkv$/i.test(row.node.name) && row.complete)) return;
+            row.embedded = await drive.inspectEmbedded?.(row.node, check);
+            if (row.embedded) diag('内嵌字幕', `${row.node.name} · ${row.embedded.message}`);
+        };
         const readSubtitles = async (searchAfter = true, force = false) => {
             diag('检查开始', force ? '强制复查已有字幕：跳过缓存，重读正文' : '读取当前选中的视频与已有字幕');
             cancelled = false; inventory = []; drive = null; subtitleContext = null; deleteSelection.clear(); clearDeletePreview(); scope = ''; ui.get('subtitleView').value = force ? 'all' : 'incomplete'; lock(true);
@@ -5357,10 +5479,11 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                         await inspectExistingSubtitles(row, drive, settings().language, diag, check, {force, review});
                     } catch (error) { check(); if (error.stop || error.phase === 'drive-auth') throw error; if (!row.complete) { row.pendingVerification = true; row.error = error.message; } diag('上传待核验', `${row.node.name} · ${error.message}`); }
                     check();
+                    await inspectEmbedded(row, check);
                     row.inspected = true;
                     meter(++done, inventory.length); render();
                 }, check);
-                status(inventory.length ? '已检查选中范围。' : '选中范围没有正片视频。'); diag('字幕检查', inventory.length ? `完成，已有字幕确认 ${inventory.filter(row => row.complete).length}/${inventory.length}` : '选中范围没有正片视频');
+                status(inventory.length ? '已检查选中范围。' : '选中范围没有正片视频。'); diag('字幕检查', inventory.length ? `完成，已有字幕确认 ${inventory.filter(subtitleCovered).length}/${inventory.length}` : '选中范围没有正片视频');
             } catch (error) { inventory = []; drive = null; status('检查结束：' + error.message); diag('检查失败', error.message); }
             finally { lock(false); }
             if (searchAfter && !cancelled) await searchRows(inventory);
@@ -5402,14 +5525,14 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                         if (error.pending) { deleteSelection.delete(String(sub.id)); row.pendingVerification = true; row.complete = false; row.error = '字幕删除结果待确认，请重新检查目录：' + error.message; touched.add(row); }
                     }
                 }
-                for (const row of touched) { check(); await inspectExistingSubtitles(row,drive,settings().language,(event,detail)=>diag(event,`${row.node.name} · ${detail}`),check); row.inspected = true; }
+                for (const row of touched) { check(); await inspectExistingSubtitles(row,drive,settings().language,(event,detail)=>diag(event,`${row.node.name} · ${detail}`),check); await inspectEmbedded(row,check); row.inspected = true; }
                 render();
                 status(`批量删除结束：已移入回收站 ${deleted} 个，失败 ${failures.length} 个。` + (failures.length ? ` ${failures.slice(0,5).join('；')}` : ''));
             } catch (error) { render(); status(`删除中断：已移入回收站 ${deleted} 个；${error.message}`); }
             finally { lock(false); }
         };
         ui.get('fillSubtitles').onclick = async () => {
-            const rows = inventory.filter(row => !row.complete && !row.pendingVerification && row.selectedCandidate), config = settings();
+            const rows = inventory.filter(row => !subtitleCovered(row) && !subtitleNeedsVerification(row) && row.selectedCandidate), config = settings();
             config.reviewCandidates = reviewCandidates;
             cancelled = false; lock(true); let done = 0, failed = 0, pending = 0;
             service.resetDownloadBatch?.();
@@ -5468,7 +5591,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             } catch (error) { render(); status(`已中断：已核验 ${done}，待核验 ${pending}，失败 ${failed}；${error.message}`); diag('补齐中断', error.message); }
             finally { lock(false); }
         };
-        ui.get('searchSubtitles').onclick = () => searchRows(inventory.filter(row => !row.complete));
+        ui.get('searchSubtitles').onclick = () => searchRows(inventory);
         ui.get('stopSubtitles').onclick = () => { cancelled = true; ui.get('stopSubtitles').disabled = true; status('等待当前请求结束后停止…'); };
         ui.get('clearSubtitleLog').onclick = () => { logLines.length = 0; ui.get('subtitleLog').value = ''; diag('日志', '已清空'); };
         ui.get('subtitleView').onchange = () => render(true);
@@ -5487,7 +5610,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             finally { ui.get('subtitlePassword').value = ''; lock(false); }
         };
         ui.get('copySubtitleReport').onclick = async () => {
-            const report = coverageText + '\n' + subtitleSearchSummary(inventory) + '\n\n' + inventory.map(row => row.path + '\n' + (row.error || row.searchMessage || '未查询')).join('\n\n');
+            const report = coverageText + '\n' + subtitleSearchSummary(inventory) + '\n\n' + inventory.map(row => row.path + '\n' + subtitleRowDetail(row, '未查询')).join('\n\n');
             try { await navigator.clipboard.writeText(report); status('查询结果已复制，不包含密钥和下载地址。'); }
             catch (error) { status('复制失败：' + error.message); }
         };
@@ -5496,7 +5619,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             catch (error) { status('复制日志失败：' + error.message); }
         };
         ui.get('copyMissingSubtitles').onclick = async () => {
-            try { const rows = inventory.filter(row => !row.complete); await navigator.clipboard.writeText(rows.map(row => row.path).join('\n')); status(`已复制未补齐路径 ${rows.length} 条；待核验项也包含在内，不代表已确认缺失。`); }
+            try { const rows = inventory.filter(row => !subtitleCovered(row)); await navigator.clipboard.writeText(rows.map(row => row.path).join('\n')); status(`已复制未补齐路径 ${rows.length} 条；待核验项也包含在内，不代表已确认缺失。`); }
             catch (error) { status('复制失败：' + error.message); }
         };
     }

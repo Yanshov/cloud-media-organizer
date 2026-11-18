@@ -894,7 +894,7 @@
                     if (range) {
                         const contentRange = String(response.responseHeaders || '').match(/^content-range:\s*bytes\s+(\d+)-(\d+)\/(\d+)/im);
                         if (response.status !== 206 || !contentRange || Number(contentRange[1]) !== range[0] || Number(contentRange[2]) !== range[1] || Number(contentRange[3]) !== range[2] || data.length !== range[1] - range[0] + 1) {
-                            reject(new Error('网盘返回的视频片段范围不正确，未计算哈希')); return;
+                            reject(new Error('网盘返回的视频片段范围不正确')); return;
                         }
                     }
                     resolve(data);
@@ -1009,9 +1009,15 @@
         row.selectedCandidate = row.autoCandidates[0] || null;
         row.aiSuggested = !!row.selectedCandidate?.aiAccepted;
     }
+    function subtitleCovered(row) {
+        return row.complete || row.embedded?.status === 'present';
+    }
+    function subtitleNeedsVerification(row) {
+        return !subtitleCovered(row) && (row.pendingVerification || row.embedded?.status === 'unknown');
+    }
     function subtitleSearchState(row) {
-        if (row.complete) return 'complete';
-        if (row.pendingVerification) return 'pending';
+        if (subtitleCovered(row)) return 'complete';
+        if (subtitleNeedsVerification(row)) return 'pending';
         if (row.error) return 'failed';
         if (row.selectedCandidate) return 'ready';
         if (row.candidates?.length) return 'choice';
@@ -1118,9 +1124,11 @@
     function subtitleSearchSummary(rows) {
         const count = {complete:0,pending:0,ready:0,choice:0,failed:0,missing:0,unsearched:0};
         for (const row of rows) count[subtitleSearchState(row)]++;
-        const supported = rows.filter(row => row.complete && row.verification?.work?.status === 'supported').length;
+        const external = rows.filter(row => row.complete), embedded = count.complete - external.length;
+        const supported = external.filter(row => row.verification?.work?.status === 'supported').length;
         return `视频 ${rows.length} · 已有/已补齐 ${count.complete} · 待核验 ${count.pending} · 可补齐 ${count.ready} · 待选择 ${count.choice} · 未找到 ${count.missing} · 失败 ${count.failed} · 未查询 ${count.unsearched}`
-            + (count.complete ? ` · 其中作品归属未确认 ${count.complete - supported}，AI 支持 ${supported}（未核对音画同步）` : '');
+            + (embedded ? ` · 内嵌字幕轨 ${embedded}` : '')
+            + (external.length ? ` · 其中作品归属未确认 ${external.length - supported}，AI 支持 ${supported}（未核对音画同步）` : '');
     }
     function subtitleSearchMessage(row) {
         if (row.pendingVerification) return row.error || '字幕文件或上传结果待核验，请先重新检查目录；本次不重复上传。';
@@ -1252,6 +1260,96 @@
         if (suspicious.length) { row.pendingVerification = true; row.error = '已有字幕疑似不完整或属于其他作品，暂停自动补齐，请人工核对原字幕：' + suspicious.join('；'); }
         else if (unreadable.length) { row.pendingVerification = true; row.error = '已有字幕读取失败，尚未确认是否可用；先重新检查目录，暂停自动补齐：' + unreadable.join('；'); }
         else { row.error = ''; row.searchMessage = invalid.length ? '已有字幕未通过检查：' + invalid.join('；') : '未发现可核验的外置文本字幕'; }
+    }
+    async function inspectMkvSubtitleTracks(size, readRange, check = () => {}) {
+        if (!Number.isSafeInteger(size) || size < 1) throw new Error('视频大小未知，无法安全分段读取');
+        const windowSize = 64 * 1024, windows = new Map();
+        const read = async (offset, length) => {
+            if (!Number.isSafeInteger(offset + length) || offset + length > size) throw new Error('MKV 元素超出文件范围');
+            const result = new Uint8Array(length);
+            for (let written = 0; written < length;) {
+                check();
+                const position = offset + written, start = Math.floor(position / windowSize) * windowSize;
+                if (!windows.has(start)) {
+                    if (windows.size >= 8) throw new Error('达到 512 KiB 分段读取上限');
+                    const end = Math.min(start + windowSize, size);
+                    const bytes = await readRange(start, end - 1); check();
+                    if (bytes.length !== end - start) throw new Error('MKV 片段长度不正确');
+                    windows.set(start, bytes);
+                }
+                const chunk = windows.get(start).subarray(position - start, position - start + length - written);
+                result.set(chunk, written); written += chunk.length;
+            }
+            return result;
+        };
+        const header = (bytes, start, limit) => {
+            let cursor = 0;
+            const vint = (identifier, max) => {
+                const first = bytes[cursor];
+                if (!first) throw new Error('MKV 元素头无效或不完整');
+                let width = 1, marker = 128;
+                while (!(first & marker)) { width++; marker >>= 1; }
+                if (width > max || cursor + width > bytes.length) throw new Error('MKV 元素头无效或不完整');
+                let value = identifier ? first : first & (marker - 1);
+                let unknown = !identifier && value === marker - 1;
+                for (let index = 1; index < width; index++) {
+                    const next = bytes[cursor + index];
+                    value = value * 256 + next; unknown = unknown && next === 255;
+                }
+                cursor += width;
+                if (!unknown && !Number.isSafeInteger(value)) throw new Error('MKV 元素大小超出可处理范围');
+                return unknown ? null : value;
+            };
+            const id = vint(true, 4), length = vint(false, 8), data = start + cursor;
+            const end = length === null ? limit : data + length;
+            if (!Number.isSafeInteger(end) || data > end || end > limit) throw new Error('MKV 元素超出容器范围');
+            return {id, data, end, unknown:length === null};
+        };
+        const at = async (start, limit) => header(await read(start, Math.min(12, limit - start)), start, limit);
+        function* children(bytes, start = 0, limit = bytes.length) {
+            for (let offset = start; offset < limit;) {
+                const field = header(bytes.subarray(offset, limit), offset, limit);
+                if (field.unknown) throw new Error('MKV 元数据包含未知长度的元素');
+                yield field;
+                offset = field.end;
+            }
+        }
+        const ebml = await at(0, size);
+        if (ebml.id !== 0x1a45dfa3 || ebml.unknown || ebml.end - ebml.data > windowSize) throw new Error('不是有效的 MKV 文件头');
+        const metadata = await read(ebml.data, ebml.end - ebml.data);
+        const docType = [...children(metadata)].find(field => field.id === 0x4282);
+        if (!docType || new TextDecoder().decode(metadata.subarray(docType.data, docType.end)) !== 'matroska') throw new Error('视频容器不是 Matroska');
+        let segment;
+        for (let next = ebml.end, count = 0; next < size && count < 32; count++) {
+            const field = await at(next, size);
+            if (field.id === 0x18538067) { segment = field; break; }
+            if (field.unknown) break;
+            next = field.end;
+        }
+        if (!segment) throw new Error('未找到 MKV Segment');
+        for (let next = segment.data, count = 0; next < segment.end && count < 128; count++) {
+            const field = await at(next, segment.end);
+            if (field.unknown) throw new Error('遇到未知长度的 MKV 元素，无法继续定位轨道表');
+            if (field.id === 0x1654ae6b) {
+                const length = field.end - field.data;
+                if (length > windowSize * 8) throw new Error('MKV 轨道表超过读取上限');
+                const tracks = await read(field.data, length);
+                let subtitles = 0, entries = 0;
+                for (const entry of children(tracks)) {
+                    if (entry.id !== 0xae) continue;
+                    entries++;
+                    const types = [...children(tracks, entry.data, entry.end)].filter(item => item.id === 0x83);
+                    const type = types[0];
+                    if (types.length !== 1 || type.end - type.data < 1 || type.end - type.data > 8) throw new Error('MKV 轨道缺少有效的类型信息');
+                    const bytes = tracks.subarray(type.data, type.end);
+                    if (bytes.at(-1) === 0x11 && bytes.subarray(0, -1).every(value => value === 0)) subtitles++;
+                }
+                if (!entries) throw new Error('MKV 轨道表没有有效轨道');
+                return subtitles;
+            }
+            next = field.end;
+        }
+        throw new Error('在读取限制内未找到 MKV 轨道表');
     }
     function subtitleDrive(context, wait = sleep) {
         const {session, source} = context, guangya = session.provider === '光鸭';
@@ -1386,6 +1484,21 @@
         }
         return {
             read, reconcile, assertReady, verified,
+            async inspectEmbedded(node, check = () => {}) {
+                if (!/\.mkv$/i.test(node.name)) return {status:'skipped', message:'未检查内嵌字幕：非 MKV 格式，未读取视频'};
+                try {
+                    let url;
+                    const count = await inspectMkvSubtitleTracks(node.size, async (start, end) => {
+                        url ||= await downloadUrl(node); check();
+                        return subtitleBinary(url, {headers:{Range:`bytes=${start}-${end}`}, range:[start,end,node.size], limit:end - start + 1});
+                    }, check);
+                    return count ? {status:'present', message:`发现 ${count} 条内嵌字幕轨，跳过搜索和补齐（未检查语言或同步）`}
+                        : {status:'absent', message:'MKV 轨道表中未发现内嵌字幕轨'};
+                } catch (error) {
+                    check(); if (error.stop || error.phase === 'drive-auth') throw error;
+                    return {status:'unknown', message:'无法确认 MKV 内嵌字幕，暂停补齐：' + error.message};
+                }
+            },
             async save(row, name, bytes, progress = () => {}, check = () => {}) {
                 check();
                 if (pendingFor(row).length) {
