@@ -82,6 +82,11 @@
     function guangyaAuthHeaders(token) {
         return { 'Content-Type': 'application/json;charset=utf-8', Authorization: 'Bearer ' + token, dt: '4' };
     }
+    function requestGuangya(token, endpoint, body) {
+        return requestJson('https://api.guangyapan.com' + endpoint, {
+            method: 'POST', headers: guangyaAuthHeaders(token), body: JSON.stringify(body)
+        });
+    }
     function nonNegativeInteger(value) {
         if ((typeof value !== 'number' && typeof value !== 'string') || String(value).trim() === '') return null;
         const number = Number(value);

@@ -96,7 +96,10 @@
             try {
                 const context = await mediaContext(provider); emptySession = context.session; emptySource = context.source; checkStopped();
                 const canonical = extras ? null : mediaCanonicalResolver(tmdbClient(ui.get('tmdbKey').value));
-                emptyPlan = extras ? await planMediaExtras(context.selected, emptySource, message => { checkStopped(); progress(message); }, ui.get('cleanupSubtitles').checked) : await planMediaNonstandard(context.selected, emptySource, message => { checkStopped(); progress(message); if (message.includes('无法唯一确认') || message.includes('未返回标准片名')) log('未确认标准名，暂不删除：' + message); }, canonical);
+                emptyPlan = await planMediaCleanup(context.selected, emptySource, message => {
+                    checkStopped(); progress(message);
+                    if (!extras && (message.includes('无法唯一确认') || message.includes('未返回标准片名'))) log('未确认标准名，暂不删除：' + message);
+                }, {extras, includeSubtitles:extras && ui.get('cleanupSubtitles').checked, resolveCanonical:canonical});
                 ui.get('emptyPreview').textContent = emptyPlan.map(item => `${item.directory ? '删除整个文件夹及全部内容' : '删除文件'}：${item.path}${item.reason ? '\n原因：' + item.reason : ''}${item.expectedName ? '\n应为标准名称：' + item.expectedName : ''}`).join('\n\n') || (extras ? '未发现非正片文件。' : '没有已确认不符合标准的项目；无法匹配的作品见日志。');
                 meter('检查结束', emptyPlan.length, emptyPlan.length); progress(`可清理 ${emptyPlan.length} 个${extras ? '非正片文件' : '不规范项目（文件夹包含全部内容）'}；尚未删除`);
             } catch (error) { stopMeter(); progress('检查失败：' + error.message); }

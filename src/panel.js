@@ -422,7 +422,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 root.querySelector('#backToTools').disabled = !!toolWorkspace.owner;
             }
         };
-        entry.ui = ui; tabs.set(id, entry);
+        tabs.set(id, entry);
         if (tabs.size === 1) activate(id);
         return ui;
     }

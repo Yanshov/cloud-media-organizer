@@ -197,9 +197,12 @@
         };
         return source;
     }
+    function routeHashParams(hash) {
+        const query = hash.indexOf('?');
+        return new URLSearchParams(hash.slice(query < 0 ? 1 : query + 1));
+    }
     function currentBaiduPath() {
-        const hash = location.hash || '';
-        const fromHash = new URLSearchParams(hash.includes('?') ? hash.slice(hash.indexOf('?') + 1) : hash.slice(1)).get('path');
+        const fromHash = routeHashParams(location.hash || '').get('path');
         const path = fromHash ?? new URLSearchParams(location.search).get('path');
         if (path == null || !path.startsWith('/')) throw new Error('未识别到当前目录路径，请勾选文件或文件夹后点“导出 JSON”');
         return path === '/' ? path : path.replace(/\/$/, '');
@@ -223,9 +226,7 @@
     }
     function current123Parent() {
         const url = new URL(location.href);
-        const hash = url.hash.includes('?') ? url.hash.slice(url.hash.indexOf('?') + 1) : url.hash.slice(1);
-        const query = url.searchParams.has('homeFilePath') ? url.searchParams : new URLSearchParams(hash);
-        const raw = query.get('homeFilePath');
+        const raw = url.searchParams.get('homeFilePath') ?? routeHashParams(url.hash).get('homeFilePath');
         if (raw != null && raw.trim()) {
             const ids = raw.split(',').map(id => decimalId(id.trim()));
             if (ids.some(id => !id)) throw new Error('网址中的 homeFilePath 不是有效目录路径，请重新打开所需文件夹');
@@ -239,8 +240,7 @@
     async function export123ParentPath(source) {
         if (source.parentId === '0') return '';
         const url = new URL(location.href);
-        const hash = url.hash.includes('?') ? url.hash.slice(url.hash.indexOf('?') + 1) : url.hash.slice(1);
-        const raw = url.searchParams.get('homeFilePath') ?? new URLSearchParams(hash).get('homeFilePath');
+        const raw = url.searchParams.get('homeFilePath') ?? routeHashParams(url.hash).get('homeFilePath');
         const ids = (raw || source.parentId).split(',').map(id => decimalId(id.trim())).filter(id => id !== '0');
         if (ids.some(id => !id) || ids.at(-1) !== source.parentId) throw new Error('无法确认源目录路径，请重新打开源文件夹后导出');
         let parent = '0';
@@ -274,7 +274,7 @@
         const target = new URL(base + '/file/list/new');
         if (!is123ApiUrl(target)) throw new Error('123 接口地址不受支持，请刷新页面后重试');
         const url = new URL(location.href);
-        const hashParams = new URLSearchParams(url.hash.includes('?') ? url.hash.slice(url.hash.indexOf('?') + 1) : url.hash.slice(1));
+        const hashParams = routeHashParams(url.hash);
         const category = url.searchParams.get('category') ?? hashParams.get('category');
         if ((category != null && category !== '' && category !== '0') || url.searchParams.get('search') || hashParams.get('search')) throw new Error('请先进入“全部文件”的实际文件夹，再导入或导出；分类、搜索和回收站页面不支持');
         const headers = { Authorization: `Bearer ${token}`, platform: 'web', 'app-version': '3' };

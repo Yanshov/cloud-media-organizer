@@ -279,10 +279,10 @@ async function folders() {
 
 async function cleanup() {
     const nodes=[{id:'v',name:'movie.mkv'},{id:'s',name:'movie.zh-cn.srt'},{id:'f',name:'font.otf'},{id:'a',name:'字体包.zip'},{id:'i',name:'poster.jpg'},{id:'b',name:'花絮.mkv'}];
-    const ctx=load(part('    const mediaPlaybackAttachment', '    async function planMediaNonstandard('),{MEDIA_VIDEO:/\.mkv$/,MEDIA_SUB:/\.(srt|ass|ssa|sub|idx|vtt)$/i,mediaBonusName:n=>n.startsWith('花絮'),matchSelected:nodes=>nodes});
+    const ctx=load(part('    const mediaPlaybackAttachment', '    async function removeMediaNonstandard('),{MEDIA_VIDEO:/\.mkv$/,MEDIA_SUB:/\.(srt|ass|ssa|sub|idx|vtt)$/i,mediaBonusName:n=>n.startsWith('花絮'),matchSelected:nodes=>nodes});
     const source={parentId:'p',children:async()=>nodes};
-    const protectedPlan=await ctx.planMediaExtras([{}],source);assert.deepEqual(Array.from(protectedPlan,n=>n.id),['i','b']);
-    const all=await ctx.planMediaExtras([{}],source,()=>{},true);assert.deepEqual(Array.from(all,n=>n.id),['s','f','a','i','b']);
+    const protectedPlan=await ctx.planMediaCleanup([{}],source,undefined,{extras:true});assert.deepEqual(Array.from(protectedPlan,n=>n.id),['i','b']);
+    const all=await ctx.planMediaCleanup([{}],source,undefined,{extras:true,includeSubtitles:true});assert.deepEqual(Array.from(all,n=>n.id),['s','f','a','i','b']);
     const button={},messages=[];let deletes=0;
     const handler = part("        ui.get('runEmpty').onclick =", "        ui.get('mediaAIProvider').onchange");
     const lifecycle = part('    function createPanelTask(', '    function panelControls(');

@@ -58,17 +58,16 @@
         const route = url.hash.startsWith('#/') ? new URL(url.hash.slice(1), url.origin).pathname : url.pathname;
         const parts = route.split('/').filter(Boolean);
         if (parts[0] !== 'home' || parts[1] !== 'all') return null;
-        let id = '0';
-        const names = [];
+        const breadcrumbs = [];
         for (const part of parts.slice(2)) {
             let segment;
             try { segment = decodeURIComponent(part); } catch (_) { return null; }
             const match = /^(0|[1-9]\d*)(?:-([\s\S]*))?$/.exec(segment);
             if (!match) return null;
-            id = match[1];
-            names.push(match[2] || id);
+            breadcrumbs.push({ id: match[1], name: match[2] ?? match[1] });
         }
-        return { id, path: names.length ? names.join(' / ') : '根目录', exportPath: names.join('/') };
+        const names = breadcrumbs.map(folder => folder.name || folder.id);
+        return { id: breadcrumbs.at(-1)?.id ?? '0', path: names.length ? names.join(' / ') : '根目录', exportPath: names.join('/'), breadcrumbs };
     }
     function alignGuangyaImport(files, target) {
         const prefix = target.exportPath;
@@ -86,9 +85,7 @@
             const entry = JSON.parse(signature);
             if (hasFileMetadata(entry) && /^[a-f0-9]{40}$/i.test(entry.gcid || '')) knownContent.set(entry.gcid.toUpperCase(), entry);
         }
-        const post = paced(180, (endpoint, body) => requestJson(`https://api.guangyapan.com${endpoint}`, {
-            method: 'POST', headers: guangyaAuthHeaders(token), body: JSON.stringify(body)
-        }));
+        const post = paced(180, requestGuangya.bind(null, token));
         const node = file => {
             const id = decimalId(file?.fileId);
             if (!id || typeof file.fileName !== 'string') throw new Error('光鸭目录项目缺少 ID 或名称');
@@ -645,11 +642,7 @@
             let counts = null;
             let cancelled = false, setupError = '', replacementCounts = null;
             const token = capture.token;
-            const post = paced(650, (endpoint, body) => requestJson(`https://api.guangyapan.com${endpoint}`, {
-                method: 'POST',
-                headers: guangyaAuthHeaders(token),
-                body: JSON.stringify(body)
-            }));
+            const post = paced(650, requestGuangya.bind(null, token));
             const ensureDirectory = directoryResolver(parentId, post, log);
             const existingSource = guangyaSource(token, false);
             lockedTarget = target;
@@ -658,11 +651,10 @@
             ui.get('progress').textContent = `准备导入 ${files.length} 项…`;
             try {
                 if (replaceExisting) {
-                    const source = guangyaSource(token, false);
-                    const plan = await buildGuangyaReplacementPlan(files, target, source, message => { ui.get('progress').textContent = message; });
+                    const plan = await buildGuangyaReplacementPlan(files, target, existingSource, message => { ui.get('progress').textContent = message; });
                     ui.get('progress').textContent = '预览已生成，等待确认；尚未修改网盘文件';
                     if (!await confirmGuangyaReplacement(ui, plan, target)) { cancelled = true; return; }
-                    replacementCounts = await runGuangyaReplacement(files, target, plan, source, post, ensureDirectory,
+                    replacementCounts = await runGuangyaReplacement(files, target, plan, existingSource, post, ensureDirectory,
                         message => { ui.get('progress').textContent = message; }, log);
                     refreshHistorySummary(ui, '光鸭');
                     return;
@@ -671,8 +663,7 @@
                     (message, event) => {
                         if (event) ui.get('progress').textContent = `导入进度：${event.index}/${event.total}（已处理 ${Math.floor((event.index - 1) * 100 / event.total)}%） ${event.path}`;
                         log(message);
-                    },
-                    () => { if (jsonTaskStopped) throw Object.assign(new Error('已停止后续请求；已提交的操作请刷新目录核对'), { stop: true, cancelled: true }); });
+                    }, checkJsonTask);
             } catch (error) {
                 setupError = error.message;
                 log('导入未完成：' + setupError);

@@ -115,11 +115,15 @@ async function extras(){
  const nodes=[extra,nested,video];let removed=0;
  const ctx=load(part('    const mediaPlaybackAttachment', '    async function recycleMedia123('),{MEDIA_VIDEO,MEDIA_SUB,matchSelected,mediaBonusName:()=>false,recycleMedia:async()=>{removed++},mediaStandardNode:()=>true});
  const drive={parentId:'p',children:async({id})=>nodes.filter(n=>n.parentId===id)};
- let plan=await ctx.planMediaExtras([extra],drive);assert.equal(plan.length,1);assert.equal(plan[0].extraScope.ancestors.length,2);
+ const plan=await ctx.planMediaCleanup([extra],drive,noop,{extras:true});assert.equal(plan.length,1);assert.equal(plan[0].extraScope.ancestors.length,2);
  nested.parentId='other';await assert.rejects(ctx.removeMediaNonstandard(plan[0],{parent:'p'},drive),e=>e.retained===true);assert.equal(removed,0);
  nested.parentId='e';await ctx.removeMediaNonstandard(plan[0],{parent:'p'},drive);assert.equal(removed,1);
- await assert.rejects(ctx.planMediaNonstandard([extra],drive,noop,async()=>{throw Object.assign(Error('auth'),{stop:true})}),/auth/);
- console.log('PASS audit cleanup: moved nested extras folder prevents deletion of ordinary video; unchanged hierarchy allows cleanup; canonical lookup propagates fatal errors');
+ await assert.rejects(ctx.planMediaCleanup([extra],drive,noop,{resolveCanonical:async()=>{throw Object.assign(Error('auth'),{stop:true})}}),/auth/);
+ const visited=[];
+ const named=await ctx.planMediaCleanup([extra],drive,noop,{resolveCanonical:async node=>{visited.push(node.id);return node===nested?'standard':node.name}});
+ assert.deepEqual(visited,['e','n'],'A directory included as a whole prunes its descendants');
+ assert.deepEqual(JSON.parse(JSON.stringify(named)),[{id:'n',name:'nested',parentId:'e',path:'Extras/nested',directory:true,expectedName:'standard'}]);
+ console.log('PASS audit cleanup: nested extras reverified before deletion; naming preview prunes selected directories; fatal lookup errors propagate');
 }
 async function openSubtitles(){
  const requests=[];

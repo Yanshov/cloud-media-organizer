@@ -6,7 +6,7 @@ function core(extra={}) {
  const ctx=vm.createContext({URL,URLSearchParams,Request,Headers,AbortController,TextEncoder,TextDecoder,Uint8Array,ArrayBuffer,Blob,Date,
   setTimeout,clearTimeout,window:{fetch:async()=>{throw Error('Unmocked network prohibited')}},GM_getValue:(_k,v)=>v,GM_setValue(){},...extra});
  const end=script.indexOf("    if (location.hostname === 'www.guangyapan.com')");
- vm.runInContext(script.slice(0,end)+`globalThis.api={importFile,guangyaListPage,directoryResolver,pan123Node,installHooks,mediaContext,requestJson,currentGuangyaFolder,current123Parent,initManifestImporter,inspectRequest,apiCode,guangyaCode,apiError,normalized:normalizeFiles,getCapture:()=>({...capture}),setStopped:value=>{jsonTaskStopped=value},setFetch:fn=>{}};})();`,ctx);
+ vm.runInContext(script.slice(0,end)+`globalThis.api={importFile,guangyaListPage,directoryResolver,pan123Node,installHooks,mediaContext,requestJson,requestGuangya,checkJsonTask,currentGuangyaFolder,current123Parent,currentBaiduPath,export123ParentPath,mediaClassificationRoot,initManifestImporter,inspectRequest,apiCode,guangyaCode,apiError,normalized:normalizeFiles,getCapture:()=>({...capture}),setStopped:value=>{jsonTaskStopped=value},setFetch:fn=>{}};})();`,ctx);
  return ctx;
 }
 async function hooks(){
@@ -49,6 +49,29 @@ async function stop(){
  ctx.api.setStopped(false);await ctx.api.requestJson('https://api.guangyapan.com/list');assert.equal(calls,1);
  console.log('PASS JSON stop: no subsequent read or write request after stop, next task can resume; in-flight requests are not blindly aborted/retried');
 }
+async function routes(){
+ const location=new URL('https://www.123pan.com/#/home?homeFilePath=0,42,84');
+ const element={'__reactFiber$mock':{memoizedProps:{rowKey:'fileId',dataSource:[],selectedItems:[85]}}};
+ const {api}=core({location,document:{querySelectorAll:()=>[element]}});
+ const folders={'0':[{id:'42',name:'影视库',directory:true}],'42':[{id:'84',name:'电影',directory:true}]};
+ const drive={parentId:'84',children:async({id})=>folders[id]};
+ assert.equal(api.current123Parent(),'84');
+ assert.equal(await api.export123ParentPath(drive),'影视库/电影');
+ assert.equal(api.mediaClassificationRoot(drive,'影视库/电影').id,'42');
+ location.search='?homeFilePath=0,42';assert.equal(api.current123Parent(),'42');
+ await assert.rejects(api.export123ParentPath(drive),/无法确认源目录路径/);
+ location.href='https://pan.baidu.com/disk/main?path=%2Fother#/index?path=%2Ffolder%2F';
+ assert.equal(api.currentBaiduPath(),'/folder');
+ location.href='https://pan.baidu.com/disk/main#path=%2Fflat';
+ assert.equal(api.currentBaiduPath(),'/flat');
+ location.href='https://www.guangyapan.com/#/home/all/42-library/84-%E7%94%B5%E5%BD%B1/85-name-with-dashes';
+ api.inspectRequest('https://api.guangyapan.com/userres/v1/file/get_file_list',new Headers({Authorization:'Bearer mock'}),'{"parentId":"85"}');
+ const media=await api.mediaContext('光鸭');
+ assert.equal(media.path,'library/电影/name-with-dashes');assert.equal(media.selected[0].id,'85');
+ assert.equal(api.mediaClassificationRoot(media.source,media.path).id,'42');
+ location.hash='#/home/all/42-library/%ZZ';assert.equal(api.currentGuangyaFolder(),null);
+ console.log('PASS shared routes: hash formats, query priority, exact media roots and malformed Guangya paths');
+}
 async function manifestUI(){
  for(const provider of ['百度','123']){
   const elements=new Map(),writes=[],video={id:'v',key:'v',name:'small.txt',size:2,md5:'a'.repeat(32),directory:false};
@@ -79,7 +102,7 @@ async function guangyaExisting(){
  const start=script.indexOf('    function initGuangya('),end=script.indexOf('    const MEDIA_VIDEO',start);
  const ctx=vm.createContext({URL,VERSION:version,makePanel:()=>ui,bindExportHistory(){},panelControls:()=>[],capture:{token:'test'},jsonTaskStopped:false,currentGuangyaFolder:()=>({id:'42',path:'target'}),
   page:{addEventListener(){},history:{pushState(){},replaceState(){}}},appendLog:(_ui,message)=>logs.push(message),normalizeFiles:x=>x,alignGuangyaImport:files=>({files,alignedPath:''}),
-  paced:(_ms,fn)=>fn,directoryResolver:()=>async()=> '42',guangyaSource:()=>({children:async()=>{reads++;return children}}),relativeParts:value=>value.split('/'),
+  paced:(_ms,fn)=>fn,requestGuangya:base.requestGuangya,checkJsonTask:base.checkJsonTask,directoryResolver:()=>async()=> '42',guangyaSource:()=>({children:async()=>{reads++;return children}}),relativeParts:value=>value.split('/'),
   existingFileMessage:(node,file)=>{if(node.directory||node.size!==file.size||node.md5!==file.md5)throw Error('同名内容不同，未覆盖');return '已有相同文件，跳过'},
   importFile:async()=>{submissions++;return {status:'saved',message:'confirmed'}},sleep:async()=>{}});
  vm.runInContext(script.slice(script.indexOf('    async function runGuangyaImportFiles('),start)+script.slice(start,end),ctx);ctx.initGuangya();
@@ -88,6 +111,8 @@ async function guangyaExisting(){
  children=[{...file,id:'x'}];await ui.get('start').onclick();assert.equal(submissions,0);assert.match(ui.get('progress').textContent,/同名跳过 1/);
  children=[{...file,id:'x',md5:'b'.repeat(32)}];await ui.get('start').onclick();assert.equal(submissions,0);assert.ok(logs.some(l=>l.includes('未覆盖')));
  children=[];await ui.get('start').onclick();assert.equal(submissions,1);assert.equal(reads,3);
+ base.setStopped(true);await ui.get('start').onclick();assert.equal(submissions,1);assert.equal(reads,3);
+ assert.ok(logs.includes('任务已停止，不再处理后续项目'));
  console.log('PASS ordinary Guangya import: fresh destination lookup; same file skipped, conflicting content never submitted, absent file submitted once');
 }
 function startup(){
@@ -110,4 +135,4 @@ function startup(){
  assert.match(script,/<input id="syncExisting" type="checkbox">/,'Replacing old copies is opt-in');
  console.log('PASS complete startup: hooks before DOM ready; media/subtitle panels on 123/Guangya; JSON on all three; no duplicate declarations; choice filter and version present');
 }
-(async()=>{await hooks();await imports();await stop();await manifestUI();await guangyaExisting();startup()})().catch(e=>{console.error(e);process.exitCode=1});
+(async()=>{await hooks();await imports();await stop();await routes();await manifestUI();await guangyaExisting();startup()})().catch(e=>{console.error(e);process.exitCode=1});
