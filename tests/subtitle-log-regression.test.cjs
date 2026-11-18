@@ -39,6 +39,49 @@ async function auth(){
  await assert.rejects(listed.save(row(1),'test.srt',valid),e=>e.phase==='drive-auth'&&e.stop);await assert.rejects(listed.save(row(2),'test.srt',valid),e=>e.phase==='drive-auth');assert.equal(lists,1);
  console.log('PASS log drive auth: title search makes no video-byte request; real subtitle read 401 stops later writes; directory auth and isolated provider errors remain guarded');
 }
+async function sourceIsolation(){
+ const requests=[],logs=[];
+ const ctx=load();
+ ctx.subtitleRemoteJson=async raw=>{
+  const url=new URL(raw), term=url.searchParams.get('name');
+  requests.push(url.hostname);
+  if (url.hostname==='api.subdl.com') return {status:true,results:[{tmdb_id:999,type:'tv'}],subtitles:[]};
+  return {code:0,data:[1,2].map(episode=>({
+   name:`Love.Death.and.Robots.S01E0${episode}.简体.srt`,url:'https://example.test/'+episode+'.srt'
+  }))};
+ };
+ const service=ctx.createSubtitleService({log:(...args)=>logs.push(args)});
+ const options={...config,thunder:true,subdl:true,subdlKey:'test'};
+ const rows=[row(1),row(2)];
+ for(const target of rows) target.parsed.tmdbId='42';
+ await service.prepareSeason(rows,options);
+ for(const target of rows) await ctx.searchSubtitleSources(target,options,service,{},(...args)=>logs.push(args));
+ assert.ok(rows.every(target=>target.selectedCandidate?.source==='迅雷'));
+ assert.equal(requests.filter(host=>host==='api.subdl.com').length,1);
+ assert.ok(logs.some(([phase])=>phase==='整季来源失败'));
+ assert.equal(logs.filter(([phase])=>phase==='整季缓存失败').length,2);
+ assert.equal(service.searchUnavailable('SubDL'),undefined);
+ const nextWork=row(1);
+ nextWork.parsed.tmdbId='43';
+ await service.prepareSeason([nextWork],options);
+ await ctx.searchSubtitleSources(nextWork,options,service,{});
+ assert.equal(nextWork.selectedCandidate?.source,'迅雷');
+ assert.equal(requests.filter(host=>host==='api.subdl.com').length,2,'Conflict state is scoped to the queried work');
+ for(const status of [401,403,429,509,502]){
+  let resumed=0;
+  const target=row(1), failing={
+   subdlCachedEpisode:async()=>{throw Object.assign(Error('来源失败'),{status,stop:true});},
+   thunderSearch:async()=>{resumed++;return [];}
+  };
+  await ctx.searchSubtitleSources(target,options,{...failing,subdlSearch:async()=>{throw ctx.subtitleSourceError('来源失败',{status});}}, {});
+  assert.equal(resumed,1);
+  assert.equal(ctx.subtitleSearchState(target),'failed');
+ }
+ const driveError=Object.assign(Error('网盘登录失效'),{phase:'drive-auth',status:403,stop:true});
+ await assert.rejects(ctx.searchSubtitleSources(row(1),options,{subdlCachedEpisode:async()=>{throw driveError;}},{}),error=>error===driveError);
+ await assert.rejects(ctx.searchSubtitleSources(row(1),options,{subdlCachedEpisode:async()=>null},{}),/整季缓存未返回候选列表/);
+ console.log('PASS source isolation: conflicting season cache, provider errors, drive authorization and invalid contracts');
+}
 async function uiAuth(){
  const elements=new Map();let apiCalls=0,searches=0,downloads=0;
  const element=()=>({value:'',checked:false,disabled:false,hidden:false,dataset:{},style:{},children:[],textContent:'',append(...c){this.children.push(...c)},appendChild(c){this.children.push(c)},replaceChildren(...c){this.children=c},querySelectorAll(){return []}});
@@ -74,4 +117,4 @@ async function uiStop(){
  assert.match(elements.get('subtitleSummary').textContent,/缺可用字幕 2/);
  console.log('PASS log UI stop: fatal download error pauses on first candidate; no sibling failures, deferred queries or uploads; remaining work is not attempted');
 }
-(async()=>{await names();await auth();await uiAuth();await uiStop()})().catch(e=>{console.error(e);process.exitCode=1});
+(async()=>{await names();await auth();await sourceIsolation();await uiAuth();await uiStop()})().catch(e=>{console.error(e);process.exitCode=1});

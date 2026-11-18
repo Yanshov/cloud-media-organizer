@@ -122,7 +122,7 @@ async function sourceOrder() {
     await ctx.searchSubtitleSources(r,config,service,drive,()=>{},()=>{},true);
     assert.deepEqual(calls,['thunder','subdl'],'Download fallback stops as soon as a reliable alternative is found');
     await ctx.searchSubtitleSources(r,config,service,drive,()=>{},()=>{},true);assert.equal(calls.length,2,'Repeated resume makes no request after the deferred fallback was checked');
-    calls.length=0;service.subdlSearch=async()=>{calls.push('subdl');return []};service.thunderSearch=async()=>{calls.push('thunder');throw Error('HTTP 429')};
+    calls.length=0;service.subdlSearch=async()=>{calls.push('subdl');return []};service.thunderSearch=async()=>{calls.push('thunder');throw Object.assign(Error('HTTP 429'),{status:429})};
     r=row();await ctx.searchSubtitleSources(r,config,service,drive);
     assert.deepEqual(calls,['thunder','subdl','open']);assert.equal(r.sources.find(s=>s.name==='迅雷').error,'HTTP 429');
     assert.equal(ctx.subtitleSearchState(r),'failed');

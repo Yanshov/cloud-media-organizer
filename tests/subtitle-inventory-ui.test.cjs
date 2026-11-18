@@ -11,7 +11,7 @@ function element(tag = '') {
 }
 const videos = ['complete','ready','failure','invalid','pending'].map((id,index) => ({id, parentId:'folder-' + id, name:'同名影片.2020.mkv', size:10000,
     folders:['目录' + index], path:'目录' + index + '/同名影片.2020.mkv'}));
-const valid = new TextEncoder().encode('1\n00:00:01,000 --> 00:00:03,000\n合成中文字幕 Test\n');
+const valid = new TextEncoder().encode('1\n00:00:01,000 --> 00:20:03,000\n合成中文字幕 Test\n');
 const linked = new Map(['complete','invalid','pending'].map(id => [id,[{id:'s-' + id, parentId:'folder-' + id, name:'同名影片.2020.zh-cn.srt',size:30}]]));
 const siblings = new Map(videos.map(video => [video.parentId,[video,...(linked.get(video.id)||[])]]));
 const elements = new Map(), queried = [], deleted = [];
@@ -41,12 +41,12 @@ const ctx = vm.createContext({URL, TextEncoder, TextDecoder, Uint8Array, Date,
     mediaContext:async()=>({selected:[{id:'chosen',name:'本次所选文件夹'}],session:{provider:'123',token:'test',base:'https://drive.example',headers:{}},source:{children:async({id})=>siblings.get(id)||[]},path:'影视库'}),
     parseMediaName:name => {
         const episode = name.match(/S01E(\d+)/)?.[1];
-        return episode ? {query:'假面骑士双骑',year:2009,tv:true,season:1,episode:Number(episode)} : {query:'同名影片',year:2020,tv:false};
+        return episode ? {query:name.startsWith('第二部') ? '第二部' : '假面骑士双骑',year:2009,tv:true,season:1,episode:Number(episode)} : {query:'同名影片',year:2020,tv:false};
     }, mediaBonusName:() => false, mediaRecords:{get:() => null,restore:(...args)=>restoreResult?.(...args)}, mediaStem:name => name.replace(/\.[^.]+$/,''),
     createSubtitleService:() => ({thunderSearch:async row => {
         queried.push(row.node.id);
         if (candidateResult) return candidateResult(row);
-        if (row.node.id === 'failure' || row.node.id === 'ep-48') throw Error('来源连接失败');
+        if (row.node.id === 'failure' || row.node.id === 'ep-48') throw Object.assign(Error('来源连接失败'),{phase:'subtitle-source'});
         if (row.node.id === 'ep-47') return [{source:'迅雷',name:'假面骑士双骑.S01E47.简体.srt',language:'zh-cn'}];
         if (row.node.id === 'invalid') return [{source:'迅雷',name:'未确认字幕.srt',language:'zh-cn'}];
         return row.node.id === 'ready' ? [{source:'迅雷',name:'同名影片.2020.简体.srt',language:'zh-cn',titleMatched:true}] : [];
@@ -170,6 +170,7 @@ const view = value => {get('subtitleView').value = value; get('subtitleView').on
     await seasonSummary();
     await incrementalChecks();
     await seasonPlans();
+    await stageProgress();
     console.log('PASS subtitle directory inventory: scan makes no provider/write calls; expanded results, full paths, filters/empty states, fill updates, stale-scan clearing and previewed safe batch deletion (mocked API/DOM)');
 })().catch(error => {console.error(error); process.exitCode = 1;});
 
@@ -304,6 +305,60 @@ async function seasonPlans() {
     await get('recheckSubtitles').onclick();
     assert.equal(controls().length,0,'A new inventory removes all plan controls');
     assert.equal(get('fillSubtitles').disabled,true);
+}
+
+async function stageProgress() {
+    const bar = get('subtitleMeter');
+    trackResult = () => ({chinese:false});
+    season = Array.from({length:319}, (_,index) => {
+        const episode = index < 160 ? index+1 : index-159;
+        const name = (index < 160 ? '第一部' : '第二部') + '.S01E' + String(episode).padStart(2,'0') + '.mkv';
+        const folder = index < 160 ? '进度甲' : '进度乙';
+        return {id:'progress-'+index,parentId:folder,name,size:10000,folders:[folder],path:folder+'/'+name};
+    });
+    await get('recheckSubtitles').onclick();
+    assert.deepEqual([bar.value,bar.max,bar.hidden],[319,319,false]);
+    const wait = gate(), started = [];
+    candidateResult = async row => {
+        started.push(row.node.id);
+        if (row.node.id === 'progress-0' || row.node.id === 'progress-160') await wait.promise;
+        if (row.node.id === 'progress-3') throw Object.assign(Error('来源网络中断'),{phase:'subtitle-source'});
+        return row.node.id === 'progress-2' ? [{source:'迅雷',name:'合成简体.srt',language:'zh-cn',titleMatched:true}] : [];
+    };
+    const searching = get('readSubtitles').onclick();
+    await until(() => started.length === 2);
+    assert.deepEqual([bar.value,bar.max,bar.hidden],[0,319,false]);
+    wait.resolve();
+    await searching;
+    assert.deepEqual([bar.value,bar.max,bar.hidden],[319,319,false]);
+    assert.match(get('subtitleProgress').textContent,/已处理 319\/319.*1 项遇到来源错误/);
+    await get('fillSubtitles').onclick();
+    assert.deepEqual([bar.value,bar.max,bar.hidden],[1,1,false]);
+    await get('fillSubtitles').onclick();
+    assert.deepEqual([bar.value,bar.max,bar.hidden],[0,1,true]);
+
+    for (const authFailure of [false,true]) {
+        const a = gate(), b = gate(), visited = [];
+        candidateResult = async row => {
+            const id = row.node.id;
+            visited.push(id);
+            if (id === 'progress-160') await b.promise;
+            if (id === 'progress-1') await a.promise;
+            return [];
+        };
+        const interrupted = get('readSubtitles').onclick();
+        await until(() => bar.value === 1 && visited.includes('progress-1') && visited.includes('progress-160'));
+        if (authFailure) a.reject(Object.assign(Error('网盘登录失效'),{phase:'drive-auth',status:401,stop:true}));
+        else { get('stopSubtitles').onclick(); a.resolve(); }
+        for (let i=0;i<30;i++) await Promise.resolve();
+        assert.equal(panelBusy,true);
+        b.resolve();
+        await interrupted;
+        assert.deepEqual([bar.value,bar.max,bar.hidden],[1,318,false]);
+        assert.match(get('subtitleProgress').textContent,/已处理 1\/318/);
+        assert.deepEqual(visited.sort(),['progress-0','progress-1','progress-160']);
+    }
+    console.log('PASS stage progress: 319 completed items, two concurrent works, resets, partial stop and authorization drain');
 }
 
 function gate() {

@@ -128,7 +128,7 @@ async function subtitles() {
     assert.deepEqual(calls,['thunder']);assert.equal(r.selectedCandidate,bilingual);
     bilingual.downloadFailed=true;await ctx.searchSubtitleSources(r,{thunder:true,subdl:true,subdlKey:'k',open:false,language},service,drive,()=>{},()=>{},true);assert.equal(r.selectedCandidate,mono);delete bilingual.downloadFailed;
     assert.deepEqual(calls,['thunder','subdl']);
-    calls=[];service.thunderSearch=async()=>{calls.push('thunder');return []};service.search=async()=>{calls.push('open');return [bilingual]};service.subdlSearch=async()=>{calls.push('subdl');throw Error('HTTP 509')};
+    calls=[];service.thunderSearch=async()=>{calls.push('thunder');return []};service.search=async()=>{calls.push('open');return [bilingual]};service.subdlSearch=async()=>{calls.push('subdl');throw Object.assign(Error('HTTP 509'),{status:509})};
     r=row();await ctx.searchSubtitleSources(r,{thunder:true,subdl:true,subdlKey:'k',open:true,key:'k',language},service,drive);
     assert.equal(r.sources.find(s=>s.name==='SubDL').error,'HTTP 509');assert.equal(r.selectedCandidate,bilingual);assert.equal(calls.at(-1),'open');
     calls=[];service.subdlSearch=async()=>{calls.push('subdl');stop=true;return []};

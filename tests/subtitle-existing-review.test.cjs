@@ -39,7 +39,7 @@ async function durationAndCache() {
     const key = [...storage.keys()].find(key=>key.startsWith('cross-drive-subtitle-verified-v1:'));
     const current = reloaded.verified.get(sub,language,r);
     const oldContext = JSON.parse(current.context);
-    oldContext[0] = 2;
+    oldContext[0] = 3;
     storage.set(key,[[JSON.stringify(['s',sub.size,sub.md5]),{...current,context:JSON.stringify(oldContext)}]]);
     const legacy = makeDrive(); legacy.read = drive.read;
     await ctx.inspectExistingSubtitles(r,legacy,language); assert.equal(reads,before+3,'Earlier timing policy cannot bypass new checks');

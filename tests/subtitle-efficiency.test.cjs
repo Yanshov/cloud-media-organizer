@@ -31,7 +31,7 @@ async function sources() {
  console.log('PASS efficiency sources: title providers run in order; reliable candidates defer later calls; failed downloads resume deferred providers once; unconfirmed and English cases remain covered');
 }
 async function fillFallback() {
- const elements=new Map(),calls=[],valid=new TextEncoder().encode('1\n00:00:01,000 --> 00:00:03,000\n中文字幕 Test\n');let saves=0;
+ const elements=new Map(),calls=[],valid=new TextEncoder().encode('1\n00:00:01,000 --> 00:20:03,000\n中文字幕 Test\n');let saves=0;
  const element=()=>({value:'',checked:false,disabled:false,hidden:false,dataset:{},style:{},children:[],textContent:'',append(...children){this.children.push(...children)},appendChild(child){this.children.push(child)},replaceChildren(...children){this.children=children},querySelectorAll(){return []}});
  const video={id:'v',name:'瑞克和莫蒂.2013.S01E01.mkv',size:10000,folders:[],path:'瑞克和莫蒂.2013.S01E01.mkv'};
  const bi={source:'SubDL',name:'瑞克和莫蒂.S01E01.简体&英文.ass',language:'zh-cn',bilingual:true,titleMatched:true};

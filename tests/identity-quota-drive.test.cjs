@@ -70,7 +70,7 @@ async function remoteErrors() {
     const ctx = vm.createContext({URL, ArrayBuffer, Uint8Array, TextDecoder, Date,
         GM_xmlhttpRequest:options => options.onload(reply)
     });
-    vm.runInContext(part('    function subtitleRemoteJson(', '    function subtitleMd5('), ctx);
+    vm.runInContext(part('    function subtitleRemoteJson(', '    function subtitleMd5(')+part('    function subtitleSourceError(', '    function subtitleFileInfo('), ctx);
     const request = () => vm.runInContext('subtitleRemoteJson("https://api.subdl.com/api/v1/subtitles")', ctx);
     reply = {status:509,responseText:'<html>quota exceeded</html>',responseHeaders:'Retry-After: 80\r\n'};
     await assert.rejects(request(), error => error.status === 509 && error.retryAfterMs === 80000);

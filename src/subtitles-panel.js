@@ -97,7 +97,12 @@
             try { mediaAIEndpoint(config); return createMediaAI(config); }
             catch (error) { diag('AI 设置', '设置无效，跳过 AI：' + error.message); return null; }
         };
-        const meter = (done, total) => { const bar = ui.get('subtitleMeter'); bar.hidden = false; bar.max = total || 1; bar.value = done; };
+        const meter = (done, total) => {
+            const bar = ui.get('subtitleMeter');
+            bar.hidden = total === 0;
+            bar.max = total || 1;
+            bar.value = done;
+        };
         const awaitingCheck = row => row.checkState && row.checkState !== 'done';
         const covered = row => !awaitingCheck(row) && subtitleCovered(row);
         const needsChoice = row => !awaitingCheck(row) && !covered(row) && !row.writeBlocked && subtitleSearchState(row) === 'choice';
@@ -381,10 +386,12 @@
             render();
         });
         const searchRows = async rows => {
+            meter(0,0);
             rows = rows.filter(row => !subtitleCovered(row) && !row.writeBlocked);
             if (!rows.length) { status(inventory.length ? '本次检查范围内没有可查找的缺字幕项目。' : '本次检查范围内没有正片视频。'); return; }
             const config = settings();
             if (!config.thunder && !(config.open && config.key) && !(config.subdl && config.subdlKey)) { ui.openSettings('subtitleSettings'); status('请启用迅雷免 Key 搜索，或配置其他字幕来源。'); return; }
+            meter(0,rows.length);
             diag('查找开始', `视频 ${rows.length}，语言 ${config.language}，启用来源：${[config.thunder && '迅雷', config.subdl && 'SubDL', config.open && config.key && 'OpenSubtitles'].filter(Boolean).join('、') || '无'}`);
             if (!config.thunder) diag('来源跳过', '迅雷 已关闭');
             if (!config.open) diag('来源跳过', 'OpenSubtitles 已关闭');
@@ -438,8 +445,16 @@
                     meter(++done, rows.length); render();
                   }
                 }, check);
-                status('查找结束：' + subtitleSearchSummary(inventory) + '。'); diag('查找结束', subtitleSearchSummary(inventory));
-            } catch (error) { status(error.message); diag(cancelled ? '已停止' : '查找中断', error.message); }
+                const sourceFailures = rows.filter(row => row.sources?.some(source => source.error || source.paused || source.cacheError
+                    || source.queries?.some(query => query.error))).length;
+                const message = '已处理 ' + done + '/' + rows.length + ' · ' + (sourceFailures ? sourceFailures + ' 项遇到来源错误 · ' : '')
+                    + subtitleSearchSummary(rows);
+                status('查找结束 · ' + message); diag('查找结束',message);
+            } catch (error) {
+                const message = '已处理 ' + done + '/' + rows.length + ' · ' + error.message;
+                status((cancelled ? '查找已停止 · ' : '查找中断 · ') + message);
+                diag(cancelled ? '已停止' : '查找中断',message);
+            }
         };
         const inspectEmbedded = async (row, check, currentDrive = drive) => {
             if (row.embedded) return;
@@ -476,7 +491,8 @@
             deleteSelection.clear(); clearDeletePreview();
             ui.get('subtitleView').value = 'incomplete';
             ui.get('subtitleResults').scrollTop = 0;
-            ui.get('subtitleMeter').hidden = true;
+            meter(0,0);
+            let done = 0, total = 0;
             status('正在读取目录…');
             render();
             try {
@@ -488,6 +504,7 @@
                 const names = context.selected.slice(0, 3).map(item => item.name).filter(Boolean);
                 const selection = names.length ? '（' + names.join('、') + (context.selected.length > names.length ? '等' : '') + '）' : '';
                 const rows = subtitleInventory(collected, context.path);
+                total = rows.length;
                 for (const row of rows) row.checkState = 'waiting';
                 inventory = rows;
                 batch.scope = '本次范围：/' + (context.path || '') + ' · 选中 ' + context.selected.length + ' 项' + selection + ' · 视频 ' + rows.length;
@@ -500,7 +517,6 @@
                 const review = ai ? createSubtitleBodyReviewer(ai, diag, verifyScan) : null;
                 if (force) diag('复查范围', ai ? '格式、语言、已有时长参考及 AI 对白证据；不核对音画同步' : 'AI 未启用，仅检查格式、语言、已有时长参考；作品归属和音画同步未确认');
                 diag('目录扫描', '视频 ' + rows.length + '，已关联字幕 ' + rows.filter(row => row.subtitles.length).length + ' 组');
-                let done = 0;
                 const fatal = error => error.stop || error.phase === 'drive-auth' || [401,403].includes(error.status);
                 await forEachConcurrent(rows, 3, async (row, verify) => {
                     verify();
@@ -549,14 +565,17 @@
                 drive = currentDrive;
                 subtitleContext = context;
                 checkedScope = batch.scope;
-                status(rows.length ? '已检查选中范围。' : '选中范围没有正片视频。');
-                diag('字幕检查', rows.length ? '完成，已有字幕确认 ' + rows.filter(covered).length + '/' + rows.length : '选中范围没有正片视频');
+                const unconfirmed = rows.filter(row => subtitleCoverageState(row) === 'unconfirmed').length;
+                const message = rows.length ? '已检查 ' + done + '/' + total + ' · 有字幕 ' + rows.filter(covered).length
+                    + (unconfirmed ? ' · 检查未确认 ' + unconfirmed : '') : '选中范围没有正片视频';
+                status(message); diag('字幕检查',message);
             } catch (error) {
                 if (scan !== batch) return false;
                 batch.interrupted = true;
                 for (const row of inventory) if (awaitingCheck(row)) row.checkState = 'interrupted';
-                status('检查结束：' + error.message);
-                diag('检查失败', error.message);
+                const message = (total ? '已检查 ' + done + '/' + total + ' · ' : '目录读取未完成 · ') + error.message;
+                status('检查结束 · ' + message);
+                diag('检查失败',message);
             } finally {
                 batch.running = false;
                 if (scan === batch) render();
@@ -621,10 +640,14 @@
             }
         }, true);
         ui.get('fillSubtitles').onclick = () => runTask(async () => {
-            if (!drive) return;
+            meter(0,0);
+            if (!drive) { status('请先检查目录字幕。'); return; }
             const rows = inventory.filter(row => !subtitleCovered(row) && !row.writeBlocked && row.selectedCandidate && !row.selectedCandidate.downloadFailed), config = settings();
+            if (!rows.length) { status('当前没有可补齐的字幕候选。'); return; }
+            meter(0,rows.length);
             config.reviewCandidates = reviewCandidates;
             let done = 0, failed = 0;
+            const pausedDownloads = new Set();
             try {
                 drive.assertReady?.();
                 for (const row of rows) {
@@ -633,7 +656,8 @@
                         status(`下载字幕 ${done + failed + 1}/${rows.length}：${row.node.name}`);
                         const candidates = row.manualCandidate ? [row.selectedCandidate] : [row.selectedCandidate, ...(row.autoCandidates || []).filter(item => item !== row.selectedCandidate)];
                         diag('下载开始', `${row.node.name} · ${candidates.length} 个候选`);
-                        let payload = null; const failures = [], attempted = new Set();
+                        let payload = null, suspicious = false;
+                        const failures = [], attempted = new Set();
                         while (candidates.length || !row.manualCandidate && row.sources.some(source => source.deferred || source.deferredTerms?.length)) {
                             if (!candidates.length) {
                                 diag('来源补查', `${row.node.name} · 已有候选下载失败，查询此前暂缓的来源`);
@@ -644,6 +668,10 @@
                             const candidate = candidates.shift();
                             attempted.add(candidate);
                             check();
+                            if (pausedDownloads.has(candidate.source)) {
+                                failures.push(candidate.source + ' 本批下载已暂停');
+                                continue;
+                            }
                             try {
                                 diag('候选下载', `${row.node.name} · ${subtitleCandidateLabel(candidate)} 开始`);
                                 const {result, bytes} = await service.fetchFile(candidate, config, (phase, message) => diag(phase, `${row.node.name} · ${message}`), check); check();
@@ -651,18 +679,30 @@
                                 diag('正文校验', `${row.node.name} · ${candidate.source} 格式与语言通过，${bytes.length} 字节，${result.ext.toUpperCase()} · ${subtitleVerificationMessage(verification)}`);
                                 payload = {candidate, result, bytes, verification}; break;
                             } catch (error) {
-                                candidate.downloadFailed = true;
                                 check();
+                                if (error.phase === 'drive-auth' || error.stop && !isSubtitleSourceError(error)) throw error;
+                                candidate.downloadFailed = true;
+                                suspicious ||= !!error.subtitleSuspicious;
                                 const source = row.sources?.find(source => source.name === candidate.source);
                                 if (source) saveSubtitleSourceReport(source, config, {downloadErrors:[error.message]});
-                                if (!row.manualCandidate) selectSubtitleCandidate(row, config.language);
+                                const paused = isSubtitleSourceError(error) && subtitleSourcePaused(candidate.source,error)
+                                    || error.phase === 'transfer' && [429,509].includes(error.status);
+                                if (paused) {
+                                    pausedDownloads.add(candidate.source);
+                                    service.pauseSearchSource?.(candidate.source,error.message);
+                                    if (source) source.paused = subtitleDiagnosticText(error.message,config);
+                                }
+                                if (row.manualCandidate) row.selectedCandidate = null;
+                                else selectSubtitleCandidate(row, config.language);
                                 row.searchMessage = subtitleSearchMessage(row);
-                                if (error.stop) { row.selectedCandidate = null; throw error; }
                                 failures.push(candidate.source + ' · ' + (candidate.name || candidate.release) + '：' + error.message);
                                 diag('候选失败', `${row.node.name} · ${candidate.source}：${error.message}`);
                             }
                         }
-                        if (!payload) throw new Error('候选均未通过下载/正文检查：' + failures.join('；'));
+                        if (!payload) {
+                            if (suspicious) row.coverageUnconfirmed = true;
+                            throw new Error((suspicious ? '字幕可疑，待确认：' : '候选均未通过下载/正文检查：') + failures.join('；'));
+                        }
                         const {candidate, result, bytes, verification} = payload;
                         const language = candidate.language || (config.language === 'en' ? 'en' : 'zh');
                         const name = mediaStem(row.node.name) + '.' + language.replace(/[^a-z0-9-]/gi, '') + '.' + result.ext;
@@ -673,14 +713,18 @@
                         row.error = error.message;
                         if (error.pendingUpload) row.writeBlocked = true;
                         diag(cancelled ? '已停止' : '未补齐', `${row.node.name}：${error.message}`);
-                        if (cancelled) throw error;
+                        if (cancelled || error.stop || error.phase === 'drive-auth') throw error;
                         failed++;
-                        if (error.stop) throw error;
                     }
                     meter(done + failed, rows.length); render();
                 }
-                status(`补齐结束：已补齐 ${done}，未补齐 ${failed}。`); diag('补齐结束', `已补齐 ${done}，未补齐 ${failed}`);
-            } catch (error) { status(`已中断：已补齐 ${done}，未补齐 ${rows.length - done}；${error.message}`); diag('补齐中断', error.message); }
+                const message = `已处理 ${done + failed}/${rows.length} · 已补齐 ${done} · 未补齐 ${failed}`;
+                status('补齐结束 · ' + message); diag('补齐结束',message);
+            } catch (error) {
+                // An interrupted item may have a receipt, but it did not finish processing.
+                const message = `已处理 ${done + failed}/${rows.length} · 已补齐 ${done} · ${error.message}`;
+                status('补齐中断 · ' + message); diag('补齐中断',message);
+            }
         }, true);
         ui.get('stopSubtitles').onclick = () => { cancelled = true; ui.get('stopSubtitles').disabled = true; status('等待当前请求结束后停止…'); };
         ui.get('clearSubtitleLog').onclick = () => { logLines.length = 0; ui.get('subtitleLog').value = ''; diag('日志', '已清空'); };

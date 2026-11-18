@@ -192,8 +192,8 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 #subtitleResults{flex:1 1 0;min-height:0;overflow:auto;overscroll-behavior:contain;overflow-anchor:none;scrollbar-gutter:stable;container-type:size}#subtitleResults:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 #subtitleSummary{flex:none;padding:10px 12px;font-size:15px;overflow-wrap:anywhere}
 #subtitlePane .tool-surface{overflow:hidden}
-#subtitleRows{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:stretch}
-#subtitleRows>.subtitle-card{min-height:100cqh;margin:0;overflow-wrap:anywhere}
+#subtitleRows{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:stretch;align-content:start}
+#subtitleRows>.subtitle-card{margin:0;overflow-wrap:anywhere}
 .subtitle-action-view{grid-column:1/-1;margin:0;overflow-wrap:anywhere}
 #subtitleRows>.sync-item{padding:12px}
 #subtitleRows h5,#subtitleRows p{margin-block:0 4px}
@@ -219,6 +219,10 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 .tool-utilities{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-left:auto}.tool-utilities>.tool-card{padding:0;border:0;background:transparent;margin:0}.tool-utilities summary{padding:2px 0;font-size:15px;font-weight:500;color:var(--muted)}
 .tool-statusbar:has(.tool-utilities>details[open]){display:block}.tool-utilities:has(>details[open]){display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin-top:10px}.tool-utilities>details[open]{grid-column:1/-1;color:var(--text);min-width:0}
 #subtitlePane .tool-statusbar{align-items:flex-end;margin-top:10px}#subtitlePane .tool-status-text{min-width:0}#subtitleProgress{max-height:3.8em;overflow:auto;scrollbar-width:none}
+#subtitleMeter{width:100%;border:0;appearance:none;background:var(--border)}
+#subtitleMeter::-webkit-progress-bar{background:var(--border)}
+#subtitleMeter::-webkit-progress-value{background:var(--text)}
+#subtitleMeter::-moz-progress-bar{background:var(--text)}
 #subtitleScope{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #subtitlePane .tool-statusbar:has(.tool-utilities>details[open]){max-height:40%;overflow:auto}#subtitleDeleteList{overflow-wrap:anywhere}
 #log{white-space:pre-wrap;overflow-wrap:anywhere;font:14px/1.7 Consolas,"Microsoft YaHei",monospace;max-height:180px;overflow:auto}#log:empty{display:none}#log>div+div{margin-top:6px}

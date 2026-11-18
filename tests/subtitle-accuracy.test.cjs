@@ -48,6 +48,13 @@ for (const [end,runtime] of [['00:23:15,700',540],['03:17:22,400',15780]]) {
     assert.equal(ctx.subtitleCheckDuration({node:{name:'参考样例'},parsed},srt(end),'srt').evidence,'reference-difference');
 }
 assert.throws(()=>ctx.subtitleCheckDuration({node:{name:'视频',durationSeconds:100},parsed:{}},srt('00:03:00,000'),'srt'),/视频文件时长冲突/);
+const shortCue = srt('00:00:59,200');
+const tiny = shortCue + ' '.repeat(637 - Buffer.byteLength(shortCue));
+const episode = {node:{name:'黄金保龄球.2002.S01E01.mkv'},parsed:{tv:true,season:1,episode:1}};
+assert.throws(()=>ctx.subtitleCheckDuration(episode,tiny,'srt',log),error=>error.subtitleSuspicious && /59.2 秒/.test(error.message));
+assert.doesNotThrow(()=>ctx.subtitleCheckDuration({...episode,node:{...episode.node,durationSeconds:60}},tiny,'srt'));
+assert.doesNotThrow(()=>ctx.subtitleCheckDuration({...episode,parsed:{...episode.parsed,standalone:true}},tiny,'srt'));
+assert.doesNotThrow(()=>ctx.subtitleCheckDuration({node:{name:'一部短片.mkv'},parsed:{tv:false}},tiny,'srt'));
 const filter=(query,name)=>ctx.subtitleCandidateFilter({query,tv:false},[],name);
 for(const [query,name] of [
     ['假面骑士极狐','[60帧蓝光剪辑]假面骑士海帕甲斗.合集重制版.ass'],
@@ -76,5 +83,26 @@ async function candidateFallback() {
     assert.ok(logs.some(line=>/候选失败.*字幕不完整/.test(line)));
     assert.ok(logs.some(line=>/候选失败.*时间轴存在极端对白范围/.test(line)));
     assert.equal(Buffer.from(saved[0]).toString(),srt('01:50:00,000'));
+    for (const manualCandidate of [false,true]) {
+        const again = {...episode,complete:false,manualCandidate,subtitles:[],sources:[]};
+        const short = {source:'迅雷',name:'极短字幕.srt'};
+        Object.assign(again,{candidates:[short],selectedCandidate:short,autoCandidates:[short]});
+        ctx.inventory = [again];
+        ctx.service.fetchFile = async()=>({result:{ext:'srt'},bytes:new TextEncoder().encode(tiny)});
+        await elements.fillSubtitles.onclick();
+        assert.equal(saved.length,1);
+        assert.equal(again.complete,false);
+        assert.equal(again.coverageUnconfirmed,true);
+        assert.match(again.error,/字幕可疑，待确认/);
+    }
+    const short = {source:'迅雷',name:'只到片头.srt'};
+    const full = {source:'迅雷',name:'正常候选.srt'};
+    const retry = {...episode, complete:false, subtitles:[], sources:[], candidates:[short,full], selectedCandidate:short, autoCandidates:[short,full]};
+    ctx.inventory = [retry];
+    ctx.service.fetchFile = async candidate => ({result:{ext:'srt'},bytes:new TextEncoder().encode(candidate === short ? tiny : srt('00:23:00,000'))});
+    await elements.fillSubtitles.onclick();
+    assert.equal(saved.length,2);
+    assert.equal(Buffer.from(saved[1]).toString(),srt('00:23:00,000'));
+    assert.equal(retry.complete,true);
 }
 candidateFallback().then(()=>console.log('PASS subtitle accuracy: real resource filters, Latin accents/kana, subtitle timing and production candidate fallback')).catch(error=>{console.error(error);process.exitCode=1;});
