@@ -48,7 +48,7 @@
         const status = create('section', 'tool-card tool-status');
         status.append(create('h4', '', '当前状态'));
         const statusIds = id === 'subtitle' ? ['subtitleScope','subtitleProgress','subtitleMeter']
-            : id === 'media' ? ['mediaTarget','mediaProgress','mediaMeter','mediaSummary','mediaRecordState'] : ['status','target','progress'];
+            : id === 'media' ? ['mediaTarget','mediaProgress','mediaBar','mediaSummary','mediaRecordState'] : ['status','target','progress'];
         for (const name of statusIds) take(status, '#' + name);
         side.append(status);
         const heading = create('div', 'tool-list-heading');
@@ -215,19 +215,23 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 .tool-main:has(#mediaRows:not(:empty))>.media-empty,.tool-main:has(#mediaPreview:not(:empty))>.media-empty{display:none}.tool-preview{margin-top:14px}.tool-preview:not(:has(#mediaPreview:not(:empty))){display:none}
 #mediaPreview:not(:empty),#emptyPreview:not(:empty){max-height:none!important;overflow:visible!important;padding:12px 0;margin:12px 0;font-size:14px}
 .tool-statusbar{display:flex;align-items:flex-start;gap:20px;flex-wrap:wrap;margin-top:20px;padding-top:12px;border-top:1px solid var(--border);font-size:15px;color:var(--muted)}
-.tool-status-text{flex:1;min-width:180px}.tool-status-text p{margin:0;line-height:1.9;font-size:15px}.tool-status-text p:empty{display:none}.tool-status-text progress{accent-color:var(--accent);height:6px!important;margin:6px 0!important}.tool-status-text label{margin:0;font-size:15px}.tool-status-text #mediaMeter{margin:0}
+.tool-status-text{flex:1;min-width:180px}.tool-status-text p{margin:0;line-height:1.9;font-size:15px}.tool-status-text p:empty{display:none}.tool-status-text progress{accent-color:var(--accent);height:6px!important;margin:6px 0!important}.tool-status-text label{margin:0;font-size:15px}
 .tool-utilities{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-left:auto}.tool-utilities>.tool-card{padding:0;border:0;background:transparent;margin:0}.tool-utilities summary{padding:2px 0;font-size:15px;font-weight:500;color:var(--muted)}
 .tool-statusbar:has(.tool-utilities>details[open]){display:block}.tool-utilities:has(>details[open]){display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin-top:10px}.tool-utilities>details[open]{grid-column:1/-1;color:var(--text);min-width:0}
-#subtitlePane .tool-statusbar{align-items:flex-end;margin-top:10px}#subtitlePane .tool-status-text{min-width:0}#subtitleProgress{max-height:3.8em;overflow:auto;scrollbar-width:none}
-#subtitleMeter{width:100%;border:0;appearance:none;background:var(--border)}
-#subtitleMeter::-webkit-progress-bar{background:var(--border)}
-#subtitleMeter::-webkit-progress-value{background:var(--text)}
-#subtitleMeter::-moz-progress-bar{background:var(--text)}
-#subtitleScope{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+:is(#subtitlePane,#mediaPane) .tool-statusbar{align-items:flex-end;margin-top:10px}
+:is(#subtitlePane,#mediaPane) .tool-status-text{min-width:0}
+:is(#subtitleProgress,#mediaProgress){max-height:3.8em;overflow:auto;scrollbar-width:none;overflow-wrap:anywhere}
+#mediaPane .tool-layout{display:flex;min-height:0}
+#mediaPane .tool-main{flex:1;overflow:auto;overscroll-behavior:contain}
+:is(#subtitleMeter,#mediaBar){display:block;width:100%;border:0;appearance:none;background:var(--border)}
+:is(#subtitleMeter,#mediaBar)::-webkit-progress-bar{background:var(--border)}
+:is(#subtitleMeter,#mediaBar)::-webkit-progress-value{background:var(--text)}
+:is(#subtitleMeter,#mediaBar)::-moz-progress-bar{background:var(--text)}
+:is(#subtitleScope,#mediaTarget){overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #subtitlePane .tool-statusbar:has(.tool-utilities>details[open]){max-height:40%;overflow:auto}#subtitleDeleteList{overflow-wrap:anywhere}
 #log{white-space:pre-wrap;overflow-wrap:anywhere;font:14px/1.7 Consolas,"Microsoft YaHei",monospace;max-height:180px;overflow:auto}#log:empty{display:none}#log>div+div{margin-top:6px}
-#subtitlePane .tool-statusbar:has(#subtitleDiagnostics[open]){max-height:none;overflow:visible}#subtitleDiagnostics .panel-actions{margin:4px 0 8px}#subtitlePane:has(#subtitleDiagnostics[open]) .tool-intro p{display:none}
-#subtitleLog{display:block;width:100%;height:clamp(56px,calc(36cqh - 128px),180px);resize:none;overflow:auto;scrollbar-width:none;overscroll-behavior:contain}
+#subtitlePane .tool-statusbar:has(#subtitleDiagnostics[open]){max-height:none;overflow:visible}:is(#subtitleDiagnostics,#mediaDiagnostics) .panel-actions{margin:4px 0 8px}#subtitlePane:has(#subtitleDiagnostics[open]) .tool-intro p{display:none}
+:is(#subtitleLog,#mediaLog){display:block;width:100%;height:clamp(56px,calc(36cqh - 128px),180px);resize:none;overflow:auto;scrollbar-width:none;overscroll-behavior:contain}
 @container(max-height:660px){
     #subtitlePane .tool-intro p{display:none}
     #subtitlePane .tool-intro h3{font-size:20px}
@@ -239,7 +243,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
     #subtitleRows .subtitle-result{margin-top:4px}
     #subtitleRows .subtitle-result+.subtitle-result{padding-top:4px}
     #subtitleRows .subtitle-result select{padding-block:4px}
-    #subtitlePane:has(#subtitleDiagnostics[open]) #subtitleLog{height:38px}
+    :is(#subtitleLog,#mediaLog){height:38px}
 }
 .sync-preview{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px}.sync-preview h4{margin:0 0 8px}.sync-preview p{margin:6px 0}#syncList{overflow-wrap:anywhere;font-size:15px}#syncDestination{font-weight:600}
 .export-options{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin:12px 0}.export-options input{width:auto}.export-options button{font-size:14px;padding:7px 12px}.credential-head{display:flex;justify-content:space-between;align-items:center;gap:12px}.credential-head a{font-size:15px;flex-shrink:0}

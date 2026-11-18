@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v3.0（重构版）
 // @namespace    local.cloud-media-organizer
-// @version      3.3.18
+// @version      3.3.19
 // @description  百度/123/光鸭跨盘清单，123/光鸭影视整理、字幕搜索与核验上传
 // @match        https://pan.baidu.com/*
 // @match        https://yun.baidu.com/*
@@ -40,7 +40,7 @@
     if (typeof navigator !== 'undefined' && (navigator.userAgentData?.mobile || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
         navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) return;
 
-    const VERSION = '3.3.18';
+    const VERSION = '3.3.19';
     let jsonTaskStopped = false;
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
@@ -358,7 +358,7 @@
         const status = create('section', 'tool-card tool-status');
         status.append(create('h4', '', '当前状态'));
         const statusIds = id === 'subtitle' ? ['subtitleScope','subtitleProgress','subtitleMeter']
-            : id === 'media' ? ['mediaTarget','mediaProgress','mediaMeter','mediaSummary','mediaRecordState'] : ['status','target','progress'];
+            : id === 'media' ? ['mediaTarget','mediaProgress','mediaBar','mediaSummary','mediaRecordState'] : ['status','target','progress'];
         for (const name of statusIds) take(status, '#' + name);
         side.append(status);
         const heading = create('div', 'tool-list-heading');
@@ -525,19 +525,23 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 .tool-main:has(#mediaRows:not(:empty))>.media-empty,.tool-main:has(#mediaPreview:not(:empty))>.media-empty{display:none}.tool-preview{margin-top:14px}.tool-preview:not(:has(#mediaPreview:not(:empty))){display:none}
 #mediaPreview:not(:empty),#emptyPreview:not(:empty){max-height:none!important;overflow:visible!important;padding:12px 0;margin:12px 0;font-size:14px}
 .tool-statusbar{display:flex;align-items:flex-start;gap:20px;flex-wrap:wrap;margin-top:20px;padding-top:12px;border-top:1px solid var(--border);font-size:15px;color:var(--muted)}
-.tool-status-text{flex:1;min-width:180px}.tool-status-text p{margin:0;line-height:1.9;font-size:15px}.tool-status-text p:empty{display:none}.tool-status-text progress{accent-color:var(--accent);height:6px!important;margin:6px 0!important}.tool-status-text label{margin:0;font-size:15px}.tool-status-text #mediaMeter{margin:0}
+.tool-status-text{flex:1;min-width:180px}.tool-status-text p{margin:0;line-height:1.9;font-size:15px}.tool-status-text p:empty{display:none}.tool-status-text progress{accent-color:var(--accent);height:6px!important;margin:6px 0!important}.tool-status-text label{margin:0;font-size:15px}
 .tool-utilities{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-left:auto}.tool-utilities>.tool-card{padding:0;border:0;background:transparent;margin:0}.tool-utilities summary{padding:2px 0;font-size:15px;font-weight:500;color:var(--muted)}
 .tool-statusbar:has(.tool-utilities>details[open]){display:block}.tool-utilities:has(>details[open]){display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin-top:10px}.tool-utilities>details[open]{grid-column:1/-1;color:var(--text);min-width:0}
-#subtitlePane .tool-statusbar{align-items:flex-end;margin-top:10px}#subtitlePane .tool-status-text{min-width:0}#subtitleProgress{max-height:3.8em;overflow:auto;scrollbar-width:none}
-#subtitleMeter{width:100%;border:0;appearance:none;background:var(--border)}
-#subtitleMeter::-webkit-progress-bar{background:var(--border)}
-#subtitleMeter::-webkit-progress-value{background:var(--text)}
-#subtitleMeter::-moz-progress-bar{background:var(--text)}
-#subtitleScope{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+:is(#subtitlePane,#mediaPane) .tool-statusbar{align-items:flex-end;margin-top:10px}
+:is(#subtitlePane,#mediaPane) .tool-status-text{min-width:0}
+:is(#subtitleProgress,#mediaProgress){max-height:3.8em;overflow:auto;scrollbar-width:none;overflow-wrap:anywhere}
+#mediaPane .tool-layout{display:flex;min-height:0}
+#mediaPane .tool-main{flex:1;overflow:auto;overscroll-behavior:contain}
+:is(#subtitleMeter,#mediaBar){display:block;width:100%;border:0;appearance:none;background:var(--border)}
+:is(#subtitleMeter,#mediaBar)::-webkit-progress-bar{background:var(--border)}
+:is(#subtitleMeter,#mediaBar)::-webkit-progress-value{background:var(--text)}
+:is(#subtitleMeter,#mediaBar)::-moz-progress-bar{background:var(--text)}
+:is(#subtitleScope,#mediaTarget){overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #subtitlePane .tool-statusbar:has(.tool-utilities>details[open]){max-height:40%;overflow:auto}#subtitleDeleteList{overflow-wrap:anywhere}
 #log{white-space:pre-wrap;overflow-wrap:anywhere;font:14px/1.7 Consolas,"Microsoft YaHei",monospace;max-height:180px;overflow:auto}#log:empty{display:none}#log>div+div{margin-top:6px}
-#subtitlePane .tool-statusbar:has(#subtitleDiagnostics[open]){max-height:none;overflow:visible}#subtitleDiagnostics .panel-actions{margin:4px 0 8px}#subtitlePane:has(#subtitleDiagnostics[open]) .tool-intro p{display:none}
-#subtitleLog{display:block;width:100%;height:clamp(56px,calc(36cqh - 128px),180px);resize:none;overflow:auto;scrollbar-width:none;overscroll-behavior:contain}
+#subtitlePane .tool-statusbar:has(#subtitleDiagnostics[open]){max-height:none;overflow:visible}:is(#subtitleDiagnostics,#mediaDiagnostics) .panel-actions{margin:4px 0 8px}#subtitlePane:has(#subtitleDiagnostics[open]) .tool-intro p{display:none}
+:is(#subtitleLog,#mediaLog){display:block;width:100%;height:clamp(56px,calc(36cqh - 128px),180px);resize:none;overflow:auto;scrollbar-width:none;overscroll-behavior:contain}
 @container(max-height:660px){
     #subtitlePane .tool-intro p{display:none}
     #subtitlePane .tool-intro h3{font-size:20px}
@@ -549,7 +553,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
     #subtitleRows .subtitle-result{margin-top:4px}
     #subtitleRows .subtitle-result+.subtitle-result{padding-top:4px}
     #subtitleRows .subtitle-result select{padding-block:4px}
-    #subtitlePane:has(#subtitleDiagnostics[open]) #subtitleLog{height:38px}
+    :is(#subtitleLog,#mediaLog){height:38px}
 }
 .sync-preview{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px}.sync-preview h4{margin:0 0 8px}.sync-preview p{margin:6px 0}#syncList{overflow-wrap:anywhere;font-size:15px}#syncDestination{font-weight:600}
 .export-options{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin:12px 0}.export-options input{width:auto}.export-options button{font-size:14px;padding:7px 12px}.credential-head{display:flex;justify-content:space-between;align-items:center;gap:12px}.credential-head a{font-size:15px;flex-shrink:0}
@@ -3264,7 +3268,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             <p id="mediaAIState" role="status"></p></section>
             <p id="mediaTarget"></p><p id="mediaRecordState" role="status"></p>
             <div class="panel-actions"><button id="scanMedia">识别并预览</button><button id="runMedia" disabled>确认执行</button><button id="openMediaCleanup" type="button" aria-controls="mediaCleanup" aria-expanded="false">清理文件</button><button id="stopMedia" hidden disabled>停止</button></div>
-            <div id="mediaMeter" hidden><label id="mediaMeterLabel" for="mediaBar"></label><progress id="mediaBar" max="100" value="0" style="display:block;width:100%;height:12px;margin:8px 0;accent-color:gray"></progress></div><p id="mediaProgress" role="status"></p><div id="mediaSummary"></div>
+            <p id="mediaProgress" role="status">先在网页勾选视频或文件夹。</p><progress id="mediaBar" aria-label="影视整理进度" max="1" value="0" hidden></progress><div id="mediaSummary"></div>
             <div id="mediaPreview" style="max-height:240px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px"></div>
             <div id="mediaRows"></div>
             <section id="mediaCleanup" class="sync-preview" hidden>
@@ -3272,7 +3276,8 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             <label id="cleanupSubtitleOption"><input id="cleanupSubtitles" type="checkbox">同时清理字幕及字体（默认保留）</label>
             <p id="cleanupRule">清理图片、附件及已标记的花絮/预告；默认保留字幕、字体和普通视频。</p>
             <div class="panel-actions"><button id="checkCleanup">检查清理范围</button><button id="runEmpty" disabled>确认清理</button></div>
-            <div id="emptyPreview" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto"></div></section><div id="log"></div>`, true);
+            <div id="emptyPreview" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto"></div></section>
+            <details id="mediaDiagnostics"><summary>详细日志</summary><div class="panel-actions"><button id="copyMediaLog" type="button">复制日志</button><button id="clearMediaLog" type="button">清空日志</button></div><textarea id="mediaLog" readonly spellcheck="false" aria-label="影视整理运行日志"></textarea></details>`, true);
         ui.moveSettings(['mediaSettings'], 'TMDB 设置', '#settingsBasics');
         ui.moveSettings(['mediaAISettings'], '大模型识别', '#settingsModels');
         ui.get('tmdbKey').value = GM_getValue('cross-drive-tmdb-key', '');
@@ -3310,22 +3315,35 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         ui.get('mediaRecordState').textContent = `已保存 ${mediaRecords.count()} 个本盘视频的识别记录；未变化的内容可复用。`;
         const progress = message => { ui.get('mediaProgress').textContent = message; };
         const meter = (stage, done = 0, total = null) => {
-            ui.get('mediaMeter').hidden = false;
             const bar = ui.get('mediaBar');
-            if (total === null) {
-                bar.removeAttribute('value');
-                ui.get('mediaMeterLabel').textContent = stage + '…（正在统计数量）';
-            } else {
-                const percent = total ? Math.floor(done / total * 100) : 0;
-                bar.setAttribute('value', String(percent));
-                ui.get('mediaMeterLabel').textContent = `${stage} · ${done}/${total} · ${percent}%`;
-            }
+            const label = total === null ? stage + '…' : `${stage} · ${done}/${total}`;
+            if (bar.getAttribute('aria-label') !== stage || ui.get('mediaProgress').textContent === bar.getAttribute('aria-valuetext'))
+                progress(label);
+            bar.hidden = false;
+            bar.setAttribute('aria-label', stage);
+            bar.setAttribute('aria-valuetext', label);
+            bar.max = Math.max(1, total ?? 1);
+            if (total === null) bar.removeAttribute('value');
+            else bar.value = done;
         };
         const stopMeter = () => {
-            if (!ui.get('mediaBar').hasAttribute('value')) ui.get('mediaBar').setAttribute('value', '0');
-            ui.get('mediaMeterLabel').textContent = '本阶段未完成，请查看下方原因';
+            const bar = ui.get('mediaBar');
+            if (!bar.hasAttribute('value')) bar.value = 0;
+            bar.setAttribute('aria-valuetext', '本阶段未完成');
         };
-        const log = message => appendLog(ui, message);
+        const logLines = [], logBox = ui.get('mediaLog');
+        const clearLog = () => { logLines.length = 0; logBox.value = ''; };
+        const log = message => {
+            logLines.push(message);
+            if (logLines.length > 200) logLines.shift();
+            logBox.value = logLines.join('\n');
+            logBox.scrollTop = logBox.scrollHeight;
+        };
+        ui.get('clearMediaLog').onclick = clearLog;
+        ui.get('copyMediaLog').onclick = async () => {
+            try { await navigator.clipboard.writeText(logBox.value || '（暂无影视整理运行日志）'); progress('影视整理运行日志已复制。'); }
+            catch (error) { progress('复制日志失败：' + error.message); }
+        };
         const invalidate = () => { batch = null; batchWriter = null; ui.get('runMedia').disabled = true; ui.get('mediaPreview').textContent = ''; };
         const runTask = createPanelTask(ui, (busy, stoppable = false) => {
             if (busy) cancelled = false;
@@ -3694,7 +3712,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         };
         async function scan() {
             reused = 0;
-            invalidate(); ui.get('log').textContent = ''; rows = []; render();
+            invalidate(); clearLog(); rows = []; render();
             meter('读取选中内容');
             try {
                 const context = await mediaContext(provider); session = context.session; source = context.source;
@@ -3702,7 +3720,8 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 if (!selected.length) throw new Error('请先在 ' + provider + ' 勾选文件或文件夹');
                 const parentPath = context.path;
                 const root = mediaClassificationRoot(source, parentPath); targetPath = root.path; targetSession = { ...session, parent: root.id };
-                ui.get('mediaTarget').textContent = '分类保存到：/' + targetPath + '（纪录片独立分类，动画电影归电影）';
+                const target = ui.get('mediaTarget');
+                target.title = target.textContent = '分类保存到：/' + targetPath + '（纪录片独立分类，动画电影归电影）';
                 history = mediaFileHistory(session);
                 const collected = await collectMediaSelection(selected, source, progress, node => mediaAlreadyStandard(node, parentPath), checkStopped, false, history);
                 if (!collected.videos.length) { meter('检查完成', collected.skipped, collected.skipped); progress(`已跳过 ${collected.skipped} 个命名和所在作品目录均规范的视频，没有需要匹配的项目。`); return; }

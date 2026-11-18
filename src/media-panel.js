@@ -15,7 +15,7 @@
             <p id="mediaAIState" role="status"></p></section>
             <p id="mediaTarget"></p><p id="mediaRecordState" role="status"></p>
             <div class="panel-actions"><button id="scanMedia">识别并预览</button><button id="runMedia" disabled>确认执行</button><button id="openMediaCleanup" type="button" aria-controls="mediaCleanup" aria-expanded="false">清理文件</button><button id="stopMedia" hidden disabled>停止</button></div>
-            <div id="mediaMeter" hidden><label id="mediaMeterLabel" for="mediaBar"></label><progress id="mediaBar" max="100" value="0" style="display:block;width:100%;height:12px;margin:8px 0;accent-color:gray"></progress></div><p id="mediaProgress" role="status"></p><div id="mediaSummary"></div>
+            <p id="mediaProgress" role="status">先在网页勾选视频或文件夹。</p><progress id="mediaBar" aria-label="影视整理进度" max="1" value="0" hidden></progress><div id="mediaSummary"></div>
             <div id="mediaPreview" style="max-height:240px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px"></div>
             <div id="mediaRows"></div>
             <section id="mediaCleanup" class="sync-preview" hidden>
@@ -23,7 +23,8 @@
             <label id="cleanupSubtitleOption"><input id="cleanupSubtitles" type="checkbox">同时清理字幕及字体（默认保留）</label>
             <p id="cleanupRule">清理图片、附件及已标记的花絮/预告；默认保留字幕、字体和普通视频。</p>
             <div class="panel-actions"><button id="checkCleanup">检查清理范围</button><button id="runEmpty" disabled>确认清理</button></div>
-            <div id="emptyPreview" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto"></div></section><div id="log"></div>`, true);
+            <div id="emptyPreview" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto"></div></section>
+            <details id="mediaDiagnostics"><summary>详细日志</summary><div class="panel-actions"><button id="copyMediaLog" type="button">复制日志</button><button id="clearMediaLog" type="button">清空日志</button></div><textarea id="mediaLog" readonly spellcheck="false" aria-label="影视整理运行日志"></textarea></details>`, true);
         ui.moveSettings(['mediaSettings'], 'TMDB 设置', '#settingsBasics');
         ui.moveSettings(['mediaAISettings'], '大模型识别', '#settingsModels');
         ui.get('tmdbKey').value = GM_getValue('cross-drive-tmdb-key', '');
@@ -61,22 +62,35 @@
         ui.get('mediaRecordState').textContent = `已保存 ${mediaRecords.count()} 个本盘视频的识别记录；未变化的内容可复用。`;
         const progress = message => { ui.get('mediaProgress').textContent = message; };
         const meter = (stage, done = 0, total = null) => {
-            ui.get('mediaMeter').hidden = false;
             const bar = ui.get('mediaBar');
-            if (total === null) {
-                bar.removeAttribute('value');
-                ui.get('mediaMeterLabel').textContent = stage + '…（正在统计数量）';
-            } else {
-                const percent = total ? Math.floor(done / total * 100) : 0;
-                bar.setAttribute('value', String(percent));
-                ui.get('mediaMeterLabel').textContent = `${stage} · ${done}/${total} · ${percent}%`;
-            }
+            const label = total === null ? stage + '…' : `${stage} · ${done}/${total}`;
+            if (bar.getAttribute('aria-label') !== stage || ui.get('mediaProgress').textContent === bar.getAttribute('aria-valuetext'))
+                progress(label);
+            bar.hidden = false;
+            bar.setAttribute('aria-label', stage);
+            bar.setAttribute('aria-valuetext', label);
+            bar.max = Math.max(1, total ?? 1);
+            if (total === null) bar.removeAttribute('value');
+            else bar.value = done;
         };
         const stopMeter = () => {
-            if (!ui.get('mediaBar').hasAttribute('value')) ui.get('mediaBar').setAttribute('value', '0');
-            ui.get('mediaMeterLabel').textContent = '本阶段未完成，请查看下方原因';
+            const bar = ui.get('mediaBar');
+            if (!bar.hasAttribute('value')) bar.value = 0;
+            bar.setAttribute('aria-valuetext', '本阶段未完成');
         };
-        const log = message => appendLog(ui, message);
+        const logLines = [], logBox = ui.get('mediaLog');
+        const clearLog = () => { logLines.length = 0; logBox.value = ''; };
+        const log = message => {
+            logLines.push(message);
+            if (logLines.length > 200) logLines.shift();
+            logBox.value = logLines.join('\n');
+            logBox.scrollTop = logBox.scrollHeight;
+        };
+        ui.get('clearMediaLog').onclick = clearLog;
+        ui.get('copyMediaLog').onclick = async () => {
+            try { await navigator.clipboard.writeText(logBox.value || '（暂无影视整理运行日志）'); progress('影视整理运行日志已复制。'); }
+            catch (error) { progress('复制日志失败：' + error.message); }
+        };
         const invalidate = () => { batch = null; batchWriter = null; ui.get('runMedia').disabled = true; ui.get('mediaPreview').textContent = ''; };
         const runTask = createPanelTask(ui, (busy, stoppable = false) => {
             if (busy) cancelled = false;
@@ -445,7 +459,7 @@
         };
         async function scan() {
             reused = 0;
-            invalidate(); ui.get('log').textContent = ''; rows = []; render();
+            invalidate(); clearLog(); rows = []; render();
             meter('读取选中内容');
             try {
                 const context = await mediaContext(provider); session = context.session; source = context.source;
@@ -453,7 +467,8 @@
                 if (!selected.length) throw new Error('请先在 ' + provider + ' 勾选文件或文件夹');
                 const parentPath = context.path;
                 const root = mediaClassificationRoot(source, parentPath); targetPath = root.path; targetSession = { ...session, parent: root.id };
-                ui.get('mediaTarget').textContent = '分类保存到：/' + targetPath + '（纪录片独立分类，动画电影归电影）';
+                const target = ui.get('mediaTarget');
+                target.title = target.textContent = '分类保存到：/' + targetPath + '（纪录片独立分类，动画电影归电影）';
                 history = mediaFileHistory(session);
                 const collected = await collectMediaSelection(selected, source, progress, node => mediaAlreadyStandard(node, parentPath), checkStopped, false, history);
                 if (!collected.videos.length) { meter('检查完成', collected.skipped, collected.skipped); progress(`已跳过 ${collected.skipped} 个命名和所在作品目录均规范的视频，没有需要匹配的项目。`); return; }

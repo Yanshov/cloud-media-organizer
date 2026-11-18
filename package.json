@@ -1,6 +1,6 @@
 {
   "name": "cloud-media-organizer",
-  "version": "3.3.18",
+  "version": "3.3.19",
   "private": true,
   "description": "Userscript for cloud manifests, media organization and verified subtitle uploads",
   "engines": {

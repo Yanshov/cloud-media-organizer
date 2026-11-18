@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v3.0（重构版）
 // @namespace    local.cloud-media-organizer
-// @version      3.3.18
+// @version      3.3.19
 // @description  百度/123/光鸭跨盘清单，123/光鸭影视整理、字幕搜索与核验上传
 // @match        https://pan.baidu.com/*
 // @match        https://yun.baidu.com/*
