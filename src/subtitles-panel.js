@@ -182,7 +182,7 @@
             <p id="subtitleScope"></p>
             <p id="subtitleProgress" role="status">先在网页勾选视频或文件夹。</p>
             <progress id="subtitleMeter" max="1" value="0" hidden style="width:100%;accent-color:#666"></progress>
-            <div id="subtitleFilters"><label><input id="selectAllSubtitleDeletes" type="checkbox" disabled>全选</label><select id="subtitleView" aria-label="筛选字幕检查结果"><option id="subtitleViewAll" value="all">全部</option><option id="subtitleViewIncomplete" value="incomplete">未补齐</option><option id="subtitleViewChoice" value="choice">手动选择</option><option id="subtitleViewComplete" value="complete">有字幕</option></select><span id="subtitleDeleteSelectionCount" role="status" hidden></span></div>
+            <div id="subtitleFilters"><label><input id="selectAllSubtitleDeletes" type="checkbox" disabled>全选</label><select id="subtitleView" aria-label="筛选字幕检查结果"><option id="subtitleViewAll" value="all">全部</option><option id="subtitleViewIncomplete" value="incomplete">未补齐</option><option id="subtitleViewReady" value="ready">待补齐</option><option id="subtitleViewChoice" value="choice">手动选择</option><option id="subtitleViewComplete" value="complete">有字幕</option></select><span id="subtitleDeleteSelectionCount" role="status" hidden></span></div>
             <div id="subtitleResults" role="region" aria-labelledby="subtitleResultsTitle" tabindex="0">
                 <div id="subtitleSummary" hidden class="sync-preview"></div>
                 <p id="subtitleEmpty">先勾选目录或视频，再点击“检查目录字幕”。</p>
@@ -248,7 +248,15 @@
         const awaitingCheck = row => row.checkState && row.checkState !== 'done';
         const covered = row => !awaitingCheck(row) && subtitleCovered(row);
         const needsChoice = row => !awaitingCheck(row) && !covered(row) && !row.writeBlocked && subtitleSearchState(row) === 'choice';
-        const inView = (row, view) => view === 'all' || (view === 'incomplete' ? !covered(row) : view === 'choice' ? needsChoice(row) : covered(row));
+        const readyToFill = row => searching && checkedScope !== null && !awaitingCheck(row) && !covered(row)
+            && !row.writeBlocked && !!row.selectedCandidate && !row.selectedCandidate.downloadFailed;
+        const inView = (row, view) => {
+            if (view === 'all') return true;
+            if (view === 'incomplete') return !covered(row);
+            if (view === 'ready') return readyToFill(row);
+            if (view === 'choice') return needsChoice(row);
+            return covered(row);
+        };
         const canDelete = (row, sub) => checkedScope !== null && !awaitingCheck(row) && !row.embedded?.chinese && !pendingDeletes.has(String(sub.id));
         const selectedForDelete = (row, sub) => canDelete(row, sub) && deleteSelection.has(String(sub.id));
         const viewSubtitleIds = view => inventory.filter(row => inView(row, view))
@@ -330,14 +338,14 @@
             scope.textContent = scan?.scope || '';
             scope.title = scope.textContent;
             const missing = inventory.filter(row => !covered(row));
-            const ready = searching && missing.some(row => !awaitingCheck(row) && !row.writeBlocked && row.selectedCandidate && !row.selectedCandidate.downloadFailed);
+            const ready = inventory.filter(readyToFill).length;
             const view = ui.get('subtitleView').value;
             const visibleIds = viewSubtitleIds(view), selectedCount = visibleIds.filter(id => deleteSelection.has(id)).length;
             selectAll.disabled = busy || !!importDraft || !visibleIds.length;
             selectAll.checked = visibleIds.length > 0 && selectedCount === visibleIds.length;
             selectAll.indeterminate = selectedCount > 0 && selectedCount < visibleIds.length;
             const choices = inventory.filter(needsChoice).length;
-            for (const [id,label,count] of [['Incomplete','未补齐',missing.length],['Choice','手动选择',choices],['Complete','有字幕',inventory.length - missing.length],['All','全部',inventory.length]]) ui.get('subtitleView' + id).textContent = `${label}（${count}）`;
+            for (const [id,label,count] of [['Incomplete','未补齐',missing.length],['Ready','待补齐',ready],['Choice','手动选择',choices],['Complete','有字幕',inventory.length - missing.length],['All','全部',inventory.length]]) ui.get('subtitleView' + id).textContent = `${label}（${count}）`;
             const summary = ui.get('subtitleSummary');
             const checked = inventory.filter(row => !awaitingCheck(row));
             const remaining = inventory.length - checked.length;
@@ -576,7 +584,7 @@
                 host.append(box);
             }
             ui.get('subtitleEmpty').hidden = visible > 0;
-            ui.get('subtitleEmpty').textContent = !inventory.length ? '本次检查没有视频，或尚未检查。请勾选目录或视频，再点击“检查目录字幕”。' : view === 'incomplete' && !missing.length ? '所选范围内的视频都有字幕。' : view === 'choice' ? '没有需要手动选择的字幕。' : '当前筛选下没有视频。';
+            ui.get('subtitleEmpty').textContent = !inventory.length ? '本次检查没有视频，或尚未检查。请勾选目录或视频，再点击“检查目录字幕”。' : view === 'incomplete' && !missing.length ? '所选范围内的视频都有字幕。' : view === 'ready' ? '当前没有已选中可用候选的待补齐项目。' : view === 'choice' ? '没有需要手动选择的字幕。' : '当前筛选下没有视频。';
             results.scrollTop = scrollTop;
             if (focusKey) [...host.querySelectorAll('[data-subtitle-focus]')].find(control => control.dataset.subtitleFocus === focusKey)?.focus({preventScroll:true});
         };

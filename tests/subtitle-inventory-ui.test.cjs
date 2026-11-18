@@ -106,6 +106,8 @@ const view = value => {get('subtitleView').value = value; get('subtitleView').on
     assert.match(get('subtitleSummary').textContent,/已检查 5 · 待检查 0/);
     assert.equal(get('subtitleView').value,'incomplete'); assert.equal(cards().length,4);
     assert.ok(!cards()[0].textContent.includes('有字幕'));
+    assert.equal(get('subtitleViewReady').textContent,'待补齐（0）');
+    view('ready'); assert.equal(cards().length,0);
     view('all'); assert.equal(cards().length,5);
     assert.equal(get('subtitleRows').querySelectorAll('details').length,0,'Results show details without disclosure controls');
     assert.match(shown(),/有字幕\n/); assert.match(shown(),/没字幕/); assert.match(shown(),/读取连接失败/);
@@ -118,11 +120,18 @@ const view = value => {get('subtitleView').value = value; get('subtitleView').on
     assert.equal(get('subtitleSummary').hidden,false);
     assert.equal(cards().length,5,'All results remain visible after searching');
     assert.match(shown(),/缺可用字幕/); assert.match(shown(),/手动选择/); assert.match(shown(),/来源连接失败/);
+    assert.equal(get('subtitleViewReady').textContent,'待补齐（1）');
+    view('ready'); assert.equal(cards().length,1);
+    assert.match(shown(),/待补齐/);
+    assert.doesNotMatch(shown(),/手动选择|来源连接失败/);
     view('choice'); assert.equal(cards().length,1); assert.match(shown(),/手动选择/);
     view('complete'); assert.equal(cards().length,1); assert.match(shown(),/有字幕/);
     view('all'); assert.equal(cards().length,5);
-    view('incomplete'); await get('fillSubtitles').onclick();
+    view('ready'); await get('fillSubtitles').onclick();
     assert.equal(saves,1);
+    assert.equal(cards().length,0);
+    assert.equal(get('subtitleViewReady').textContent,'待补齐（0）');
+    view('incomplete');
     assert.doesNotMatch(shown(),/\/目录1\//); assert.equal(cards().length,3);
     view('choice'); await get('recheckSubtitles').onclick(); assert.equal(get('subtitleView').value,'incomplete','A new directory check resets the previous filter');
     empty = true; await get('recheckSubtitles').onclick();

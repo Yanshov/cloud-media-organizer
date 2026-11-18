@@ -1,6 +1,6 @@
 # 云盘媒体整理工具
 
-当前版本 **3.3.16**。支持百度、123、光鸭网盘的 JSON 清单导入导出，以及 123、光鸭的影视整理和字幕补齐。
+当前版本 **3.3.17**。支持百度、123、光鸭网盘的 JSON 清单导入导出，以及 123、光鸭的影视整理和字幕补齐。
 
 [安装或更新脚本](https://raw.githubusercontent.com/Yanshov/cloud-media-organizer/main/cloud-media-organizer-v3.user.js) · [变更说明](CHANGELOG.md) · [开发与验证](docs/DEVELOPMENT.md)
 
