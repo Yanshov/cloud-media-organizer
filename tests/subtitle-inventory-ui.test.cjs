@@ -16,6 +16,7 @@ const linked = new Map(['complete','invalid','pending'].map(id => [id,[{id:'s-' 
 const siblings = new Map(videos.map(video => [video.parentId,[video,...(linked.get(video.id)||[])]]));
 const elements = new Map(), queried = [], deleted = [];
 let reads = 0, saves = 0, empty = false, collectionError = false, pauseRead = null, recycleResult = null, panelBusy = false;
+let season = [], missingEpisodes = new Set();
 const get = id => { assert.ok(elements.has(id),id); return elements.get(id); };
 const ctx = vm.createContext({URL, TextEncoder, TextDecoder, Uint8Array, Date,
     document:{createElement:element},
@@ -27,7 +28,7 @@ const ctx = vm.createContext({URL, TextEncoder, TextDecoder, Uint8Array, Date,
         return {get,moveSettings(){},busy(value){panelBusy = value;}};
     },
     mediaContext:async () => ({selected:[{id:'chosen',name:'本次所选文件夹'}],source:{},path:'影视库'}),
-    collectMediaSelection:async () => { if (collectionError) throw Error('目录读取失败'); return {videos:empty ? [] : videos,linked}; },
+    collectMediaSelection:async () => { if (collectionError) throw Error('目录读取失败'); return {videos:empty ? [] : season.length ? season : videos,linked}; },
     MEDIA_VIDEO:/\.(?:mkv|mp4)$/i, MEDIA_SUB:/\.(?:srt|ass|ssa|vtt)$/i,
     mediaSubtitleSuffix:(video,subtitle)=>{const stem=video.replace(/\.[^.]+$/,''),candidate=subtitle.replace(/\.[^.]+$/,'');return candidate.startsWith(stem)?candidate.slice(stem.length):null;},
     recycleMedia:async item=>{
@@ -36,14 +37,23 @@ const ctx = vm.createContext({URL, TextEncoder, TextDecoder, Uint8Array, Date,
         siblings.set(item.parentId,siblings.get(item.parentId).filter(node=>node.id!==item.id));
     },
     mediaContext:async()=>({selected:[{id:'chosen',name:'本次所选文件夹'}],session:{provider:'123',token:'test',base:'https://drive.example',headers:{}},source:{children:async({id})=>siblings.get(id)||[]},path:'影视库'}),
-    parseMediaName:() => ({query:'同名影片',year:2020,tv:false}), mediaBonusName:() => false, mediaRecords:{get:() => null}, mediaStem:name => name.replace(/\.[^.]+$/,''),
+    parseMediaName:name => {
+        const episode = name.match(/S01E(\d+)/)?.[1];
+        return episode ? {query:'假面骑士双骑',year:2009,tv:true,season:1,episode:Number(episode)} : {query:'同名影片',year:2020,tv:false};
+    }, mediaBonusName:() => false, mediaRecords:{get:() => null}, mediaStem:name => name.replace(/\.[^.]+$/,''),
     createSubtitleService:() => ({thunderSearch:async row => {
         queried.push(row.node.id);
-        if (row.node.id === 'failure') throw Error('来源连接失败');
+        if (row.node.id === 'failure' || row.node.id === 'ep-48') throw Error('来源连接失败');
+        if (row.node.id === 'ep-47') return [{source:'迅雷',name:'假面骑士双骑.S01E47.简体.srt',language:'zh-cn'}];
         if (row.node.id === 'invalid') return [{source:'迅雷',name:'未确认字幕.srt',language:'zh-cn'}];
         return row.node.id === 'ready' ? [{source:'迅雷',name:'同名影片.2020.简体.srt',language:'zh-cn',titleMatched:true}] : [];
     },fetchFile:async () => ({result:{ext:'srt'},bytes:valid})}),
     subtitleDrive:() => ({verified:{get(){},forget(){}},reconcile:async () => [],
+        inspectEmbedded:async node => {
+            if (!node.id.startsWith('ep-')) return;
+            if (node.id === 'ep-49' && missingEpisodes.has(node.id)) return {unconfirmed:true,message:'内嵌字幕检查失败'};
+            return {chinese:!missingEpisodes.has(node.id),message:'内嵌字幕检查完成'};
+        },
         read:async sub => {
             reads++; if (pauseRead) await pauseRead;
             if (sub.id === 's-pending') throw Error('读取连接失败');
@@ -139,5 +149,82 @@ const view = value => {get('subtitleView').value = value; get('subtitleView').on
     checkboxes()[0].checked=true;checkboxes()[0].onchange();
     get('reviewSubtitleDeletes').onclick();await get('confirmSubtitleDeletes').onclick();
     assert.deepEqual(deleted,['s-complete']);assert.match(get('subtitleProgress').textContent,/已移入回收站 1 个/,'A fresh check lets the user confirm a new deletion plan');
+    await seasonSummary();
     console.log('PASS subtitle directory inventory: scan makes no provider/write calls; expanded results, full paths, filters/empty states, fill updates, stale-scan clearing and previewed safe batch deletion (mocked API/DOM)');
 })().catch(error => {console.error(error); process.exitCode = 1;});
+
+async function seasonSummary() {
+    season = Array.from({length:49}, (_, index) => {
+        const name = '假面骑士双骑.S01E' + String(index + 1).padStart(2,'0') + '.mkv';
+        return {id:'ep-' + (index + 1),parentId:'season-1',name,size:10000,folders:['双骑'],path:'双骑/' + name};
+    });
+    const results = get('subtitleRows');
+    const summary = () => results.children[0].children.find(node => node.className === 'subtitle-group-count').textContent;
+    const details = () => results.querySelectorAll('details')[0];
+    const direct = () => results.children[0].children.filter(node => node.className === 'subtitle-result');
+    const queriesBefore = queried.length;
+    await get('recheckSubtitles').onclick();
+    assert.equal(results.children.length,1);
+    assert.match(summary(),/共 49 集 · 已补齐 49 · 未补齐 0 · 内嵌中文 49/);
+    assert.equal(direct().length,0);
+    assert.equal(details().open,false);
+    assert.equal(details().children[0].textContent,'查看 49 集详情');
+    assert.equal(details().querySelectorAll('p').length,49);
+    assert.match(details().querySelectorAll('p').at(-1).textContent,/\/影视库\/双骑\/.*S01E49\.mkv/);
+    await get('readSubtitles').onclick();
+    assert.equal(queried.length,queriesBefore);
+
+    missingEpisodes = new Set(['ep-47','ep-48','ep-49']);
+    const sub = {id:'season-sub',name:season[0].name.replace('.mkv','.zh-cn.srt'),parentId:'season-1',size:30};
+    linked.set('ep-1',[sub]);
+    siblings.set('season-1',[...season,sub]);
+    await get('recheckSubtitles').onclick();
+    assert.match(summary(),/共 49 集 · 已补齐 46 · 未补齐 3 · 内嵌中文 45/);
+    assert.equal(direct().length,3);
+    assert.match(direct().at(-1).textContent,/检查未确认/);
+    assert.equal(details().open,false);
+    assert.equal(details().children[0].textContent,'查看 46 集详情');
+    const selectAll = get('selectAllSubtitleDeletes');
+    selectAll.checked = true; selectAll.onchange();
+    assert.equal(details().open,false);
+    assert.equal(get('subtitleDeleteSelectionCount').textContent,'已选 1 项');
+    view('incomplete');
+    assert.equal(details(),undefined);
+    assert.match(summary(),/共 49 集.*当前筛选 3 集/);
+    assert.equal(get('subtitleDeleteSelectionCount').textContent,'已选 1 项 · 当前筛选 0 项');
+    get('reviewSubtitleDeletes').onclick();
+    assert.equal(get('subtitleDeleteHeading').textContent,'确认删除清单（1 项）');
+    assert.match(get('subtitleDeleteList').textContent,/S01E01\.zh-cn\.srt/);
+    assert.ok(!deleted.includes(sub.id),'Opening the preview never recycles files');
+    await get('confirmSubtitleDeletes').onclick();
+    assert.equal(deleted.at(-1),sub.id,'A collapsed selection follows the normal confirmation flow');
+    linked.delete('ep-1');
+
+    view('complete');
+    assert.match(summary(),/共 49 集.*当前筛选 46 集/);
+    assert.equal(details().open,false);
+    details().open = true;
+    view('incomplete'); view('all');
+    assert.equal(details().open,true,'Filtering out a disclosure preserves its open state');
+    await get('readSubtitles').onclick();
+    assert.deepEqual(queried.slice(queriesBefore).sort(),['ep-47','ep-48','ep-49']);
+    assert.match(direct()[0].textContent,/手动选择/);
+    assert.match(direct()[1].textContent,/查询失败/);
+    const candidate = direct()[0].querySelectorAll('select')[0];
+    candidate.value = '0'; candidate.onchange();
+    assert.equal(details().open,true,'Progress and candidate changes preserve expansion');
+    await get('fillSubtitles').onclick();
+    assert.equal(saves,2);
+    assert.equal(details().open,true);
+    assert.match(summary(),/已补齐 47 · 未补齐 2/);
+    await get('recheckSubtitles').onclick();
+    assert.equal(details().open,false,'A new check resets expansion');
+
+    season = [season[0], {...season[1],parentId:'another-directory'},
+        {...season[2],name:season[2].name.replace('.mkv','.1080p.mkv')},
+        {...season[3],name:season[3].name.replace('.mkv','.导演剪辑.mkv')}];
+    await get('recheckSubtitles').onclick();
+    assert.equal(results.children.length,4,'Same-title directories and different releases remain separate');
+    assert.equal(results.querySelectorAll('details').length,0,'Single results stay expanded');
+    console.log('PASS season summaries: 49 episodes, mixed states, stable disclosure, filtered selection and confirmed deletion');
+}

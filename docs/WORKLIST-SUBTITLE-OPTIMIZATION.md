@@ -11,7 +11,7 @@
 
 ## 本次任务
 
-S1—S4 和 A1—A4 已完成。
+UI1 整季结果摘要与详情收起已完成。
 
 ## 任务状态
 
@@ -23,8 +23,11 @@ S1—S4 和 A1—A4 已完成。
 | S4 SubDL 回退 | `docs/subtitle-plan/S4.md` | S3 验收 | 已完成 |
 | A1—A3 AI 辅助 | `docs/subtitle-plan/AI.md` | S1—S4 验收 | 已完成 |
 | A4 对照验证 | `docs/subtitle-plan/EVALUATION.md` | AI 验收 | 已完成 |
+| UI1 整季结果摘要 | `docs/subtitle-plan/UI1.md` | 现有字幕结果 | 已完成 |
 | 后续候选 | `docs/subtitle-plan/BACKLOG.md` | 另行讨论 | 不执行 |
 
 ## 交接记录
 
 按用户指示完成本轮实施与模拟对照，已通过 30 项构建与回归检查。后续候选仍保留在规划里，等待失败样本。
+
+UI1 的回归覆盖整季摘要、筛选、展开状态、全选及删除预览确认。使用模拟目录在 Edge 检查了 1280×800 与 960×600 的双列排版、键盘操作和日志边界。
