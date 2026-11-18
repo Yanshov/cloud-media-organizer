@@ -118,8 +118,8 @@ async function guangyaExisting(){
 function startup(){
  const boot=fs.readFileSync(path.join(root,'src/bootstrap.js'),'utf8');
  for(const [hostname,expected] of [['www.guangyapan.com',['hooks','ready']],['www.123pan.com',['hooks','ready']],['pan.baidu.com',['ready']]]){
-  const calls=[],callbacks=[];const ctx=vm.createContext({location:{hostname},installHooks:()=>calls.push('hooks'),ready:fn=>{calls.push('ready');callbacks.push(fn)},is123Host:h=>h.includes('123pan'),initGuangya:()=>calls.push('json'),initExporter:()=> 'panel',initManifestImporter:()=>calls.push('json'),initMediaOrganizer:()=>calls.push('media'),initSubtitles:()=>calls.push('subtitles')});
-  vm.runInContext(boot,ctx);assert.deepEqual(calls,expected);callbacks.forEach(fn=>fn());assert.ok(calls.includes('json'));if(hostname!=='pan.baidu.com'){assert.ok(calls.includes('media'));assert.ok(calls.includes('subtitles'))}
+  const calls=[],callbacks=[];const ctx=vm.createContext({location:{hostname},installHooks:()=>calls.push('hooks'),ready:fn=>{calls.push('ready');callbacks.push(fn)},is123Host:h=>h.includes('123pan'),initGuangya:()=>calls.push('json'),initExporter:()=> 'panel',initManifestImporter:()=>calls.push('json'),initMergedMedia:()=>calls.push('merged')});
+  vm.runInContext(boot,ctx);assert.deepEqual(calls,expected);callbacks.forEach(fn=>fn());assert.ok(calls.includes('json'));if(hostname!=='pan.baidu.com'){assert.equal(calls.filter(call=>call==='merged').length,1)}
  }
  for(const navigator of [
   {userAgentData:{mobile:true}}, {userAgent:'Mozilla/5.0 (Linux; Android 15)'}, {userAgent:'Mozilla/5.0 (iPhone)'},
@@ -133,6 +133,6 @@ function startup(){
  assert.match(script,/id="settingsBasics"/,'Window and appearance share the compact basic settings column');
  assert.equal((script.match(/<summary>导入清单<\/summary>/g)||[]).length,2,'Both import implementations expose one combined entry');
  assert.match(script,/<input id="syncExisting" type="checkbox">/,'Replacing old copies is opt-in');
- console.log('PASS complete startup: hooks before DOM ready; media/subtitle panels on 123/Guangya; JSON on all three; no duplicate declarations; choice filter and version present');
+ console.log('PASS complete startup: hooks before DOM ready; merged media panel on 123/Guangya; JSON on all three; no duplicate declarations; choice filter and version present');
 }
 (async()=>{await hooks();await imports();await stop();await routes();await manifestUI();await guangyaExisting();startup()})().catch(e=>{console.error(e);process.exitCode=1});

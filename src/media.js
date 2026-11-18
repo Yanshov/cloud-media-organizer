@@ -380,7 +380,21 @@
         const directories = new Map([['', session.parent]]), bindings = new Map(), scopeSnapshots = new Map();
         const history = typeof mediaFileHistory === 'function' ? mediaFileHistory(session) : null;
         const subtitleSnapshots = new Map();
+        const emptiedSeasonSources = new Map();
+        let targetSnapshots = [];
         let checkPlan = () => {};
+        const targetScope = async (destination,children,check) => {
+            let parent = session.parent;
+            const found = [];
+            for (const part of relativeParts(destination)) {
+                check();
+                const matches = (await children(parent)).filter(node => node.name.normalize('NFKC').toLowerCase() === part.normalize('NFKC').toLowerCase());
+                found.push(matches.map(node => [String(node.id),node.name,!!node.directory,node.size,node.md5]).sort((a,b) => a[0].localeCompare(b[0])));
+                if (matches.length !== 1 || !matches[0].directory) break;
+                parent = matches[0].id;
+            }
+            return JSON.stringify(found);
+        };
         const scanScope = async (id, children, path = '', seen = new Set()) => {
             checkPlan();
             if (seen.has(String(id))) throw new Error('目录存在循环或重复引用，无法确认整理范围');
@@ -398,7 +412,7 @@
         const subtitleScopeKey = files => scopeKey(files.map(file => ({...file,id:String(file.id),name:file.name + '\0' + file.suffix})));
         async function prepare(items,check = () => {},log) {
             checkPlan = check;
-            bindings.clear(); scopeSnapshots.clear();
+            bindings.clear(); scopeSnapshots.clear(); targetSnapshots = [];
             const videos = items.filter(item => item.node.id === item.videoId), candidates = new Map();
             for (const item of videos) {
                 const parts = relativeParts(item.destination); parts.pop();
@@ -415,6 +429,9 @@
                 }
             }
             const children = cachedDriveChildren(source,new Map(),check);
+            if (log) await batchStage(items,'整理目标快照（文件）',log,async (item,verify,index) => {
+                targetSnapshots[index] = [item.destination,await targetScope(item.destination,children,verify)];
+            },check);
             const byId = new Map(videos.map(item => [String(item.node.id), item]));
             subtitleSnapshots.clear();
             const planned = new Map();
@@ -461,7 +478,10 @@
             return [...bindings].map(([destination, folder]) => ({folder, destination, contents:scopeSnapshots.get(String(folder.id))}));
         }
         async function validate(log) {
-            const children = subtitleSnapshots.size ? cachedDriveChildren(source,new Map(),checkPlan) : null;
+            const children = targetSnapshots.length || subtitleSnapshots.size ? cachedDriveChildren(source,new Map(),checkPlan) : null;
+            if (targetSnapshots.length) await batchStage(targetSnapshots,'执行前复核目标（文件）',log,async ([destination,expected],verify) => {
+                if (await targetScope(destination,children,verify) !== expected) throw new Error('整理目标已变化，请重新生成预览：' + destination);
+            },checkPlan);
             await batchStage([...subtitleSnapshots],'执行前复核字幕（视频）',log,async ([node,expected]) => {
                 const found = mediaSubtitleLinks(await children(node.parentId),node.parentId,history).linked.get(String(node.id)) || [];
                 if (subtitleScopeKey(found) !== expected) throw new Error('关联字幕在预览后变化，请重新生成预览：' + node.name);
@@ -577,10 +597,44 @@
             if (rename && renameFirst) await changeName();
             if (move) await changeParent();
             if (rename && !renameFirst) await changeName();
+            if (move) {
+                if (item.videoId === original.id && parts.some(part => /^Season \d+$/.test(part))) {
+                    const crumbs = source.breadcrumbs || [];
+                    const current = crumbs.at(-1);
+                    const scope = [];
+                    if (current && current.id === source.parentId) {
+                        const start = /^(?:season[ ._-]*\d+|s\d+|第.+季)$/i.test(current.name) ? Math.max(0,crumbs.length-2) : crumbs.length-1;
+                        for (let i=start; i<crumbs.length; i++) scope.push({...crumbs[i],parentId:crumbs[i-1]?.id || '0',path:crumbs.slice(0,i+1).map(folder=>folder.name).join('/')});
+                    }
+                    const ancestors = [...scope,...(original.ancestors || [])].map((folder,depth)=>({...folder,depth}));
+                    for (const folder of ancestors.reverse()) {
+                        if ([session.parent,'0'].some(id => String(id) === String(folder.id)) ||
+                            mediaExistingCategory([folder.name]) || folder.name === '云添加') break;
+                        emptiedSeasonSources.set(folder.id,folder);
+                    }
+                }
+            }
             if (historyError) return '已整理，原名记录保存失败：' + historyError.message;
             return rename || move ? '已整理' : '已是标准名称与位置';
         }
-        return { prepare, validate, execute, executionKeys };
+        async function recycleEmptySeasonSources(check,log) {
+            const moved = new Set([...bindings.values()].map(folder => folder.id));
+            let count = 0;
+            for (const folder of [...emptiedSeasonSources.values()].sort((a,b) => b.depth - a.depth)) {
+                check();
+                if (moved.has(folder.id)) continue;
+                const siblings = await source.children({id:folder.parentId});
+                if (!siblings.some(node => node.id === folder.id && node.directory && node.name === folder.name)) continue;
+                const remaining = await source.children({id:folder.id});
+                if (remaining.length) { log('保留剧集来源目录 ' + folder.path + '，仍有 ' + remaining.length + ' 项：' + remaining.slice(0,3).map(item=>item.name).join('、')); continue; }
+                check();
+                await recycleMedia({...folder,directory:true},session,source);
+                count++;
+                log('剧集空目录已移入回收站：' + folder.path);
+            }
+            return count;
+        }
+        return { prepare, validate, execute, executionKeys, recycleEmptySeasonSources };
     }
 
     const mediaStandardFolder = name => (/^.+\.(?:19|20)\d{2}$/.test(name) || /^Season \d{2}$/.test(name) || !!mediaExistingCategory([name])) && mediaClean(name) === name;

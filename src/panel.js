@@ -36,12 +36,20 @@
             if (!description) intro.append(create('p', '', '导出当前网盘的文件清单，或导入清单恢复文件。'));
             const context = create('span', 'tool-context', source); intro.querySelector('h3').append(context);
         } else {
-            const title = intro.querySelector('h3'), source = title.textContent.replace(/\s+(?:字幕|重命名与自动分类).*$/, '').trim();
-            title.textContent = id === 'media' ? '影视整理' : '字幕检查与补齐'; title.append(create('span', 'tool-context', source));
+            const title = intro.querySelector('h3'), source = title.textContent.replace(/\s+(?:字幕|影视整理|重命名与自动分类).*$/, '').trim();
+            title.textContent = '影视整理'; title.append(create('span', 'tool-context', source));
         }
         const commands = create('div', 'tool-commandbar');
         const firstAction = pane.querySelector(':scope > .panel-actions');
+        const merged = id === 'subtitle' && pane.querySelector('#previewMedia');
         if (firstAction) commands.append(firstAction);
+        if (merged) {
+            const actions = pane.querySelector('#stopSubtitles').parentElement;
+            firstAction.append(...actions.children);
+            actions.remove();
+            firstAction.querySelector('#stopMedia').remove();
+            pane.classList.add('merged-media');
+        }
         if (id === 'json') take(commands, '#stopJson');
         const layout = create('div', 'tool-layout');
         const main = create('div', 'tool-main'), side = create('aside', 'tool-sidebar');
@@ -56,6 +64,7 @@
         heading.append(headingTitle);
         if (id === 'subtitle') {
             headingTitle.id = 'subtitleResultsTitle';
+            if (merged) headingTitle.textContent = '作品与字幕';
             take(heading, '#subtitleFilters');
         } else if (id === 'media') {
             headingTitle.id = 'mediaResultsTitle';
@@ -79,6 +88,22 @@
         } else if (id === 'subtitle') {
             take(main, '#subtitleSummary');
             take(main, '#subtitleResults');
+            if (merged) {
+                take(heading,'#allowWithoutSubtitles');
+                const results = main.querySelector('#subtitleResults');
+                const preview = create('details','sync-preview');
+                preview.id = 'mediaPreviewPanel';
+                preview.append(create('summary','','查看整理预览'));
+                take(preview,'#mediaPreview');
+                results.prepend(preview);
+                results.prepend(pane.querySelector('#mediaCleanup'));
+                take(results,'#mediaRows');
+                results.querySelector('#mediaRows').hidden = true;
+                for (const unused of ['#mediaView','#mediaSummary','#mediaProgress','#mediaBar']) pane.querySelector(unused).hidden = true;
+                const empty = create('div','media-empty'); empty.id = 'mediaEmpty'; empty.hidden = true;
+                results.append(empty);
+                for (const selector of ['#mediaTarget','#mediaRecordState']) take(status,selector);
+            }
         } else {
             take(main, '#mediaSummary');
             const results = create('div');
@@ -195,6 +220,9 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 #mediaPreviewPanel{margin-bottom:10px}
 .subtitle-action-view{grid-column:1/-1;margin:0;overflow-wrap:anywhere}
 #subtitleRows>.sync-item{padding:12px}
+.merged-media #mediaRows .media-detail{display:block}.merged-media #mediaEmpty{display:none}
+.merged-media .tool-list-heading{flex-wrap:wrap;gap:6px}.merged-media #allowWithoutSubtitles{margin:0;display:flex;align-items:center;gap:5px;white-space:nowrap}.merged-media #allowWithoutSubtitles input{width:auto;margin:0}
+.merged-media #subtitleRows .panel-actions{margin:6px 0 0}.merged-media #mediaPreviewPanel{overflow:visible}
 #subtitleRows h5,#subtitleRows p{margin-block:0 4px}
 #subtitleRows button{margin-top:4px}
 #subtitleRows select{width:100%;min-width:0;text-overflow:ellipsis}
@@ -271,7 +299,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         </style><button id="toggle" type="button" title="打开云盘工具" aria-label="打开云盘工具" aria-haspopup="dialog" aria-expanded="false" aria-controls="toolDialog"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 12h4M8 16h3M16 12v6m-2-2 2 2 2-2"/></svg></button>
         <div class="workspace-overlay" hidden><div class="box" id="toolDialog" role="dialog" aria-modal="false" aria-labelledby="workspaceTitle" tabindex="-1">
         <header class="workspace-header"><div><h2 id="workspaceTitle">云盘工具</h2><p id="windowHint">拖动标题栏移动 · 可同时操作网页</p></div><div class="workspace-window-actions"><button id="settingsWorkspace" type="button">设置</button><button id="pinWorkspace" type="button" aria-pressed="false" title="锁定窗口位置">固定位置</button><button id="closeWorkspace" type="button" aria-label="关闭面板" title="关闭">×</button></div></header>
-        <div class="workspace-toolbar"><div class="workspace-tabs" role="tablist" aria-label="功能分类"><button id="jsonTab" type="button" role="tab" aria-selected="false" aria-controls="jsonPane" tabindex="-1" disabled>跨盘 JSON</button><button id="subtitleTab" type="button" role="tab" aria-selected="false" aria-controls="subtitlePane" tabindex="-1" disabled title="当前网盘暂不支持字幕检查">查找字幕</button><button id="mediaTab" type="button" role="tab" aria-selected="false" aria-controls="mediaPane" tabindex="-1" disabled title="当前网盘暂不支持影视整理">影视整理</button></div>
+        <div class="workspace-toolbar"><div class="workspace-tabs" role="tablist" aria-label="功能分类"><button id="jsonTab" type="button" role="tab" aria-selected="false" aria-controls="jsonPane" tabindex="-1" disabled>跨盘 JSON</button><button id="subtitleTab" type="button" role="tab" aria-selected="false" aria-controls="subtitlePane" tabindex="-1" disabled title="当前网盘暂不支持字幕检查">影视整理</button></div>
         <label class="theme-row">窗口尺寸<select id="workspaceSize" aria-label="窗口尺寸"><option value="960x600">960 × 600</option><option value="1280x800" selected>1280 × 800（默认）</option><option value="1440x900">1440 × 900</option><option value="1600x1000">1600 × 1000</option></select></label>
         <label class="theme-row">外观<select id="theme"><option value="auto">跟随页面</option><option value="light">浅色</option><option value="dark">深色</option></select></label></div>
         <div class="workspace-body"><section id="workspaceSettings" class="tool-pane" hidden><div class="settings-heading"><h3>设置</h3><button id="backToTools">返回工具</button></div><div id="settingsSections"><div class="settings-column" id="settingsModels"></div><div class="settings-column" id="settingsBasics"></div></div></section></div></div></div>`;
@@ -284,7 +312,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             const navTitle = document.createElement('p'); navTitle.className = 'nav-caption'; navTitle.textContent = '工作空间'; navigation.prepend(navTitle);
             const navFooter = document.createElement('div'); navFooter.className = 'nav-footer'; navFooter.append(root.querySelector('#settingsWorkspace'));
             const version = document.createElement('small'); version.textContent = '云盘工具' + (typeof VERSION === 'string' ? ' · v' + VERSION : ''); navFooter.append(version); navigation.append(navFooter);
-            const icons = {jsonTab:'M7 4h7l4 4v12H7zM14 4v5h5M10 13h5m-5 3h5',mediaTab:'M4 5h16v14H4zM4 9h16M8 5v4m8-4v4m-6 4 5 3-5 3z',subtitleTab:'M4 5h16v13H8l-4 3zM7 10h10M7 14h6',settingsWorkspace:'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8M12 3v2m0 14v2M3 12h2m14 0h2M5.6 5.6 7 7m10 10 1.4 1.4M5.6 18.4 7 17m10-10 1.4-1.4'};
+            const icons = {jsonTab:'M7 4h7l4 4v12H7zM14 4v5h5M10 13h5m-5 3h5',subtitleTab:'M4 5h16v14H4zM4 9h16M8 5v4m8-4v4m-6 4 5 3-5 3z',settingsWorkspace:'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8M12 3v2m0 14v2M3 12h2m14 0h2M5.6 5.6 7 7m10 10 1.4 1.4M5.6 18.4 7 17m10-10 1.4-1.4'};
             for (const [name, path] of Object.entries(icons)) {
                 const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); icon.setAttribute('viewBox', '0 0 24 24'); icon.setAttribute('fill', 'none'); icon.setAttribute('stroke', 'currentColor'); icon.setAttribute('stroke-width', '1.6'); icon.setAttribute('aria-hidden', 'true');
                 const line = document.createElementNS('http://www.w3.org/2000/svg', 'path'); line.setAttribute('d', path); icon.append(line); root.querySelector('#' + name).prepend(icon);

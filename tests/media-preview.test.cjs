@@ -40,9 +40,9 @@ function fixture() {
         part('    async function forEachConcurrent(', '    function cachedDriveChildren(') +
         part('    function cachedDriveChildren(', '    function titleKey(') +
         '\nconst runTask = createPanelTask(ui, updateControls); this.runOther = createPanelTask(otherUi, () => {});\n' +
-        part('        const invalidate =', '        const runTask =') +
+        part('        const invalidate =', '        let mediaBusy =') +
         part('        const refreshPreview =', '        const editRows =') +
-        part('        const generatePreview =', "        ui.get('runMedia').onclick =") +
+        part('        const generatePreview =', "        if (flow) {\n            ui.get('previewMedia').onclick") +
         '\nthis.refresh = refreshPreview; this.checkStale = refreshStalePreview;', ctx);
     return {ctx, state, elements};
 }

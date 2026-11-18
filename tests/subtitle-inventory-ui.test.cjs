@@ -88,6 +88,19 @@ const action = (label, root=get('subtitleRows')) => {
 const view = value => {get('subtitleView').value = value; get('subtitleView').onchange();};
 
 (async () => {
+    const complete = {groupKey:'season',parsed:{tv:true,season:1,episode:1},complete:true,node:{parentId:'p'}};
+    const ready = {...complete,complete:false,parsed:{...complete.parsed,episode:2},selectedCandidate:{ext:'srt',name:'E02.srt'}};
+    ready.autoCandidates = [ready.selectedCandidate];
+    const missing = {...ready,parsed:{...ready.parsed,episode:3},selectedCandidate:null};
+    const targets = rows => Array.from(ctx.mergedSubtitleFillTargets(rows,row=>!!row.selectedCandidate,row=>row.complete));
+    assert.deepEqual(targets([complete,ready,missing]),[],'An incomplete season yields no upload targets');
+    assert.deepEqual(targets([complete,ready]),[ready],'An already covered episode needs no upload');
+    const second = {...missing,selectedCandidate:{ext:'srt',name:'E03.srt'}};
+    assert.deepEqual(targets([complete,ready,second]),[],'Manual choices cannot satisfy automatic season coverage');
+    second.autoCandidates = [second.selectedCandidate];
+    assert.deepEqual(targets([complete,ready,second]),[ready,second]);
+    second.selectedCandidate.name = 'e02.srt';
+    assert.deepEqual(targets([complete,ready,second]),[],'Same-directory upload names must be distinct');
     ctx.initSubtitles();
     assert.equal(get('subtitleView').value,'incomplete');
     assert.equal(elements.has('recheckSubtitles'),false);

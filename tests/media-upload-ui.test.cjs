@@ -94,7 +94,7 @@ async function aiFallbackGuards() {
 async function mediaFallbackFlow() {
     const calls=[],groups=new Map(['Known','Unmatched','Ambiguous','Offline',''].map((query,index)=>[index,[{node:{id:String(index),name:query||'unknown.mkv',parentId:'p'},query,sourceYear:'2000'}]]));
     const context=load(part('    function validateMediaAIIdentity(', '    async function identifyMediaAIFiles(')+part('        async function matchGroup(', "        ui.get('scanMedia').onclick"),{
-        groups,checkStopped(){},progress(){},meter(){},log(){},readyRow:row=>!!row.detail,key:value=>value.toLowerCase(),aiSettings:()=>({enabled:true}),mediaCandidatePreference:()=>({type:'movie'}),
+        groups,flow:null,checkStopped(){},progress(){},meter(){},log(){},readyRow:row=>!!row.detail,key:value=>value.toLowerCase(),aiSettings:()=>({enabled:true}),mediaCandidatePreference:()=>({type:'movie'}),
         client:{search:async query=>{calls.push('tmdb:'+query);if(query==='Offline')throw Error('HTTP 503');if(query==='Unmatched')return [];return Array.from({length:query==='Ambiguous'?2:1},(_,index)=>({id:index+1,media_type:'movie',title:query,release_date:'2000-01-01'}))}},
         choose:async(row,match)=>{row.detail={id:match};row.match=match},validateEpisode:async()=>{},createMediaAI:()=>({}),
         identifyMediaAIFiles:async rows=>{calls.push('ai:'+rows[0].node.name);return rows.map(()=>({title:'Recovered',type:'movie',year:'2000',episodes:[]}))}
@@ -273,6 +273,11 @@ async function folders() {
     await merge.writer.validate();await merge.writer.execute(merge.item);assert.equal(merge.nodes.find(n=>n.id===merge.video.id).parentId,'target');assert.equal(merge.nodes.find(n=>n.id===merge.attachment.id).parentId,merge.folder.id);
     const late=treeFixture();await late.writer.prepare([late.item]);late.nodes.push({id:'cat',parentId:'0',name:'电影',directory:true},{id:'target',parentId:'cat',name:'新片名.2000',directory:true});
     await assert.rejects(late.writer.execute(late.item),/预览后出现同名项目/);assert.equal(late.mutations.length,0);
+    const changedTarget=treeFixture();
+    await changedTarget.writer.prepare([changedTarget.item],()=>{},()=>{});
+    changedTarget.nodes.push({id:'late-cat',parentId:'0',name:'电影',directory:true});
+    await assert.rejects(changedTarget.writer.validate(),/整理目标已变化/);
+    assert.equal(changedTarget.mutations.length,0);
     const stopped=treeFixture();let cancel=false;await stopped.writer.prepare([stopped.item],()=>{if(cancel)throw Error('已停止')});cancel=true;
     await assert.rejects(stopped.writer.validate(),/已停止/);assert.equal(stopped.mutations.length,0);
     const parallel = treeFixture();
@@ -304,7 +309,7 @@ async function cleanup() {
     const handler = part("        ui.get('runEmpty').onclick =", "        ui.get('mediaAIProvider').onchange");
     const lifecycle = part('    function createPanelTask(', '    function panelControls(');
     const locks = [];
-    const run=load(lifecycle + '\nconst runTask = createPanelTask(ui, () => {});\n' + handler,{ui:{get:()=>button,busy: value => locks.push(value)},emptyPlan:[{path:'a'},{path:'b'}],emptySession:{},emptySource:{},cancelled:false,checkStopped(){},
+    const run=load(lifecycle + '\nconst runTask = createPanelTask(ui, () => {});\n' + handler,{ui:{get:()=>button,busy: value => locks.push(value)},emptyPlan:[{path:'a'},{path:'b'}],emptySession:{},emptySource:{},cancelled:false,flow:null,checkStopped(){},
         invalidate(){},meter(){},log:m=>messages.push(m),progress:m=>messages.push(m),
         removeMediaNonstandard:async()=>{deletes++;throw Object.assign(Error('HTTP 403'),{stop:true})}
     });
