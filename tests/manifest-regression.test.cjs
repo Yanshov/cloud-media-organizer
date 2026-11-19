@@ -182,6 +182,12 @@ async function sharedHelpers(){
  const regular={...rows[0],type:'tv',detail,node:{...rows[0].node,ancestors:[ancestor]}};
  const changed=await ctx.resolveMediaSpecials([regular,special],{get:async()=>({episodes:[{name:'Rock & Roll',episode_number:1}]})});
  assert.equal(changed.length,1);assert.equal(special.season,0);assert.equal(special.episode,1);
+ const episodes = Array.from({length:48},(_,index)=>({...regular,episode:index+1,node:{id:'ep-'+index,parentId:'direct',name:'Love.Death.and.Robots.S01E'+(index+1)+'.mkv'}}));
+ const extra = {node:{parentId:'direct',name:'Love.Death.and.Robots.特别篇.mkv'}};
+ const unrelated = {node:{parentId:'direct',name:'Other.Work.特别篇.mkv'}};
+ await ctx.resolveMediaSpecials([...episodes,extra,unrelated],{get:async()=>({episodes:[{name:'Bonus Story',episode_number:1}]})});
+ assert.equal(extra.match,'tv:1');assert.equal(extra.season,0);assert.equal(extra.episode,1);
+ assert.ok(episodes.every(row=>row.season===1));assert.equal(unrelated.match,undefined);
  const searches=[],lookups=[];
  const resolve=ctx.mediaCanonicalResolver({
     search:async query=>{searches.push(query);return [{...detail,media_type:'tv'}];},

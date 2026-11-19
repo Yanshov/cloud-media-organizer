@@ -93,6 +93,11 @@
             .replace(year ? new RegExp('[._\\s:(\\[-]+' + String(year).replace(/\D/g, '') + '[)\\]\\s]*$') : /$^/, ' ')
             .replace(/\s+/g, ' ').trim();
     }
+    function mediaTheatricalQuery(value) {
+        return String(value || '').normalize('NFKC')
+            .replace(/^\s*(?:剧场版|劇場版)\s*[:：._ -]*/u,'')
+            .replace(/[\s:：._-]*(?:剧场版|劇場版)\s*$/u,'').trim();
+    }
     function subtitleWorkIdentity(parsed, fields, name) {
         const titleNumbers = String(parsed.query || '').match(/(?:19|20)\d{2}/g) || [];
         const years = value => [...String(value).normalize('NFKC').matchAll(/(?:^|[^\p{L}\p{N}])((?:19|20)\d{2})(?=$|[^\p{L}\p{N}])/gu)].map(m => m[1]).filter(y => Number(y) <= new Date().getFullYear() + 1 && (!titleNumbers.includes(y) || y === String(parsed.year)));
@@ -113,7 +118,7 @@
             text = text.split(/(?:^|[. _\[(-])(?:\d{3,4}p|4k|8k|BluRay|BDRip|WEB(?:[ ._-]?(?:DL|Rip))?|REMUX|HDTV|DVD(?:Rip)?|x26[45]|h[ ._-]?26[45]|HEVC|AVC|chs|cht|eng|简体|繁体|简中|繁中|中英|双语)(?=$|[. _\])&+-])/i)[0];
             text = text.replace(/(?:^|[. _-])S\d{1,2}[. _-]*E\d{1,3}[\s\S]*$/i, '');
             if (parsed.tv) text = text.replace(/(?:[. _-]*(?:S\d{1,2}|Season[. _-]*\d{1,2}|第[零〇一二两三四五六七八九十百\d]+季))[. _-]*$/i, '');
-            return titleKey(text);
+            return titleKey(parsed.tv ? text : mediaTheatricalQuery(text));
         };
         const target = clean(subtitleQueryTitle(parsed.query, parsed.year), true);
         const fileYears = years(name), packYears = [...new Set(fields.flatMap(years))];
@@ -305,7 +310,8 @@
         // Include an original Japanese title before spending the budget on regional Chinese variants.
         const japanese = unique.find(name => /[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(name));
         const latin = unique.find(name => /\p{Script=Latin}/u.test(name) && !/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(name));
-        return [...new Set([unique[0],japanese,latin,...unique].filter(Boolean))].slice(0,3);
+        const theatrical = !parsed.tv && unique.map(mediaTheatricalQuery).find((name,index) => name && titleKey(name) !== titleKey(unique[index]));
+        return [...new Set([unique[0],theatrical,japanese,latin,...unique].filter(Boolean))].slice(0,3);
     }
     function subtitleRequestPool(interval, limit, request) {
         let queue = Promise.resolve(), last = 0;

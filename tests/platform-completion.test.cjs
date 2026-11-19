@@ -131,6 +131,7 @@ function startup(){
  assert.doesNotMatch(script,/@container(max-width:760px)/,'Mobile layout is removed');
  const names=[...script.matchAll(/^    (?:async )?function (\w+)\(/gm)].map(m=>m[1]);assert.equal(new Set(names).size,names.length,'No duplicate function declarations');
  assert.ok(script.includes('id="subtitleViewChoice" value="choice"'));assert.ok(script.includes('// @version      '+version));
+ assert.match(script,/subtitleSyncTab:'captions'/,'Subtitle sync tab keeps its workspace icon');
  assert.match(script,/id="settingsBasics"/,'Window and appearance share the compact basic settings column');
  assert.equal((script.match(/<summary>导入清单<\/summary>/g)||[]).length,2,'Both import implementations expose one combined entry');
  assert.match(script,/<input id="syncExisting" type="checkbox">/,'Replacing old copies is opt-in');

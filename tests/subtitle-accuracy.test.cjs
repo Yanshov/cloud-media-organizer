@@ -78,7 +78,7 @@ async function candidateFallback() {
             if (c === candidates[1]) return {result:{ext:'ass'},bytes:new TextEncoder().encode(ass([normal,'Dialogue: 0,'+remote+',64:52:00.00,Default,真实对白']))};
             return {result:{ext:'srt',fileName:'来源上传原名.srt'},bytes:new TextEncoder().encode(c===candidates[0]?sized(8385,'00:06:16,000'):srt('01:50:00,000'))};
         }}});
-    vm.runInContext(part('    function createPanelTask(', '    function panelControls(') + "const runTask = createPanelTask(ui, () => {});\n" + part('    async function savePanelSubtitle(', '    function subtitleCandidateNameIssue(') + part('        const fillCard =', "        ui.get('stopSubtitles').onclick"),ctx);
+    vm.runInContext('\nconst flow = undefined;\n' + part('    function createPanelTask(', '    function panelControls(') + "const runTask = createPanelTask(ui, () => {});\n" + part('    async function savePanelSubtitle(', '    function subtitleCandidateNameIssue(') + part('        const fillCard =', "        ui.get('stopSubtitles').onclick"),ctx);
     await elements.fillSubtitles.onclick();
     assert.deepEqual(calls,candidates.map(c=>c.name));assert.equal(saved.length,1);assert.equal(r.complete,true);
     assert.ok(logs.some(line=>/候选失败.*字幕不完整/.test(line)));

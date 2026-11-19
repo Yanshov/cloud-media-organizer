@@ -93,7 +93,7 @@ async function aiFallbackGuards() {
 
 async function mediaFallbackFlow() {
     const calls=[],groups=new Map(['Known','Unmatched','Ambiguous','Offline',''].map((query,index)=>[index,[{node:{id:String(index),name:query||'unknown.mkv',parentId:'p'},query,sourceYear:'2000'}]]));
-    const context=load(part('    function validateMediaAIIdentity(', '    async function identifyMediaAIFiles(')+part('        async function matchGroup(', "        ui.get('scanMedia').onclick"),{
+    const context=load(part('    function mediaTheatricalQuery(', '    function subtitleWorkIdentity(')+part('    function validateMediaAIIdentity(', '    async function identifyMediaAIFiles(')+part('        async function matchGroup(', "        ui.get('scanMedia').onclick"),{
         groups,flow:null,checkStopped(){},progress(){},meter(){},log(){},readyRow:row=>!!row.detail,key:value=>value.toLowerCase(),aiSettings:()=>({enabled:true}),mediaCandidatePreference:()=>({type:'movie'}),
         client:{search:async query=>{calls.push('tmdb:'+query);if(query==='Offline')throw Error('HTTP 503');if(query==='Unmatched')return [];return Array.from({length:query==='Ambiguous'?2:1},(_,index)=>({id:index+1,media_type:'movie',title:query,release_date:'2000-01-01'}))}},
         choose:async(row,match)=>{row.detail={id:match};row.match=match},validateEpisode:async()=>{},createMediaAI:()=>({}),
@@ -104,7 +104,51 @@ async function mediaFallbackFlow() {
     assert.deepEqual(calls.slice().sort(),['tmdb:Known','tmdb:Unmatched','ai:Unmatched','tmdb:Recovered','tmdb:Ambiguous','tmdb:Offline','ai:unknown.mkv','tmdb:Recovered'].sort());
     assert.ok(calls.indexOf('tmdb:Unmatched') < calls.indexOf('ai:Unmatched'));
     assert.equal(groups.get(0)[0].aiAssisted,false);assert.equal(groups.get(1)[0].aiAssisted,true);assert.equal(groups.get(2)[0].matchFailure,'ambiguous');assert.equal(groups.get(3)[0].matchFailure,'lookup-error');assert.equal(groups.get(4)[0].aiAssisted,true);
+    context.client.search = async query => {
+        if (query !== '作品 银色之翼') return [];
+        return [{id:1,media_type:'movie',title:query,release_date:'2000-01-01'},
+            {id:2,media_type:'tv',name:query,first_air_date:'2000-01-01'},
+            {id:3,media_type:'movie',title:query,release_date:'2004-01-01'}];
+    };
+    for (const [year,match] of [['2000','movie:1'],['',''],['2005','']]) {
+        const row = {node:{name:'剧场版 作品 银色之翼.mkv'},sourceYear:year};
+        await context.matchGroup([row],'剧场版 作品 银色之翼');
+        assert.equal(row.match,match);
+    }
     console.log('PASS media scan flow: normal TMDB first; AI only for unmatched or empty titles; recovered title rechecked; ambiguity and network failures stay manual');
+}
+
+async function subtitleIdentityHandoff() {
+    const events=[], media={node:{id:'v',name:'Film.2000.mkv'},query:'Film',sourceYear:'2000'};
+    const inspect=load(part('            flow.inspect = async (context,collected) => {','            flow.syncWorks ='),{
+        flow:{},inventory:[{node:media.node,media}],context:{},updateIdentity:()=>events.push('identity'),
+        checkDirectory:async()=>{events.push('coverage');return true;},check:()=>{}
+    });
+    inspect.flow.resolveSubtitleWorks=async(rows)=>{assert.equal(rows[0].media,media);events.push('subtitle-handoff');};
+    vm.runInContext(part('            flow.inspect = async (context,collected) => {','            flow.syncWorks ='),inspect);
+    assert.equal(await inspect.flow.inspect(inspect.context,{}),true);
+    assert.deepEqual(events,['identity','coverage','subtitle-handoff'],'Trusted subtitle identity runs after the directory coverage check');
+    assert.equal(inspect.flow.registryReady,true);
+
+    let accepted=0, refreshed=0;
+    const recovery=load(part('        async function recoverWorkFromSubtitle(row, verify) {','        ui.get(\'scanMedia\').onclick'),{
+        flow:{
+            coverage:()=> 'complete',
+            subtitleWorkHints:()=>({type:'movie',year:'2000',queries:['Film 2000']}),
+            acceptSubtitleWork:()=>{accepted++;},requestRender:()=>{refreshed++;}
+        },client:{},meter(){},log(){},mediaCandidatePreference:()=>({type:'movie'}),
+        readyRow:row=>!!row.match&&!!row.detail&&!row.error,
+        matchGroup:async([row],query)=>Object.assign(row,{query,title:'Film',year:'2000',type:'movie',match:'movie:7',detail:{id:7},error:''}),
+        batchStage:async(items,_stage,_log,work,verify)=>{for(const item of items)await work(item,verify);},
+        checkStopped:()=>{}
+    });
+    const row={node:media.node,media:{...media},sourceYear:'2000',include:true};
+    recovery.inventory=[{node:media.node,media:row.media}];
+    vm.runInContext(part('        async function recoverWorkFromSubtitle(row, verify) {','        ui.get(\'scanMedia\').onclick'),recovery);
+    await recovery.flow.resolveSubtitleWorks(recovery.inventory,()=>{});
+    assert.equal(recovery.readyRow(row.media),true);
+    assert.equal(accepted,1);assert.equal(refreshed,1);
+    console.log('PASS merged identity handoff: coverage check precedes subtitle recovery; confirmed work is synchronized and cards refresh');
 }
 
 function aiProviderKey() {
@@ -445,4 +489,4 @@ async function guangyaReceipts() {
     console.log('PASS Guangya: rapid upload and signed OSS byte upload; readback failure, missing task and accepted-task auth failure retain receipt; explicit rejection clears receipt; recheck recovers with one create only');
 }
 
-(async()=>{types();aiProviderKey();await tmdbSearchAndEpisodeAliases();await aiFallbackGuards();await mediaFallbackFlow();await subtitles();await receipts();await folders();await cleanup();await subtitleUI();await guangyaReceipts();})().catch(e=>{console.error(e);process.exitCode=1;});
+(async()=>{types();aiProviderKey();await tmdbSearchAndEpisodeAliases();await aiFallbackGuards();await mediaFallbackFlow();await subtitleIdentityHandoff();await subtitles();await receipts();await folders();await cleanup();await subtitleUI();await guangyaReceipts();})().catch(e=>{console.error(e);process.exitCode=1;});

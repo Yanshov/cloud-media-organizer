@@ -134,7 +134,7 @@
         const main = create('div', 'tool-main');
         const status = create('section', 'tool-status-text');
         const statusIds = id === 'subtitleSync' ? ['subtitleSyncStatus'] : id === 'subtitle' ? ['subtitleScope','subtitleProgress','subtitleMeter']
-            : id === 'media' ? ['mediaProgress','mediaBar','mediaRecordState'] : ['status','target','progress'];
+            : id === 'media' ? ['mediaProgress','mediaBar'] : ['status','target','progress'];
         for (const name of statusIds) take(status, '#' + name);
         const heading = create('div', 'tool-list-heading');
         const headingTitle = create('h4', '', id === 'subtitle' ? '字幕检查结果' : id === 'media' ? '影视整理结果' : id === 'subtitleSync' ? '' : 'JSON 文件清单');
@@ -182,7 +182,6 @@
                 for (const unused of ['#mediaView','#mediaSummary','#mediaProgress','#mediaBar']) pane.querySelector(unused).hidden = true;
                 const empty = create('div','media-empty'); empty.id = 'mediaEmpty'; empty.hidden = true;
                 results.append(empty);
-                take(status,'#mediaRecordState');
             }
         } else {
             take(main, '#mediaSummary');
@@ -467,7 +466,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             for (const label of [...navigation.querySelectorAll('.theme-row')]) appearance.append(label);
             const navFooter = document.createElement('div'); navFooter.className = 'nav-footer'; navFooter.append(root.querySelector('#settingsWorkspace'));
             const version = document.createElement('small'); version.textContent = typeof VERSION === 'string' ? 'v' + VERSION : ''; navFooter.append(version); navigation.append(navFooter);
-            const icons = {jsonTab:'files',subtitleTab:'film',settingsWorkspace:'settings',closeWorkspace:'x',backToTools:'arrow-left'};
+            const icons = {jsonTab:'files',subtitleTab:'film',subtitleSyncTab:'captions',settingsWorkspace:'settings',closeWorkspace:'x',backToTools:'arrow-left'};
             for (const [name, glyph] of Object.entries(icons)) root.querySelector('#' + name).prepend(workspaceIcon(glyph, name === 'backToTools' ? 'command-icon' : ''));
             root.querySelector('.workspace-brand-mark').append(workspaceIcon('cloud'));
             toggle.append(workspaceIcon('cloud'));

@@ -101,6 +101,29 @@ const view = value => {get('subtitleView').value = value; get('subtitleView').on
     assert.deepEqual(targets([complete,ready,second]),[ready,second]);
     second.selectedCandidate.name = 'e02.srt';
     assert.deepEqual(targets([complete,ready,second]),[],'Same-directory upload names must be distinct');
+    const stateContext=vm.createContext({
+        flow:{recognizing:false,workReady:media=>!!media.confirmed},
+        checkedScope:'fixture',
+        ui:{get:()=>({checked:false})},
+        awaitingCheck:row=>row.checkState&&row.checkState!=='done',
+        subtitleCoverageState:row=>row.coverage,
+        subtitleSearchState:row=>row.search||'unsearched'
+    });
+    vm.runInContext(part('        const videoState = (row, fillTargets = null) => {','        const inView = (row, view) => {')+'this.videoState=videoState;',stateContext);
+    const stateRow={node:{id:'state-video'},parsed:{tv:true,season:1,episode:1},checkState:'done',coverage:'complete',include:true,
+        media:{include:true,confirmed:true,error:''}};
+    let state=stateContext.videoState(stateRow);
+    assert.equal(state.identity,'confirmed');assert.equal(state.coverage,'complete');assert.equal(state.canOrganize,true);
+    assert.equal(state.canFill,false,'Covered videos are not fill targets');
+    stateRow.coverage='missing';state=stateContext.videoState(stateRow,new Set([stateRow]));
+    assert.equal(state.canSearch,true);assert.equal(state.canFill,true);assert.equal(state.canOrganize,false);
+    assert.match(state.blocker,/允许无字幕整理/);
+    stateContext.ui.get=()=>({checked:true});
+    assert.equal(stateContext.videoState(stateRow).canOrganize,true,'Explicit no-subtitle permission enables organization');
+    stateContext.ui.get=()=>({checked:false});stateRow.coverage='unconfirmed';
+    assert.equal(stateContext.videoState(stateRow).canOrganize,false);
+    stateRow.organizePending=true;state=stateContext.videoState(stateRow);
+    assert.equal(state.execution,'unconfirmed');assert.match(state.blocker,/待核对/);
     ctx.initSubtitles();
     assert.equal(get('subtitleView').value,'incomplete');
     assert.equal(elements.has('recheckSubtitles'),false);

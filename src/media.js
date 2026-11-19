@@ -72,6 +72,11 @@
     async function resolveMediaSpecials(rows,client,parentPath = '',check = () => {},log) {
         const key = titleKey;
         const scopes = row => [...parentPath.split('/').filter(Boolean).map((name, i, parts) => ({ id: 'path:' + parts.slice(0, i + 1).join('/'), name })), ...(row.node.ancestors || []).map(a => ({ id: 'id:' + a.id, name: a.name }))];
+        const marked = /特别篇|特別篇|番外篇|(?:^|[^a-z0-9])(?:special|OVA|OAD|SP)(?=$|[^a-z0-9])/i;
+        const put = (id, detail) => {
+            if (!contexts.has(id)) contexts.set(id, new Map());
+            contexts.get(id).set(String(detail.id), detail);
+        };
         const contexts = new Map(), changed = [];
         for (const row of rows) {
             if (row.type !== 'tv' || !row.detail || row.error || row.season === 0 || row.episode == null) continue;
@@ -79,9 +84,9 @@
             for (const scope of scopes(row)) {
                 const parsed = parseMediaName(scope.name + '.mkv');
                 if (!aliases.includes(key(scope.name)) && !(aliases.includes(key(parsed.query)) && (!parsed.year || row.detail.first_air_date?.startsWith(parsed.year)))) continue;
-                if (!contexts.has(scope.id)) contexts.set(scope.id, new Map());
-                contexts.get(scope.id).set(String(row.detail.id), row.detail);
+                put(scope.id,row.detail);
             }
+            if (row.node.parentId != null) put('parent:' + row.node.parentId,row.detail);
         }
         const cache = new Map();
         const episodesOf = detail => {
@@ -94,13 +99,18 @@
         };
         await batchStage(rows,'特别篇归属检查（视频）',log,async (row,verify,index,observe) => {
             // A confirmed per-file AI identity must not be replaced by folder-based special inference.
-            if (row.aiAssisted && row.detail && !row.error) return 'skipped';
+            if (row.detail && !row.error && (row.aiAssisted || row.type === 'movie' || row.season === 0)) return 'skipped';
             const parsed = parseMediaName(row.node.name);
             if (parsed.episode != null || mediaBonusName(row.node.name)) return 'skipped';
             const scope = scopes(row).reverse().find(s => contexts.has(s.id));
-            if (!scope) return 'skipped';
-            const candidates = [...contexts.get(scope.id).values()];
-            const explicit = /christmas[ ._-]+special|圣诞特别篇|聖誕特別篇/i.test(row.node.name);
+            const explicit = marked.test(mediaStem(row.node.name));
+            const original = key(mediaStem(row.node.name));
+            const belongs = (detail, name = original) => [detail.name,detail.original_name,...(detail.workAliases || [])]
+                .some(alias => key(alias).length >= 3 && name.startsWith(key(alias)));
+            const nearby = contexts.get('parent:' + row.node.parentId);
+            const candidates = scope ? [...contexts.get(scope.id).values()]
+                : explicit ? [...(nearby?.values() || [])].filter(detail => belongs(detail)) : [];
+            if (!candidates.length) return 'skipped';
             if (candidates.length !== 1) {
                 if (explicit) { row.detail = null; row.error = '此目录包含多个版本的同名剧集，特别篇归属不唯一'; }
                 return 'skipped';
@@ -109,13 +119,18 @@
             try {
                 const episodes = await episodesOf(detail);
                 verify();
-                const original = key(mediaStem(row.node.name));
                 let matches = episodes.filter(ep => ep.aliases.some(title => key(title).length >= 4 && original.includes(key(title))));
-                if (!matches.length && explicit) {
+                const christmas = /christmas[ ._-]+special|圣诞特别篇|聖誕特別篇/i;
+                if (!matches.length && christmas.test(row.node.name)) {
                     // The year AFTER Christmas.Special is the episode year, not Doctor.Who.2005.
                     const year = row.node.name.match(/(?:christmas[ ._-]+special|圣诞特别篇|聖誕特別篇)[ ._（(-]*((?:19|20)\d{2})/i)?.[1];
                     if (year) matches = episodes.filter(ep => ep.air_date === year + '-12-25');
                 }
+                const genericTitle = key(parsed.query);
+                if (!matches.length && explicit && episodes.length === 1 && [detail.name,detail.original_name,...(detail.workAliases || [])]
+                    .some(alias => key(alias).length >= 3 && [key(alias),key(alias) + '特别篇',key(alias) + '特別篇',key(alias) + 'special',
+                        key(alias) + '番外篇',key(alias) + 'sp',key(alias) + 'ova',key(alias) + 'oad'].includes(genericTitle)))
+                    matches = episodes;
                 if (matches.length === 1) {
                     Object.assign(row, { detail, match: 'tv:' + detail.id, type: 'tv', title: detail.name, year: (detail.first_air_date || '').slice(0, 4), category: mediaCategory(detail, 'tv'), season: 0, episode: matches[0].episode_number, endEpisode: null, episodeInferred: true, error: '' });
                     changed[index] = row;
@@ -1012,7 +1027,7 @@
             const before = JSON.parse(saved.fingerprint), after = JSON.parse(fingerprint(node));
             return '文件记录未复用：' + ['网盘','文件编号','父目录','文件名','大小','MD5'].filter((_,index) => before[index] !== after[index]).join('、') + '变化；保留身份校验，另查作品资料';
         };
-        return {get, restore, remember, rememberParsed, explain, save, count: () => [...entries.keys()].filter(id => JSON.parse(id)[0] === location.hostname).length};
+        return {get, restore, remember, rememberParsed, explain, save};
     })();
     function mediaCandidatePreference(row) {
         if (row.type && row.match) return {type:row.type, reason:'已确认作品为' + (row.type === 'movie' ? '电影' : '剧集')};

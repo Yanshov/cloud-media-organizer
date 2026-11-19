@@ -13,6 +13,11 @@ const match = (query, year, fields, filename) => {
     return vm.runInContext('subtitleWorkIdentity(parsed, fields, filename)', identityContext);
 };
 
+identityContext.theatrical = {query:'剧场版 作品 银色之翼',year:'2000',tv:false};
+assert.deepEqual(Array.from(vm.runInContext('subtitleSearchNames(theatrical)',identityContext)),['剧场版 作品 银色之翼','作品 银色之翼']);
+assert.equal(match('剧场版 作品 银色之翼','2000',[],'作品.银色之翼.2000.chs.srt').titleMatched,true);
+assert.equal(match('剧场版 作品 银色之翼','2000',[],'作品.银色之翼.2004.chs.srt').hardMismatch,true);
+
 for (const [filename, query, year] of [
     ['肥胖症：尸检.2016.mkv','肥胖症:尸检','2016'],
     ['银翼杀手2049.2017.mkv','银翼杀手2049','2017'],
