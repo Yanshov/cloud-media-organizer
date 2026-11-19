@@ -282,7 +282,7 @@
             + '、绘图 ' + events.drawing + '、排版 ' + events.typeset + '、空事件 ' + events.empty
             + (visualEnd > end ? ' · 绘图或排版延伸到 ' + visualEnd.toFixed(1) + ' 秒，不计入对白范围' : '')
             + (counts ? ' · 异常 ' + counts : ''));
-        const uncertain = reason => Object.assign(new Error(reason),{timingUnconfirmed:true});
+        const uncertain = (reason,identityClueAllowed = false) => Object.assign(new Error(reason),{timingUnconfirmed:true,identityClueAllowed});
         if (Object.keys(invalid).length) throw uncertain('字幕时间轴异常：' + counts + '，待确认');
         if (!timeline.dialogue.length) throw uncertain('字幕时间轴没有可用的对白，待确认');
         // Work metadata is advisory. Extreme ranges and isolated hour-scale gaps still need review.
@@ -290,8 +290,10 @@
         if (extreme) throw uncertain('字幕时间轴存在极端对白范围，待确认');
         if (driveSeconds && end > driveSeconds + Math.max(30,driveSeconds * .1))
             throw uncertain('字幕时间轴与视频文件时长冲突，待确认');
-        if (driveSeconds && end < driveSeconds * .5 || !driveSeconds && runtime >= 1200 && end <= Math.min(480,runtime * .2))
+        if (driveSeconds && end < driveSeconds * .5)
             throw uncertain('字幕不完整：对白只到 ' + end.toFixed(1) + ' 秒（' + source + '），待确认');
+        if (!driveSeconds && runtime >= 1200 && end <= Math.min(480,runtime * .2))
+            throw uncertain('字幕不完整：对白只到 ' + end.toFixed(1) + ' 秒（' + source + '），待确认',true);
         const parsed = row.parsed || {};
         const ordinaryEpisode = parsed.tv && parsed.season > 0 && parsed.episode > 0 && !parsed.standalone
             && !/短片|短剧|特别篇|特別篇|番外|预告|\b(?:teaser|short|special|OVA|OAD)\b/i.test(row.node.name);
@@ -1429,7 +1431,7 @@
             parsed.query, parsed.year, !!parsed.tv, parsed.tmdbId, parsed.season, parsed.episode, parsed.endEpisode, node.durationSeconds, parsed.runtimeSeconds, !!parsed.standalone]);
     }
     async function inspectExistingSubtitles(row, drive, language, log = () => {}, check = () => {}, {force = false, review = null, observe = () => {}} = {}) {
-        row.complete = false; row.verification = null; row.verifiedSubtitle = null; row.verifiedSubtitleCandidate = null; row.coverageUnconfirmed = false;
+        row.complete = false; row.verification = null; row.verifiedSubtitle = null; row.verifiedSubtitleCandidate = null; row.identityClues = []; row.coverageUnconfirmed = false;
         const rejected = [];
         for (const sub of row.subtitles.filter(sub => /\.(srt|ass|ssa|vtt)$/i.test(sub.name))) {
             check(); drive.assertReady?.();
@@ -1466,7 +1468,17 @@
             } catch (error) {
                 check(); if (error.stop) throw error;
                 drive.verified?.forget(sub);
-                if (error.timingUnconfirmed) row.coverageUnconfirmed = true;
+                if (error.timingUnconfirmed) {
+                    row.coverageUnconfirmed = true;
+                    if (!review && error.identityClueAllowed && !row.parsed?.workResolved && !row.node.durationSeconds
+                        && !/^[a-f0-9]{40}\.(?:srt|ass|ssa|vtt)$/i.test(sub.name)
+                        && (language === 'en' || language === 'zh-cn,zh-tw,zh' || sub.language === language || subtitleLanguageMatch(sub.name,language))) {
+                        try {
+                            subtitleValidateContent({...row,parsed:{}},bytes,sub.name.split('.').pop().toLowerCase(),language);
+                            row.identityClues.push(sub);
+                        } catch {}
+                    }
+                }
                 rejected.push(sub.name + '：' + error.message);
                 log('现有字幕无效', `${sub.name}：${error.message}`);
             }

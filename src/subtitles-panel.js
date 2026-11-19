@@ -153,17 +153,24 @@
             throw new Error('目录中的关联字幕已变化，请重新检查目录后导入');
     }
     function subtitleOrganizeHints(row) {
-        const sub = row.verifiedSubtitle, parsed = row.parsed;
-        if (!row.complete || !sub || !row.subtitles.some(file => file.id === sub.id && file.name === sub.name)) return null;
+        const sub = row.complete ? row.verifiedSubtitle : row.identityClues?.length === 1 ? row.identityClues[0] : null, parsed = row.parsed;
+        if (!sub || !row.subtitles.some(file => file.id === sub.id && file.name === sub.name)) return null;
         const candidate = row.verifiedSubtitleCandidate;
-        const match = subtitleCandidateFilter(parsed,[],sub.name);
+        const hint = parseMediaName(sub.name);
+        const identityOnly = !row.complete;
+        const match = subtitleCandidateFilter(identityOnly ? {...hint,aliases:[],workResolved:false} : parsed,[],sub.name);
         if (match.hardMismatch || match.opaque || match.excluded && match.excluded !== '无关') return null;
         const trusted = candidate && !candidate.opaque && !candidate.hardMismatch && (candidate.titleMatched || candidate.identityMatched);
         if (!match.titleMatched && !trusted) return null;
-        const hint = parseMediaName(sub.name);
-        const year = parsed.year || (!parsed.tv ? hint.year : '');
-        const queries = [...new Set([hint.query,parsed.query,...(parsed.aliases || [])].map(title => subtitleQueryTitle(title,year)).filter(Boolean))].slice(0,3);
-        return {queries,year,type:parsed.tv ? 'tv' : 'movie',id:parsed.workResolved && parsed.tmdbId || ''};
+        const media = row.media;
+        const explicitTv = media?.explicitSeason != null || media?.explicitEpisode != null || media?.aiType === 'tv';
+        const tv = identityOnly ? !!(hint.tv || parsed.tv || explicitTv || media?.type === 'tv') : parsed.tv;
+        const year = identityOnly ? hint.year || media?.explicitYear || '' : parsed.year || (!tv ? hint.year : '');
+        const queryNames = identityOnly ? [hint.query] : [hint.query,parsed.query,...(parsed.aliases || [])];
+        const queries = [...new Set(queryNames.map(title => subtitleQueryTitle(title,year)).filter(Boolean))].slice(0,3);
+        if (identityOnly && media?.explicitYear && hint.year && String(media.explicitYear) !== String(hint.year)) return null;
+        if (tv && ['season','episode','endEpisode'].some(field => hint[field] != null && media?.['explicit' + field[0].toUpperCase() + field.slice(1)] != null && hint[field] !== media['explicit' + field[0].toUpperCase() + field.slice(1)])) return null;
+        return {queries,year,type:tv ? 'tv' : media?.type || 'movie',id:parsed.workResolved && parsed.tmdbId || '',season:hint.season ?? parsed.season,episode:hint.episode ?? parsed.episode,endEpisode:hint.endEpisode ?? parsed.endEpisode};
     }
     async function savePanelSubtitle(drive, row, {name, bytes, verification, language, candidate}, progress, check) {
         const target = await drive.save(row,name,bytes,progress,check,
@@ -314,12 +321,14 @@
             const execution = row.organized ? 'complete' : row.organizePending ? 'unconfirmed' : !media?.include ? 'skipped' : 'pending';
             const canSearch = !!flow && checkedScope !== null && coverage === 'missing' && execution === 'pending'
                 && (!row.parsed.tv || row.parsed.season != null && row.parsed.episode != null);
-            const canOrganize = !!flow && identity === 'confirmed' && execution === 'pending'
+            const canOrganize = !!flow && !row.writeBlocked && !row.identityRecheck && identity === 'confirmed' && execution === 'pending'
                 && (coverage === 'complete' || coverage === 'missing' && ui.get('mediaAllowMissing').checked);
             let blocker = '';
             if (execution === 'complete') blocker = '视频已整理';
             else if (execution === 'unconfirmed') blocker = '上次整理结果待核对';
             else if (execution === 'skipped') blocker = '视频已跳过';
+            else if (row.writeBlocked) blocker = row.error || '字幕写入结果待核对';
+            else if (row.identityRecheck) blocker = row.searchMessage || '作品资料变化，关联字幕待核验';
             else if (identity === 'blocked') blocker = media.error || '作品识别受阻';
             else if (identity !== 'confirmed') blocker = media?.error || '作品匹配未确认';
             else if (coverage === 'waiting' || coverage === 'checking' || coverage === 'interrupted') blocker = '字幕检查未完成';
@@ -1577,19 +1586,38 @@
                 if (flow.registryReady) await flow.resolveSubtitleWorks?.(inventory,check);
                 return confirmed;
             };
-            flow.syncWorks = (mediaRows,refresh = true) => {
+            flow.syncWorks = async (mediaRows,refresh = true,verify = check) => {
                 flow.invalidate('作品信息已修改');
                 const updated = new Set(mediaRows);
                 for (const row of inventory) if (updated.has(row.media)) {
-                    const prior = JSON.stringify([row.parsed.tmdbId,row.parsed.query,row.parsed.year,row.parsed.season,row.parsed.episode,row.parsed.runtimeSeconds]);
+                    const signature = () => JSON.stringify([row.parsed.tmdbId,row.parsed.query,row.parsed.year,row.parsed.tv,row.parsed.season,row.parsed.episode,row.parsed.endEpisode,row.parsed.runtimeSeconds]);
+                    const prior = signature();
                     updateIdentity(row);
-                    const next = JSON.stringify([row.parsed.tmdbId,row.parsed.query,row.parsed.year,row.parsed.season,row.parsed.episode,row.parsed.runtimeSeconds]);
-                    if (prior === next) continue;
+                    const next = signature();
+                    if (prior === next && !row.identityRecheck) continue;
                     Object.assign(row,{selectedCandidate:null,candidates:[],autoCandidates:[],sources:[],cardSearched:false,manualCandidate:false});
-                    if (!row.embedded?.chinese && !awaitingCheck(row) && row.subtitles.length) {
+                    if (!awaitingCheck(row) && row.subtitles.length) {
                         row.complete = false;
                         row.coverageUnconfirmed = true;
-                        row.searchMessage = '作品资料已更新，请重新检测字幕';
+                        row.identityRecheck = true;
+                        row.verification = null; row.verifiedSubtitle = null; row.verifiedSubtitleCandidate = null; row.identityClues = [];
+                        row.searchMessage = '作品资料已更新，关联字幕待核验';
+                        if (!refresh || !drive || row.writeBlocked || !row.parsed.workResolved) continue;
+                        const draft = {...row,parsed:{...row.parsed}};
+                        const eligible = draft.subtitles.filter(file => {
+                            const result = subtitleCandidateFilter(draft.parsed,[],file.name), named = parseMediaName(file.name);
+                            return !result.hardMismatch && !result.excluded && !result.opaque && result.titleMatched && (!draft.parsed.tv || ['season','episode','endEpisode'].every(field => named[field] == null || named[field] === draft.parsed[field]));
+                        });
+                        if (!eligible.length) { row.subtitles = []; row.searchMessage = '原关联字幕与新作品或季集不符，请核对字幕文件'; diag('单视频字幕复核',row.path + ' · ' + row.searchMessage); continue; }
+                        draft.subtitles = eligible;
+                        verify();
+                        await inspectExistingSubtitles(draft,drive,settings().language,diag,verify);
+                        verify();
+                        if (signature() !== next || !inventory.includes(row)) continue;
+                        for (const field of ['complete','verification','verifiedSubtitle','identityClues','coverageUnconfirmed','searchMessage','error']) row[field] = draft[field];
+                        row.subtitles = eligible;
+                        row.identityRecheck = !draft.complete;
+                        diag('单视频字幕复核',row.path + ' · ' + row.searchMessage);
                     }
                 }
                 if (refresh) render();
@@ -1608,12 +1636,9 @@
             };
             flow.subtitleWorkHints = media => {
                 const row = byId.get(String(media.node.id));
-                return row && row.media === media && flow.coverage(media.node.id) === 'complete' ? subtitleOrganizeHints(row) : null;
+                return row && row.media === media && !row.writeBlocked && !awaitingCheck(row) ? subtitleOrganizeHints(row) : null;
             };
-            flow.acceptSubtitleWork = media => {
-                const row = byId.get(String(media.node.id));
-                if (row?.media === media) { updateIdentity(row); flow.requestRender(); }
-            };
+            flow.acceptSubtitleWork = (media,verify) => flow.syncWorks([media],true,verify);
             flow.canOrganize = media => {
                 const row = byId.get(String(media.node.id));
                 return !!row && videoState(row).canOrganize;

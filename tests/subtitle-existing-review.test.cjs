@@ -27,6 +27,12 @@ async function durationAndCache() {
     await ctx.inspectExistingSubtitles(r,reloaded,language,log); assert.equal(reads,3,'New runtime invalidates no-runtime record');
     assert.equal(r.complete,false); assert.match(r.searchMessage,/字幕不完整/);
     assert.throws(()=>ctx.subtitleValidateContent(r,bytes,'srt',language,log),/字幕不完整/,'Existing and new downloads share validator');
+    assert.throws(()=>ctx.subtitleValidateContent(r,bytes,'srt',language),error=>error.identityClueAllowed===true,'TMDB-only duration mismatch may provide an identity clue, not coverage');
+    const clueRow=row(); clueRow.parsed.runtimeSeconds=138*60;
+    await ctx.inspectExistingSubtitles(clueRow,reloaded,language,log);
+    assert.equal(clueRow.complete,false); assert.equal(clueRow.identityClues.length,1,'Unconfirmed timing never becomes usable coverage');
+    clueRow.node.durationSeconds=600;
+    assert.throws(()=>ctx.subtitleValidateContent(clueRow,bytes,'srt',language),error=>error.identityClueAllowed===false,'Known video-duration mismatch cannot provide an identity clue');
     assert.ok(logs.some(message=>/字幕结束 180.0 秒.*TMDB.*8280.0 秒/.test(message)));
     delete r.parsed.runtimeSeconds; r.node.durationSeconds = 185;
     await ctx.inspectExistingSubtitles(r,reloaded,language,log); assert.equal(r.complete,true,'Drive duration is used when present');

@@ -46,7 +46,7 @@ async function aiFallbackGuards() {
     const media=load(part('    function validateMediaAIIdentity(', '    async function identifyMediaAIFiles('));
     assert.equal(media.mediaNeedsAI({matchFailure:'unmatched'}),true);
     assert.equal(media.mediaNeedsAI({matchFailure:'lookup-error'}),false);
-    assert.equal(media.mediaNeedsAI({matchFailure:'ambiguous'}),false);
+    assert.equal(media.mediaNeedsAI({matchFailure:'ambiguous'}),true);
     assert.equal(media.mediaNeedsAI({matchFailure:'unmatched',detail:{id:1}}),false);
     let captured;
     const ai=load(part('    function mediaAIEndpoint(', '    function validateMediaAIIdentity('),{
@@ -63,6 +63,8 @@ async function aiFallbackGuards() {
     await assert.rejects(keyCheck.createMediaAI({base:'https://api.deepseek.com',key:'Bearer valid-secret',model:'deepseek-flash'}).ask({test:true}),error=>error.status===401&&/Authentication failed/.test(error.message)&&!error.message.includes('valid-secret'));
     assert.deepEqual({...result},{index:1,confidence:0.96});assert.equal(captured.max_tokens,2000);assert.match(captured.messages[0].content,/只能返回输入中的候选 index/);
     assert.match(captured.messages[0].content,/rejected/,'AI schema includes explicit per-candidate rejections');
+    await ai.createMediaAI({base:'https://ai.example/v1',key:'secret',model:'test'}).ask({mode:'per_file',samples:[{name:'unknown.mkv',subtitleTitleHints:['Doctor Who Special']}]});
+    assert.match(captured.messages[0].content,/字幕标题线索只用于辅助识别/);
     const candidate={language:'zh-cn',name:'Series.S01E01.1080p.srt',release:'Series',titleMatched:false};
     const subtitle=load(part('    function subtitleFileInfo(', '    function subtitleSearchSummary('));
     const row={node:{name:'Series.S01E01.1080p.mkv'},parsed:{query:'Series',tv:true,year:'2020',season:1,episode:1,tmdbId:'42'},candidates:[candidate]};
@@ -88,7 +90,7 @@ async function aiFallbackGuards() {
     assert.equal(subtitle.subtitleAICandidate({index:0,confidence:1},row,'zh-cn'),null,'Filename year still checked with matching API metadata');
     candidate.name='Other.2000.srt';assert.equal(subtitle.subtitleAICandidate({index:0,confidence:1},row,'zh-cn'),candidate);
     assert.equal(candidate.titleMatched,false,'AI suggestions never change deterministic identity flags');
-    console.log('PASS AI fallback guards: only unmatched media rows qualify; candidate index, confidence, language, version, year, episode and TMDB conflicts checked');
+    console.log('PASS AI fallback guards: unmatched and ambiguous media rows qualify; candidate index, confidence, language, version, year, episode and TMDB conflicts checked');
 }
 
 async function mediaFallbackFlow() {
@@ -99,11 +101,11 @@ async function mediaFallbackFlow() {
         choose:async(row,match)=>{row.detail={id:match};row.match=match},validateEpisode:async()=>{},createMediaAI:()=>({}),
         identifyMediaAIFiles:async rows=>{calls.push('ai:'+rows[0].node.name);return rows.map(()=>({title:'Recovered',type:'movie',year:'2000',episodes:[]}))}
     });
-    vm.runInContext('async function scanGroups(){let matched=0;'+part('                const aiQueue = new Map();', '                checkStopped();\n                mediaWorkCounts(rows);')+'}',context);
+    vm.runInContext('async function scanGroups(){let matched=0;'+part('                await batchStage([...groups.values()]', '                checkStopped();\n                mediaWorkCounts(rows);')+'}',context);
     await context.scanGroups();
-    assert.deepEqual(calls.slice().sort(),['tmdb:Known','tmdb:Unmatched','ai:Unmatched','tmdb:Recovered','tmdb:Ambiguous','tmdb:Offline','ai:unknown.mkv','tmdb:Recovered'].sort());
+    assert.deepEqual(calls.slice().sort(),['tmdb:Known','tmdb:Unmatched','ai:Unmatched','tmdb:Recovered','tmdb:Ambiguous','ai:Ambiguous','tmdb:Recovered','tmdb:Offline','ai:unknown.mkv','tmdb:Recovered'].sort());
     assert.ok(calls.indexOf('tmdb:Unmatched') < calls.indexOf('ai:Unmatched'));
-    assert.equal(groups.get(0)[0].aiAssisted,false);assert.equal(groups.get(1)[0].aiAssisted,true);assert.equal(groups.get(2)[0].matchFailure,'ambiguous');assert.equal(groups.get(3)[0].matchFailure,'lookup-error');assert.equal(groups.get(4)[0].aiAssisted,true);
+    assert.equal(groups.get(0)[0].aiAssisted,false);assert.equal(groups.get(1)[0].aiAssisted,true);assert.equal(groups.get(2)[0].aiAssisted,true);assert.equal(groups.get(3)[0].matchFailure,'lookup-error');assert.equal(groups.get(4)[0].aiAssisted,true);
     context.client.search = async query => {
         if (query !== '作品 银色之翼') return [];
         return [{id:1,media_type:'movie',title:query,release_date:'2000-01-01'},
@@ -115,7 +117,7 @@ async function mediaFallbackFlow() {
         await context.matchGroup([row],'剧场版 作品 银色之翼');
         assert.equal(row.match,match);
     }
-    console.log('PASS media scan flow: normal TMDB first; AI only for unmatched or empty titles; recovered title rechecked; ambiguity and network failures stay manual');
+    console.log('PASS media scan flow: normal TMDB first; AI handles unmatched/ambiguous titles; recovered title rechecked; network failures stay manual');
 }
 
 async function subtitleIdentityHandoff() {
@@ -142,13 +144,51 @@ async function subtitleIdentityHandoff() {
         batchStage:async(items,_stage,_log,work,verify)=>{for(const item of items)await work(item,verify);},
         checkStopped:()=>{}
     });
-    const row={node:media.node,media:{...media},sourceYear:'2000',include:true};
+    const row={node:media.node,media:{...media,detail:{id:3},match:'movie:3',error:'季集校验失败',matchFailure:'unmatched'},sourceYear:'2000',include:true};
     recovery.inventory=[{node:media.node,media:row.media}];
     vm.runInContext(part('        async function recoverWorkFromSubtitle(row, verify) {','        ui.get(\'scanMedia\').onclick'),recovery);
     await recovery.flow.resolveSubtitleWorks(recovery.inventory,()=>{});
     assert.equal(recovery.readyRow(row.media),true);
     assert.equal(accepted,1);assert.equal(refreshed,1);
     console.log('PASS merged identity handoff: coverage check precedes subtitle recovery; confirmed work is synchronized and cards refresh');
+    subtitleIdentityHints();
+    await subtitleIdentityRecheck();
+}
+
+function subtitleIdentityHints() {
+    const ctx=load(part('    function subtitleOrganizeHints(', '    async function savePanelSubtitle('),{
+        parseMediaName:()=>({query:'Series Special',year:'2005',tv:true,season:0,episode:1,endEpisode:null}),
+        subtitleCandidateFilter:parsed=>({titleMatched:parsed.query==='Series Special'}),
+        subtitleQueryTitle:(title,year)=>title+' '+year
+    });
+    const sub={id:'s',name:'Series.Special.S00E01.zh.srt'};
+    const row={complete:false,identityClues:[sub],verifiedSubtitle:null,verifiedSubtitleCandidate:null,subtitles:[sub],parsed:{query:'Bad Video Name',year:'2024',tv:true,season:1},media:{explicitSeason:null,explicitEpisode:null,explicitYear:null}};
+    const hint=ctx.subtitleOrganizeHints(row);
+    assert.equal(hint.type,'tv');assert.equal(hint.year,'2005');assert.deepEqual(Array.from(hint.queries),['Series Special 2005']);assert.equal(hint.season,0);assert.equal(hint.episode,1);
+    row.media.explicitYear='2024';assert.equal(ctx.subtitleOrganizeHints(row),null,'Explicit video year conflict blocks identity recovery');
+    console.log('PASS subtitle identity clues: unconfirmed content can seed title/type/season hints but explicit year conflict blocks it');
+}
+
+async function subtitleIdentityRecheck() {
+    const first={node:{id:'a'},title:'New Film',year:'2000',type:'movie',match:'movie:2',detail:{id:2}};
+    const second={node:{id:'b'},title:'Unchanged',year:'2001',type:'movie',match:'movie:3',detail:{id:3}};
+    const rows=[
+        {node:first.node,media:first,parsed:{query:'Old Film',year:'1990',tv:false,tmdbId:'1',workResolved:true},subtitles:[{id:'s1',name:'New.Film.2000.srt'}],complete:true},
+        {node:second.node,media:second,parsed:{query:'Unchanged',year:'2001',tv:false,tmdbId:'3',workResolved:true},subtitles:[{id:'s2',name:'Unchanged.2001.srt'}],complete:true}
+    ];
+    let reread=0,rendered=0,invalidated=0;
+    const context=load(part('            flow.syncWorks = async', '            flow.interrupt ='),{
+        flow:{invalidate:()=>invalidated++},inventory:rows,awaitingCheck:()=>false,
+        updateIdentity:row=>Object.assign(row.parsed,{query:row.media.title,year:row.media.year,tv:false,tmdbId:row.media.match.split(':')[1],workResolved:true}),
+        subtitleCandidateFilter:()=>({titleMatched:true}),parseMediaName:()=>({season:null,episode:null,endEpisode:null}),
+        drive:{},settings:()=>({language:'zh-cn'}),diag(){},check(){},
+        inspectExistingSubtitles:async draft=>{reread++;assert.equal(draft.parsed.query,'New Film');draft.complete=true;draft.searchMessage='核验通过';},render:()=>rendered++
+    });
+    vm.runInContext(part('            flow.syncWorks = async', '            flow.interrupt ='),context);
+    await context.flow.syncWorks([first],true,()=>{});
+    assert.equal(reread,1,'Only changed video is reread');assert.equal(rows[0].complete,true);assert.equal(rows[0].identityRecheck,false);
+    assert.equal(rows[1].parsed.query,'Unchanged');assert.equal(invalidated,1);assert.equal(rendered,1);
+    console.log('PASS single-video identity recheck: changed work invalidates stale preview and rereads only its linked subtitles');
 }
 
 function aiProviderKey() {

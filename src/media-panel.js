@@ -206,7 +206,7 @@
         ui.get('forgetMediaKey').onclick = () => { GM_setValue('cross-drive-tmdb-key', ''); ui.get('tmdbKey').value = ''; progress('已清除密钥'); };
         const refreshPreview = async () => {
             mediaWorkCounts(rows);
-            if (flow) { flow.syncWorks(rows); return; }
+            if (flow) return runTask(() => flow.syncWorks(rows),true);
             if (rows.some(row => row.include && readyRow(row)) && !cancelled) await generatePreview();
         };
         const editRows = async work => {
@@ -649,13 +649,20 @@
                 }
             } catch (error) { if (error.stop) throw error; verify(); for (const row of group) row.error = error.message; }
         }
+        const identityAIQueue = new Map();
+        async function resolveUnmatched(group,verify) {
+            const failed = group.filter(mediaNeedsAI);
+            if (failed.length && aiSettings().enabled) await enqueueByKey(identityAIQueue,'ai',() => matchGroup(failed,'',true,null,verify));
+        }
         async function recoverWorkFromSubtitle(row, verify) {
-            if (!client || row.detail || row.match || readyRow(row)) return;
+            if (!client || readyRow(row)) return;
             const hint = flow.subtitleWorkHints(row);
             if (!hint) return;
             const preference = mediaCandidatePreference(row);
-            if (preference.conflict || preference.type && preference.type !== hint.type) return;
-            const draft = () => ({...row, sourceYear:row.explicitYear || row.sourceYear || hint.year, aiType:hint.type});
+            if (preference.conflict || preference.type && preference.type !== hint.type || row.match && hint.id && row.match !== hint.type + ':' + hint.id) return;
+            if (['season','episode'].some(field => { const explicit = row[field === 'season' ? 'explicitSeason' : 'explicitEpisode']; return explicit != null && hint[field] != null && explicit !== hint[field]; })) { log('字幕季集与视频明确编号冲突：' + row.node.name); return; }
+            const draft = () => ({...row, season:row.explicitSeason ?? hint.season ?? row.season, episode:row.explicitEpisode ?? hint.episode ?? row.episode,
+                endEpisode:row.endEpisode ?? hint.endEpisode, episodeInferred:false, sourceYear:row.explicitYear || row.sourceYear || hint.year, aiType:hint.type, subtitleTitleHints:hint.queries});
             const matches = new Map();
             const add = candidate => {
                 if (readyRow(candidate) && candidate.type === hint.type &&
@@ -669,23 +676,28 @@
                 await validateEpisode(candidate);
                 add(candidate);
             } else {
+                let last;
                 for (const query of hint.queries) {
                     const candidate = draft();
                     await matchGroup([candidate],query,false,null,verify);
+                    last = candidate;
                     verify();
-                    if (candidate.matchFailure === 'ambiguous' || candidate.matchFailure === 'lookup-error') return;
+                    if (candidate.matchFailure === 'lookup-error') return;
+                    if (candidate.matchFailure === 'ambiguous') await resolveUnmatched([candidate],verify);
+                    verify();
                     add(candidate);
                     if (matches.size > 1) return;
                 }
+                if (!matches.size && last) { await resolveUnmatched([last],verify); verify(); add(last); }
             }
             if (matches.size !== 1) return;
             Object.assign(row,matches.values().next().value);
-            flow.acceptSubtitleWork(row);
+            await flow.acceptSubtitleWork(row,verify);
             log('已用字幕线索确认作品：' + row.node.name + ' → ' + row.title + '（' + row.year + '）');
         }
         if (flow) flow.resolveSubtitleWorks = async (inventory, verify) => {
             const recoverable = inventory.filter(item => item.media && !readyRow(item.media)
-                && flow.coverage(item.node.id) === 'complete' && !item.organized && !item.organizePending);
+                && (flow.coverage(item.node.id) === 'complete' || item.identityClues?.length) && !item.writeBlocked && item.media.include !== false && !item.organized && !item.organizePending);
             let done = 0;
             await batchStage(recoverable,'字幕线索复核作品身份（视频）',log,async (item,check,_index,observe) => {
                 try { await recoverWorkFromSubtitle(item.media,check); }
@@ -770,12 +782,10 @@
                 }
                 let matched = 0;
                 meter('匹配作品', 0, groups.size);
-                const aiQueue = new Map();
                 await batchStage([...groups.values()],'作品识别与季集核对（作品组）',log,async (group,verify) => {
                     verify(); progress(`匹配作品 ${matched + 1}/${groups.size}：${group[0].query}（${group.length} 个视频）`);
                     await matchGroup(group,group[0].query,false,null,verify);
-                    const failed = group.filter(mediaNeedsAI);
-                    if (failed.length && aiSettings().enabled) await enqueueByKey(aiQueue,'ai',() => matchGroup(failed,'',true,null,verify));
+                    await resolveUnmatched(group,verify);
                     meter('匹配作品', ++matched, groups.size);
                     if (flow) flow.requestRender();
                     return group.every(row => !readyRow(row)) ? 'failed' : undefined;
