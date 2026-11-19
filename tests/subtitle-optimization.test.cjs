@@ -56,14 +56,14 @@ async function run(bundle, enableAI) {
             parsed:{query:fixture.query,year:fixture.year,aliases:fixture.aliases || [],tv:fixture.season != null,
                 season:fixture.season,episode:fixture.episode,endEpisode:fixture.endEpisode}};
         const service = api.createSubtitleService(), config = {language,thunder:true}, noop = () => {};
-        await api.searchSubtitleSources(row,config,service,{});
+        await api.searchSubtitleSources(row,config,service);
         if (enableAI && api.correction) {
             const correct = api.correction({correctSubtitleWork:async payload=>{
                 metrics.aiCalls++;
                 assert.equal(payload.work.year,fixture.year);
                 return {id:null,title:fixture.title};
             }},'fixture-key');
-            await api.apply(row,correct,config,service,{},noop,noop);
+            await api.apply(row,correct,config,service,noop,noop);
         }
         if (!fixture.reject && (!fixture.needsAI || row.parsed.tmdbId === '12')) totals.identified++;
         if (row.candidates.length) totals.candidates++;

@@ -62,7 +62,7 @@ async function deepSelection() {
     reads.length = details.length = 0;
     const scanned = await collectMediaSelection([{id: root.id}, {names: [root.name]}], source);
     assert.deepEqual(reads.slice().sort(),['0',...expectedReads].sort(), 'Sibling subtitles reuse the directory listing from this scan');
-    assert.deepEqual(details, [subtitle.id]);
+    assert.deepEqual(details, [], 'Media inventory uses directory data and defers file metadata');
     assert.deepEqual(Array.from(scanned.videos, node => node.path), [videoPath, `${otherPath}/${otherVideo.name}`]);
     const [deepVideo] = scanned.videos;
     assert.deepEqual(Array.from(deepVideo.folders), folders.map(node => node.name));
@@ -71,7 +71,7 @@ async function deepSelection() {
     const [linked] = scanned.linked.get(video.id);
     assert.equal(linked.path, subtitlePath);
     assert.equal(linked.suffix, '.zh-cn');
-    assert.equal(linked.md5, md5);
+    assert.equal(linked.id, subtitle.id);
     assert.equal(scanned.linked.get(otherVideo.id).length, 0, 'Same title in a different directory must not claim the subtitle');
 }
 
@@ -112,7 +112,7 @@ async function interruptedTraversal(scan, fromSelection, stop) {
     await deepSelection();
     for (const stop of [false, true]) {
         await interruptedTraversal((roots, source, check) => collectTree(roots, source, undefined, '', check), false, stop);
-        await interruptedTraversal((roots, source, check) => collectMediaSelection(roots, source, undefined, undefined, check), true, stop);
+        await interruptedTraversal((roots, source, check) => collectMediaSelection(roots, source, undefined, check), true, stop);
     }
     console.log('PASS shared traversal: depth-first order, cycles and repeated IDs, export metadata, media ancestry and subtitle pairing, in-flight permission failure and cancellation');
 })().catch(error => { console.error(error); process.exitCode = 1; });

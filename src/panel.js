@@ -70,7 +70,7 @@
         return icon;
     }
     function saveJsonFile(value, filename, report) {
-        try { normalizeFiles(JSONtparse(value)); }
+        try { normalizeFiles(JSON.parse(value)); }
         catch (_) { report('保存失败：文本框不是有效的跨盘 JSON 清单，请先导出文件清单'); return; }
         const url = URL.createObjectURL(new Blob([value], { type: 'application/json;charset=utf-8' }));
         report('正在保存 JSON 清单…');
@@ -112,7 +112,7 @@
             title.textContent = '字幕校对';
             title.append(create('span','tool-context',source));
         } else {
-            const title = intro.querySelector('h3'), source = title.textContent.replace(/\s+(?:字幕|影视整理|重命名与自动分类).*$/, '').trim();
+            const title = intro.querySelector('h3'), source = title.textContent.replace(/\s+(?:字幕|影视整理).*$/, '').trim();
             title.textContent = '影视整理'; title.append(create('span', 'tool-context', source));
         }
         const commands = create('div', 'tool-commandbar');
@@ -123,7 +123,6 @@
             const actions = pane.querySelector('#stopSubtitles').parentElement;
             firstAction.append(...actions.children);
             actions.remove();
-            firstAction.querySelector('#stopMedia').remove();
             pane.classList.add('merged-media');
         }
         if (id === 'json') take(commands, '#stopJson');
@@ -134,18 +133,15 @@
         const main = create('div', 'tool-main');
         const status = create('section', 'tool-status-text');
         const statusIds = id === 'subtitleSync' ? ['subtitleSyncStatus'] : id === 'subtitle' ? ['subtitleScope','subtitleProgress','subtitleMeter']
-            : id === 'media' ? ['mediaProgress','mediaBar'] : ['status','target','progress'];
+            : ['status','target','progress'];
         for (const name of statusIds) take(status, '#' + name);
         const heading = create('div', 'tool-list-heading');
-        const headingTitle = create('h4', '', id === 'subtitle' ? '字幕检查结果' : id === 'media' ? '影视整理结果' : id === 'subtitleSync' ? '' : 'JSON 文件清单');
+        const headingTitle = create('h4', '', id === 'subtitle' ? '字幕检查结果' : id === 'subtitleSync' ? '' : 'JSON 文件清单');
         heading.append(headingTitle);
         if (id === 'subtitle') {
             headingTitle.id = 'subtitleResultsTitle';
             if (merged) headingTitle.textContent = '作品与字幕';
             take(heading, '#subtitleFilters');
-        } else if (id === 'media') {
-            headingTitle.id = 'mediaResultsTitle';
-            take(heading, '#mediaView');
         }
         if (id !== 'subtitleSync') main.append(heading);
         if (id === 'json') {
@@ -179,28 +175,7 @@
                 results.prepend(pane.querySelector('#mediaCleanup'));
                 take(results,'#mediaRows');
                 results.querySelector('#mediaRows').hidden = true;
-                for (const unused of ['#mediaView','#mediaSummary','#mediaProgress','#mediaBar']) pane.querySelector(unused).hidden = true;
-                const empty = create('div','media-empty'); empty.id = 'mediaEmpty'; empty.hidden = true;
-                results.append(empty);
             }
-        } else {
-            take(main, '#mediaSummary');
-            const results = create('div');
-            results.id = 'mediaResults';
-            results.tabIndex = 0;
-            results.setAttribute('role','region');
-            results.setAttribute('aria-labelledby','mediaResultsTitle');
-            take(results,'#mediaCleanup');
-            const preview = create('details','sync-preview');
-            preview.id = 'mediaPreviewPanel';
-            preview.append(create('summary','','查看整理预览'));
-            take(preview,'#mediaPreview');
-            results.append(preview);
-            take(results,'#mediaRows');
-            const empty = create('div','media-empty','在网盘勾选视频或文件夹后，点击「识别并预览」。');
-            empty.id = 'mediaEmpty';
-            results.append(empty);
-            main.append(results);
         }
         const utilities = create('div', 'tool-utilities');
         const auxiliary = id === 'json' ? create('section', 'tool-import-options') : utilities;
@@ -219,7 +194,7 @@
         pane.append(surface);
     }
     let toolWorkspace = null;
-    function makePanel(title, html, media = false) {
+    function makePanel(title, html, id = 'json') {
         if (!toolWorkspace) {
             const host = document.createElement('div');
             host.id = 'cloud-media-organizer-tools';
@@ -286,24 +261,18 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 .sync-item{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;margin:12px 0;min-width:0}
 :is(#subtitlePane,#mediaPane) :is(.tool-layout,.tool-main){display:flex;min-height:0}:is(#subtitlePane,#mediaPane) .tool-main{flex:1;flex-direction:column}:is(#subtitlePane,#mediaPane) .tool-list-heading{flex:none}#subtitleFilters :focus-visible{outline-offset:-2px}
 #subtitleFilters{display:flex;align-items:center;gap:8px;flex:0 0 auto;max-width:100%}#subtitleFilters label{align-items:center;gap:5px;margin:0;font-size:15px;white-space:nowrap;flex:none}#subtitleFilters input[type=checkbox]{margin:0}
-:is(#subtitleResults,#mediaResults){flex:1 1 0;min-height:0;overflow:auto;overscroll-behavior:contain;overflow-anchor:none;scrollbar-gutter:stable;container-type:size}:is(#subtitleResults,#mediaResults):focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
-:is(#subtitleSummary,#mediaSummary){flex:none;padding:10px 12px;font-size:15px;overflow-wrap:anywhere}
+#subtitleResults{flex:1 1 0;min-height:0;overflow:auto;overscroll-behavior:contain;overflow-anchor:none;scrollbar-gutter:stable;container-type:size}#subtitleResults:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+#subtitleSummary{flex:none;padding:10px 12px;font-size:15px;overflow-wrap:anywhere}
 :is(#subtitlePane,#mediaPane) .tool-surface{overflow:hidden}
 :is(#subtitleRows,#mediaRows){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:stretch;align-content:start}
-:is(.subtitle-card,.media-card){margin:0;overflow-wrap:anywhere}
-#mediaSummary:empty{display:none}
+.subtitle-card{margin:0;overflow-wrap:anywhere}
 #mediaRows>.sync-item{padding:12px}
-.media-card h5,.media-detail h5{margin:0;font-size:16px;line-height:1.5}
-.media-card p{margin:4px 0;font-size:14px;color:var(--muted)}
-.media-card-issue{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
-.media-card-count{font-variant-numeric:tabular-nums}
-.media-card button,#mediaEmpty button{margin-top:6px}
+.media-detail h5{margin:0;font-size:16px;line-height:1.5}
 .media-detail{grid-column:1/-1;margin:0;overflow-wrap:anywhere}
 .media-detail h5{margin-block:8px}
 .media-detail details{padding:8px 0;border-top:1px solid var(--border)}
 .media-detail select{max-width:100%;text-overflow:ellipsis}
 .media-file-path{overflow-wrap:anywhere}
-#mediaView{max-width:100%}
 #mediaPreviewPanel{margin-bottom:10px}
 .subtitle-action-view{grid-column:1/-1;margin:0;overflow-wrap:anywhere}
 #subtitleRows>.sync-item{padding:12px}
@@ -314,7 +283,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 .subtitle-sync-fields label{margin:3px 0}.subtitle-sync-fields select{overflow:hidden;text-overflow:ellipsis}
 .subtitle-sync-check{display:flex;align-items:center;gap:6px}.subtitle-sync-check input{width:auto;margin:0}
 #syncPoints{padding-inline-start:1.6em}#subtitleSyncContent pre{white-space:pre-wrap}
-.merged-media #mediaRows .media-detail{display:block}.merged-media #mediaEmpty{display:none}
+.merged-media #mediaRows .media-detail{display:block}
 .merged-media .tool-list-heading{flex-wrap:wrap;gap:6px}.merged-media #allowWithoutSubtitles{margin:0;display:flex;align-items:center;gap:5px;white-space:nowrap}.merged-media #allowWithoutSubtitles input{width:auto;margin:0}
 .merged-media #subtitleRows .panel-actions{margin:6px 0 0}.merged-media #mediaPreviewPanel{overflow:visible}
 #subtitleRows h5,#subtitleRows p{margin-block:0 4px}
@@ -332,7 +301,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 .sync-location{display:grid;grid-template-columns:6.5em minmax(0,1fr);gap:8px;line-height:1.7}.sync-location span:last-child{white-space:pre-wrap;overflow-wrap:anywhere}.sync-location span:first-child{color:var(--muted)}
 .sync-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border)}
 
-#subtitleEmpty,.media-empty{padding:28px 24px;margin:0;text-align:center;border:1px dashed var(--border);border-radius:8px;color:var(--muted);font-size:13px;background:var(--surface)}
+#subtitleEmpty{padding:28px 24px;margin:0;text-align:center;border:1px dashed var(--border);border-radius:8px;color:var(--muted);font-size:13px;background:var(--surface)}
 #mediaPreviewPanel:not(:has(#mediaPreview:not(:empty))){display:none}
 #mediaPreview{white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;margin-top:8px}
 #emptyPreview:not(:empty){max-height:none!important;overflow:visible!important;padding:12px 0;margin:12px 0;font-size:14px}
@@ -342,17 +311,17 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 .tool-statusbar:has(.tool-utilities>details[open]){display:block}.tool-utilities:has(>details[open]){display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin-top:10px}.tool-utilities>details[open]{grid-column:1/-1;color:var(--text);min-width:0}
 :is(#subtitlePane,#mediaPane) .tool-statusbar{align-items:flex-end;margin-top:10px}
 :is(#subtitlePane,#mediaPane) .tool-status-text{min-width:0}
-:is(#subtitleProgress,#mediaProgress){max-height:3.8em;overflow:auto;scrollbar-width:none;overflow-wrap:anywhere}
+#subtitleProgress{max-height:3.8em;overflow:auto;scrollbar-width:none;overflow-wrap:anywhere}
 
-:is(#subtitleMeter,#mediaBar){display:block;width:100%;border:0;appearance:none;background:var(--border)}
-:is(#subtitleMeter,#mediaBar)::-webkit-progress-bar{background:var(--border)}
-:is(#subtitleMeter,#mediaBar)::-webkit-progress-value{background:var(--text)}
-:is(#subtitleMeter,#mediaBar)::-moz-progress-bar{background:var(--text)}
+#subtitleMeter{display:block;width:100%;border:0;appearance:none;background:var(--border)}
+#subtitleMeter::-webkit-progress-bar{background:var(--border)}
+#subtitleMeter::-webkit-progress-value{background:var(--text)}
+#subtitleMeter::-moz-progress-bar{background:var(--text)}
 #subtitleScope{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #subtitlePane .tool-statusbar:has(.tool-utilities>details[open]){max-height:40%;overflow:auto;scrollbar-width:none}#subtitleDeleteList{overflow-wrap:anywhere}
 #log{white-space:pre-wrap;overflow-wrap:anywhere;font:14px/1.7 Consolas,"Microsoft YaHei",monospace;max-height:180px;overflow:auto}#log:empty{display:none}#log>div+div{margin-top:6px}
-#subtitlePane .tool-statusbar:has(#subtitleDiagnostics[open]){max-height:58%}:is(#subtitleDiagnostics,#mediaDiagnostics) .panel-actions{margin:4px 0 8px}
-:is(#subtitleLog,#mediaLog){display:block;width:100%;height:clamp(40px,calc(37cqh - 163px),150px);resize:none;overflow:auto;scrollbar-width:none;overscroll-behavior:contain}
+#subtitlePane .tool-statusbar:has(#subtitleDiagnostics[open]){max-height:58%}#subtitleDiagnostics .panel-actions{margin:4px 0 8px}
+#subtitleLog{display:block;width:100%;height:clamp(40px,calc(37cqh - 163px),150px);resize:none;overflow:auto;scrollbar-width:none;overscroll-behavior:contain}
 @container(max-height:660px){
     #subtitlePane .tool-intro p{display:none}
     #subtitlePane .tool-intro h3{font-size:20px}
@@ -364,7 +333,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
     #subtitleRows .subtitle-result{margin-top:4px}
     #subtitleRows .subtitle-result+.subtitle-result{padding-top:4px}
     #subtitleRows .subtitle-result select{padding-block:4px}
-    :is(#subtitleLog,#mediaLog){height:38px}
+    #subtitleLog{height:38px}
 }
 .sync-preview{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px}.sync-preview h4{margin:0 0 8px}.sync-preview p{margin:6px 0}#syncList{overflow-wrap:anywhere;font-size:15px}#syncDestination{font-weight:600}
 .export-options{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin:12px 0}.export-options input{width:auto}.export-options button{font-size:14px;padding:7px 12px}.credential-head{display:flex;justify-content:space-between;align-items:center;gap:12px}.credential-head a{font-size:15px;flex-shrink:0}
@@ -590,11 +559,11 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             root.querySelector('#backToTools').onclick = () => activate(active);
             toolWorkspace = { root, tabs, activate, openSettings, owner:null };
         }
-        const { root, tabs, activate } = toolWorkspace, id = typeof media === 'string' ? media : media ? 'media' : 'json';
+        const { root, tabs, activate } = toolWorkspace;
         if (tabs.has(id)) return tabs.get(id).ui;
         const pane = document.createElement('section');
         pane.id = id + 'Pane'; pane.className = 'tool-pane'; pane.setAttribute('role', 'tabpanel'); pane.setAttribute('aria-labelledby', id + 'Tab'); pane.tabIndex = 0; pane.hidden = true;
-        pane.innerHTML = `<h3></h3>${media ? '' : `<details id="exportHistory"><summary title="复用导出记录，加快读取与续传">导出记录</summary><div class="export-options"><label><input id="incremental" type="checkbox" checked>复用旧记录，加快读取</label></div><p id="historySummary" style="padding:8px;border:1px solid var(--border);border-radius:4px"></p><div class="export-options"><button id="importHistory">导入旧清单</button><button id="resetHistory">重置导出记录</button><input id="historyFile" type="file" accept=".json,application/json" hidden></div></details>`}${html}`;
+        pane.innerHTML = `<h3></h3>${id !== 'json' ? '' : `<details id="exportHistory"><summary title="复用导出记录，加快读取与续传">导出记录</summary><div class="export-options"><label><input id="incremental" type="checkbox" checked>复用旧记录，加快读取</label></div><p id="historySummary" style="padding:8px;border:1px solid var(--border);border-radius:4px"></p><div class="export-options"><button id="importHistory">导入旧清单</button><button id="resetHistory">重置导出记录</button><input id="historyFile" type="file" accept=".json,application/json" hidden></div></details>`}${html}`;
         pane.querySelector('h3').textContent = title;
         let stopJson;
         if (id === 'json') {

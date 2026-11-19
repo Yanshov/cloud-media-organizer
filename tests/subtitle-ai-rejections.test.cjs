@@ -20,7 +20,7 @@ const review = fn => ctx.createSubtitleReviewer({disambiguateSubtitle:fn},langua
     await ctx.searchSubtitleSources(r,{thunder:true,language,reviewCandidates:review(async p=>{
         assert.equal(p.candidates.length,1,'Duplicate releases share one review; opaque name is not guessed');
         return {index:null,confidence:0,reason:'四位王者与黑狐是其他电影',rejected:[reject(p.candidates[0].index)]};
-    })},{thunderSearch:async()=>[file(wrong),duplicate,opaque]}, {},log);
+    })},{thunderSearch:async()=>[file(wrong),duplicate,opaque]},log);
     assert.equal(r.candidates.length,1); assert.equal(r.candidates[0],opaque);
     assert.equal(r.sources.find(s=>s.name==='迅雷').count,1);
     assert.equal(r.sources.find(s=>s.name==='迅雷').rejected,2,'Duplicate download URLs are removed by the same explicit work rejection');
@@ -39,7 +39,7 @@ const review = fn => ctx.createSubtitleReviewer({disambiguateSubtitle:fn},langua
     const replacement = {...file('Kamen Rider Geats Jyamato Awaking.2024.CHS.srt'),source:'SubDL',titleMatched:true};
     await ctx.searchSubtitleSources(fallback,{thunder:true,subdl:true,subdlKey:'test',language,
         reviewCandidates:review(async p=>({index:null,confidence:0,rejected:p.candidates.map(c=>reject(c.index))}))},
-        {thunderSearch:async()=>[file(wrong)],subdlSearch:async()=>{subdlCalls++;return [replacement];}}, {},log);
+        {thunderSearch:async()=>[file(wrong)],subdlSearch:async()=>{subdlCalls++;return [replacement];}},log);
     assert.equal(subdlCalls,1,'Rejecting all thunder candidates continues to SubDL');
     assert.equal(fallback.selectedCandidate,replacement);
     assert.equal(fallback.candidates.includes(replacement),true);
@@ -48,7 +48,7 @@ const review = fn => ctx.createSubtitleReviewer({disambiguateSubtitle:fn},langua
     assert.ok(fallback.selectedCandidate);
     const absent=row();
     await ctx.searchSubtitleSources(absent,{thunder:true,language,reviewCandidates:review(async()=>({index:null,rejected:[reject(0)]}))},
-        {thunderSearch:async()=>[file(wrong)]},{},log);
+        {thunderSearch:async()=>[file(wrong)]},log);
     assert.equal(ctx.subtitleSearchState(absent),'notFound','Confirmed wrong works no longer inflate manual choices');
 
     const invalid=row(); invalid.candidates=Array.from({length:9},(_,i)=>file('Unknown '+i+'.ass'));

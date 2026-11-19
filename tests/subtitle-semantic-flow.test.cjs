@@ -16,7 +16,7 @@ const realName='[KRSUB][Kamen Rider Geats Movie - 4 Aces and the Black Fox][BDRI
     const service=ctx.createSubtitleService(),r=row();
     const reviewer=ctx.createSubtitleReviewer({disambiguateSubtitle:async payload=>{payloads.push(payload);return {index:payload.candidates.find(c=>c.name===realName).index,confidence:.96,reason:'完整副标题一致，Movie 为包装词'};}},language,(...a)=>logs.push(a.join(' ')));
     const config={thunder:true,subdl:true,subdlKey:'test',language,reviewCandidates:reviewer};
-    await ctx.searchSubtitleSources(r,config,service,{sample:async()=> 'hash'});
+    await ctx.searchSubtitleSources(r,config,service);
     assert.equal(payloads.length,1);assert.equal(payloads[0].candidates.length,4,'Distinct raw names beyond the first three reach AI; duplicates collapse');
     assert.equal(ctx.subtitleCandidateFilter({query:'假面骑士龙骑剧场版 最后的篇章',year:2002,tv:false},[],"[SV-MirrorWorld] Kamen Rider Ryuki - Episode Final (Directors Cut) [E79807B6]_字幕01.ENG.ass",true).excluded,undefined,'Release checksum is not an episode number');
     assert.ok(payloads[0].work.aliases.includes('Kamen Rider Geats: 4 Aces and the Black Fox'));
@@ -32,7 +32,7 @@ const realName='[KRSUB][Kamen Rider Geats Movie - 4 Aces and the Black Fox][BDRI
     let aiCalls=0;
     const uncertain=row();
     await ctx.searchSubtitleSources(uncertain,{thunder:true,language,reviewCandidates:ctx.createSubtitleReviewer({disambiguateSubtitle:async()=>{aiCalls++;}},language)},
-        {thunderSearch:async()=>[hash]},{ });
+        {thunderSearch:async()=>[hash]});
     assert.equal(aiCalls,0,'Opaque names are not sent for guessing');
     let attempts=0;const failureLogs=[];
     const broken=ctx.createSubtitleReviewer({disambiguateSubtitle:async()=>{attempts++;throw Object.assign(Error('empty'),{aiParse:true})}},language,(...a)=>failureLogs.push(a.join(' ')));

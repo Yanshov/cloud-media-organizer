@@ -274,7 +274,7 @@
         }
         return {linked,unmatched};
     }
-    async function collectMediaSelection(selected, source, progress = () => {}, skip = () => false, check = () => {}, enrich = true, history, log) {
+    async function collectMediaSelection(selected, source, progress = () => {}, check = () => {}, history, log) {
         const { nodes, children } = await collectSelectedTree(selected, source, progress, check, log);
         const videos = nodes.filter(node => MEDIA_VIDEO.test(node.name)), videosByParent = new Map();
         for (const video of videos) {
@@ -296,19 +296,8 @@
             }
             unmatched.push(...found.unmatched.map(attachPath));
         }
-        const pending = videos.filter(video => !skip(video) || linked.get(video.id).some(sub => sub.language
-            && !mediaSubtitleSuffix(video.name,sub.name)));
-        // Standard entries need neither metadata enrichment nor TMDB matching.
-        if (enrich) await batchStage(pending,'读取元数据（视频组）',log,async (video,verify) => {
-            Object.assign(video,await mediaFileMetadata(video,source));
-            for (const subtitle of linked.get(video.id)) {
-                verify();
-                Object.assign(subtitle,await mediaFileMetadata(subtitle,source));
-            }
-        },check);
         check();
-        const pendingParents = new Set(pending.map(video => video.parentId));
-        return { videos: pending, linked, namesByParent, unmatched: unmatched.filter(sub => pendingParents.has(sub.parentId)), skipped: videos.length - pending.length };
+        return {videos, linked, namesByParent, unmatched};
     }
     const tmdbClients = new Map();
     async function mediaSeasonEpisodes(client, seriesId, seasonNumber) {
@@ -679,14 +668,6 @@
         if (!MEDIA_SUB.test(node.name)) return false;
         const base = stem.match(/^(.+\.(?:19|20)\d{2}(?:\.S\d{2}E\d{2,3}(?:E\d{2,3})?)?)(?=\.)/);
         return !!base && mediaSubtitleSuffix(base[1] + '.mkv', node.name) !== null;
-    }
-    function mediaAlreadyStandard(node, parentPath = '') {
-        if (!mediaStandardNode(node)) return false;
-        const match = mediaStem(node.name).match(/^(.+\.(?:19|20)\d{2})(?:\.S(\d{2})E\d{2,3}(?:E\d{2,3})?)?$/);
-        if (!match) return false;
-        const folders = [...parentPath.split('/').filter(Boolean), ...node.folders];
-        if (match[2] && folders.pop() !== 'Season ' + match[2]) return false;
-        return folders.pop() === match[1];
     }
     function mediaCanonicalResolver(client, check = () => {}) {
         const works = new Map(), seasons = new Map();

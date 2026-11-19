@@ -30,10 +30,10 @@ async function auth(){
  let calls=0,providerCalls=0;const ctx=load({requestJson:async()=>{calls++;throw Object.assign(Error('HTTP 401'),{status:401,stop:true})}});
  const drive=loadDrive(ctx,{session:{provider:'光鸭',token:'test'},source:{children:async()=>{throw Error('Must not list after auth failure')}}});
  const service={thunderSearch:async()=>{providerCalls++;return []}};
- const r=row(1);await ctx.searchSubtitleSources(r,{...config,thunder:true},service,drive);assert.equal(calls,0);assert.equal(providerCalls,1,'Subtitle searches use title providers without reading video bytes');
+ const r=row(1);await ctx.searchSubtitleSources(r,{...config,thunder:true},service);assert.equal(calls,0);assert.equal(providerCalls,1,'Subtitle searches use title providers without reading video bytes');
  await assert.rejects(drive.read({id:'s',name:'test.srt',size:valid.length,md5:'a'.repeat(32)}),e=>e.phase==='drive-auth');await assert.rejects(drive.save(row(1),'test.srt',valid),e=>e.phase==='drive-auth');assert.equal(calls,1,'Known invalid drive session makes no further network calls');
  const providerError={thunderSearch:async()=>{throw Object.assign(Error('Provider HTTP 401'),{status:401,stop:true})}};
- const other=row(2);await ctx.searchSubtitleSources(other,{...config,thunder:true},providerError,{});assert.equal(ctx.subtitleSearchState(other),'failed');assert.match(other.searchMessage,/查询有失败/);
+ const other=row(2);await ctx.searchSubtitleSources(other,{...config,thunder:true},providerError);assert.equal(ctx.subtitleSearchState(other),'failed');assert.match(other.searchMessage,/查询有失败/);
  // Source directory auth errors share the same fatal boundary.
  let lists=0;const listed=loadDrive(ctx,{session:{provider:'123',token:'test'},source:{children:async()=>{lists++;throw Object.assign(Error('API code 110'),{stop:true})}}});
  await assert.rejects(listed.save(row(1),'test.srt',valid),e=>e.phase==='drive-auth'&&e.stop);await assert.rejects(listed.save(row(2),'test.srt',valid),e=>e.phase==='drive-auth');assert.equal(lists,1);
@@ -55,7 +55,7 @@ async function sourceIsolation(){
  const rows=[row(1),row(2)];
  for(const target of rows) target.parsed.tmdbId='42';
  await service.prepareSeason(rows,options);
- for(const target of rows) await ctx.searchSubtitleSources(target,options,service,{},(...args)=>logs.push(args));
+ for(const target of rows) await ctx.searchSubtitleSources(target,options,service,(...args)=>logs.push(args));
  assert.ok(rows.every(target=>target.selectedCandidate?.source==='迅雷'));
  assert.equal(requests.filter(host=>host==='api.subdl.com').length,1);
  assert.ok(logs.some(([phase])=>phase==='整季来源失败'));
@@ -64,7 +64,7 @@ async function sourceIsolation(){
  const nextWork=row(1);
  nextWork.parsed.tmdbId='43';
  await service.prepareSeason([nextWork],options);
- await ctx.searchSubtitleSources(nextWork,options,service,{});
+ await ctx.searchSubtitleSources(nextWork,options,service);
  assert.equal(nextWork.selectedCandidate?.source,'迅雷');
  assert.equal(requests.filter(host=>host==='api.subdl.com').length,2,'Conflict state is scoped to the queried work');
  for(const status of [401,403,429,509,502]){
@@ -73,13 +73,13 @@ async function sourceIsolation(){
    subdlCachedEpisode:async()=>{throw Object.assign(Error('来源失败'),{status,stop:true});},
    thunderSearch:async()=>{resumed++;return [];}
   };
-  await ctx.searchSubtitleSources(target,options,{...failing,subdlSearch:async()=>{throw ctx.subtitleSourceError('来源失败',{status});}}, {});
+  await ctx.searchSubtitleSources(target,options,{...failing,subdlSearch:async()=>{throw ctx.subtitleSourceError('来源失败',{status});}});
   assert.equal(resumed,1);
   assert.equal(ctx.subtitleSearchState(target),'failed');
  }
  const driveError=Object.assign(Error('网盘登录失效'),{phase:'drive-auth',status:403,stop:true});
- await assert.rejects(ctx.searchSubtitleSources(row(1),options,{subdlCachedEpisode:async()=>{throw driveError;}},{}),error=>error===driveError);
- await assert.rejects(ctx.searchSubtitleSources(row(1),options,{subdlCachedEpisode:async()=>null},{}),/整季缓存未返回候选列表/);
+ await assert.rejects(ctx.searchSubtitleSources(row(1),options,{subdlCachedEpisode:async()=>{throw driveError;}}),error=>error===driveError);
+ await assert.rejects(ctx.searchSubtitleSources(row(1),options,{subdlCachedEpisode:async()=>null}),/整季缓存未返回候选列表/);
  console.log('PASS source isolation: conflicting season cache, provider errors, drive authorization and invalid contracts');
 }
 async function uiAuth(){

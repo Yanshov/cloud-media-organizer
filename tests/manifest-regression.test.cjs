@@ -20,7 +20,7 @@ function languageAndLinking(){
  let nodes=[video],reads=0;const drive={parentId:'p',children:async()=>{reads++;return nodes}};
  await ctx.collectMediaSelection([video],drive);nodes=[video,{id:'s',name:'电影.2000.zh-cn.srt'}];
  const scan=await ctx.collectMediaSelection([video],drive);assert.equal(scan.linked.get('v').length,1);assert.equal(reads,2,'Every new scan reads fresh data');
- let stopped=false;await assert.rejects(ctx.collectMediaSelection([video],drive,noop,()=>false,()=>{if(stopped)throw Error('stop');stopped=true}),/stop/);
+ let stopped=false;await assert.rejects(ctx.collectMediaSelection([video],drive,noop,()=>{if(stopped)throw Error('stop');stopped=true}),/stop/);
  const lang=load(part('    function subtitleDownloadUrl(', '    function subtitleDrive('));
  for(const [name,wanted,result] of [['电影.zh.cn.srt','zh-cn',true],['电影.zh-Hans.srt','zh-cn',true],['电影.zh-hant.srt','zh-tw',true],['电影.简英.ass','en',true],['电影.繁英.ass','en',true],['电影.zh-cn.srt','zh-cn,zh-tw,zh',true],['电影.en.srt','zh',false],['电影.zh-tw.srt','zh-cn',false],['untagged.srt','zh',false]])assert.equal(lang.subtitleLanguageMatch(name,wanted),result,name);
  console.log('PASS audit links: canonical/legacy language suffixes and bilingual filenames survive rename/rescan; unrelated titles stay unlinked; fresh scans plus one listing per directory; cancellation; unified language tags');
@@ -155,11 +155,21 @@ async function manifests(){
  let calls=0;const root={key:'d',name:'目录',directory:true},valid={key:'v',name:'a.mkv',md5:hash,size:0},unknown={key:'u',name:'b.mkv'};
  const collected=await ctx.collectTree([root],{children:async()=>[valid,unknown],metadata:async()=>{calls++;return {md5:'invalid',size:1}}});
  assert.equal(collected.files,1);assert.equal(collected.directories,1);assert.equal(calls,1);assert.deepEqual(Array.from(collected.skipped),['目录/b.mkv']);assert.equal(ctx.normalizeFiles(JSON.parse(JSON.stringify(collected.entries))).length,2);
+ const reports=[], downloads=[];
+ ctx.GM_download=options=>{downloads.push(options);options.onload();};
+ vm.runInContext(part('    function saveJsonFile(', '    function arrangeToolPane('),ctx);
+ ctx.saveJsonFile(JSON.stringify(collected.entries),'manifest.json',message=>reports.push(message));
+ assert.equal(downloads.length,1);
+ assert.equal(downloads[0].name,'manifest.json');
+ assert.match(reports.at(-1),/已保存/);
+ ctx.saveJsonFile('{"files":[]}','manifest.json',message=>reports.push(message));
+ assert.equal(downloads.length,1,'Invalid manifests never reach the download API');
+ assert.match(reports.at(-1),/保存失败/);
  await assert.rejects(ctx.readPages(async()=>({items:[{id:'same'}],more:true}),n=>n.id),/重复/);
  await assert.rejects(ctx.readPages(async()=>({items:[],more:true}),n=>n.id),/没有进展/);
  await assert.rejects(ctx.readPages(async()=>({items:[{id:'one'}],more:false,total:2}),n=>n.id),/项目数不一致/);
  await assert.rejects(ctx.readPages(async page=>({items:[{id:String(page)}],more:true,total:page===1?3:4}),n=>n.id),/项目数发生变化/);
- console.log('PASS audit manifests: roundtrip directory/file export, zero bytes and uppercase hashes; invalid/traversing/conflicting input rejected; missing metadata reported; pagination detects repeats, stalls, missing data and changing totals');
+ console.log('PASS audit manifests: roundtrip directory/file export and JSON download; zero bytes and uppercase hashes; invalid/traversing/conflicting input rejected; missing metadata reported; pagination detects repeats, stalls, missing data and changing totals');
 }
 
 async function sharedHelpers(){

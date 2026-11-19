@@ -29,7 +29,7 @@ async function seasonPipeline() {
         calls.push(r.node.name);active++;max=Math.max(max,active);if(r.node.name==='剧甲')await first.promise;else await other.promise;
         active--;seasonCache.add(r.parsed.query);return [{source:'迅雷',name:r.node.name,language:'zh-cn',titleMatched:true}];
     }};
-    const work=ctx.forEachConcurrent(groups,2,async(group,verify)=>{for(const r of group)await ctx.searchSubtitleSources(r,{language:'zh-cn,zh-tw,zh',thunder:true},service,{},()=>{},verify)});
+    const work=ctx.forEachConcurrent(groups,2,async(group,verify)=>{for(const r of group)await ctx.searchSubtitleSources(r,{language:'zh-cn,zh-tw,zh',thunder:true},service,()=>{},verify)});
     await flush();assert.deepEqual(calls,['剧甲','剧乙']);other.release();await flush();assert.deepEqual(calls,['剧甲','剧乙','电影']);first.release();await work;
     assert.equal(max,2);assert.equal(calls.filter(n=>n==='剧甲').length,1,'Same season is sequential and reuses the first episode response');assert.ok(rows.every(r=>r.selectedCandidate));
     console.log('PASS search pipeline: 2 independent works overlap, same-season episodes reuse cache without repeated requests');

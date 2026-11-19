@@ -40,7 +40,7 @@ async function seasonArchive() {
     assert.equal(queries.length,1);assert.equal(queries[0].searchParams.get('full_season'),'1');assert.equal(queries[0].searchParams.get('episode_number'),null);
     assert.equal(downloads.length,1,'ZIP indexed once even when first episode is missing');
     await service.prepareSeason(rows,config);assert.equal(queries.length,1);assert.equal(downloads.length,1);
-    for (const r of rows) await ctx.searchSubtitleSources(r,config,service,{});
+    for (const r of rows) await ctx.searchSubtitleSources(r,config,service);
     assert.equal(rows[0].selectedCandidate,null,'Other-season and extra files must not fill the missing episode');
     assert.ok(rows[1].selectedCandidate);assert.ok(rows[2].selectedCandidate);
     assert.equal(queries.length,3,'Only missing E01 gets an ID query and a bounded name fallback'); assert.ok(queries.slice(1).every(url=>url.searchParams.get('episode_number')==='1'));
@@ -70,7 +70,7 @@ async function seasonLists() {
     await service.prepareSeason(rows,config);
     assert.deepEqual(requests,['剧名 S01','Series S01'],'First-episode hit does not stop a season search');
     assert.equal((await service.thunderCachedEpisode(rows[1],config)).length,1);
-    await ctx.searchSubtitleSources(rows[1],config,service,{}); assert.equal(requests.length,2,'The second episode reuses the season list');
+    await ctx.searchSubtitleSources(rows[1],config,service); assert.equal(requests.length,2,'The second episode reuses the season list');
     console.log('PASS seasonal file lists: first-episode hit still queries an alias for missing episodes');
 }
 async function namesAndConcurrency() {

@@ -513,6 +513,24 @@
                 const files = normalizeFiles(JSON.parse(ui.get('json').value));
                 ui.get('progress').textContent = `准备导入 ${files.length} 项…`;
                 const target = { id: provider === '123' ? current123Parent() : currentBaiduPath() };
+                const runBatch = async (label, reason, importEntry) => {
+                    let failed = 0, processed = 0;
+                    try {
+                        await batchStage(files,label,log,async (file,verify,_index,observe) => {
+                            try { return await importEntry(file,verify); }
+                            catch (error) {
+                                failed++; observe(error);
+                                log(file.path+'：单项失败；'+error.message);
+                                if (error.stop) throw error;
+                                return 'failed';
+                            } finally {
+                                processed++;
+                                ui.get('progress').textContent = '导入进度：'+processed+'/'+files.length;
+                            }
+                        },checkJsonTask,8,reason);
+                    } catch (error) { log('导入中断：'+error.message); }
+                    return {failed,processed};
+                };
                 if (provider === '123') {
                     const session = recover123Session(), { base, headers } = session;
                     const post = paced(750, (path, body) => requestJson(`${base}${path}`, { method: 'POST', credentials: 'omit', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify(body) }));
@@ -546,11 +564,11 @@
                         })());
                         return dirs.get(key);
                     };
-                    let saved = 0, missed = 0, skipped = 0, failed = 0, pending = 0, processed = 0;
+                    let saved = 0, missed = 0, skipped = 0, pending = 0;
                     const names = new Map();
-                    try { await batchStage(files,'123 导入预检、转存与验证（清单项目）',log,async (file,verify,_index,observe) => {
-                        try {
-                          return await enqueueByKey(names,file.path.toLowerCase(),async () => {
+                    const {failed,processed} = await runBatch('123 导入预检、转存与验证（清单项目）',
+                        '123 写入沿用 750ms 节流，共享路径复用在途建目录',
+                        (file,verify) => enqueueByKey(names,file.path.toLowerCase(),async () => {
                             verify();
                             const parts = relativeParts(file.path), name = parts.pop();
                             const parent = await ensure(file.type === 'directory' ? file.path : parts.join('/'));
@@ -586,18 +604,7 @@
                                 if (verified) saved++;
                                 else { pending++; log(`${file.path}：接口报告复用，但尚未在目标目录验证到完整文件信息，结果待确认`); return 'failed'; }
                             } else { missed++; log(`${file.path}：哈希未命中，需文件本体，未上传`); return 'failed'; }
-                          });
-                        } catch (error) {
-                            failed++; observe(error);
-                            log(file.path+'：单项失败；'+error.message);
-                            if (error.stop) throw error;
-                            return 'failed';
-                        } finally {
-                            processed++;
-                            ui.get('progress').textContent = '导入进度：'+processed+'/'+files.length;
-                        }
-                    },checkJsonTask,8,'123 写入沿用 750ms 节流，共享路径复用在途建目录'); }
-                    catch (error) { log('导入中断：'+error.message); }
+                        }));
                     ui.get('status').textContent = processed < files.length ? '导入已停止' : missed + failed + pending ? '导入结束，含未完成项' : '导入完成';
                     ui.get('progress').textContent = `导入结束：已处理 ${processed}/${files.length} 项；确认复用 ${saved}，未完成 ${missed}，待确认 ${pending}，同名跳过 ${skipped}，单项失败 ${failed}，未处理 ${files.length - processed}`;
                 } else {
@@ -623,30 +630,23 @@
                         })());
                         return folders.get(path);
                     };
-                    let saved = 0, missed = 0, skipped = 0, failed = 0, processed = 0;
-                    try { await batchStage(files,'百度导入预检与转存（清单项目）',log,async (file,verify,_index,observe) => {
-                      try {
-                        const parts = relativeParts(file.path), name = parts.pop();
-                        const parent = await ensure(file.type === 'directory' ? file.path : parts.join('/'));
-                        if (file.type === 'directory') return;
-                        verify();
-                        const entries = await children(parent);
-                        if (entries.some(item => item.name === name)) { skipped++; log(`${file.path}：目标已有同名项目，跳过`); return 'skipped'; }
-                        if (file.size > 256 * 1024) { missed++; log(`${file.path}：百度需要前 256 KB 分片哈希；清单不含原文件，未提交`); return 'skipped'; }
-                        const path = `${parent.replace(/\/$/, '')}/${name}` || `/${name}`;
-                        const params = new URLSearchParams({ channel: 'chunlei', web: '1', app_id: '250528', bdstoken: token, clienttype: '0', async: '2' });
-                        verify();
-                        const response = await requestJson(`${location.origin}/api/rapidupload?${params}`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' }, body: new URLSearchParams({ path, 'content-md5': file.md5, 'slice-md5': file.md5, 'content-length': String(file.size), isdir: '0', rtype: '3' }).toString() });
-                        if (nonNegativeInteger(response.errno) === 0) { saved++; log(`${file.path}：百度秒传接口已接受`); }
-                        else { missed++; log(`${file.path}：百度未命中秒传（${response.errno ?? '未知错误'}），需要原文件`); return 'failed'; }
-                      } catch (error) {
-                        failed++; observe(error);
-                        log(file.path+'：单项失败；'+error.message);
-                        if (error.stop) throw error;
-                        return 'failed';
-                      } finally { processed++; ui.get('progress').textContent = '导入进度：'+processed+'/'+files.length; }
-                    },checkJsonTask,8,'共享路径复用在途建目录，百度分页顺序读取'); }
-                    catch (error) { log('导入中断：'+error.message); }
+                    let saved = 0, missed = 0, skipped = 0;
+                    const {failed,processed} = await runBatch('百度导入预检与转存（清单项目）',
+                        '共享路径复用在途建目录，百度分页顺序读取', async (file,verify) => {
+                            const parts = relativeParts(file.path), name = parts.pop();
+                            const parent = await ensure(file.type === 'directory' ? file.path : parts.join('/'));
+                            if (file.type === 'directory') return;
+                            verify();
+                            const entries = await children(parent);
+                            if (entries.some(item => item.name === name)) { skipped++; log(`${file.path}：目标已有同名项目，跳过`); return 'skipped'; }
+                            if (file.size > 256 * 1024) { missed++; log(`${file.path}：百度需要前 256 KB 分片哈希；清单不含原文件，未提交`); return 'skipped'; }
+                            const path = `${parent.replace(/\/$/, '')}/${name}`;
+                            const params = new URLSearchParams({ channel: 'chunlei', web: '1', app_id: '250528', bdstoken: token, clienttype: '0', async: '2' });
+                            verify();
+                            const response = await requestJson(`${location.origin}/api/rapidupload?${params}`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' }, body: new URLSearchParams({ path, 'content-md5': file.md5, 'slice-md5': file.md5, 'content-length': String(file.size), isdir: '0', rtype: '3' }).toString() });
+                            if (nonNegativeInteger(response.errno) === 0) { saved++; log(`${file.path}：百度秒传接口已接受`); }
+                            else { missed++; log(`${file.path}：百度未命中秒传（${response.errno ?? '未知错误'}），需要原文件`); return 'failed'; }
+                        });
                     ui.get('status').textContent = processed < files.length ? '导入已停止' : failed ? '导入结束，含失败项' : '导入完成';
                     ui.get('progress').textContent = `导入结束：${processed}/${files.length} 项；失败 ${failed}，百度接口接受 ${saved}，未完成 ${missed}，同名跳过 ${skipped}；大于 256 KB 的项目需原文件分片哈希`;
                 }
@@ -680,7 +680,7 @@
         if (!proto) return;
         const metadata = new WeakMap();
         const open = proto.open, setHeader = proto.setRequestHeader, send = proto.send;
-        proto.open = function(method, url) {
+        proto.open = function(_method, url) {
             const result = open.apply(this, arguments);
             metadata.delete(this);
             try {

@@ -22,12 +22,12 @@ async function sources() {
  const ctx=load(),calls=[],r=row(),bilingual={source:'迅雷',name:'瑞克和莫蒂.S01E01.简体&英文.ass',language:'zh-cn',bilingual:true,titleMatched:true};
  const mono={source:'SubDL',name:'瑞克和莫蒂.S01E01.简体.ass',language:'zh-cn',bilingual:false,titleMatched:true};
  const service={thunderSearch:async()=>{calls.push('thunder');return [bilingual]},subdlSearch:async()=>{calls.push('subdl');return [mono]},search:async()=>{calls.push('open');return []}};
- await ctx.searchSubtitleSources(r,config,service,{});assert.deepEqual(calls,['thunder']);assert.equal(r.sources.filter(s=>s.deferred).length,2);
- r.candidates.forEach(c=>c.downloadFailed=true);await ctx.searchSubtitleSources(r,config,service,{},()=>{},()=>{},true);assert.deepEqual(calls,['thunder','subdl']);assert.ok(r.sources.some(s=>s.name==='OpenSubtitles'&&s.deferred));assert.equal(r.candidates.length,2);assert.equal(r.selectedCandidate.source,'SubDL');
- await ctx.searchSubtitleSources(r,config,service,{},()=>{},()=>{},true);assert.equal(calls.length,2,'Repeated resume adds no provider query after the first fallback');
- calls.length=0;service.thunderSearch=async()=>{calls.push('thunder');return []};service.subdlSearch=async()=>{calls.push('subdl');return [{...mono}]};await ctx.searchSubtitleSources(row(),config,service,{});assert.deepEqual(calls,['thunder','subdl'],'Title sources run in order without video sampling');
-  calls.length=0;service.subdlSearch=async()=>[{...mono,titleMatched:false}];await ctx.searchSubtitleSources(row(),config,service,{});assert.deepEqual(calls,['thunder','open'],'Unconfirmed title keeps searching later sources');
-  calls.length=0;service.subdlSearch=async()=>[{...mono,language:'en',name:'Rick.and.Morty.S01E01.eng.srt',bilingual:false}];await ctx.searchSubtitleSources(row(),{...config,language:'en'},service,{});assert.equal(calls.length,1,'Reliable English stops duplicate English queries');
+ await ctx.searchSubtitleSources(r,config,service);assert.deepEqual(calls,['thunder']);assert.equal(r.sources.filter(s=>s.deferred).length,2);
+ r.candidates.forEach(c=>c.downloadFailed=true);await ctx.searchSubtitleSources(r,config,service,()=>{},()=>{},true);assert.deepEqual(calls,['thunder','subdl']);assert.ok(r.sources.some(s=>s.name==='OpenSubtitles'&&s.deferred));assert.equal(r.candidates.length,2);assert.equal(r.selectedCandidate.source,'SubDL');
+ await ctx.searchSubtitleSources(r,config,service,()=>{},()=>{},true);assert.equal(calls.length,2,'Repeated resume adds no provider query after the first fallback');
+ calls.length=0;service.thunderSearch=async()=>{calls.push('thunder');return []};service.subdlSearch=async()=>{calls.push('subdl');return [{...mono}]};await ctx.searchSubtitleSources(row(),config,service);assert.deepEqual(calls,['thunder','subdl'],'Title sources run in order without video sampling');
+  calls.length=0;service.subdlSearch=async()=>[{...mono,titleMatched:false}];await ctx.searchSubtitleSources(row(),config,service);assert.deepEqual(calls,['thunder','open'],'Unconfirmed title keeps searching later sources');
+  calls.length=0;service.subdlSearch=async()=>[{...mono,language:'en',name:'Rick.and.Morty.S01E01.eng.srt',bilingual:false}];await ctx.searchSubtitleSources(row(),{...config,language:'en'},service);assert.equal(calls.length,1,'Reliable English stops duplicate English queries');
  console.log('PASS efficiency sources: title providers run in order; reliable candidates defer later calls; failed downloads resume deferred providers once; unconfirmed and English cases remain covered');
 }
 async function fillFallback() {

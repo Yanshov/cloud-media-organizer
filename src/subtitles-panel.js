@@ -223,7 +223,7 @@
         return flow;
     }
     function initSubtitles(provider = '123', flow) {
-        const ui = makePanel(provider + (flow ? ' 影视整理' : ' 字幕'), (flow ? mediaOrganizerMarkup(true) : '') + `
+        const ui = makePanel(provider + (flow ? ' 影视整理' : ' 字幕'), (flow ? mediaOrganizerMarkup() : '') + `
             ${flow ? '' : '<p>勾选视频或文件夹后，查找并补齐字幕。</p>'}
             <div class="panel-actions"><button id="readSubtitles">查找字幕</button><button id="fillSubtitles" disabled>补齐字幕</button><button id="reviewSubtitleDeletes" disabled>删除字幕</button><button id="importSubtitles" type="button">导入字幕</button><button id="stopSubtitles" hidden>停止</button></div>
             <input id="subtitleImportFiles" type="file" accept=".srt,.ass,.ssa,.vtt,.zip" multiple hidden>
@@ -290,6 +290,14 @@
             if (flow) flow.flushLog(); else displayLog();
         };
         const check = () => { if (flow) flow.check(); else if (cancelled) throw new Error('已停止'); };
+        const resolveSubtitleWork = async (row, verify) => {
+            try { await flow.resolveSubtitleWorks?.([row],verify); }
+            catch (error) {
+                diag('字幕线索复核中断',row.path + ' · ' + error.message);
+                verify();
+                if (error.stop || error.phase === 'drive-auth' || [401,403].includes(error.status)) throw error;
+            }
+        };
         const configuredAI = () => {
             const config = GM_getValue('cross-drive-media-ai', {}) || {};
             if (!config.enabled || !config.base || !config.model) return null;
@@ -845,14 +853,7 @@
                         throw error;
                     }
                 }
-                if (!outcome && flow) {
-                    try { await flow.resolveSubtitleWorks?.([row],verify); }
-                    catch (error) {
-                        diag('字幕线索复核中断',row.path + ' · ' + error.message);
-                        verify();
-                        if (error.stop || error.phase === 'drive-auth' || [401,403].includes(error.status)) throw error;
-                    }
-                }
+                if (!outcome && flow) await resolveSubtitleWork(row,verify);
                 meter(done + failed + pending,targets.length);
                 if (flow) flow.requestRender(); else render();
                 return outcome;
@@ -934,8 +935,8 @@
                     diag('源文件', row.node.name);
                     diag('作品解析', `片名：${row.parsed.query || '空'} · 年份：${row.parsed.year || '未知'} · 类型：${row.parsed.tv ? '剧集' : '电影/特别篇'} · 季：${row.parsed.season ?? '未知'} · 集：${row.parsed.episode ?? '未知'} · TMDB：${row.parsed.tmdbId || '无记录'}`);
                     diag('作品别名', row.parsed.aliases?.length ? row.parsed.aliases.join('；') : '无');
-                    await searchSubtitleSources(row, config, service, drive, diag, check);
-                    if (!flow) await applySubtitleWorkCorrection(row, correctWork, config, service, drive, diag, check);
+                    await searchSubtitleSources(row, config, service, diag, check);
+                    if (!flow) await applySubtitleWorkCorrection(row, correctWork, config, service, diag, check);
                     for (const source of row.sources || []) for (const query of source.queries || []) observe(query.error);
                     if (row.candidates.length) diag('字幕候选', row.node.name + ' · ' + row.candidates.map(candidate =>
                         subtitleCandidateLabel(candidate) + (!candidate.titleMatched && !candidate.identityMatched && !candidate.aiAccepted
@@ -1016,7 +1017,7 @@
                 context.history ||= mediaFileHistory(context.session);
                 const currentDrive = subtitleDrive(context);
                 const collected = snapshot || await collectMediaSelection(context.selected, context.source,
-                    message => { verifyScan(); status('正在读取目录 · ' + message); }, () => false, verifyScan, false, context.history,batchLog);
+                    message => { verifyScan(); status('正在读取目录 · ' + message); }, verifyScan, context.history,batchLog);
                 verifyScan();
                 const names = context.selected.slice(0, 3).map(item => item.name).filter(Boolean);
                 const selection = names.length ? '（' + names.join('、') + (context.selected.length > names.length ? '等' : '') + '）' : '';
@@ -1180,14 +1181,9 @@
                     await inspectEmbedded(next,verify,currentDrive); verify();
                     for (const sub of row.subtitles) { deleteSelection.delete(String(sub.id)); pendingDeletes.delete(String(sub.id)); }
                     Object.assign(row,next,{selectedCandidate:null,candidates:[],autoCandidates:[],sources:[]});
-                    if (flow) flow.invalidate('字幕复查后需要重新生成整理预览');
                     if (flow) {
-                        try { await flow.resolveSubtitleWorks?.([row],verify); }
-                        catch (error) {
-                            diag('字幕线索复核中断',row.path + ' · ' + error.message);
-                            verify();
-                            if (error.stop || error.phase === 'drive-auth' || [401,403].includes(error.status)) throw error;
-                        }
+                        flow.invalidate('字幕复查后需要重新生成整理预览');
+                        await resolveSubtitleWork(row,verify);
                     }
                     meter(++done,rows.length); render();
                     return subtitleCoverageState(next) === 'unconfirmed' ? 'failed' : undefined;
@@ -1295,15 +1291,6 @@
                     done++;
                     diag('补齐成功',row.node.name + ' · 上传字节已核验 ' + name);
                 };
-                const resolveSaved = async (row,verify) => {
-                    if (!flow) return;
-                    try { await flow.resolveSubtitleWorks?.([row],verify); }
-                    catch (error) {
-                        diag('字幕线索复核中断',row.path + ' · ' + error.message);
-                        verify();
-                        if (error.stop || error.phase === 'drive-auth' || [401,403].includes(error.status)) throw error;
-                    }
-                };
                 const saveFailed = (row,error,observe) => {
                     observe(error);
                     row.error = error.message;
@@ -1327,7 +1314,7 @@
                         while (candidates.length || !row.manualCandidate && row.sources.some(source => source.deferred || source.deferredTerms?.length)) {
                             if (!candidates.length) {
                                 diag('来源补查', `${row.node.name} · 已有候选下载失败，查询此前暂缓的来源`);
-                                await searchSubtitleSources(row, config, service, drive, diag, check, true);
+                                await searchSubtitleSources(row, config, service, diag, check, true);
                                 candidates.push(...row.autoCandidates.filter(candidate => !attempted.has(candidate)));
                                 if (!candidates.length) break;
                             }
@@ -1386,7 +1373,7 @@
                         saveFailed(row,error,observe);
                         outcome = 'failed';
                     }
-                    if (!mergedSeason && !outcome) await resolveSaved(row,check);
+                    if (!mergedSeason && !outcome && flow) await resolveSubtitleWork(row,check);
                     meter((mergedSeason ? staged.size : done) + failed,rows.length);
                     if (flow) flow.requestRender(); else render();
                     return outcome;
@@ -1422,7 +1409,7 @@
                         try { await save(row,staged.get(row),verify); }
                         catch (error) { saveFailed(row,error,observe); return 'failed'; }
                         finally { meter(done + failed,rows.length); flow.requestRender(); }
-                        await resolveSaved(row,verify);
+                        if (flow) await resolveSubtitleWork(row,verify);
                     },check);
                 }
                 const message = `已处理 ${done + failed}/${rows.length} · 已补齐 ${done} · 未补齐 ${failed}`;

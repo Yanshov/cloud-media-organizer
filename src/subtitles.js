@@ -1283,7 +1283,7 @@
         return [message, row.selectedCandidate && '所选字幕：' + subtitleCandidateLabel(row.selectedCandidate),
             ...(row.sources || []).map(source => source.name + '：' + subtitleSourceSummary(source))].filter(Boolean).join('\n');
     }
-    async function searchSubtitleSources(row, config, service, drive, log = () => {}, check = () => {}, resume = false) {
+    async function searchSubtitleSources(row, config, service, log = () => {}, check = () => {}, resume = false) {
         if (!resume && !config.correctionName) { row.error = ''; row.candidates = []; row.selectedCandidate = null; row.manualCandidate = false; row.aiSuggested = false; row.sources = []; }
         const title = subtitleQueryTitle(row.parsed.query, row.parsed.year);
         if (!resume && !config.correctionName && row.parsed.tv) {
@@ -1402,14 +1402,14 @@
         check(); selectSubtitleCandidate(row, config.language);
         row.searchMessage = subtitleSearchMessage(row);
     }
-    async function applySubtitleWorkCorrection(row, correctWork, config, service, drive, log, check) {
+    async function applySubtitleWorkCorrection(row, correctWork, config, service, log, check) {
         if (!correctWork) return;
         try {
             const suggestion = await correctWork(row, check);
             if (!suggestion) return;
             const revised = {...row,parsed:suggestion.parsed,sources:row.sources.map(source => ({...source})),
                 candidates:[],autoCandidates:[],selectedCandidate:null,aiSuggested:false};
-            await searchSubtitleSources(revised,{...config,correctionName:suggestion.name},service,drive,log,check);
+            await searchSubtitleSources(revised,{...config,correctionName:suggestion.name},service,log,check);
             check();
             row.sources = revised.sources;
             if (revised.selectedCandidate || !row.candidates.length && revised.candidates.length) {

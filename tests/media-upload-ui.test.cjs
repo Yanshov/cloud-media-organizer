@@ -96,7 +96,7 @@ async function aiFallbackGuards() {
 async function mediaFallbackFlow() {
     const calls=[],groups=new Map(['Known','Unmatched','Ambiguous','Offline',''].map((query,index)=>[index,[{node:{id:String(index),name:query||'unknown.mkv',parentId:'p'},query,sourceYear:'2000'}]]));
     const context=load(part('    function mediaTheatricalQuery(', '    function subtitleWorkIdentity(')+part('    function validateMediaAIIdentity(', '    async function identifyMediaAIFiles(')+part('        async function matchGroup(', "        ui.get('scanMedia').onclick"),{
-        groups,flow:null,checkStopped(){},progress(){},meter(){},log(){},readyRow:row=>!!row.detail,key:value=>value.toLowerCase(),aiSettings:()=>({enabled:true}),mediaCandidatePreference:()=>({type:'movie'}),
+        groups,flow:{requestRender(){}},checkStopped(){},progress(){},meter(){},log(){},readyRow:row=>!!row.detail,key:value=>value.toLowerCase(),aiSettings:()=>({enabled:true}),mediaCandidatePreference:()=>({type:'movie'}),
         client:{search:async query=>{calls.push('tmdb:'+query);if(query==='Offline')throw Error('HTTP 503');if(query==='Unmatched')return [];return Array.from({length:query==='Ambiguous'?2:1},(_,index)=>({id:index+1,media_type:'movie',title:query,release_date:'2000-01-01'}))}},
         choose:async(row,match)=>{row.detail={id:match};row.match=match},validateEpisode:async()=>{},createMediaAI:()=>({}),
         identifyMediaAIFiles:async rows=>{calls.push('ai:'+rows[0].node.name);return rows.map(()=>({title:'Recovered',type:'movie',year:'2000',episodes:[]}))}
@@ -207,20 +207,19 @@ async function subtitles() {
     let calls=[],stop=false;
     const row=()=>({node:video,parsed:{query:'电影',year:2000},candidates:[],sources:[]});
     const service={thunderSearch:async()=>{calls.push('thunder');return [bilingual]},subdlSearch:async()=>{calls.push('subdl');return [mono]},search:async()=>{calls.push('open');return []}};
-    const drive={};
     let r=row();
-    await ctx.searchSubtitleSources(r,{thunder:true,subdl:true,subdlKey:'k',open:false,language},service,drive);
+    await ctx.searchSubtitleSources(r,{thunder:true,subdl:true,subdlKey:'k',open:false,language},service);
     assert.deepEqual(calls,['thunder']);assert.equal(r.selectedCandidate,bilingual);
-    bilingual.downloadFailed=true;await ctx.searchSubtitleSources(r,{thunder:true,subdl:true,subdlKey:'k',open:false,language},service,drive,()=>{},()=>{},true);assert.equal(r.selectedCandidate,mono);delete bilingual.downloadFailed;
+    bilingual.downloadFailed=true;await ctx.searchSubtitleSources(r,{thunder:true,subdl:true,subdlKey:'k',open:false,language},service,()=>{},()=>{},true);assert.equal(r.selectedCandidate,mono);delete bilingual.downloadFailed;
     assert.deepEqual(calls,['thunder','subdl']);
     calls=[];service.thunderSearch=async()=>{calls.push('thunder');return []};service.search=async()=>{calls.push('open');return [bilingual]};service.subdlSearch=async()=>{calls.push('subdl');throw Object.assign(Error('HTTP 509'),{status:509})};
-    r=row();await ctx.searchSubtitleSources(r,{thunder:true,subdl:true,subdlKey:'k',open:true,key:'k',language},service,drive);
+    r=row();await ctx.searchSubtitleSources(r,{thunder:true,subdl:true,subdlKey:'k',open:true,key:'k',language},service);
     assert.equal(r.sources.find(s=>s.name==='SubDL').error,'HTTP 509');assert.equal(r.selectedCandidate,bilingual);assert.equal(calls.at(-1),'open');
     calls=[];service.subdlSearch=async()=>{calls.push('subdl');stop=true;return []};
-    await assert.rejects(ctx.searchSubtitleSources(row(),{thunder:true,subdl:true,subdlKey:'k',language},service,drive,()=>{},()=>{if(stop)throw Error('已停止')}),/已停止/);
+    await assert.rejects(ctx.searchSubtitleSources(row(),{thunder:true,subdl:true,subdlKey:'k',language},service,()=>{},()=>{if(stop)throw Error('已停止')}),/已停止/);
     assert.deepEqual(calls,['thunder','subdl']);
-    r=row();await ctx.searchSubtitleSources(r,{language},service,drive);assert.equal(ctx.subtitleSearchState(r),'unsearched');assert.match(ctx.subtitleSearchMessage(r),/尚未查询/);
-    r=row();await ctx.searchSubtitleSources(r,{subdl:true,language},service,drive);assert.equal(ctx.subtitleSearchState(r),'unsearched');assert.match(ctx.subtitleSearchMessage(r),/未配置密钥/);
+    r=row();await ctx.searchSubtitleSources(r,{language},service);assert.equal(ctx.subtitleSearchState(r),'unsearched');assert.match(ctx.subtitleSearchMessage(r),/尚未查询/);
+    r=row();await ctx.searchSubtitleSources(r,{subdl:true,language},service);assert.equal(ctx.subtitleSearchState(r),'unsearched');assert.match(ctx.subtitleSearchMessage(r),/未配置密钥/);
 
     vm.runInContext(part('    function subtitleInventory(', '    function initSubtitles('),ctx);
     Object.assign(ctx,{parseMediaName:()=>({query:'电影',year:2000}),mediaBonusName:()=>false,mediaRecords:{get:()=>null}});
@@ -428,7 +427,7 @@ async function cleanup() {
     const handler = part("        ui.get('runEmpty').onclick =", "        ui.get('mediaAIProvider').onchange");
     const lifecycle = part('    function createPanelTask(', '    function panelControls(');
     const locks = [];
-    const run=load(lifecycle + '\nconst runTask = createPanelTask(ui, () => {});\n' + handler,{ui:{get:()=>button,busy: value => locks.push(value)},emptyPlan:[{path:'a'},{path:'b'}],emptySession:{},emptySource:{},cancelled:false,flow:null,checkStopped(){},
+    const run=load(lifecycle + '\nconst runTask = createPanelTask(ui, () => {});\n' + handler,{ui:{get:()=>button,busy: value => locks.push(value)},emptyPlan:[{path:'a'},{path:'b'}],emptySession:{},emptySource:{},flow:{reset(){}},checkStopped(){},
         invalidate(){},meter(){},log:m=>messages.push(m),progress:m=>messages.push(m),
         removeMediaNonstandard:async()=>{deletes++;throw Object.assign(Error('HTTP 403'),{stop:true})}
     });
