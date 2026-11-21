@@ -23,7 +23,8 @@
         return tags.size === 1 ? tags.values().next().value : '';
     }
 
-    function mediaSeasonNumber(value) {
+    /** Collects the distinct season numbers in a file or folder name. */
+    function mediaSeasonNumbers(value) {
         const text = String(value).normalize('NFKC');
         const chineseNumber = number => {
             if (/^\d+$/.test(number)) return Number(number);
@@ -34,21 +35,21 @@
             }
             return number.length === 1 && number in digits ? digits[number] : null;
         };
-        const seasons = new Set([
-            ...[...text.matchAll(/(?:\bSeason[ ._-]*|(?:^|[^a-z0-9])SE?)(\d{1,2})(?=E\d|[^0-9]|$)/gi)].map(match => Number(match[1])),
-            ...[...text.matchAll(/第\s*([0-9一二两三四五六七八九十零〇]+)\s*季/g)].map(match => chineseNumber(match[1]))
+        return new Set([
+            ...Array.from(text.matchAll(/(?:\bSeason[ ._-]*|(?:^|[^a-z0-9])SE?)(\d{1,2})(?=E\d|[^0-9]|$)/gi), match => Number(match[1])),
+            ...Array.from(text.matchAll(/第\s*([0-9一二两三四五六七八九十零〇]+)\s*季/g), match => chineseNumber(match[1]))
         ].filter(Number.isInteger));
+    }
+    /** Returns the season number when all markers agree. */
+    function mediaSeasonNumber(value) {
+        const seasons = mediaSeasonNumbers(value);
         return seasons.size === 1 ? seasons.values().next().value : null;
     }
+    /** Reads the episode range marked on a multi-season package folder. */
     function mediaSeasonPackageRange(folders = []) {
         for (const folder of folders) {
             const text = String(folder).normalize('NFKC');
-            const seasons = new Set([
-                ...[...text.matchAll(/(?:\bSeason[ ._-]*|(?:^|[^a-z0-9])SE?)(\d{1,2})(?=E\d|[^0-9]|$)/gi)].map(match => Number(match[1])),
-                ...[...text.matchAll(/第\s*([0-9一二两三四五六七八九十零〇]+)\s*季/g)]
-                    .map(match => mediaSeasonNumber('第' + match[1] + '季'))
-            ].filter(Number.isInteger));
-            if (seasons.size < 2) continue;
+            if (mediaSeasonNumbers(text).size < 2) continue;
             const matches = [...text.matchAll(/(?:^|[^\d])(\d{1,3})\s*[-~]\s*(\d{1,3})\s*TV\b/gi)];
             if (matches.length !== 1) continue;
             const start = Number(matches[0][1]), end = Number(matches[0][2]);
@@ -56,10 +57,15 @@
         }
         return null;
     }
+    /** Returns regular seasons with a usable episode count in season order. */
+    function mediaCountedSeasons(seasons) {
+        return seasons.filter(season => season.season_number > 0 && Number.isInteger(season.episode_count) && season.episode_count > 0)
+            .sort((a,b) => a.season_number - b.season_number);
+    }
+    /** Maps the package's episode number to a regular season and episode. */
     function mediaMapSeasonPackageEpisode(range, seasons, absoluteEpisode) {
         if (!range || !Number.isInteger(absoluteEpisode) || absoluteEpisode < range.start || absoluteEpisode > range.end) return null;
-        const regular = seasons.filter(season => season.season_number > 0 && Number.isInteger(season.episode_count) && season.episode_count > 0)
-            .sort((a,b) => a.season_number - b.season_number);
+        const regular = mediaCountedSeasons(seasons);
         if (!regular.length || regular.reduce((total,season) => total + season.episode_count,0) !== range.end - range.start + 1) return null;
         let offset = absoluteEpisode - range.start + 1;
         for (const season of regular) {
@@ -68,10 +74,10 @@
         }
         return null;
     }
+    /** Maps a series-wide episode number to the specified season. */
     function mediaMapAbsoluteSeasonEpisode(seasons, seasonNumber, absoluteEpisode) {
         if (!Number.isInteger(seasonNumber) || seasonNumber < 1 || !Number.isInteger(absoluteEpisode)) return null;
-        const regular = seasons.filter(season => season.season_number > 0 && Number.isInteger(season.episode_count) && season.episode_count > 0)
-            .sort((a,b) => a.season_number - b.season_number);
+        const regular = mediaCountedSeasons(seasons);
         const index = regular.findIndex(season => season.season_number === seasonNumber);
         if (index < 0 || absoluteEpisode <= regular[index].episode_count) return null;
         if (regular.slice(0,index + 1).some((season,position) => season.season_number !== position + 1)) return null;
@@ -990,18 +996,17 @@
         }, check, log, '清理扫描与候选识别（目录/文件）');
         return plan.sort((a,b) => compareTreeOrder(a.order,b.order)).map(entry => entry.item);
     }
+    /** Revalidates the selected cleanup rule before recycling its target. */
     async function removeMediaNonstandard(item,session,source,check = () => {}) {
         const old = (await source.children({ id: item.parentId })).find(n => n.id === item.id);
         if (!old) return '项目已不存在';
+        let message;
         if (item.cleanup === 'empty') {
             if (!old.directory || old.name !== item.name || String(item.id) === '0' || String(item.id) === String(session.parent)
                 || (await source.children({id:item.id})).length)
                 throw Object.assign(new Error('文件夹已变化或含有内容，已保留'), {retained:true});
-            check();
-            await recycleMedia(item,session,source);
-            return '空文件夹已移入回收站';
-        }
-        if (item.cleanup === 'extras') {
+            message = '空文件夹已移入回收站';
+        } else if (item.cleanup === 'extras') {
             let scopeValid = false;
             if (item.extraScope) {
                 scopeValid = true;
@@ -1009,15 +1014,15 @@
             }
             if (old.directory || old.name !== item.name || item.id === '0' || item.id === session.parent || MEDIA_VIDEO.test(old.name) && !mediaBonusName(old.name) && !scopeValid)
                 throw Object.assign(new Error('项目已变化或不再属于非正片，本次未删除'), { retained: true });
-            check();
-            await recycleMedia(item, session, source);
-            return '非正片文件已移入回收站';
+            message = '非正片文件已移入回收站';
+        } else {
+            if (!!old.directory !== item.directory || old.name !== item.name || item.id === '0' || item.id === session.parent || mediaStandardNode(old) && (!item.expectedName || item.expectedName === old.name))
+                throw Object.assign(new Error('项目已变化或已符合标准，本次未删除'), { retained: true });
+            message = item.directory ? '整个文件夹及内容已移入回收站' : '文件已移入回收站';
         }
-        if (!!old.directory !== item.directory || old.name !== item.name || item.id === '0' || item.id === session.parent || mediaStandardNode(old) && (!item.expectedName || item.expectedName === old.name))
-            throw Object.assign(new Error('项目已变化或已符合标准，本次未删除'), { retained: true });
         check();
         await recycleMedia(item, session, source);
-        return item.directory ? '整个文件夹及内容已移入回收站' : '文件已移入回收站';
+        return message;
     }
     async function recycleMedia123(item, session, source) {
         const fileId = Number(item.id);
@@ -1247,14 +1252,6 @@
         const fingerprint = node => JSON.stringify([location.hostname, String(node.id), String(node.parentId ?? ''), node.name, Number(node.size) || 0, (node.md5 || '').toLowerCase()]);
         const identity = node => JSON.stringify([location.hostname, String(node.id)]);
         const get = node => { const saved = entries.get(identity(node)); return saved?.fingerprint === fingerprint(node) ? saved : undefined; };
-        const restore = async (node, source, check = () => {}) => {
-            const saved = entries.get(identity(node));
-            if (!saved || get(node) || /^[a-f0-9]{32}$/i.test(node.md5 || '')) return get(node);
-            const previous = JSON.parse(saved.fingerprint), current = JSON.parse(fingerprint(node));
-            if (!previous.slice(0,5).every((value,index) => value === current[index]) || !/^[a-f0-9]{32}$/i.test(previous[5])) return undefined;
-            check(); Object.assign(node,await mediaFileMetadata(node,source)); check();
-            return get(node);
-        };
         const remember = row => {
             if (!row.detail || row.error || !row.match) return;
             const id = identity(row.node);
@@ -1273,7 +1270,7 @@
             const before = JSON.parse(saved.fingerprint), after = JSON.parse(fingerprint(node));
             return '文件记录未复用：' + ['网盘','文件编号','父目录','文件名','大小','MD5'].filter((_,index) => before[index] !== after[index]).join('、') + '变化；保留身份校验，另查作品资料';
         };
-        return {get, restore, remember, explain, save};
+        return {get, remember, explain, save};
     })();
     function mediaCandidatePreference(row) {
         if (row.type && row.match) return {type:row.type, reason:'已确认作品为' + (row.type === 'movie' ? '电影' : '剧集')};
