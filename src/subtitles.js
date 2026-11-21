@@ -354,12 +354,12 @@
         let token = '', tokenKey = '';
         const unavailableSources = new Map();
         const searchCache = new Map();
-        const seasonPreparations = new Map(), archiveCache = new Map(), transfers = new Map(), downloadPauses = new Map();
+        const seasonPreparations = new Map(), archiveCache = new Map(), transfers = new Map(), downloadPauses = new Map(), thunderDetails = new Map();
         const downloadQueues = new Map(), downloadStarted = new Map();
         let assrtEpisodes = new WeakMap();
         const clearCache = () => {
-            const count = unavailableSources.size + searchCache.size + seasonPreparations.size + archiveCache.size + downloadPauses.size;
-            unavailableSources.clear(); searchCache.clear(); seasonPreparations.clear(); archiveCache.clear(); downloadPauses.clear(); assrtEpisodes = new WeakMap();
+            const count = unavailableSources.size + searchCache.size + seasonPreparations.size + archiveCache.size + downloadPauses.size + thunderDetails.size;
+            unavailableSources.clear(); searchCache.clear(); seasonPreparations.clear(); archiveCache.clear(); downloadPauses.clear(); thunderDetails.clear(); assrtEpisodes = new WeakMap();
             return count;
         };
         const assrtRequest = paced(1500,async (endpoint,params,config,verify) => {
@@ -493,6 +493,47 @@
                 headers:{'User-Agent':'XLPlayer/3.1.1 (com.xunlei.XLPlayer; build:65742; macOS 15.0.0) Alamofire/5.4.3'}
             });
         });
+        const readThunderDetails = subtitleRequestPool(0,2,async (item,url,verify) => {
+            const bytes = await transfer({url,allowHttp:true},verify,'迅雷');
+            check(); verify();
+            const {text} = subtitleDecode(bytes);
+            const videoName = subtitleProjectVideo(text);
+            if (!videoName) return null;
+            const dialogue = subtitleDialogue(text,String(item.ext).toLowerCase());
+            if (!dialogue) return null;
+            log('字幕正文线索',item.name + ' · 内部视频名：' + videoName);
+            return {videoName,chinese:/[\u3400-\u9fff]/.test(dialogue)};
+        });
+        const recoverThunderDetails = async (items,row,verify) => {
+            if (!row.parsed.tv || !row.parsed.workResolved) return;
+            await Promise.all(items.map(async item => {
+                if (!item || item.embeddedVideoName || typeof item.name !== 'string' || !['ass','ssa'].includes(String(item.ext).toLowerCase())) return;
+                const episode = subtitleEpisodeIdentity(item.name,row.parsed);
+                if (episode.matched || episode.conflict) return;
+                const match = subtitleCandidateFilter(row.parsed,[],item.name,true);
+                if (match.hardMismatch || !match.titleMatched && !match.related) return;
+                let url;
+                try { url = subtitleDownloadUrl(item.url,{allowHttp:true}); } catch { return; }
+                try {
+                    if (!thunderDetails.has(url)) {
+                        const pending = readThunderDetails(item,url,verify);
+                        thunderDetails.set(url,pending); evict(thunderDetails,200);
+                        pending.catch(() => { if (thunderDetails.get(url) === pending) thunderDetails.delete(url); });
+                    }
+                    const detail = await thunderDetails.get(url);
+                    check(); verify();
+                    if (!detail) return;
+                    item.embeddedVideoName = detail.videoName;
+                    const labels = [Array.isArray(item.languages) ? item.languages.join(' ') : '',item.simple_name || ''].join(' ').replace(/英语/g,'英文');
+                    if (detail.chinese && !subtitleFileInfo(item.name,subtitleFileInfo(labels).language).language)
+                        item.languages = ['中文'];
+                } catch (error) {
+                    check(); verify();
+                    if (error.stop || error.phase === 'drive-auth') throw error;
+                    log('字幕正文线索失败',item.name + ' · ' + error.message);
+                }
+            }));
+        };
         const request = paced(1100, (path, config, body) => {
             if (!config.key) throw subtitleSourceError('请先填写 OpenSubtitles API Key');
             return subtitleRemoteJson('https://api.opensubtitles.com/api/v1' + path, {
@@ -571,11 +612,12 @@
                         try { url = subtitleDownloadUrl(item.url, {allowHttp:true}); } catch { excluded.格式++; continue; }
                         if (seen.has(url)) { excluded.重复++; continue; }
                         seen.add(url);
-                        const episodeIdentity = subtitleEpisodeIdentity(name,target);
-                        if (episodeIdentity.conflict || !target.tv && episodeIdentity.season != null && episodeIdentity.episode != null) { excluded.季集++; sampleRejection(name, '季集不符'); continue; }
+                        const episodeName = item.embeddedVideoName || name;
+                        const episodeIdentity = subtitleEpisodeIdentity(episodeName,target);
+                        if (subtitleEpisodeIdentity(name,target).conflict || episodeIdentity.conflict || !target.tv && episodeIdentity.season != null && episodeIdentity.episode != null) { excluded.季集++; sampleRejection(name, '季集不符'); continue; }
                         const episodeMatched = episodeIdentity.matched;
-                        const exactRelease = !episodeMatched && subtitleReleaseEpisodeMatch(node,target,name);
-                        const match = subtitleCandidateFilter(target, [], name, exactRelease || !!config.reviewCandidates);
+                        const exactRelease = !episodeMatched && subtitleReleaseEpisodeMatch(node,target,episodeName);
+                        const match = subtitleCandidateFilter(target, item.embeddedVideoName ? [name] : [], episodeName, exactRelease || !!config.reviewCandidates);
                         if (match.excluded) { excluded[match.excluded]++; sampleRejection(name, match.matchReason || match.excluded); continue; }
                         const labels = [Array.isArray(item.languages) ? item.languages.join(' ') : '', item.simple_name || ''].join(' ').replace(/\\u0026/gi, '&').replace(/英语/g, '英文');
                         const metadata = subtitleFileInfo(labels), info = subtitleFileInfo(name, metadata.language);
@@ -590,7 +632,7 @@
                             if (uncertain < 0) continue;
                             candidates.splice(uncertain,1);
                         }
-                        candidates.push({source:'迅雷', name, ...info, titleMatched, opaque:!!match.opaque, matchReason:titleMatched ? '' : target.tv && !episodeMatched ? '文件未标明准确季集' : match.matchReason, url, ext, release:name, searchTerms:item.searchTerms || [],
+                        candidates.push({source:'迅雷', name, ...info, titleMatched, opaque:!!match.opaque, matchReason:titleMatched ? '' : target.tv && !episodeMatched ? '文件未标明准确季集' : match.matchReason, url, ext, release:episodeName, embeddedVideoName:item.embeddedVideoName, searchTerms:item.searchTerms || [],
                             ...(isSubtitleArchive(ext) ? {parsed:{...target},archiveSeason,archiveFields:[name]} : {})});
                     }
                     return {candidates, excluded, rejectionSamples};
@@ -649,6 +691,7 @@
                     }
                 }
                 check(); verify();
+                await recoverThunderDetails(items,row,verify);
                 const {candidates, excluded, rejectionSamples} = filter(items, row);
                 onFiles(`搜索词：${attempts.map(attempt => attempt.term).join(' / ')} · 筛选后 ${candidates.length} 份字幕文件` + (candidates.length ? '：' + candidates.slice(0, 12).map(candidate => candidate.name).join('；') + (candidates.length > 12 ? '；…' : '') : ''));
                 candidates.sort((a,b) => Number(a.opaque) - Number(b.opaque));
@@ -998,6 +1041,19 @@
     function subtitleDialogue(text, ext) {
         return subtitleTimeline(text, ext).dialogue.join('\n');
     }
+    function subtitleProjectVideo(text) {
+        let section = '';
+        const names = new Set();
+        for (const line of text.replace(/^\uFEFF/,'').split(/\r?\n/)) {
+            const heading = line.match(/^\s*\[([^\]]+)\]\s*$/);
+            if (heading) section = heading[1].toLowerCase();
+            if (!['script info','aegisub project garbage'].includes(section)) continue;
+            const video = line.match(/^\s*Video File\s*:\s*(.+?)\s*$/i);
+            const name = video?.[1].replace(/^"|"$/g,'').split(/[\\/]/).at(-1);
+            if (name && MEDIA_VIDEO.test(name)) names.add(name);
+        }
+        return names.size === 1 ? [...names][0] : '';
+    }
     function subtitleValidateContent(row, bytes, ext, language, log = () => {}) {
         if (!bytes.length || bytes.length > SUBTITLE_LIMIT || !['srt','ass','ssa','vtt'].includes(ext)) throw new Error('仅支持单个 SRT、ASS、SSA、VTT 字幕，不导入压缩包或不完整字幕对');
         let decoded;
@@ -1128,7 +1184,7 @@
         try { return subtitleUploadName(name,ext); }
         catch (error) {
             if (candidate.source !== '迅雷' || !candidate.titleMatched || candidate.hardMismatch || candidate.opaque
-                || !row.parsed?.tv || !exactSubtitleEpisode(candidate.name,row.parsed)
+                || !row.parsed?.tv || !exactSubtitleEpisode(candidate.embeddedVideoName || candidate.name,row.parsed)
                 || !['srt','ass','ssa','vtt'].includes(ext) || candidate.ext !== ext) throw error;
             return subtitleUploadName(mediaStem(row.node.name) + '.' + ext,ext);
         }
@@ -1384,7 +1440,7 @@
             for (const candidate of selection.candidates) {
                 if (!(candidate.titleMatched || candidate.identityMatched || candidate.aiAccepted) || candidate.hardMismatch
                     || candidate.opaque || candidate.downloadFailed || isSubtitleArchive(candidate.ext)
-                    || !exactSubtitleEpisode(candidate.name,selection.parsed)) continue;
+                    || !exactSubtitleEpisode(candidate.embeddedVideoName || candidate.name,selection.parsed)) continue;
                 const key = JSON.stringify([candidate.source,candidate.url || candidate.fileId]);
                 if (languageChecked.has(key)) continue;
                 languageChecked.add(key);
