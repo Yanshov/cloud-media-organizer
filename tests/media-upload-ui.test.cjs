@@ -48,6 +48,39 @@ async function tmdbSearchAndEpisodeAliases() {
     console.log('PASS TMDB efficiency and episodes: unique match stops page fetches; English episode aliases augment Chinese names; English lookup failure falls back');
 }
 
+async function bundledSeasonEpisodeMapping() {
+    const parser=load(part('    const MEDIA_VIDEO', '    function mediaSubtitleSuffix('),{
+        mediaStem:name=>name.replace(/\.[^.]+$/,'')
+    });
+    const filename='[DBD-Raws][Yuukoku no Moriarty][13][1080P][BDRip][HEVC-10bit][FLAC].mkv';
+    const folders=['来自：云添加','[DBD-Raws][忧国的莫里亚蒂 第一季+第二季][01-24TV全集+OVA+特典映像][1080P][BDRip][HEVC-10bit][简繁日双语外挂][FLAC][MKV]'];
+    parser.filename=filename;parser.folders=folders;
+    const parsed=vm.runInContext('parseMediaName(filename,folders)',parser);
+    assert.equal(parsed.season,null,'A folder naming multiple seasons must not silently select the first season');
+    assert.equal(parsed.episode,13);
+    const range=vm.runInContext('mediaSeasonPackageRange(folders)',parser);
+    assert.deepEqual(JSON.parse(JSON.stringify(range)),{start:1,end:24});
+    const seasons=[{season_number:1,episode_count:11},{season_number:2,episode_count:13}];
+    const map=vm.runInContext('mediaMapSeasonPackageEpisode',parser);
+    assert.deepEqual(JSON.parse(JSON.stringify(map(range,seasons,13))),{season:2,episode:2});
+    assert.deepEqual(JSON.parse(JSON.stringify(map(range,seasons,24))),{season:2,episode:13});
+    assert.equal(map(range,[{season_number:1,episode_count:12},{season_number:2,episode_count:13}],13),null,
+        'A package range that disagrees with TMDB counts remains unconfirmed');
+    const validation=load(part('        async function validateEpisode(row) {','        async function matchGroup('),{
+        checkStopped(){},mediaSeasonPackageRange:vm.runInContext('mediaSeasonPackageRange',parser),
+        mediaMapSeasonPackageEpisode:map,client:{},
+        log(){},
+        mediaSeasonEpisodes:async(_client,_id,season)=>({year:'',episodes:Array.from({length:season===1?11:13},(_,index)=>({episode_number:index+1}))}),
+        mediaPath:()=> '剧集/忧国的莫里亚蒂.2020/Season 02/episode.mkv'
+    });
+    vm.runInContext(part('        async function validateEpisode(row) {','        async function matchGroup(')+'\nthis.validateEpisode=validateEpisode;',validation);
+    const row={node:{name:filename,folders},recognitionFolders:folders,detail:{id:119051,seasons},type:'tv',
+        season:null,episode:13,endEpisode:null,explicitEpisode:13,sourceYear:'',standalone:false};
+    await validation.validateEpisode(row);
+    assert.equal(row.season,2);assert.equal(row.episode,2);assert.equal(row.error,'');
+    console.log('PASS bundled-season mapping: ambiguous folder does not force season 1; verified 01-24 package maps absolute 13 to S02E02');
+}
+
 async function aiFallbackGuards() {
     const media=load(part('    function validateMediaAIIdentity(', '    async function identifyMediaAIFiles('));
     assert.equal(media.mediaNeedsAI({matchFailure:'unmatched'}),true);
@@ -197,6 +230,35 @@ async function subtitleIdentityRecheck() {
     assert.equal(reread,1,'Only changed video is reread');assert.equal(rows[0].complete,true);assert.equal(rows[0].identityRecheck,false);
     assert.equal(rows[1].parsed.query,'Unchanged');assert.equal(invalidated,1);assert.equal(rendered,1);
     console.log('PASS single-video identity recheck: changed work invalidates stale preview and rereads only its linked subtitles');
+}
+
+async function bracketedReleaseIdentityRecheck() {
+    const filename='[DBD-Raws][Yuukoku no Moriarty][13][1080P][BDRip][HEVC-10bit][FLAC]';
+    const video={id:'absolute-13',name:filename+'.mkv'};
+    const subtitle={id:'subtitle-13',name:filename+'.scjp.ass'};
+    const media={node:video,title:'忧国的莫里亚蒂',year:'2020',type:'tv',season:2,episode:2,match:'tv:119051',detail:{id:119051}};
+    const row={node:video,media,parsed:{query:'Yuukoku no Moriarty',year:'',tv:true,season:1,episode:13,tmdbId:'old',workResolved:true},
+        subtitles:[subtitle],complete:true,identityRecheck:false};
+    let reread=0;
+    const mediaStem=name=>name.replace(/\.[^.]+$/,'');
+    const suffixContext=vm.createContext({mediaStem});
+    const mediaSubtitleSuffix=vm.runInContext(part('    function mediaSubtitleSuffix(', '    async function mediaFileMetadata(')+'\nmediaSubtitleSuffix',suffixContext);
+    const context=load(part('            flow.syncWorks = async', '            flow.interrupt ='),{
+        flow:{invalidate(){}},inventory:[row],awaitingCheck:()=>false,
+        updateIdentity:item=>Object.assign(item.parsed,{query:item.media.title,year:item.media.year,tv:true,season:item.media.season,
+            episode:item.media.episode,tmdbId:item.media.match.split(':')[1],workResolved:true}),
+        subtitleCandidateFilter:()=>({titleMatched:false,excluded:'无关'}),
+        parseMediaName:()=>({season:null,episode:13,endEpisode:null}),mediaSubtitleSuffix,
+        drive:{},settings:()=>({language:'zh-cn'}),diag(){},check(){},
+        inspectExistingSubtitles:async draft=>{reread++;assert.deepEqual(Array.from(draft.subtitles,item=>item.id),[subtitle.id]);draft.complete=true;},
+        render(){}
+    });
+    vm.runInContext(part('            flow.syncWorks = async', '            flow.interrupt ='),context);
+    await context.flow.syncWorks([media],true,()=>{});
+    assert.equal(reread,1,'The selected title and season still trigger subtitle-body validation');
+    assert.equal(row.identityRecheck,false,'The release bracket number does not invalidate its same-basename subtitle');
+    assert.equal(row.subtitles[0].id,subtitle.id);
+    console.log('PASS bracketed release subtitle survives a manually confirmed season/episode remap');
 }
 
 function aiProviderKey() {
@@ -569,4 +631,4 @@ async function guangyaReceipts() {
     console.log('PASS Guangya: rapid upload and signed OSS byte upload; readback failure, missing task and accepted-task auth failure retain receipt; explicit rejection clears receipt; recheck recovers with one create only');
 }
 
-(async()=>{types();aiProviderKey();await tmdbSearchAndEpisodeAliases();await aiFallbackGuards();await mediaFallbackFlow();await subtitleIdentityHandoff();await subtitles();await receipts();await folders();await cleanup();await subtitleUI();await guangyaReceipts();})().catch(e=>{console.error(e);process.exitCode=1;});
+(async()=>{types();aiProviderKey();await tmdbSearchAndEpisodeAliases();await bundledSeasonEpisodeMapping();await aiFallbackGuards();await mediaFallbackFlow();await subtitleIdentityHandoff();await subtitles();await receipts();await folders();await cleanup();await subtitleUI();await guangyaReceipts();await bracketedReleaseIdentityRecheck();})().catch(e=>{console.error(e);process.exitCode=1;});

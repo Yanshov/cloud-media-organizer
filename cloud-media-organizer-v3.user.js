@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v3.0（重构版）
 // @namespace    local.cloud-media-organizer
-// @version      3.0.13
+// @version      3.0.14
 // @description  面向百度网盘、123 云盘和光鸭网盘的浏览器脚本，支持跨盘 JSON 清单、影视整理与字幕补齐。
 // @match        https://pan.baidu.com/*
 // @match        https://yun.baidu.com/*
@@ -40,7 +40,7 @@
     if (typeof navigator !== 'undefined' && (navigator.userAgentData?.mobile || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
         navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) return;
 
-    const VERSION = '3.0.13';
+    const VERSION = '3.0.14';
     let jsonTaskStopped = false;
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
@@ -2608,17 +2608,48 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 
     function mediaSeasonNumber(value) {
         const text = String(value).normalize('NFKC');
-        const numeric = text.match(/(?:\bSeason[ ._-]*|(?:^|[^a-z0-9])SE?)(\d{1,2})(?=E\d|[^0-9]|$)/i);
-        if (numeric) return Number(numeric[1]);
-        const chinese = text.match(/第\s*([0-9一二三四五六七八九十零〇两]+)\s*季/);
-        if (!chinese) return null;
-        const number = chinese[1];
-        if (/^\d+$/.test(number)) return Number(number);
-        const digits = { 零: 0, 〇: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
-        if (/^[一二三四五六七八九两]?十[一二三四五六七八九]?$/.test(number)) {
-            const [tens, units] = number.split('十'); return (tens ? digits[tens] : 1) * 10 + (units ? digits[units] : 0);
+        const chineseNumber = number => {
+            if (/^\d+$/.test(number)) return Number(number);
+            const digits = { 零: 0, 〇: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
+            if (/^[一二三四五六七八九两]?十[一二三四五六七八九]?$/.test(number)) {
+                const [tens, units] = number.split('十');
+                return (tens ? digits[tens] : 1) * 10 + (units ? digits[units] : 0);
+            }
+            return number.length === 1 && number in digits ? digits[number] : null;
+        };
+        const seasons = new Set([
+            ...[...text.matchAll(/(?:\bSeason[ ._-]*|(?:^|[^a-z0-9])SE?)(\d{1,2})(?=E\d|[^0-9]|$)/gi)].map(match => Number(match[1])),
+            ...[...text.matchAll(/第\s*([0-9一二两三四五六七八九十零〇]+)\s*季/g)].map(match => chineseNumber(match[1]))
+        ].filter(Number.isInteger));
+        return seasons.size === 1 ? seasons.values().next().value : null;
+    }
+    function mediaSeasonPackageRange(folders = []) {
+        for (const folder of folders) {
+            const text = String(folder).normalize('NFKC');
+            const seasons = new Set([
+                ...[...text.matchAll(/(?:\bSeason[ ._-]*|(?:^|[^a-z0-9])SE?)(\d{1,2})(?=E\d|[^0-9]|$)/gi)].map(match => Number(match[1])),
+                ...[...text.matchAll(/第\s*([0-9一二两三四五六七八九十零〇]+)\s*季/g)]
+                    .map(match => mediaSeasonNumber('第' + match[1] + '季'))
+            ].filter(Number.isInteger));
+            if (seasons.size < 2) continue;
+            const matches = [...text.matchAll(/(?:^|[^\d])(\d{1,3})\s*[-~]\s*(\d{1,3})\s*TV\b/gi)];
+            if (matches.length !== 1) continue;
+            const start = Number(matches[0][1]), end = Number(matches[0][2]);
+            if (start > 0 && end >= start) return {start,end};
         }
-        return number.length === 1 && number in digits ? digits[number] : null;
+        return null;
+    }
+    function mediaMapSeasonPackageEpisode(range, seasons, absoluteEpisode) {
+        if (!range || !Number.isInteger(absoluteEpisode) || absoluteEpisode < range.start || absoluteEpisode > range.end) return null;
+        const regular = seasons.filter(season => season.season_number > 0 && Number.isInteger(season.episode_count) && season.episode_count > 0)
+            .sort((a,b) => a.season_number - b.season_number);
+        if (!regular.length || regular.reduce((total,season) => total + season.episode_count,0) !== range.end - range.start + 1) return null;
+        let offset = absoluteEpisode - range.start + 1;
+        for (const season of regular) {
+            if (offset <= season.episode_count) return {season:season.season_number,episode:offset};
+            offset -= season.episode_count;
+        }
+        return null;
     }
     function mediaBracketTitle(name) {
         const stem = mediaStem(name).normalize('NFKC').replace(/[【】]/g, match => match === '【' ? '[' : ']');
@@ -4333,10 +4364,21 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             try {
                 if (row.type === 'tv' && row.season == null) {
                     const regular = (row.detail.seasons || []).filter(s => s.season_number > 0);
+                    const packageRange = mediaSeasonPackageRange(row.recognitionFolders);
+                    const packageEpisode = mediaMapSeasonPackageEpisode(packageRange,regular,row.explicitEpisode);
+                    if (packageEpisode) {
+                        row.season = packageEpisode.season;
+                        row.episode = packageEpisode.episode;
+                        row.endEpisode = null;
+                        row.episodeInferred = true;
+                        log('整季集号映射', row.node.name + ' · 包内第 ' + row.explicitEpisode + ' 集 → S'
+                            + String(row.season).padStart(2,'0') + 'E' + String(row.episode).padStart(2,'0')
+                            + ' · TMDB 季集总数与目录范围一致');
+                    }
                     const byYear = row.sourceYear ? regular.filter(s => (s.air_date || '').startsWith(row.sourceYear)) : [];
-                    if (byYear.length === 1) row.season = byYear[0].season_number;
-                    else if (row.sourceYear && regular.length === 1) row.season = regular[0].season_number;
-                    else if (regular.length === 1 && row.explicitEpisode > 0 && row.explicitEpisode <= regular[0].episode_count
+                    if (row.season == null && byYear.length === 1) row.season = byYear[0].season_number;
+                    else if (row.season == null && row.sourceYear && regular.length === 1) row.season = regular[0].season_number;
+                    else if (row.season == null && regular.length === 1 && row.explicitEpisode > 0 && row.explicitEpisode <= regular[0].episode_count
                         && !row.standalone && !/特别篇|特別篇|剧场版|劇場版|特典|番外|\b(?:special|sp|ova|oad|movie)\b/i.test([row.node.name,...(row.node.folders || [])].join(' '))) row.season = regular[0].season_number;
                 }
                 if (row.type === 'tv' && row.season != null) {
@@ -8364,6 +8406,9 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                         if (!refresh || !drive || row.writeBlocked || !row.parsed.workResolved) continue;
                         const draft = {...row,parsed:{...row.parsed}};
                         const eligible = draft.subtitles.filter(file => {
+                            const identicalRelease = [draft.node.name,draft.node.originalName]
+                                .some(name => name && mediaSubtitleSuffix(name,file.name) !== null);
+                            if (identicalRelease) return true;
                             const result = subtitleCandidateFilter(draft.parsed,[],file.name), named = parseMediaName(file.name);
                             return !result.hardMismatch && !result.excluded && !result.opaque && result.titleMatched && (!draft.parsed.tv || ['season','episode','endEpisode'].every(field => named[field] == null || named[field] === draft.parsed[field]));
                         });

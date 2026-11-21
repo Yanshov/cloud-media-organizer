@@ -1634,6 +1634,9 @@
                         if (!refresh || !drive || row.writeBlocked || !row.parsed.workResolved) continue;
                         const draft = {...row,parsed:{...row.parsed}};
                         const eligible = draft.subtitles.filter(file => {
+                            const identicalRelease = [draft.node.name,draft.node.originalName]
+                                .some(name => name && mediaSubtitleSuffix(name,file.name) !== null);
+                            if (identicalRelease) return true;
                             const result = subtitleCandidateFilter(draft.parsed,[],file.name), named = parseMediaName(file.name);
                             return !result.hardMismatch && !result.excluded && !result.opaque && result.titleMatched && (!draft.parsed.tv || ['season','episode','endEpisode'].every(field => named[field] == null || named[field] === draft.parsed[field]));
                         });

@@ -25,17 +25,48 @@
 
     function mediaSeasonNumber(value) {
         const text = String(value).normalize('NFKC');
-        const numeric = text.match(/(?:\bSeason[ ._-]*|(?:^|[^a-z0-9])SE?)(\d{1,2})(?=E\d|[^0-9]|$)/i);
-        if (numeric) return Number(numeric[1]);
-        const chinese = text.match(/第\s*([0-9一二三四五六七八九十零〇两]+)\s*季/);
-        if (!chinese) return null;
-        const number = chinese[1];
-        if (/^\d+$/.test(number)) return Number(number);
-        const digits = { 零: 0, 〇: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
-        if (/^[一二三四五六七八九两]?十[一二三四五六七八九]?$/.test(number)) {
-            const [tens, units] = number.split('十'); return (tens ? digits[tens] : 1) * 10 + (units ? digits[units] : 0);
+        const chineseNumber = number => {
+            if (/^\d+$/.test(number)) return Number(number);
+            const digits = { 零: 0, 〇: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
+            if (/^[一二三四五六七八九两]?十[一二三四五六七八九]?$/.test(number)) {
+                const [tens, units] = number.split('十');
+                return (tens ? digits[tens] : 1) * 10 + (units ? digits[units] : 0);
+            }
+            return number.length === 1 && number in digits ? digits[number] : null;
+        };
+        const seasons = new Set([
+            ...[...text.matchAll(/(?:\bSeason[ ._-]*|(?:^|[^a-z0-9])SE?)(\d{1,2})(?=E\d|[^0-9]|$)/gi)].map(match => Number(match[1])),
+            ...[...text.matchAll(/第\s*([0-9一二两三四五六七八九十零〇]+)\s*季/g)].map(match => chineseNumber(match[1]))
+        ].filter(Number.isInteger));
+        return seasons.size === 1 ? seasons.values().next().value : null;
+    }
+    function mediaSeasonPackageRange(folders = []) {
+        for (const folder of folders) {
+            const text = String(folder).normalize('NFKC');
+            const seasons = new Set([
+                ...[...text.matchAll(/(?:\bSeason[ ._-]*|(?:^|[^a-z0-9])SE?)(\d{1,2})(?=E\d|[^0-9]|$)/gi)].map(match => Number(match[1])),
+                ...[...text.matchAll(/第\s*([0-9一二两三四五六七八九十零〇]+)\s*季/g)]
+                    .map(match => mediaSeasonNumber('第' + match[1] + '季'))
+            ].filter(Number.isInteger));
+            if (seasons.size < 2) continue;
+            const matches = [...text.matchAll(/(?:^|[^\d])(\d{1,3})\s*[-~]\s*(\d{1,3})\s*TV\b/gi)];
+            if (matches.length !== 1) continue;
+            const start = Number(matches[0][1]), end = Number(matches[0][2]);
+            if (start > 0 && end >= start) return {start,end};
         }
-        return number.length === 1 && number in digits ? digits[number] : null;
+        return null;
+    }
+    function mediaMapSeasonPackageEpisode(range, seasons, absoluteEpisode) {
+        if (!range || !Number.isInteger(absoluteEpisode) || absoluteEpisode < range.start || absoluteEpisode > range.end) return null;
+        const regular = seasons.filter(season => season.season_number > 0 && Number.isInteger(season.episode_count) && season.episode_count > 0)
+            .sort((a,b) => a.season_number - b.season_number);
+        if (!regular.length || regular.reduce((total,season) => total + season.episode_count,0) !== range.end - range.start + 1) return null;
+        let offset = absoluteEpisode - range.start + 1;
+        for (const season of regular) {
+            if (offset <= season.episode_count) return {season:season.season_number,episode:offset};
+            offset -= season.episode_count;
+        }
+        return null;
     }
     function mediaBracketTitle(name) {
         const stem = mediaStem(name).normalize('NFKC').replace(/[【】]/g, match => match === '【' ? '[' : ']');

@@ -434,10 +434,21 @@
             try {
                 if (row.type === 'tv' && row.season == null) {
                     const regular = (row.detail.seasons || []).filter(s => s.season_number > 0);
+                    const packageRange = mediaSeasonPackageRange(row.recognitionFolders);
+                    const packageEpisode = mediaMapSeasonPackageEpisode(packageRange,regular,row.explicitEpisode);
+                    if (packageEpisode) {
+                        row.season = packageEpisode.season;
+                        row.episode = packageEpisode.episode;
+                        row.endEpisode = null;
+                        row.episodeInferred = true;
+                        log('整季集号映射', row.node.name + ' · 包内第 ' + row.explicitEpisode + ' 集 → S'
+                            + String(row.season).padStart(2,'0') + 'E' + String(row.episode).padStart(2,'0')
+                            + ' · TMDB 季集总数与目录范围一致');
+                    }
                     const byYear = row.sourceYear ? regular.filter(s => (s.air_date || '').startsWith(row.sourceYear)) : [];
-                    if (byYear.length === 1) row.season = byYear[0].season_number;
-                    else if (row.sourceYear && regular.length === 1) row.season = regular[0].season_number;
-                    else if (regular.length === 1 && row.explicitEpisode > 0 && row.explicitEpisode <= regular[0].episode_count
+                    if (row.season == null && byYear.length === 1) row.season = byYear[0].season_number;
+                    else if (row.season == null && row.sourceYear && regular.length === 1) row.season = regular[0].season_number;
+                    else if (row.season == null && regular.length === 1 && row.explicitEpisode > 0 && row.explicitEpisode <= regular[0].episode_count
                         && !row.standalone && !/特别篇|特別篇|剧场版|劇場版|特典|番外|\b(?:special|sp|ova|oad|movie)\b/i.test([row.node.name,...(row.node.folders || [])].join(' '))) row.season = regular[0].season_number;
                 }
                 if (row.type === 'tv' && row.season != null) {
