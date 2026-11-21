@@ -102,7 +102,7 @@
         const titleNumbers = String(parsed.query || '').match(/(?:19|20)\d{2}/g) || [];
         const years = value => [...String(value).normalize('NFKC').matchAll(/(?:^|[^\p{L}\p{N}])((?:19|20)\d{2})(?=$|[^\p{L}\p{N}])/gu)].map(m => m[1]).filter(y => Number(y) <= new Date().getFullYear() + 1 && (!titleNumbers.includes(y) || y === String(parsed.year)));
         const clean = (value, isTitle = false) => {
-            let text = String(value || '').normalize('NFKC').replace(/\.(?:srt|ass|ssa|vtt)$/i, '').trim();
+            let text = String(value || '').normalize('NFKC').replace(/\.(?:srt|ass|ssa|vtt|zip|rar)$/i, '').trim();
             // Strip only known version/language tags; meaningful title brackets stay intact.
             text = text.replace(/^(?:[\[【](?:v\d+(?:\.\d+)*|(?:简体|繁体|简中|繁中|中英|简英|繁英|chs|cht)(?:中英|双语|&英文)?(?:ass|ssa|srt|vtt)?)[\]】][. _-]*)+/i, '');
             text = text.replace(/(?:[. _-]|\[)(?:chi|zho|zh|en|eng|chs|cht|zh[._-]?(?:cn|tw|hans|hant))\]?$/i, '');
@@ -385,18 +385,40 @@
                     const found = new Map();
                     for (const file of pack.filelist.slice(0,200)) {
                         const name = file.f;
-                        if (typeof name !== 'string' || !/\.(?:srt|ass|ssa|vtt)$/i.test(name) || /[/\\]/.test(name)) continue;
-                        const match = matchSubtitleImport(name,rows,pack.filename);
-                        if (!match.row || match.reason || match.needsIdentity) continue;
+                        if (typeof name !== 'string' || !/\.(?:srt|ass|ssa|vtt|zip|rar)$/i.test(name) || /[/\\]/.test(name)) continue;
                         let url;
                         try { url = new URL(file.url); } catch { continue; }
                         if (!['http:','https:'].includes(url.protocol) || !/(^|\.)assrt\.net$/i.test(url.hostname) || url.username || url.password) continue;
                         url.protocol = 'https:';
-                        const fallback = /简/.test(pack.lang?.desc) ? 'zh-cn' : /繁/.test(pack.lang?.desc) ? 'zh-tw' : '';
+                        const fallback = /简/.test(pack.lang?.desc) ? 'zh-cn' : /繁/.test(pack.lang?.desc) ? 'zh-tw' : /中文|双语/.test(pack.lang?.desc) ? 'zh' : '';
                         const info = subtitleFileInfo(name,fallback);
                         if (!config.language.split(',').includes(info.language)) continue;
+                        const ext = name.split('.').pop().toLowerCase();
+                        if (isSubtitleArchive(ext)) {
+                            const fields = [pack.filename,mediaStem(name)], identity = subtitleCandidateFilter(parsed,fields,mediaStem(name));
+                            if (identity.excluded || !identity.titleMatched) continue;
+                            const candidate = {source:'射手网',name,...info,...identity,url:url.href,ext,release:pack.filename,
+                                archiveFields:fields,archiveSeason:subtitlePackSeason(fields)};
+                            try {
+                                const archive = await archiveData(url.href,verify,ext,candidate.source);
+                                for (const target of rows) {
+                                    const episode = {...candidate,parsed:{...target.parsed}};
+                                    if (!subtitleArchiveChoices(archive.index,episode,config.language).length) continue;
+                                    if (found.has(target)) found.set(target,null);
+                                    else found.set(target,episode);
+                                }
+                            } catch (error) {
+                                check(); verify();
+                                if (error.stop) throw error;
+                                log('射手网压缩包',name + ' · ' + error.message);
+                                if (error.phase === 'transfer' && [429,509].includes(error.status)) throw subtitleSourceError(error.message,{status:error.status});
+                            }
+                            continue;
+                        }
+                        const match = matchSubtitleImport(name,rows,pack.filename);
+                        if (!match.row || match.reason || match.needsIdentity) continue;
                         if (found.has(match.row)) { found.set(match.row,null); continue; }
-                        found.set(match.row,{source:'射手网',name,...info,url:url.href,ext:name.split('.').pop().toLowerCase(),titleMatched:true,release:pack.filename});
+                        found.set(match.row,{source:'射手网',name,...info,url:url.href,ext,titleMatched:true,release:pack.filename});
                     }
                     const matched = [...found].filter(([,candidate]) => candidate);
                     if (!matched.length) continue;
@@ -446,12 +468,13 @@
             }
             return transfers.get(key);
         };
-        const archiveData = async (url,verify) => {
+        const archiveData = async (url,verify,ext,source) => {
             check(); verify();
             if (!archiveCache.has(url)) {
-                const entry = transfer({url},verify,'SubDL').then(bytes => ({bytes,index:subtitleArchiveIndex(bytes,verify)}))
+                const entry = transfer({url,allowHttp:source === '迅雷'},verify,source)
+                    .then(async bytes => ({bytes,index:await subtitleReadArchive(bytes,ext,verify)}))
                     .catch(error => { archiveCache.delete(url); throw error; });
-                archiveCache.set(url,entry); evict(archiveCache,3); // At most three 16 MiB archives.
+                archiveCache.set(url,entry); evict(archiveCache,3); // Each RAR also retains at most 32 MiB of extracted subtitles.
             }
             const data = await archiveCache.get(url); check(); verify(); return data;
         };
@@ -499,11 +522,11 @@
                                 const found = await this.subdlSearch(row,{...config,seasonSearch:true},() => {},verify);
                                 // Index archives once so missing episodes are found before selecting a pack.
                                 const missing = new Set(rows.filter(target => target.parsed.episode != null).map(target => target.parsed.episode));
-                                for (const candidate of found.filter(item => item.ext === 'zip' && item.titleMatched).slice(0,3)) {
+                                for (const candidate of found.filter(item => isSubtitleArchive(item.ext) && item.titleMatched).slice(0,3)) {
                                     verify();
                                     try {
                                         await archiveWork(async () => {
-                                            const archive = await archiveData(candidate.url,verify);
+                                            const archive = await archiveData(candidate.url,verify,candidate.ext,candidate.source);
                                             for (const target of rows) if (subtitleArchiveChoices(archive.index,{...candidate,parsed:target.parsed},config.language).length) missing.delete(target.parsed.episode);
                                         },verify);
                                         log('整季覆盖', `${candidate.name} · 当前缺集 ${missing.size} 集${missing.size ? '，继续补查' : '，停止下载其他整季包'}`);
@@ -564,7 +587,7 @@
                         check(); verify();
                         if (!item || typeof item.name !== 'string' || !item.name.trim()) { excluded.格式++; continue; }
                         const name = item.name, ext = String(item.ext || name.split('.').pop()).replace(/^\./, '').toLowerCase();
-                        if (!['srt','ass','ssa','vtt'].includes(ext) || typeof item.url !== 'string') { excluded.格式++; continue; }
+                        if (!['srt','ass','ssa','vtt','zip','rar'].includes(ext) || typeof item.url !== 'string') { excluded.格式++; continue; }
                         let url;
                         try { url = subtitleDownloadUrl(item.url, {allowHttp:true}); } catch { excluded.格式++; continue; }
                         if (seen.has(url)) { excluded.重复++; continue; }
@@ -577,7 +600,9 @@
                         const labels = [Array.isArray(item.languages) ? item.languages.join(' ') : '', item.simple_name || ''].join(' ').replace(/\\u0026/gi, '&').replace(/英语/g, '英文');
                         const metadata = subtitleFileInfo(labels), info = subtitleFileInfo(name, metadata.language);
                         info.bilingual ||= metadata.bilingual && info.language.startsWith('zh');
-                        const titleMatched = exactRelease || match.titleMatched && (!target.tv || episodeTagged);
+                        const archiveSeason = isSubtitleArchive(ext) ? subtitlePackSeason([name]) : null;
+                        if (target.tv && archiveSeason != null && archiveSeason !== target.season) { excluded.季集++; sampleRejection(name,'季号不符'); continue; }
+                        const titleMatched = exactRelease || match.titleMatched && (!target.tv || episodeTagged || archiveSeason === target.season);
                         if (info.language && !(config.language || 'zh-cn,zh-tw,zh').split(',').includes(info.language) && !info.bilingual && !info.language.startsWith('zh') && info.language !== 'en') { excluded.语言++; sampleRejection(name, '语言 ' + info.language); continue; }
                         if (candidates.length >= 60) {
                             const uncertain = titleMatched ? candidates.findIndex(candidate => !candidate.titleMatched) : -1;
@@ -585,7 +610,8 @@
                             if (uncertain < 0) continue;
                             candidates.splice(uncertain,1);
                         }
-                        candidates.push({source:'迅雷', name, ...info, titleMatched, opaque:!!match.opaque, matchReason:titleMatched ? '' : target.tv && !episodeTagged ? '文件未标明准确季集' : match.matchReason, url, ext, release:name, searchTerms:item.searchTerms || []});
+                        candidates.push({source:'迅雷', name, ...info, titleMatched, opaque:!!match.opaque, matchReason:titleMatched ? '' : target.tv && !episodeTagged ? '文件未标明准确季集' : match.matchReason, url, ext, release:name, searchTerms:item.searchTerms || [],
+                            ...(isSubtitleArchive(ext) ? {parsed:{...target},archiveSeason,archiveFields:[name]} : {})});
                     }
                     return {candidates, excluded, rejectionSamples};
                 };
@@ -725,16 +751,17 @@
                             if (item.ai_translated) { excluded.翻译++; continue; }
                             const fallback = ({ZH:'zh',ZH_BG:'zh-tw',EN:'en'})[item.language];
                             if (!fallback) { reject('语言',item.name); continue; }
-                            const fields = [...(Array.isArray(item.releases) ? item.releases.filter(value => typeof value === 'string') : []),item.release_name || '',String(item.name || '').replace(/\.zip$/i,'')];
+                            const fields = [...(Array.isArray(item.releases) ? item.releases.filter(value => typeof value === 'string') : []),item.release_name || '',String(item.name || '').replace(/\.(?:zip|rar)$/i,'')];
                             const unpacked = Array.isArray(item.unpack_files) ? item.unpack_files.filter(file => file?.url && /\.(srt|ass|ssa|vtt)$/i.test(file.name || '')) : [];
                             const files = unpacked.length ? [...unpacked] : [{name:item.name,url:item.url,season:item.season,episode:item.episode}];
-                            if (unpacked.length && item.url && (/\.zip$/i.test(item.name || '') || /\.zip(?:[?#]|$)/i.test(item.url))) {
-                                const name = /\.zip$/i.test(item.name || '') ? item.name : (item.name || item.release_name || '') + '.zip';
+                            const archiveExt = String(item.name || '').match(/\.(zip|rar)$/i)?.[1] || String(item.url || '').match(/\.(zip|rar)(?:[?#]|$)/i)?.[1];
+                            if (unpacked.length && item.url && archiveExt) {
+                                const name = /\.(?:zip|rar)$/i.test(item.name || '') ? item.name : (item.name || item.release_name || '') + '.' + archiveExt;
                                 files.push({name,url:item.url,season:item.season});
                             }
                             for (const file of files) {
                                 const name = String(file.name || ''), ext = name.split('.').pop().toLowerCase();
-                                if (!['srt','ass','ssa','vtt','zip'].includes(ext) || !file.url) { reject('格式',name); continue; }
+                                if (!['srt','ass','ssa','vtt','zip','rar'].includes(ext) || !file.url) { reject('格式',name); continue; }
                                 let url;
                                 try { url = subtitleDownloadUrl(file.url,{base:'https://dl.subdl.com/'}); } catch { reject('格式',name); continue; }
                                 if (seen.has(url)) { excluded.重复++; continue; }
@@ -742,12 +769,13 @@
                                 const tagged = /S\d+[ ._-]*E\d+/i.test(name);
                                 const exactEpisode = tagged ? exactSubtitleEpisode(name,parsed) : Number(file.season) === parsed.season && Number(file.episode) === parsed.episode && (unpacked.length > 0 || !item.full_season && !(Number(item.episode_end) > Number(item.episode_from)));
                                 // SubDL uses season=0 for unknown metadata; an explicit SxxExx filename still identifies the episode.
-                                if ((!parsed.tv && tagged) || parsed.tv && (tagged && !exactEpisode || !exactEpisode && ext !== 'zip' || Number(file.season) > 0 && Number(file.season) !== parsed.season
-                                    || ext !== 'zip' && unpacked.length > 0 && Number(file.episode) > 0 && Number(file.episode) !== parsed.episode)) { reject('季集',name); continue; }
-                                const archiveTitle = name.replace(/\.zip$/i,'');
-                                const archiveIdentity = ext === 'zip' && subtitleWorkIdentity(parsed,[],archiveTitle);
+                                const archive = isSubtitleArchive(ext);
+                                if ((!parsed.tv && tagged) || parsed.tv && (tagged && !exactEpisode || !exactEpisode && !archive || Number(file.season) > 0 && Number(file.season) !== parsed.season
+                                    || !archive && unpacked.length > 0 && Number(file.episode) > 0 && Number(file.episode) !== parsed.episode)) { reject('季集',name); continue; }
+                                const archiveTitle = name.replace(/\.(?:zip|rar)$/i,'');
+                                const archiveIdentity = archive && subtitleWorkIdentity(parsed,[],archiveTitle);
                                 if (archiveIdentity?.hardMismatch) { reject('年份',name); continue; }
-                                const matchName = ext === 'zip' ? fields.find(value => subtitleWorkIdentity(parsed,[],value).titleMatched) || archiveTitle : name;
+                                const matchName = archive ? fields.find(value => subtitleWorkIdentity(parsed,[],value).titleMatched) || archiveTitle : name;
                                 const numberedFile = parsed.tv && exactEpisode && unpacked.length && /^(?:E(?:P)?[ ._-]*)?\d{1,3}(?:[ ._-](?:chs|cht|zh|zh-cn|zh-tw|简体|繁体|简中|繁中))?\.(?:srt|ass|ssa|vtt)$/i.test(name);
                                 if (numberedFile && Number(name.match(/\d+/)[0]) !== parsed.episode) { reject('季集',name); continue; }
                                 const match = subtitleCandidateFilter(parsed,fields,numberedFile ? '' : matchName,!!config.reviewCandidates);
@@ -755,7 +783,7 @@
                                 const info = subtitleFileInfo(name,fallback);
                                 if (!info.language.startsWith('zh') && info.language !== 'en') { reject('语言',name); continue; }
                                 if (candidates.length >= 60) { excluded.上限++; continue; }
-                                candidates.push({source:'SubDL',name,...info,...match,titleMatched:match.titleMatched && (!parsed.tv || exactEpisode || ext === 'zip'),url,ext,release:fields.join(' · '),subdlFields:fields,archiveSeason:subtitlePackSeason(fields,item.season),parsed:{...parsed}});
+                                candidates.push({source:'SubDL',name,...info,...match,titleMatched:match.titleMatched && (!parsed.tv || exactEpisode || archive),url,ext,release:fields.join(' · '),subdlFields:fields,archiveSeason:subtitlePackSeason(fields,item.season),parsed:{...parsed}});
                             }
                         }
                         if (candidates.length > keptBefore) acceptedWorkId ||= workId;
@@ -763,7 +791,7 @@
                     }
                     const selection = {node:row.node || {name:''},parsed,candidates};
                     selectSubtitleCandidate(selection,config.language);
-                    if (!config.subdlCacheOnly && (selection.selectedCandidate || config.seasonSearch && candidates.slice(start).some(candidate => candidate.ext === 'zip' && candidate.titleMatched)
+                    if (!config.subdlCacheOnly && (selection.selectedCandidate || config.seasonSearch && candidates.slice(start).some(candidate => isSubtitleArchive(candidate.ext) && candidate.titleMatched)
                         || candidates.length >= 60)) break;
                 }
                 onFiles(`${title} · ${candidates.length} 份字幕资源：${candidates.slice(0,12).map(candidate => candidate.name).join('；')}`);
@@ -772,10 +800,10 @@
                 const covered = [];
                 const downloadErrors = [];
                 for (const candidate of candidates) {
-                    if (candidate.ext === 'zip' && config.subdlCacheOnly && !archiveCache.has(candidate.url)) { excluded.压缩包++; continue; }
-                    if (candidate.ext === 'zip' && archiveCache.has(candidate.url)) {
+                    if (isSubtitleArchive(candidate.ext) && config.subdlCacheOnly && !archiveCache.has(candidate.url)) { excluded.压缩包++; continue; }
+                    if (isSubtitleArchive(candidate.ext) && archiveCache.has(candidate.url)) {
                         try {
-                            const archive = await archiveData(candidate.url,verify);
+                            const archive = await archiveData(candidate.url,verify,candidate.ext,candidate.source);
                             if (!subtitleArchiveChoices(archive.index,candidate,config.language).length) { excluded.压缩包++; continue; }
                             if (config.seasonSearch && candidate.archiveSeason === parsed.season) candidate.seasonPackVerified = true;
                         } catch (error) { check(); verify(); if (error.stop) throw error; excluded.压缩包++; downloadErrors.push(error.message); continue; }
@@ -831,8 +859,11 @@
                     if (!Array.isArray(attrs.files) || !attrs.files.length) { excluded.格式++; continue; }
                     for (const file of attrs.files) {
                         if (!Number.isSafeInteger(file?.file_id) || file.file_id <= 0) { excluded.格式++; continue; }
+                        const name = file.file_name || '', ext = name.split('.').pop().toLowerCase();
                         const match = subtitleWorkIdentity(parsed, [feature.title, feature.movie_name], file.file_name || 'subtitle');
-                        candidates.push({source:'OpenSubtitles', fileId:file.file_id, ...subtitleFileInfo(file.file_name || attrs.release || '', attrs.language || ''), release:[feature.movie_name || feature.title, attrs.release].filter(Boolean).join(' · '), name:file.file_name || '', workIdentity:{tmdbId:identity,year:feature.year,tv:parsed.tv,season:feature.season_number,episode:feature.episode_number}, hardMismatch:!yearMatches || !!match.hardMismatch, titleMatched:titleMatched && match.titleMatched, identityMatched:yearMatches && match.titleMatched && !!parsed.tmdbId && String(identity) === String(parsed.tmdbId), matchReason:!yearMatches ? '作品年份与视频不符' : match.matchReason});
+                        candidates.push({source:'OpenSubtitles', fileId:file.file_id, ...subtitleFileInfo(file.file_name || attrs.release || '', attrs.language || ''), release:[feature.movie_name || feature.title, attrs.release].filter(Boolean).join(' · '), name, ext, parsed:{...parsed},
+                            archiveFields:[feature.title,feature.movie_name,attrs.release],archiveSeason:subtitlePackSeason([name,attrs.release],feature.season_number),
+                            workIdentity:{tmdbId:identity,year:feature.year,tv:parsed.tv,season:feature.season_number,episode:feature.episode_number}, hardMismatch:!yearMatches || !!match.hardMismatch, titleMatched:titleMatched && match.titleMatched, identityMatched:yearMatches && match.titleMatched && !!parsed.tmdbId && String(identity) === String(parsed.tmdbId), matchReason:!yearMatches ? '作品年份与视频不符' : match.matchReason});
                     }
                 }
                 excluded.上限 = Math.max(0, candidates.length - 12);
@@ -847,11 +878,11 @@
                     try {
                         result = await this.download(candidate, config); verify();
                         if (result.fileName) progress('文件选择', `${candidate.source} · ${result.fileName}`);
-                        if (candidate.source === 'SubDL' && result.ext === 'zip') return await archiveWork(async () => {
-                            const archive = await archiveData(result.url,verify);
-                            const file = await subtitleSubdlArchive(archive.bytes,candidate,config.language,verify,archive.index);
+                        if (isSubtitleArchive(result.ext)) return await archiveWork(async () => {
+                            const archive = await archiveData(result.url,verify,result.ext,candidate.source);
+                            const file = await subtitleCandidateArchive(archive.bytes,candidate,config.language,verify,archive.index);
                             result.ext = file.ext; result.fileName = file.name;
-                            progress('SubDL 压缩包选择',file.name);
+                            progress(candidate.source + ' 压缩包选择',file.name);
                             return {result,bytes:file.bytes};
                         },verify);
                         const bytes = await transfer(result,verify,candidate.source);
@@ -861,7 +892,7 @@
                         verify();
                         if (attempt || error.downloadPaused || error.phase !== 'transfer' || !([401,403,408,500,502,503,504].includes(error.status) || error.retryable)) throw error;
                         progress('下载重试', `${candidate.source} · ${new URL(result.url).hostname} · ${error.message}；稍后重试一次`);
-                        if (candidate.source === 'SubDL') archiveCache.delete(candidate.url);
+                        if (isSubtitleArchive(candidate.ext)) archiveCache.delete(candidate.url);
                         await pause(1500);
                     }
                 }
@@ -877,9 +908,58 @@
     }
 
     const SUBTITLE_LIMIT = 16 * 1024 * 1024;
+    const subtitleRarQueue = new Map();
+    const isSubtitleArchive = ext => ext === 'zip' || ext === 'rar';
+    async function subtitleReadArchive(bytes, ext, check = () => {}, strict = false, reserve = () => {}) {
+        check();
+        if (bytes.length > SUBTITLE_LIMIT) throw new Error('压缩包超过 16 MiB');
+        const rar = ext === 'rar' || [0x52,0x61,0x72,0x21,0x1a,0x07].every((byte,index) => bytes[index] === byte);
+        if (!rar) {
+            const index = subtitleArchiveIndex(bytes,check,strict);
+            reserve(index);
+            return index;
+        }
+        return enqueueByKey(subtitleRarQueue,'rar',() => new Promise((resolve,reject) => {
+            let worker, url, timer, settled = false;
+            const finish = (error,index) => {
+                if (settled) return;
+                settled = true;
+                clearInterval(timer);
+                worker?.terminate();
+                if (url) URL.revokeObjectURL(url);
+                if (error) reject(error); else resolve(index);
+            };
+            try {
+                check();
+                url = URL.createObjectURL(new Blob([SUBTITLE_RAR_WORKER],{type:'text/javascript'}));
+                worker = new Worker(url);
+                const started = Date.now();
+                timer = setInterval(() => {
+                    try {
+                        check();
+                        if (Date.now() - started > 60000) throw new Error('RAR 解压超时，已停止后台线程');
+                    } catch (error) { finish(error); }
+                },250);
+                worker.onerror = event => { event.preventDefault(); finish(new Error('RAR 解压线程启动或运行失败，请检查浏览器的 Worker 与 WebAssembly 权限')); };
+                worker.onmessageerror = () => finish(new Error('RAR 解压结果读取失败'));
+                worker.onmessage = event => {
+                    try {
+                        check();
+                        if (event.data.type === 'error') throw new Error(event.data.error);
+                        if (event.data.type === 'headers') {
+                            reserve(event.data.index);
+                            worker.postMessage({type:'extract'});
+                        } else if (event.data.type === 'complete') finish(null,event.data.index);
+                    } catch (error) { finish(error); }
+                };
+                const data = bytes.slice().buffer;
+                worker.postMessage({type:'open',bytes:data,strict},[data]);
+            } catch (error) { finish(error); }
+        }));
+    }
     function subtitleArchiveIndex(bytes, check = () => {}, strict = false) {
         // Parse the central directory once; do not inflate unrelated files.
-        const invalid = () => new Error('ZIP 格式不支持或数据不完整（不支持 ZIP64、多卷及 RAR）');
+        const invalid = () => new Error('ZIP 格式不支持或数据不完整（不支持 ZIP64 及多卷）');
         const view = new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
         let end = bytes.length - 22;
         for (; end >= Math.max(0,bytes.length - 65557); end--) {
@@ -964,17 +1044,18 @@
                     identityName = parsed.query + '.S' + String(parsed.season).padStart(2,'0') + 'E' + String(parsed.episode).padStart(2,'0') + '.' + file.ext;
                 } else if (episodes.length !== 1 || Number(episodes[0][1]) !== parsed.season || Number(episodes[0][2]) !== parsed.episode || /E\d+[ ._-]*[-~][ ._-]*(?:E)?\d+/i.test(name)) continue;
             }
-            const match = subtitleCandidateFilter(parsed,candidate.subdlFields || [],identityName);
+            const match = subtitleCandidateFilter(parsed,candidate.archiveFields || candidate.subdlFields || [],identityName);
             const info = subtitleFileInfo(name,candidate.language);
             if (match.excluded || !match.titleMatched || !subtitleLanguageMatch(name,language) && !language.split(',').some(wanted => wanted === info.language || wanted.startsWith('zh') && info.language.startsWith('zh'))) continue;
             files.push({...file,score:subtitlePreference({...info,name},language)});
         }
         return files.sort((a,b) => b.score-a.score || a.name.localeCompare(b.name));
     }
-    async function subtitleSubdlArchive(bytes, candidate, language, check = () => {}, index = subtitleArchiveIndex(bytes,check)) {
+    async function subtitleCandidateArchive(bytes, candidate, language, check = () => {}, index) {
         check();
+        index ||= await subtitleReadArchive(bytes,candidate.ext,check);
         const files = subtitleArchiveChoices(index,candidate,language);
-        if (!files.length) throw new Error('SubDL 压缩包没有通过片名、年份、季集及语言检查的文本字幕');
+        if (!files.length) throw new Error('压缩包没有通过片名、年份、季集及语言检查的文本字幕');
         return subtitleArchiveExtract(bytes,index,files[0],check);
     }
     function subtitleArchiveDataOffset(view, file, start, invalid) {
@@ -986,6 +1067,8 @@
         return dataStart;
     }
     async function subtitleArchiveExtract(bytes, index, file, check) {
+        check();
+        if (index.format === 'rar') return {name:file.name,ext:file.ext,bytes:file.bytes};
         const invalid = () => new Error('ZIP 格式不支持或数据不完整');
         const view = new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
         const dataStart = subtitleArchiveDataOffset(view,file,index.start,invalid);

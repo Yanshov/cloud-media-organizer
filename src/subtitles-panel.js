@@ -35,26 +35,29 @@
         const limit = 4 * 1024 * 1024, batchLimit = 32 * 1024 * 1024;
         let totalBytes = 0, inputBytes = 0, totalEntries = 0;
         const entries = [];
-        await batchStage(files,'本地导入读取与解压（文件/ZIP）',log,async (file,verify,index,observe) => {
+        await batchStage(files,'本地导入读取与解压（文件/ZIP/RAR）',log,async (file,verify,index,observe) => {
             const name = file.name;
             const ext = name.split('.').pop().toLowerCase();
             try {
-                if (!['srt','ass','ssa','vtt','zip'].includes(ext)) throw new Error('仅支持 SRT、ASS、SSA、VTT 或 ZIP');
-                if (file.size > (ext === 'zip' ? SUBTITLE_LIMIT : limit))
-                    throw new Error(ext === 'zip' ? 'ZIP 超过 16 MiB' : '字幕超过 4 MiB');
+                if (!['srt','ass','ssa','vtt','zip','rar'].includes(ext)) throw new Error('仅支持 SRT、ASS、SSA、VTT、ZIP 或 RAR');
+                if (file.size > (isSubtitleArchive(ext) ? SUBTITLE_LIMIT : limit))
+                    throw new Error(isSubtitleArchive(ext) ? '压缩包超过 16 MiB' : '字幕超过 4 MiB');
                 if (inputBytes + file.size > 64 * 1024 * 1024) throw new Error('本批读取的本地文件合计超过 64 MiB');
                 inputBytes += file.size;
                 const bytes = new Uint8Array(await file.arrayBuffer());
                 verify();
                 if (bytes.length !== file.size) throw new Error('本地文件大小已变化，请重新选择');
-                const archive = ext === 'zip' ? subtitleArchiveIndex(bytes,verify,true) : null;
-                if (archive && !archive.files.length) throw new Error('ZIP 内没有支持的字幕');
-                const count = archive ? archive.files.length : 1;
-                const expanded = archive ? archive.files.reduce((sum,entry) => sum + entry.length,0) : bytes.length;
-                if (totalEntries + count > 200 || totalBytes + expanded > batchLimit)
-                    throw new Error('本批最多检测 200 个条目和 32 MiB 字幕');
-                totalEntries += count;
-                totalBytes += expanded;
+                const reserve = archive => {
+                    verify();
+                    if (!archive.files.length) throw new Error('压缩包内没有支持的字幕');
+                    const count = archive.files.length, expanded = archive.files.reduce((sum,entry) => sum + entry.length,0);
+                    if (totalEntries + count > 200 || totalBytes + expanded > batchLimit)
+                        throw new Error('本批最多检测 200 个条目和 32 MiB 字幕');
+                    totalEntries += count;
+                    totalBytes += expanded;
+                };
+                const archive = isSubtitleArchive(ext) ? await subtitleReadArchive(bytes,ext,verify,true,reserve) : null;
+                if (!archive) reserve({files:[{length:bytes.length}]});
                 const loaded = [];
                 if (archive) for (const entry of archive.files) {
                     verify();
@@ -69,7 +72,7 @@
                 entries[index] = [{name,label:name,error:error.message}];
                 return 'failed';
             }
-        },check,8,'单 ZIP 顺序解压，输入和解压字节使用整批共用上限');
+        },check,8,'单压缩包顺序解压，RAR 使用后台线程，输入和解压字节使用整批共用上限');
         return entries.flat();
     }
     function matchSubtitleImport(name, rows, archiveName = '') {
@@ -194,7 +197,7 @@
         row.verifiedSubtitleCandidate = candidate || null;
     }
     function subtitleCandidateNameIssue(row, candidate) {
-        if (!candidate || candidate.ext === 'zip') return '';
+        if (!candidate || isSubtitleArchive(candidate.ext)) return '';
         try {
             const name = subtitleCandidateUploadName(row,candidate,candidate.name,candidate.ext);
             return row.siblingNames?.has(name.toLowerCase()) ? '目标目录已有同名项目，待处理：' + name : '';
@@ -220,7 +223,7 @@
             if (group[0].parsed.season == null || !missing.length) return [];
             const episodes = new Set(missing.map(row => row.parsed.episode));
             if (!missing.every(row => ready(row) && !row.selectedCandidate.hardMismatch && row.autoCandidates?.includes(row.selectedCandidate))) return [];
-            const directFiles = missing.filter(row => row.selectedCandidate.ext !== 'zip');
+            const directFiles = missing.filter(row => !isSubtitleArchive(row.selectedCandidate.ext));
             const names = new Set(directFiles.map(row => JSON.stringify([row.node.parentId,subtitleCandidateUploadName(row,row.selectedCandidate,row.selectedCandidate.name,row.selectedCandidate.ext).toLowerCase()])));
             if (names.size !== directFiles.length) return [];
             if (episodes.has(null) || episodes.has(undefined) || episodes.size !== missing.length) return [];
@@ -236,7 +239,7 @@
         const ui = makePanel(provider + (flow ? ' 影视整理' : ' 字幕'), (flow ? mediaOrganizerMarkup() : '') + `
             ${flow ? '' : '<p>勾选视频或文件夹后，查找并补齐字幕。</p>'}
             <div class="panel-actions"><button id="readSubtitles">查找字幕</button><button id="fillSubtitles" disabled>补齐字幕</button><button id="reviewSubtitleDeletes" disabled>删除字幕</button><button id="importSubtitles" type="button">导入字幕</button><button id="stopSubtitles" hidden>停止</button></div>
-            <input id="subtitleImportFiles" type="file" accept=".srt,.ass,.ssa,.vtt,.zip" multiple hidden>
+            <input id="subtitleImportFiles" type="file" accept=".srt,.ass,.ssa,.vtt,.zip,.rar" multiple hidden>
             <p id="subtitleScope"></p>
             <p id="subtitleProgress" role="status">先在网页勾选视频或文件夹。</p>
             <progress id="subtitleMeter" max="1" value="0" hidden style="width:100%;accent-color:#666"></progress>
@@ -247,7 +250,7 @@
                 <div id="subtitleRows"></div>
             </div>
             <details id="subtitleDeletePreview" name="subtitleFooter" hidden><summary id="subtitleDeleteHeading">确认删除清单</summary><div id="subtitleDeleteList" style="white-space:pre-wrap"></div><div class="panel-actions"><button id="confirmSubtitleDeletes">确认并移入回收站</button><button id="cancelSubtitleDeletes">取消</button></div></details>
-            <section id="subtitleSettings" title="ZIP 只提取通过核验的文本字幕，不支持 RAR。">
+            <section id="subtitleSettings" title="ZIP、RAR 只提取通过核验的文本字幕。">
             <label><input id="useThunder" type="checkbox" checked>迅雷 · 按片名搜索（免 Key，免费）</label>
             <label><input id="useSubdl" type="checkbox">SubDL（需个人 API Key，可选）</label>
             <label><span class="credential-head"><span>SubDL API Key</span><a href="https://subdl.com/api-doc" target="_blank" rel="noopener noreferrer">官网 API 说明 ↗</a></span><input id="subdlKey" type="password" autocomplete="off"></label>
@@ -968,7 +971,7 @@
                 await batchStage(seasons,'整季字幕准备（季）',batchLog,async (group,verify) => {
                     status('查找整季字幕：' + group[0].parsed.query);
                     await service.prepareSeason?.(group,config,verify);
-                },check,8,'同季合并请求，各来源保持原节流，整季 ZIP 顺序处理');
+                },check,8,'同季合并请求，各来源保持原节流，整季压缩包顺序处理');
                 await batchStage(rows,'单集及电影查找（视频）',batchLog,async (row,check,_index,observe) => {
                     const started = Date.now();
                     check(); status(`查找字幕 ${done + 1}/${rows.length}：${row.node.name}`);
@@ -1381,7 +1384,7 @@
                                 const {result, bytes} = await service.fetchFile(candidate, config, (phase, message) => diag(phase, `${row.node.name} · ${message}`), check); check();
                                 const {text, ...verification} = subtitleValidateContent(row, bytes, result.ext, config.language, diag);
                                 diag('正文校验', `${row.node.name} · ${candidate.source} 格式与语言通过，${bytes.length} 字节，${result.ext.toUpperCase()} · ${subtitleVerificationMessage(verification)}`);
-                                const originalName = result.fileName ?? (candidate.ext === 'zip' ? undefined : candidate.name);
+                                const originalName = result.fileName ?? (isSubtitleArchive(candidate.ext) ? undefined : candidate.name);
                                 const name = merged ? subtitleCandidateUploadName(row,candidate,originalName,result.ext) : subtitleUploadName(originalName,result.ext);
                                 if (row.siblingNames?.has(name.toLowerCase())) throw new Error('目标目录已有同名项目，待处理：' + name);
                                 const detected = subtitleFileInfo(name).language;
