@@ -468,7 +468,7 @@ async function subtitleUI() {
     const audit = async () => {
         const view = get('subtitleView'); const saved = view.value;
         view.value = 'all'; view.onchange();
-        const button = get('subtitleRows').querySelectorAll('button').find(item => item.textContent === '重新检测');
+        const button = get('subtitleRows').querySelectorAll('button').find(item => item.textContent === '复查已有字幕');
         assert.ok(button); await button.onclick(); view.value = saved; view.onchange();
     };
     assert.doesNotMatch(panelMarkup,/重搜未完成项|复制完整报告|复制未补齐路径/);assert.match(panelMarkup,/id="openSubtitlesSettings"/);assert.match(panelMarkup,/id="subtitleAccountSettings"/);

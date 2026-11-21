@@ -6919,6 +6919,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             scope.title = scope.textContent;
             const missing = inventory.filter(row => !covered(row));
             const available = states ? new Set(inventory.filter(row => states.get(String(row.node.id))?.canFill)) : null;
+            const pendingFill = row => available?.has(row) ?? readyToFill(row);
             const ready = available?.size ?? inventory.filter(readyToFill).length;
             const view = ui.get('subtitleView').value;
             const visibleIds = viewSubtitleIds(view), selectedCount = visibleIds.filter(id => deleteSelection.has(id)).length;
@@ -6931,9 +6932,10 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             const checked = inventory.filter(row => !awaitingCheck(row));
             const remaining = inventory.length - checked.length;
             summary.hidden = !inventory.length;
-            const coverage = searching ? subtitleSearchSummary(checked,searchLabels) : [
+            const coverage = searching && !flow ? subtitleSearchSummary(checked,searchLabels) : [
                 '有字幕 ' + checked.filter(covered).length,
-                '没字幕 ' + checked.filter(row => subtitleCoverageState(row) === 'missing').length,
+                ...(ready ? ['待补齐 ' + ready] : []),
+                '没字幕 ' + checked.filter(row => subtitleCoverageState(row) === 'missing' && !pendingFill(row)).length,
                 '检查未确认 ' + checked.filter(row => subtitleCoverageState(row) === 'unconfirmed').length
             ].join(' · ');
             const identitySummary = states ? ' · 作品已确认 ' + [...states.values()].filter(state => state.identity === 'confirmed').length
@@ -6970,7 +6972,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 const badge = document.createElement('span');
                 badge.className = 'subtitle-badge';
                 const state = searching && !pending && !embedded?.chinese && !row.writeBlocked ? searchLabels[subtitleSearchState(row)] : '';
-                badge.textContent = embedded?.chinese ? '内嵌中文 · 已补齐'
+                badge.textContent = pendingFill(row) ? '已找到字幕 · 待补齐' : embedded?.chinese ? '内嵌中文 · 已补齐'
                     : (label === '缺可用字幕' && !searching ? '没字幕' : label) + (state && coverage !== 'complete' ? ' · ' + state : '');
                 if (row.parsed.episode != null && mode) {
                     const episode = document.createElement('strong');
@@ -7114,7 +7116,8 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     };
                     const allEmbedded = completed.length && completed.every(row => row.embedded?.chinese);
                     count(allEmbedded ? '有字幕（内嵌中文）' : '有字幕',completed);
-                    count('没字幕',missing);
+                    const stillMissing = missing.filter(row => !pendingFill(row));
+                    if (stillMissing.length) count('没字幕',stillMissing);
                     if (unknown.length) count('检查未确认',unknown);
                     if (unchecked.length) count(scan?.interrupted ? '未检查完成' : '待检查／检查中',unchecked);
                     if (searching && !flow) {
@@ -7211,7 +7214,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                             note.textContent = '自动候选未覆盖当前选区的全部缺字幕集，请导入字幕。';
                             box.append(note);
                         } else if (season && fill.length) {
-                            const note = document.createElement('p'); note.textContent = '待补齐 ' + fill.length + ' 集'; box.append(note);
+                            const note = document.createElement('p'); note.textContent = '已找到字幕 · 待补齐 ' + fill.length + ' 集，点击上方「补齐字幕」'; box.append(note);
                         }
                     } else if (actionRows.length && season) {
                         const note = document.createElement('p'); note.textContent = '请先核对季号和集号，再查找或导入字幕。'; box.append(note);
@@ -7220,8 +7223,10 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 if (!busy && shown.some(row => row.subtitles.some(sub => canDelete(row,sub)))) {
                     addButton(box, season ? '选择本季外置字幕' : '选择外置字幕',JSON.stringify(['delete',key]),() => open('delete'));
                 }
-                if (checkedScope !== null && (!flow || !rows.some(row => row.organized || row.organizePending)))
-                    addButton(box,'重新检测',JSON.stringify(['audit',key]),() => recheckWork(rows));
+                const auditRows = rows.filter(row => !pendingFill(row) && !awaitingCheck(row) && !row.organized && !row.organizePending
+                    && (row.subtitles.length || row.writeBlocked || subtitleCoverageState(row) === 'unconfirmed'));
+                if (checkedScope !== null && auditRows.length)
+                    addButton(box,'复查已有字幕',JSON.stringify(['audit',key]),() => recheckWork(auditRows));
                 host.append(box);
             }
             ui.get('subtitleEmpty').hidden = visible > 0 || !!flow && !ui.get('mediaRows').hidden;

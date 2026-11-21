@@ -152,7 +152,7 @@ const view = value => {get('subtitleView').value = value; get('subtitleView').on
     for (const [index] of videos.entries()) assert.ok(get('subtitleLog').value.includes('/影视库/目录' + index + '/同名影片.2020.mkv'),'Full paths remain in the copyable log');
     assert.match(get('subtitleScope').textContent,/影视库.*本次所选文件夹.*视频 5/);
     const completeCard = cards()[0];
-    const audit = completeCard.querySelectorAll('button').find(button => button.textContent === '重新检测');
+    const audit = completeCard.querySelectorAll('button').find(button => button.textContent === '复查已有字幕');
     await audit.onclick();
     assert.equal(reads,4,'Work recheck reads only the selected card');
     assert.equal(queried.length,0);
