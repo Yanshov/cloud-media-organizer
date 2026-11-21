@@ -952,7 +952,26 @@
             let done = 0;
             const ai = configuredAI();
             const credential = GM_getValue('cross-drive-tmdb-key', '');
-            const ask = ai && paced(0, (method, payload) => { check(); return ai[method](payload); });
+            const aiStats = {batches:0,requests:0,retries:0,queued:0,elapsed:0};
+            const aiPool = ai && subtitleRequestPool(0,2,async (method,payload,queuedAt) => {
+                check();
+                const started = Date.now(), waited = started - queuedAt;
+                const label = method === 'disambiguateSubtitle' ? '候选判断' : '作品纠正';
+                aiStats.batches++;
+                aiStats.queued += waited;
+                diag('AI 排队耗时',`${label} · ${payload.work?.title || ''} · 等待 ${(waited / 1000).toFixed(1)} 秒`);
+                try {
+                    return await ai[method](payload,{onRequest:() => { aiStats.requests++; },onRetry:reason => {
+                        aiStats.retries++;
+                        diag('AI 重试',`${label} · ${reason}`);
+                    }});
+                } finally {
+                    const elapsed = Date.now() - started;
+                    aiStats.elapsed += elapsed;
+                    diag('AI 请求耗时',`${label} · ${(elapsed / 1000).toFixed(1)} 秒`);
+                }
+            });
+            const ask = ai && ((method,payload) => aiPool(method,payload,Date.now()));
             const correctWork = ai?.correctSubtitleWork && credential
                 ? createSubtitleWorkCorrection({correctSubtitleWork:payload => ask('correctSubtitleWork',payload)}, credential) : null;
             service.resetSearchBatch?.();
@@ -961,7 +980,7 @@
             diag('查找策略', `剧集先按季搜索并建立文件索引；缺集再搜索迅雷、OpenSubtitles；${ai ? '名称有歧义时交给 AI 判断' : 'AI 未启用，使用严格片名匹配'}；来源限流后本批跳过该来源`);
             try {
                 drive.assertReady?.();
-                diag('并发策略','整季准备完成后再查单集，各阶段上限 8，复用同季结果，各来源保持原限速');
+                diag('并发策略','视频任务上限 8，AI 请求上限 2；同季命名判断合并，优先使用整季缓存');
                 await batchStage(subtitleSearchGroups(rows),'作品资料准备（作品/季）',batchLog,async (group,check,_index,observe) => {
                   for (const row of group) {
                     if (!row.parsed.workResolved && !flow) {
@@ -1019,6 +1038,7 @@
                     meter(++done, rows.length); if (flow) flow.requestRender(); else render();
                     return subtitleSearchState(row) === 'failed' ? 'failed' : undefined;
                 },check,8,'复用整季缓存，迅雷、OpenSubtitles 和 AI 保持各自限速');
+                diag('整季缓存统计',`命中 ${rows.filter(row => row.seasonCacheHit).length}/${rows.filter(row => row.parsed.tv).length} 个剧集视频，命中项已复用整季文件列表`);
                 for (const group of subtitleSearchGroups(rows)) {
                     if (!group[0]?.parsed.tv) continue;
                     const targets = group.filter(row => !covered(row));
@@ -1041,6 +1061,8 @@
                 const message = '已处理 ' + done + '/' + rows.length + ' · ' + error.message;
                 status((cancelled ? '查找已停止 · ' : '查找中断 · ') + message);
                 diag(cancelled ? '已停止' : '查找中断',message);
+            } finally {
+                if (ai) diag('AI 统计',`判断/纠正 ${aiStats.batches} 批 · 实际请求 ${aiStats.requests} 次 · 重试 ${aiStats.retries} 次 · 累计排队 ${(aiStats.queued / 1000).toFixed(1)} 秒 · 累计请求 ${(aiStats.elapsed / 1000).toFixed(1)} 秒 · 并发上限 2`);
             }
         };
         const inspectEmbedded = async (row, check, currentDrive = drive) => {

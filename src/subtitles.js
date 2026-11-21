@@ -109,6 +109,10 @@
             text = text.replace(/^(?:【[^】]*(?:字幕组|字幕社|工作室)[^】]*】|\[[^\]]*(?:字幕组|字幕社|工作室)\])[. _-]*/i, '');
             text = text.replace(/(?:^|[. _-])(?:杜比视界|特效字幕|双语字幕)(?=$|[. _-])/g, ' ');
             text = text.replace(/^(?:(?:简体|繁体|简中|繁中|中文|双语|中英|简英|繁英|chs|cht|eng)(?:双语|&英文|英文)?[. _\-]*)+/i, '');
+            if (parsed.tv && !isTitle) {
+                const episode = subtitleEpisodeName(text,parsed);
+                if (episode.title && episode.episode != null) text = episode.title;
+            }
             // Strip release metadata, keeping numeric title tokens such as Blade Runner 2049.
             const year = !isTitle && years(text).at(-1);
             if (year) {
@@ -1006,27 +1010,71 @@
     function subtitleVerificationMessage(result) {
         return `格式/语言通过；${({file:'对白范围与视频文件时长相符', unknown:'无时长参考', reference:'TMDB 仅作作品时长参考', 'reference-difference':'与 TMDB 作品时长参考有差异'})[result.evidence] || '时长证据待确认'}；${result.work?.status === 'supported' ? 'AI 支持作品归属（非实证）' : '作品归属未确认'}；未核对音画同步`;
     }
-    function subtitleEpisodeIdentity(name, parsed, seasonContext = null) {
-        const stem = String(name || '').normalize('NFKC').replace(/\.(?:srt|ass|ssa|vtt|zip|rar)$/i,'');
+    function subtitleEpisodeName(name, parsed) {
+        const stem = String(name || '').normalize('NFKC').replace(/[【】]/g, value => value === '【' ? '[' : ']')
+            .replace(/\.(?:srt|ass|ssa|vtt|zip|rar)$/i,'');
+        const named = parseMediaName(stem + '.srt');
         const markers = [
             ...stem.matchAll(/(?:^|[^a-z0-9])SE?(\d{1,2})(?:[ ._-]*E[ ._-]*|[ ._-]+(?:EP?[ ._-]*)?)(\d{1,3})(?!\d)/gi),
             ...stem.matchAll(/(?:^|[^a-z0-9])(\d{1,2})x(\d{1,3})(?!\d)/gi)
         ];
-        const named = parseMediaName(stem + '.srt');
-        const numbered = stem.match(/\s+-\s*(\d{1,3})(?:v\d+)?(?=$|[ ._[(])/i)
-            || stem.match(/^(?:E(?:P)?[ ._-]*)?(\d{1,3})(?:v\d+)?(?:[ ._-](?:chs|cht|zh|zh-cn|zh-tw|简体|繁体|简中|繁中))?$/i);
-        let season = markers.length ? Number(markers[0][1]) : named.season ?? seasonContext;
-        let episode = markers.length ? Number(markers[0][2]) : named.episode ?? (numbered ? Number(numbered[1]) : null);
+        const numbering = stem.split(new RegExp(MEDIA_RESOLUTION_BOUNDARY + '|(?:^|[ ._\\[(-])(?:BluRay|BDRip|WEB[ ._-]?(?:DL|Rip)|REMUX|HDTV|x26[45]|h[ ._-]?26[45]|HEVC|AVC|DTS|AAC|AC3)(?=$|[ ._\\])&+-])','i'))[0];
+        const numbered = stem.match(/第\s*(\d{1,3})\s*[集话話]/)
+            || stem.match(/(?:^|[ ._\[\]-])(?:EP?|Episode)[ ._-]*(\d{1,3})(?:v\d+)?(?=$|[ ._\]「『(])/i)
+            || stem.match(/\[(\d{1,3})(?:v\d+)?\]/i)
+            || [...numbering.matchAll(/(?:^|[ ._-]+)(\d{1,3})(?:v\d+)?(?=$|[ ._\]「『(])/gi)].at(-1);
+        const marker = markers[0];
+        let season = marker ? Number(marker[1]) : named.season;
+        const episode = marker ? Number(marker[2]) : numbered ? Number(numbered[1]) : named.episode;
+        let title = marker ? stem.slice(0,marker.index) : numbered ? stem.slice(0,numbered.index) : '';
+        const brackets = [...title.matchAll(/\[([^\]]+)\]/g)];
+        if (brackets.length) title = named.query;
+        title = title.replace(/(?:[ ._-]*(?:S\d{1,2}|Season[ ._-]*\d{1,2}|第\s*[零〇一二两三四五六七八九十\d]+\s*季))[ ._-]*$/i,'')
+            .replace(/^[ ._\[\]-]+|[ ._\[\]-]+$/g,'').trim();
+        const aliases = new Set([parsed.query,...(parsed.aliases || [])].filter(Boolean).map(titleKey));
+        const seasons = (parsed.seasons || []).filter(item => item.season_number > 0);
+        if (season == null && episode != null && parsed.workResolved && title) {
+            const suffix = title.match(/^(.*?)[ ._-]*(\d{1,2}|VIII|VII|VI|IV|IX|III|II|V|X|I)$/i);
+            const roman = {I:1,II:2,III:3,IV:4,V:5,VI:6,VII:7,VIII:8,IX:9,X:10};
+            const number = suffix && (/^\d+$/.test(suffix[2]) ? Number(suffix[2]) : roman[suffix[2].toUpperCase()]);
+            if (!aliases.has(titleKey(title)) && suffix && aliases.has(titleKey(suffix[1]))
+                && seasons.some(item => item.season_number === number)) {
+                season = number;
+                title = suffix[1].trim();
+            } else {
+                const matches = seasons.filter(item => {
+                    const label = titleKey(item.name);
+                    if (!label || /^(?:season\d+|第[零〇一二两三四五六七八九十\d]+季)$/i.test(label)) return false;
+                    return aliases.has(titleKey(title)) ? seasons.length === 1
+                        : [...aliases].some(alias => titleKey(title) === alias + label);
+                });
+                if (matches.length === 1) season = matches[0].season_number;
+                if (season == null && seasons.length === 1 && aliases.has(titleKey(title))) season = seasons[0].season_number;
+            }
+        }
+        const episodeAt = marker ? marker.index + marker[0].lastIndexOf(marker[2])
+            : numbered ? numbered.index + numbered[0].indexOf(numbered[1]) : -1;
+        const pattern = episodeAt < 0 ? stem : stem.slice(0,episodeAt) + '{episode}'
+            + stem.slice(episodeAt + (marker ? marker[2] : numbered[1]).length).replace(/「[^」]*」|『[^』]*』/g,'{episodeTitle}');
+        return {stem,named,markers,season,episode,title,pattern};
+    }
+    function subtitleEpisodeIdentity(name, parsed, seasonContext = null) {
+        const detail = subtitleEpisodeName(name,parsed);
+        const {stem,named,markers,title,pattern} = detail;
+        let season = detail.season ?? seasonContext, episode = detail.episode;
         const multiple = markers.some(mark => Number(mark[1]) !== season || Number(mark[2]) !== episode
             || /^(?:[ ._-]*E\d|[ ._-]*[-~][ ._-]*(?:EP?)?\d)/i.test(stem.slice(mark.index + mark[0].length)))
+            || /(?:^|[ ._\[(])\d{1,3}[ ._]*[-~][ ._]*(?:EP?)?\d{1,3}(?!\d)/i.test(stem)
             || named.endEpisode != null && named.endEpisode !== episode;
-        const seasonTags = [...stem.matchAll(/(?:\bSeason[ ._-]*|(?:^|[^a-z0-9])SE?)(\d{1,2})(?=E\d|[^0-9]|$)/gi)];
-        if (multiple || new Set(seasonTags.map(mark => Number(mark[1]))).size > 1 || seasonTags.some(mark => season != null && Number(mark[1]) !== season)
+        const seasonTags = [...stem.matchAll(/(?:\bSeason[ ._-]*|(?:^|[^a-z0-9])SE?)(\d{1,2})(?=E\d|[^0-9]|$)|第\s*([零〇一二两三四五六七八九十\d]+)\s*季/gi)]
+            .map(mark => mark[1] ? Number(mark[1]) : mediaSeasonNumber(mark[0]));
+        const result = (matched,conflict) => ({matched,conflict,season,episode,title,pattern});
+        if (multiple || new Set(seasonTags).size > 1 || seasonTags.some(number => season != null && number !== season)
             || parsed.tv && parsed.season > 0 && named.standalone && !markers.length)
-            return {matched:false,conflict:true,season,episode};
+            return result(false,true);
         if (season != null && parsed.season != null && season !== parsed.season)
-            return {matched:false,conflict:true,season,episode};
-        if (episode == null) return {matched:false,conflict:false,season,episode};
+            return result(false,true);
+        if (episode == null) return result(false,false);
         const seasons = parsed.seasons || [];
         if (season == null) {
             // Absolute numbering needs every preceding season's verified episode count.
@@ -1037,7 +1085,7 @@
             if (complete) {
                 const offset = regular.slice(0,index).reduce((sum,item) => sum + item.episode_count,0);
                 if (episode <= offset || episode > offset + regular[index].episode_count)
-                    return {matched:false,conflict:true,season,episode};
+                    return result(false,false);
                 season = parsed.season;
                 episode -= offset;
             }
@@ -1048,7 +1096,7 @@
         const matched = parsed.tv && parsed.season != null && parsed.episode != null
             && (parsed.endEpisode == null || parsed.endEpisode === parsed.episode)
             && season === parsed.season && episode === parsed.episode;
-        return {matched,conflict:season != null && parsed.season != null && (season !== parsed.season || episode !== parsed.episode),season,episode};
+        return result(matched,season != null && parsed.season != null && (season !== parsed.season || episode !== parsed.episode));
     }
     function exactSubtitleEpisode(name, parsed) {
         return subtitleEpisodeIdentity(name,parsed).matched;
@@ -1285,74 +1333,104 @@
     }
     function createSubtitleReviewer(ai, language, log = () => {}, check = () => {}) {
         let parseFailures = 0, disabled = false;
-        return paced(0, async (row, found, verify = check) => {
-            const check = verify;
-            check();
-            if (disabled) return;
-            const unique = new Set();
-            const reviewKey = candidate => JSON.stringify([candidate.source,candidate.name,candidate.release,candidate.language,candidate.bilingual]);
+        const decisions = new Map(), pending = new Map();
+        const familyKey = (row,candidate) => {
+            const parsed = row.parsed;
+            const pattern = name => parsed.tv ? subtitleEpisodeIdentity(name,parsed).pattern : name;
+            return JSON.stringify([parsed.tmdbId || '',titleKey(parsed.query),parsed.year || '',!!parsed.tv,parsed.season,
+                parsed.aliases || [],language,candidate.source,pattern(candidate.name),pattern(candidate.release),
+                candidate.ext,candidate.language,!!candidate.bilingual,candidate.workIdentity || null]);
+        };
+        const applyDecisions = (row,found) => {
+            let reused = 0;
             const rejected = new Set();
-            const candidates = found.filter(candidate => {
-                if (candidate.opaque || candidate.hardMismatch || candidate.detailError || candidate.mainTitleFallback || candidate.downloadFailed) return false;
-                if (row.parsed.tv && [candidate.name,candidate.release].some(name => subtitleEpisodeIdentity(name,row.parsed).conflict)) return false;
-                const key = reviewKey(candidate);
-                if (unique.has(key)) return false;
-                unique.add(key); return true;
-            }).map(candidate => {
-                const episode = subtitleEpisodeIdentity(candidate.name,row.parsed);
-                return {index:row.candidates.indexOf(candidate), source:candidate.source, name:String(candidate.name || '').slice(0,400),
-                    release:String(candidate.release || '').slice(0,400), language:candidate.language, bilingual:!!candidate.bilingual,
-                    season:episode.season,episode:episode.episode};
-            });
-            // Batch every distinct candidate, rather than silently dropping everything after the first three.
-            // Keep indexes stable across batches; remove rejected entries only when review ends.
-            try {
-                for (let offset = 0; offset < candidates.length; offset += 20) {
-                    const batch = candidates.slice(offset,offset + 20);
-                    check();
-                    log('AI 候选判断', `${row.node.name} · ${batch[0].source} · 第 ${offset + 1}—${offset + batch.length}/${candidates.length} 个不同候选`);
-                    try {
-                        const result = await ai.disambiguateSubtitle({work:{title:row.parsed.query,aliases:row.parsed.aliases || [],year:row.parsed.year || '',
-                            tv:!!row.parsed.tv,season:row.parsed.season,episode:row.parsed.episode,tmdbId:row.parsed.tmdbId || ''},candidates:batch});
-                        check(); parseFailures = 0;
-                        const candidate = batch.some(item => item.index === result?.index) && subtitleAICandidate(result,row,language, reason => {
-                            log('AI 建议未采用', `${row.node.name} · ${row.candidates[result.index].name} · ${reason}`);
-                            row.candidates[result.index].matchReason = reason;
-                        });
-                        log('AI 判断依据', `${row.node.name} · index=${result?.index ?? '无'} · confidence=${result?.confidence ?? '无'} · ${String(result?.reason || '未提供依据').slice(0,300)}`);
-                        for (const item of Array.isArray(result?.rejected) ? result.rejected : []) {
-                            if (!Number.isInteger(item?.index) || item.index === result.index || !batch.some(entry => entry.index === item.index)
-                                || !Number.isFinite(item.confidence) || item.confidence < .9 || item.confidence > 1 || typeof item.reason !== 'string' || !item.reason.trim()) continue;
-                            const excluded = row.candidates[item.index];
-                            // AI may remove ambiguous alternatives, but cannot veto deterministic matches.
-                            if (excluded.identityMatched || excluded.titleMatched || excluded.aiAccepted) continue;
-                            const key = reviewKey(excluded);
-                            if (rejected.has(key)) continue;
-                            rejected.add(key);
-                            log('AI 排除候选', `${row.node.name} · ${excluded.source} · ${excluded.name} · ${item.reason.slice(0,200)} · 置信度 ${Math.round(item.confidence * 100)}%`);
-                        }
-                        if (candidate) {
-                            candidate.aiAccepted = true;
-                            candidate.matchReason = '';
-                            log('AI 字幕建议', `${row.node.name} · ${subtitleCandidateLabel(candidate)} · 置信度 ${Math.round(result.confidence * 100)}%`);
-                            return;
-                        }
-                        log('AI 字幕建议', `${row.node.name} · 未确认可用字幕，继续其他候选或来源`);
-                    } catch (error) {
-                        check(); if (error.stop) throw error;
-                        log('AI 字幕建议', `${row.node.name} · 判断失败：${error.message}；继续其他来源`);
-                        parseFailures = error.aiParse ? parseFailures + 1 : 0;
-                        if (parseFailures >= 2) { disabled = true; log('AI 字幕建议', '连续两次解析失败，本批剩余 AI 判断已停用'); return; }
-                        // A failed request is not evidence about the remaining candidates.
-                        return;
+            for (const candidate of found) {
+                const decision = decisions.get(familyKey(row,candidate));
+                if (!decision || candidate.titleMatched || candidate.identityMatched || candidate.aiAccepted) continue;
+                if (decision.state === 'rejected') {
+                    rejected.add(candidate);
+                    log('AI 排除候选',`${row.node.name} · ${candidate.name} · ${decision.reason}`);
+                } else if (decision.state === 'accepted') {
+                    const accepted = subtitleAICandidate({index:row.candidates.indexOf(candidate),confidence:decision.confidence},row,language,reason => {
+                        candidate.matchReason = reason;
+                        log('AI 建议未采用',`${row.node.name} · ${candidate.name} · ${reason}`);
+                    });
+                    if (accepted) {
+                        accepted.aiAccepted = true;
+                        accepted.matchReason = '';
+                        reused++;
                     }
                 }
-            } finally {
-                row.candidates = row.candidates.filter(candidate => !found.includes(candidate) || !rejected.has(reviewKey(candidate))
-                    || candidate.identityMatched || candidate.titleMatched || candidate.aiAccepted);
-                selectSubtitleCandidate(row,language);
             }
-        });
+            row.candidates = row.candidates.filter(candidate => !rejected.has(candidate));
+            selectSubtitleCandidate(row,language);
+            return reused;
+        };
+        return async (row, found, verify = check) => {
+            verify();
+            const cached = applyDecisions(row,found);
+            if (row.selectedCandidate) {
+                if (cached) log('AI 命名复用',`${row.node.name} · 同作品、同季、同命名格式 · ${cached} 份候选通过逐集核验`);
+                return;
+            }
+            if (disabled) return;
+            const candidates = new Map();
+            for (const candidate of found) {
+                if (candidate.opaque || candidate.hardMismatch || candidate.detailError || candidate.mainTitleFallback || candidate.downloadFailed) continue;
+                if (row.parsed.tv && !subtitleAICandidate({index:row.candidates.indexOf(candidate),confidence:1},row,language,
+                    reason => { candidate.matchReason = reason; })) continue;
+                candidates.set(familyKey(row,candidate),candidate);
+            }
+            const fresh = [...candidates].filter(([key]) => !decisions.has(key) && !pending.has(key));
+            const tasks = new Set([...candidates.keys()].map(key => pending.get(key)).filter(Boolean));
+            for (let offset = 0; offset < fresh.length; offset += 20) {
+                const batch = fresh.slice(offset,offset + 20);
+                const task = Promise.resolve().then(async () => {
+                    verify();
+                    if (disabled) return;
+                    log('AI 候选判断', `${row.node.name} · 合并 ${batch.length} 种命名格式，后续同季集数复用`);
+                    try {
+                        const samples = batch.map(([,candidate],index) => {
+                            const episode = subtitleEpisodeIdentity(candidate.name,row.parsed);
+                            return {index,source:candidate.source,name:String(candidate.name || '').slice(0,300),
+                                release:candidate.release === candidate.name ? undefined : String(candidate.release || '').slice(0,200),
+                                language:candidate.language,bilingual:!!candidate.bilingual,season:episode.season,episode:episode.episode};
+                        });
+                        const result = await ai.disambiguateSubtitle({work:{title:row.parsed.query,aliases:row.parsed.aliases || [],year:row.parsed.year || '',
+                            tv:!!row.parsed.tv,season:row.parsed.season,episode:row.parsed.episode,tmdbId:row.parsed.tmdbId || ''},candidates:samples});
+                        verify(); parseFailures = 0;
+                        for (const [key] of batch) decisions.set(key,{state:'unknown'});
+                        if (Number.isInteger(result?.index) && batch[result.index] && Number.isFinite(result.confidence)
+                            && result.confidence >= .9 && result.confidence <= 1) {
+                            const [key] = batch[result.index];
+                            decisions.set(key,{state:'accepted',confidence:result.confidence});
+                        }
+                        log('AI 判断依据', `${row.node.name} · index=${result?.index ?? '无'} · confidence=${result?.confidence ?? '无'} · ${String(result?.reason || '未提供依据').slice(0,300)}`);
+                        for (const item of Array.isArray(result?.rejected) ? result.rejected : []) {
+                            if (!Number.isInteger(item?.index) || item.index === result.index || !batch[item.index]
+                                || !Number.isFinite(item.confidence) || item.confidence < .9 || item.confidence > 1 || typeof item.reason !== 'string' || !item.reason.trim()) continue;
+                            const [key,excluded] = batch[item.index];
+                            if (excluded.identityMatched || excluded.titleMatched || excluded.aiAccepted) continue;
+                            decisions.set(key,{state:'rejected',reason:item.reason.slice(0,200)});
+                        }
+                    } catch (error) {
+                        verify(); if (error.stop) throw error;
+                        for (const [key] of batch) decisions.set(key,{state:'unknown'});
+                        log('AI 字幕建议', `${row.node.name} · 判断失败：${error.message}；继续其他来源`);
+                        parseFailures = error.aiParse ? parseFailures + 1 : 0;
+                        if (parseFailures >= 2) { disabled = true; log('AI 字幕建议', '连续两次解析失败，本批剩余 AI 判断已停用'); }
+                    }
+                }).finally(() => { for (const [key] of batch) pending.delete(key); });
+                for (const [key] of batch) pending.set(key,task);
+                tasks.add(task);
+            }
+            const outcomes = await Promise.allSettled(tasks);
+            const failure = outcomes.find(outcome => outcome.status === 'rejected');
+            if (failure) throw failure.reason;
+            verify();
+            const accepted = applyDecisions(row,found);
+            if (accepted) log('AI 字幕建议',`${row.node.name} · ${accepted} 份候选通过作品与季集复核`);
+        };
     }
     function subtitleSearchSummary(rows, labels = subtitleSearchLabels) {
         const coverage = {complete:0,missing:0,unconfirmed:0};
@@ -1377,7 +1455,7 @@
             ...(row.sources || []).map(source => source.name + '：' + subtitleSourceSummary(source))].filter(Boolean).join('\n');
     }
     async function searchSubtitleSources(row, config, service, log = () => {}, check = () => {}, resume = false) {
-        if (!resume && !config.correctionName) { row.error = ''; row.candidates = []; row.selectedCandidate = null; row.manualCandidate = false; row.aiSuggested = false; row.sources = []; }
+        if (!resume && !config.correctionName) { row.error = ''; row.candidates = []; row.selectedCandidate = null; row.manualCandidate = false; row.aiSuggested = false; row.sources = []; row.seasonCacheHit = false; }
         const title = subtitleQueryTitle(row.parsed.query, row.parsed.year);
         if (!resume && !config.correctionName && row.parsed.tv) {
             for (const [name,enabled,method] of [['迅雷',config.thunder,'thunderCachedEpisode'],['射手网',config.assrtKey,'assrtCachedEpisode']]) {
@@ -1400,9 +1478,13 @@
                 if (!Array.isArray(cached)) throw new TypeError('整季缓存未返回候选列表：' + name);
                 const selection = {node:row.node,parsed:row.parsed,candidates:cached};
                 selectSubtitleCandidate(selection, config.language);
+                if (!selection.selectedCandidate && cached.length && config.reviewCandidates)
+                    await config.reviewCandidates(selection,cached,check);
+                check();
                 if (!selection.selectedCandidate) continue;
-                row.candidates.push(...cached);
-                source.count = cached.length;
+                row.candidates.push(...selection.candidates);
+                row.seasonCacheHit = true;
+                source.count = selection.candidates.length;
                 row.sources.push(source);
                 selectSubtitleCandidate(row, config.language);
                 const assrtBackup = name !== '射手网' && config.assrtKey && !service.searchUnavailable?.('射手网')
