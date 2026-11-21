@@ -266,12 +266,12 @@
             <section id="subtitleSettings" title="ZIP、RAR 只提取通过核验的文本字幕。">
             <label><input id="useThunder" type="checkbox" checked>迅雷 · 按片名搜索（免 Key，免费）</label>
             <label><span class="credential-head"><span>射手网整季搜索 Token（可选）</span><a href="https://assrt.net/usercp.php" target="_blank" rel="noopener noreferrer">assrt.net ↗</a></span><input id="assrtKey" type="password" autocomplete="off"></label>
-            <details id="openSubtitlesSettings"><summary>账号与 API</summary>
+            <label>字幕语言<select id="subtitleLanguage" title="中文优先双语、简体，再繁体。"><option value="zh-cn,zh-tw,zh">中文（简体 / 繁体）</option><option value="zh-cn">简体中文</option><option value="zh-tw">繁体中文</option><option value="en">英文</option></select></label>
+            <details id="openSubtitlesSettings"><summary>OpenSubtitles · 账号与 API</summary>
             <label><input id="useOpenSubtitles" type="checkbox">启用搜索</label>
             <label><span class="credential-head"><span>API Key</span><a href="https://www.opensubtitles.com/en/consumers" target="_blank" rel="noopener noreferrer">获取 API ↗</a></span><input id="openSubtitlesKey" type="password" autocomplete="off"></label>
             <details id="subtitleAccountSettings"><summary title="提高下载配额">账号登录</summary><div><label>用户名<input id="subtitleUsername" autocomplete="off"></label><label>密码<input id="subtitlePassword" type="password" autocomplete="off"></label></div><button id="loginSubtitles">登录</button><p id="subtitleLoginState">密码不保存；令牌仅当前页面有效。</p></details>
             </details>
-            <label>字幕语言<select id="subtitleLanguage" title="中文优先双语、简体，再繁体。"><option value="zh-cn,zh-tw,zh">中文（简体 / 繁体）</option><option value="zh-cn">简体中文</option><option value="zh-tw">繁体中文</option><option value="en">英文</option></select></label>
             <div class="panel-actions"><button id="saveSubtitleSettings">保存设置</button><button id="forgetSubtitleKey">清除凭证</button></div>
             </section>
             <section id="cacheSettings">
@@ -281,7 +281,6 @@
             <details id="subtitleDiagnostics" name="subtitleFooter"><summary>${flow ? '详细日志' : '字幕运行日志'}</summary><div class="panel-actions"><button id="copySubtitleLog">复制日志</button><button id="clearSubtitleLog">清空日志</button></div><textarea id="subtitleLog" readonly spellcheck="false" aria-label="字幕运行日志"></textarea></details>
 `, 'subtitle');
         ui.moveSettings(['subtitleSettings'], '字幕来源与设置', '#settingsModels');
-        ui.moveSettings(['openSubtitlesSettings'], 'OpenSubtitles', '#settingsModels');
         ui.moveSettings(['cacheSettings'], '缓存管理', '#settingsBasics');
         let inventory = [], drive = null, subtitleContext = null, checkedScope = null, deletePlan = null, busy = false, cancelled = false, reviewCandidates = null;
         const deleteSelection = new Set(), pendingDeletes = new Set();

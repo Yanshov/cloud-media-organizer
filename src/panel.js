@@ -1,6 +1,5 @@
     const workspaceIcons = {
         'film': '<rect width="18" height="18" x="3" y="3" rx="2" /><path d="M7 3v18" /><path d="M3 7.5h4" /><path d="M3 12h18" /><path d="M3 16.5h4" /><path d="M17 3v18" /><path d="M17 7.5h4" /><path d="M17 16.5h4" />',
-        'captions': '<rect width="18" height="14" x="3" y="5" rx="2" ry="2" /><path d="M7 15h4M15 15h2M7 11h2M13 11h4" />',
         'settings': '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" /><circle cx="12" cy="12" r="3" />',
         'upload': '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" x2="12" y1="3" y2="15" />',
         'download': '<path d="M12 15V3" /><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m7 10 5 5 5-5" />',
@@ -324,22 +323,19 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 .sync-preview{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px}.sync-preview h4{margin:0 0 8px}.sync-preview p{margin:6px 0}#syncList{overflow-wrap:anywhere;font-size:15px}#syncDestination{font-weight:600}
 .export-options{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin:12px 0}.export-options input{width:auto}.export-options button{font-size:14px;padding:7px 12px}.credential-head{display:flex;justify-content:space-between;align-items:center;gap:12px}.credential-head a{font-size:15px;flex-shrink:0}
 .source-result{margin:12px 0;padding:12px;border:1px solid var(--border);border-radius:8px}.source-result button{margin:8px 8px 0 0;font-size:16px}
-#workspaceSettings{overflow:auto;scrollbar-width:none;overscroll-behavior:contain}
-.settings-main{display:flex;flex-direction:column;min-width:0;padding:25px var(--surface-pad) 20px;background:var(--surface)}
+#workspaceSettings{grid-template-rows:minmax(0,1fr);overflow:auto;scrollbar-width:none;overscroll-behavior:contain}
+.settings-main{display:flex;flex-direction:column;min-width:0;min-height:0;padding:25px var(--surface-pad) 12px;background:var(--surface)}
 .settings-heading{display:flex;flex:none;align-items:center;justify-content:space-between;gap:14px;margin-bottom:18px;padding-bottom:18px;border-bottom:1px solid var(--border)}.settings-heading h3{margin:0;font-size:clamp(32px,3.6cqw,52px);line-height:1.2;letter-spacing:-.04em}
 .settings-appearance{display:flex;align-items:center;gap:12px;margin-left:auto}.settings-appearance label{display:flex;align-items:center;gap:6px;margin:0;font-size:15px;white-space:nowrap}.settings-appearance select{width:auto}#workspaceSettings .settings-appearance select{margin:0}
 .settings-column{min-width:0}.settings-column:empty{display:none}
-#settingsBasics{display:grid;gap:8px;margin-top:14px}#settingsBasics:empty{display:none}
+#settingsBasics{display:grid;flex:none;gap:8px;margin-bottom:12px}#settingsBasics:empty{display:none}
 #settingsBasics #mediaSettings{display:flex;align-items:end;gap:12px;flex-wrap:wrap}
 #settingsBasics #mediaSettings>label{flex:1;min-width:180px;margin:0}
 #settingsBasics #mediaSettings>label{display:flex;align-items:center;gap:12px}
 #settingsBasics .credential-head{flex:none}
 #settingsBasics #tmdbKey{margin:0}
 #settingsBasics #mediaSettings .panel-actions{margin:0}
-#settingsModels{display:grid;flex:1;grid-template-columns:minmax(0,1.12fr) minmax(0,1fr);gap:16px}
-#settingsModels:has(#openSubtitlesSettings){grid-template-rows:1fr auto}
-#settingsModels:has(#openSubtitlesSettings)>.sync-item:has(#mediaAISettings){grid-row:span 2}
-#settingsModels>.sync-item:has(#openSubtitlesSettings){grid-column:2}
+#settingsModels{display:grid;flex:1 0 245px;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:minmax(0,1fr);gap:16px}
 #settingsModels:has(>:only-child){grid-template-columns:minmax(0,1fr)}#settingsModels:empty{display:none}
 #workspaceSettings .sync-item{margin:0;padding:0;border:0;background:transparent;min-inline-size:0}#workspaceSettings h3>svg{width:18px;height:18px;flex:none;color:var(--accent)}
 #workspaceSettings .sync-item h3{display:flex;align-items:center;gap:8px;margin:0 0 8px;font-size:18px}
@@ -348,27 +344,18 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 #settingsBasics #cacheSettings{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
 #settingsBasics #cacheSettings>p{flex:1;min-width:min(100%,320px);margin:0}
 #settingsBasics #cacheSettings .panel-actions{align-items:center;margin:0}
-#settingsModels .sync-item{display:flex;flex-direction:column;padding:18px 20px;border:1px solid var(--border);border-radius:12px;background:var(--surface)}
+#settingsModels>.sync-item{display:flex;flex-direction:column;min-height:0;padding:18px 20px 12px;border:1px solid var(--border);border-radius:12px;background:var(--surface)}
 #settingsModels .sync-item:has(#mediaAISettings){background:var(--panel)}
-#settingsModels .sync-item h3{margin-bottom:12px;font-size:20px}
-#settingsModels .sync-item>section{display:flex;flex:1;flex-direction:column;gap:clamp(6px,1.6cqh,16px);min-width:0}
-#settingsModels .panel-actions{margin-top:auto;padding-top:8px;border-top:1px solid var(--border)}
-#settingsModels .sync-item:has(#openSubtitlesSettings){background:var(--rail)}
-#settingsModels .sync-item:has(#openSubtitlesSettings:not([open])){display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
-#settingsModels .sync-item:has(#openSubtitlesSettings:not([open])) h3{margin:0}
-#workspaceSettings:has(#openSubtitlesSettings[open]) #subtitleSettings{gap:2px}
-#workspaceSettings:has(#openSubtitlesSettings[open]) #subtitleSettings>label{margin-block:2px}
-#workspaceSettings:has(#openSubtitlesSettings[open]) #subtitleSettings>label:has(#subtitleLanguage){
-    display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:8px
-}
-#workspaceSettings:has(#openSubtitlesSettings[open]) #subtitleSettings .credential-head{display:grid;gap:0}
-#openSubtitlesSettings[open]{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;column-gap:10px}
-#openSubtitlesSettings[open]>label:has(#openSubtitlesKey),#subtitleAccountSettings{grid-column:1/-1}
+#settingsModels .sync-item h3{flex:none;margin-bottom:12px;font-size:20px}
+#settingsModels .sync-item>section{display:flex;flex:1;flex-direction:column;gap:clamp(4px,1cqh,10px);min-width:0;min-height:0;overflow:auto;scrollbar-width:thin}
+#settingsModels .sync-item>section>*{flex-shrink:0}
+#settingsModels .sync-item>section>.panel-actions{margin-top:auto;padding-top:8px;border-top:1px solid var(--border)}
+#openSubtitlesSettings{padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--rail)}
 #subtitleAccountSettings>div{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 #workspaceSettings label,#workspaceSettings p{overflow-wrap:anywhere}#workspaceSettings .sync-item label,#workspaceSettings p{margin:4px 0}#workspaceSettings p{line-height:1.45;color:var(--muted);font-size:14px}#workspaceSettings input,#workspaceSettings select{min-height:38px;padding:6px 9px;margin-top:4px;line-height:1.45}#workspaceSettings input[type=checkbox]{min-height:0;margin:3px 0 0}
 #workspaceSettings .panel-actions{gap:6px;margin:6px 0 0}#workspaceSettings button{padding:6px 9px;font-size:15px;line-height:1.4;min-height:35px}#workspaceSettings details[open]>summary{margin-bottom:7px}#workspaceSettings .credential-head{flex-wrap:wrap;gap:0 8px}#workspaceSettings .credential-head a{font-size:14px}
 #workspaceSettings :is(#saveMediaKey,#saveMediaAI,#saveSubtitleSettings){background:var(--button);border-color:var(--button);color:var(--button-text);font-weight:600}#workspaceSettings :is(#saveMediaKey,#saveMediaAI,#saveSubtitleSettings):hover:not(:disabled){background:var(--button-hover)}
-#settingsModels .sync-item:has(#mediaAISettings)>section{display:grid;grid-template-columns:minmax(0,.95fr) minmax(0,1.05fr);grid-template-rows:auto auto auto auto auto 1fr;column-gap:10px}#mediaAISettings>*{grid-column:1/-1}#mediaAISettings>label:has(#mediaAIProvider,#mediaAIModelSelect){grid-column:auto;min-width:0}#mediaAIState:empty{display:none}
+#settingsModels .sync-item:has(#mediaAISettings)>section{display:grid;grid-template-columns:minmax(0,.95fr) minmax(0,1.05fr);grid-auto-rows:max-content;column-gap:10px;align-content:start}#mediaAISettings>*{grid-column:1/-1}#mediaAISettings>label:has(#mediaAIProvider,#mediaAIModelSelect){grid-column:auto;min-width:0}#mediaAIState:empty{display:none}
 #toggle{display:grid;place-items:center;width:50px;height:50px;padding:0;border-radius:12px;background:var(--button);color:var(--button-text);box-shadow:0 5px 20px #0003}#toggle:hover:not(:disabled){background:var(--button-hover)}#toggle svg{width:24px;height:24px;pointer-events:none}#toggle[aria-expanded=true]{visibility:hidden}
 @container(max-width:1050px){
     .workspace-navigation{padding:12px 8px}
@@ -377,33 +364,24 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
     #settingsModels{gap:10px}#settingsModels .sync-item{padding:10px}#settingsModels .sync-item>section{gap:2px}
     .settings-appearance label{font-size:14px}
 }
-@container(max-height:660px){.settings-main{padding-bottom:8px}#workspaceSettings .sync-item label{margin:2px 0}#workspaceSettings .sync-item input:not([type=checkbox]),#workspaceSettings .sync-item select{min-height:34px;padding-block:4px}#settingsBasics{margin-top:5px}}
-@container(max-width:790px){.workspace-body{--surface-pad:12px}.workspace-navigation{width:134px}.settings-heading{flex-wrap:wrap}.settings-appearance{flex-wrap:wrap}#settingsModels{grid-template-columns:minmax(0,1fr);align-content:start}.tool-list-heading{flex-wrap:wrap;gap:5px}#subtitleFilters{margin-left:auto}}
+@container(max-height:660px){.settings-main{padding-bottom:8px}#workspaceSettings .sync-item label{margin:2px 0}#workspaceSettings .sync-item input:not([type=checkbox]),#workspaceSettings .sync-item select{min-height:34px;padding-block:4px}#settingsBasics{margin-bottom:8px}}
 @container(max-width:790px){
-    #settingsModels:has(#openSubtitlesSettings){grid-template-rows:auto}
-    #settingsModels:has(#openSubtitlesSettings)>.sync-item:has(#mediaAISettings){grid-row:auto}
-    #settingsModels>.sync-item:has(#openSubtitlesSettings){grid-column:auto}
+    .workspace-body{--surface-pad:12px}.workspace-navigation{width:134px}
+    .settings-heading,.settings-appearance{flex-wrap:wrap}
+    #settingsModels{grid-template-columns:minmax(0,1fr);grid-template-rows:auto;align-content:start;flex-basis:auto;flex-grow:0}
+    #settingsModels .sync-item>section{overflow:visible}
+    .tool-list-heading{flex-wrap:wrap;gap:5px}#subtitleFilters{margin-left:auto}
 }
 @container(max-height:660px){
     #workspaceSettings .settings-appearance{padding:0;gap:6px}
     #settingsModels .sync-item h3{margin-bottom:6px;font-size:18px}
-    #settingsModels .sync-item:has(#openSubtitlesSettings[open]){position:relative}
-    #settingsModels .sync-item:has(#openSubtitlesSettings[open]) h3{position:absolute;top:10px;left:10px}
-    #openSubtitlesSettings[open]>summary{grid-column:1/-1;justify-self:end;margin-left:145px}
-    #openSubtitlesSettings[open]>label:has(#useOpenSubtitles){grid-column:1/-1}
-    #workspaceSettings:has(#openSubtitlesSettings[open]) .settings-heading{margin-bottom:6px;padding-bottom:6px}
-    #workspaceSettings:has(#openSubtitlesSettings[open]) #settingsModels{gap:6px}
-    #workspaceSettings:has(#openSubtitlesSettings[open]) #subtitleSettings>label:has(#subtitleLanguage){
+    #subtitleSettings>label:has(#subtitleLanguage){
         display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:8px
     }
-    #workspaceSettings:has(#openSubtitlesSettings[open]) #subtitleLanguage{margin:0}
-    #workspaceSettings:has(#openSubtitlesSettings[open]) #mediaAISettings>label:has(#mediaAIBase,#mediaAIKey){
+    #subtitleSettings #subtitleLanguage{margin:0}
+    #mediaAISettings>label:has(#mediaAIBase,#mediaAIKey){
         display:grid;grid-template-columns:5em minmax(0,1fr);align-items:center;gap:6px
     }
-    #workspaceSettings:has(#openSubtitlesSettings[open]) #openSubtitlesSettings>label:has(#openSubtitlesKey){
-        display:flex;align-items:center;gap:8px
-    }
-    #workspaceSettings:has(#openSubtitlesSettings[open]) #openSubtitlesSettings .credential-head{flex:none}
 }
         </style><button id="toggle" type="button" title="打开云盘工具" aria-label="打开云盘工具" aria-haspopup="dialog" aria-expanded="false" aria-controls="toolDialog"></button>
         <div class="workspace-overlay" hidden><div class="box" id="toolDialog" role="dialog" aria-modal="false" aria-labelledby="workspaceTitle" tabindex="-1">
@@ -411,7 +389,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         <div class="workspace-toolbar"><div class="workspace-tabs" role="tablist" aria-label="功能分类"><button id="jsonTab" type="button" role="tab" aria-selected="false" aria-controls="jsonPane" tabindex="-1" disabled>跨盘清单</button><button id="subtitleTab" type="button" role="tab" aria-selected="false" aria-controls="subtitlePane" tabindex="-1" disabled title="当前网盘暂不支持字幕检查">影视整理</button></div>
         <label class="theme-row">窗口尺寸<select id="workspaceSize" aria-label="窗口尺寸"><option value="960x600">960 × 600</option><option value="1280x800" selected>1280 × 800（默认）</option><option value="1440x900">1440 × 900</option><option value="1600x1000">1600 × 1000</option></select></label>
         <label class="theme-row">外观<select id="theme"><option value="auto">跟随页面</option><option value="light">浅色</option><option value="dark">深色</option></select></label></div>
-        <div class="workspace-body"><section id="workspaceSettings" class="tool-pane" hidden><div class="settings-main"><div class="settings-heading"><h3>设置</h3><div id="settingsAppearance" class="settings-appearance"></div><button id="backToTools">返回工具</button></div><div class="settings-column" id="settingsModels"></div><div class="settings-column" id="settingsBasics"></div></div></section></div></div></div>`;
+        <div class="workspace-body"><section id="workspaceSettings" class="tool-pane" hidden><div class="settings-main"><div class="settings-heading"><h3>设置</h3><div id="settingsAppearance" class="settings-appearance"></div><button id="backToTools">返回工具</button></div><div class="settings-column" id="settingsBasics"></div><div class="settings-column" id="settingsModels"></div></div></section></div></div></div>`;
             const overlay = root.querySelector('.workspace-overlay'), dialog = root.querySelector('.box'), toggle = root.querySelector('#toggle');
             const frame = document.createElement('div'); frame.className = 'workspace-frame';
             const navigation = root.querySelector('.workspace-toolbar'); navigation.className = 'workspace-navigation';
@@ -592,7 +570,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         }, onActivate: callback => { entry.onActivate = callback; },
             moveSettings: (ids, headingTitle = title, destination = '#settingsBasics') => {
                 const section = document.createElement('fieldset'); section.className = 'sync-item'; section.style.minWidth = '0';
-                const heading = document.createElement('h3'); heading.textContent = headingTitle; const glyph = {mediaSettings:'key-round',mediaAISettings:'cpu',subtitleSettings:'languages',openSubtitlesSettings:'captions'}[ids[0]];
+                const heading = document.createElement('h3'); heading.textContent = headingTitle; const glyph = {mediaSettings:'key-round',mediaAISettings:'cpu',subtitleSettings:'languages'}[ids[0]];
                 if (glyph) heading.prepend(workspaceIcon(glyph));
                 section.appendChild(heading);
                 for (const name of ids) section.appendChild(ui.get(name));
