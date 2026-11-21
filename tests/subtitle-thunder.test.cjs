@@ -52,7 +52,8 @@ async function searchAndDownloads() {
     html=true;const rejected=await service.fetchFile(candidates[0],config);
     assert.throws(()=>ctx.subtitleValidateContent(r,rejected.bytes,'srt',language),/不是可识别/,'Downloaded HTML is never accepted as subtitle text');
     await service.thunderSearch(r,config);assert.equal(requests.length,1,'Repeated title query reuses parsed response cache');
-    service.logout();await service.thunderSearch(r,config);assert.equal(requests.length,2,'Logout clears search cache');
+    assert.ok(service.clearCache() > 0,'Cache manager reports removed subtitle query entries');
+    await service.thunderSearch(r,config);assert.equal(requests.length,2,'Clearing cache makes the next query request its source again');
     service.logout();response={code:0,data:[file('电影.2000.ass',{languages:['英语'],simple_name:'中英[ASS]电影.2000.ass'})]};
     candidates=await service.thunderSearch(r,config);assert.equal(candidates[0].bilingual,true,'simple_name supplements incomplete language metadata');
     service.logout();response={code:0,data:Array.from({length:80},(_,i)=>file('电影.2000.简体.'+i+'.srt'))};

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v3.0（重构版）
 // @namespace    local.cloud-media-organizer
-// @version      3.0.15
+// @version      3.0.16
 // @description  面向百度网盘、123 云盘和光鸭网盘的浏览器脚本，支持跨盘 JSON 清单、影视整理与字幕补齐。
 // @match        https://pan.baidu.com/*
 // @match        https://yun.baidu.com/*
@@ -40,7 +40,7 @@
     if (typeof navigator !== 'undefined' && (navigator.userAgentData?.mobile || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
         navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) return;
 
-    const VERSION = '3.0.15';
+    const VERSION = '3.0.16';
     let jsonTaskStopped = false;
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
@@ -761,6 +761,10 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 #workspaceSettings .sync-item{margin:0;padding:0;border:0;background:transparent;min-inline-size:0}#workspaceSettings h3>svg{width:18px;height:18px;flex:none;color:var(--accent)}
 #workspaceSettings .sync-item h3{display:flex;align-items:center;gap:8px;margin:0 0 8px;font-size:18px}
 #settingsBasics .sync-item{border-top:1px solid var(--border);padding-top:8px}#settingsBasics .sync-item h3{display:none}
+#settingsBasics .sync-item:has(#cacheSettings) h3{display:flex;margin-bottom:4px}
+#settingsBasics #cacheSettings{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+#settingsBasics #cacheSettings>p{flex:1;min-width:min(100%,320px);margin:0}
+#settingsBasics #cacheSettings .panel-actions{align-items:center;margin:0}
 #settingsModels .sync-item{display:flex;flex-direction:column;padding:18px 20px;border:1px solid var(--border);border-radius:12px;background:var(--surface)}
 #settingsModels .sync-item:has(#mediaAISettings){background:var(--panel)}
 #settingsModels .sync-item h3{margin-bottom:12px;font-size:20px}
@@ -3044,6 +3048,11 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         return {videos, linked, namesByParent, unmatched, refreshSubtitleLinks, readSubtitleLinks};
     }
     const tmdbClients = new Map();
+    function clearMediaRequestCaches() {
+        let cleared = 0;
+        for (const client of tmdbClients.values()) cleared += client.clearCache();
+        return cleared;
+    }
     /** Loads episode names and adds English aliases from matching episode IDs when available. */
     async function mediaSeasonEpisodes(client, seriesId, seasonNumber) {
         const path = '/tv/' + seriesId + '/season/' + seasonNumber;
@@ -3083,7 +3092,11 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             evict(cache, 500);
             return entry.promise;
         };
-        const client = { get, async search(query, earlyStop = null) {
+        const client = { get, clearCache() {
+            const size = cache.size;
+            cache.clear();
+            return size;
+        }, async search(query, earlyStop = null) {
             const first = await get('/search/multi', { query, include_adult: 'false' });
             const results = [...first.results], maxPage = Math.min(first.total_pages || 1, 5);
             for (let page = 2; !(earlyStop && await earlyStop(results)) && page <= maxPage; page++) {
@@ -5234,6 +5247,11 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         const searchCache = new Map();
         const seasonPreparations = new Map(), archiveCache = new Map(), transfers = new Map();
         let assrtEpisodes = new WeakMap();
+        const clearCache = () => {
+            const count = unavailableSources.size + workConflicts.size + searchCache.size + seasonPreparations.size + archiveCache.size;
+            unavailableSources.clear(); workConflicts.clear(); searchCache.clear(); seasonPreparations.clear(); archiveCache.clear(); assrtEpisodes = new WeakMap();
+            return count;
+        };
         const assrtRequest = paced(1500,async (endpoint,params,config,verify) => {
             verify();
             const result = await subtitleRemoteJson('https://api.assrt.net/v1/sub/' + endpoint,{method:'POST',
@@ -5643,7 +5661,8 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 if (!row.parsed.tv || row.parsed.season == null || row.parsed.episode == null || row.parsed.endEpisode && row.parsed.endEpisode !== row.parsed.episode) return [];
                 return this.subdlSearch(row,{...config,seasonSearch:true,subdlCacheOnly:true},onFiles,verify,report);
             },
-            logout() { token = ''; tokenKey = ''; searchCache.clear(); seasonPreparations.clear(); archiveCache.clear(); workConflicts.clear(); },
+            logout() { token = ''; tokenKey = ''; clearCache(); },
+            clearCache,
             async login(username, password, config) {
                 token = ''; tokenKey = '';
                 if (!username || !password) throw new Error('请输入 OpenSubtitles 用户名和密码');
@@ -6596,7 +6615,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 GM_setValue(verifiedKey,[...verifiedEntries]);
             },
             forget(node) { if (verifiedEntries.delete(verifiedIdentity(node)) && verifiedKey) GM_setValue(verifiedKey,[...verifiedEntries]); },
-            clear() { verifiedEntries.clear(); if (verifiedKey) GM_setValue(verifiedKey,[]); }
+            clear() { const count = verifiedEntries.size; verifiedEntries.clear(); if (verifiedKey) GM_setValue(verifiedKey,[]); return count; }
         };
         const savedReceipts = receiptKey && GM_getValue(receiptKey, []);
         const receipts = new Map(Array.isArray(savedReceipts) ? savedReceipts.filter(entry => Array.isArray(entry) && typeof entry[0] === 'string' && entry[1] && typeof entry[1].name === 'string' && Number.isSafeInteger(entry[1].size) && /^[a-f0-9]{32}$/i.test(entry[1].md5 || '')) : []);
@@ -7076,10 +7095,15 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             <label>字幕语言<select id="subtitleLanguage" title="中文优先双语、简体，再繁体。"><option value="zh-cn,zh-tw,zh">中文（简体 / 繁体）</option><option value="zh-cn">简体中文</option><option value="zh-tw">繁体中文</option><option value="en">英文</option></select></label>
             <div class="panel-actions"><button id="saveSubtitleSettings">保存设置</button><button id="forgetSubtitleKey">清除凭证</button></div>
             </section>
+            <section id="cacheSettings">
+            <p>清理字幕搜索、压缩包、TMDB 查询缓存和当前账号的字幕正文核验缓存。不会清除密钥、整理记录或上传恢复记录。</p>
+            <div class="panel-actions"><button id="clearAppCache" type="button">清理缓存</button><span id="cacheClearState" role="status" aria-live="polite"></span></div>
+            </section>
             <details id="subtitleDiagnostics" name="subtitleFooter"><summary>${flow ? '详细日志' : '字幕运行日志'}</summary><div class="panel-actions"><button id="copySubtitleLog">复制日志</button><button id="clearSubtitleLog">清空日志</button></div><textarea id="subtitleLog" readonly spellcheck="false" aria-label="字幕运行日志"></textarea></details>
 `, 'subtitle');
         ui.moveSettings(['subtitleSettings'], '字幕来源与设置', '#settingsModels');
         ui.moveSettings(['openSubtitlesSettings'], 'OpenSubtitles', '#settingsModels');
+        ui.moveSettings(['cacheSettings'], '缓存管理', '#settingsBasics');
         let inventory = [], drive = null, subtitleContext = null, checkedScope = null, deletePlan = null, busy = false, cancelled = false, reviewCandidates = null;
         const deleteSelection = new Set(), pendingDeletes = new Set();
         let scan = null, searching = false, seasonView = null, importDraft = null, importPicker = null;
@@ -8307,6 +8331,21 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             const currentDrive = drive || subtitleDrive({session:provider === '光鸭' ? {provider,token:capture.token} : recover123Session(),source:{}});
             currentDrive.verified?.clear();
             ui.get('openSubtitlesKey').value = ''; ui.get('subdlKey').value = ''; ui.get('assrtKey').value = ''; ui.get('subtitlePassword').value = ''; service.logout(); ui.get('subtitleLoginState').textContent = '未登录'; GM_setValue('cross-drive-subtitle-settings', settings()); status('已清除凭证和当前账号的字幕核验记录。');
+        };
+        ui.get('clearAppCache').onclick = () => {
+            const subtitleCount = service.clearCache();
+            const mediaCount = clearMediaRequestCaches();
+            let verificationStatus = '未找到当前账号的字幕核验记录';
+            try {
+                const session = provider === '光鸭' ? {provider,token:capture.token} : recover123Session();
+                if (session?.token) {
+                    const verifiedCount = subtitleDrive({session,source:{}}).verified.clear();
+                    verificationStatus = `已清理当前账号字幕正文核验记录 ${verifiedCount} 条`;
+                }
+            } catch (error) {
+                verificationStatus = '当前账号核验记录未清理：' + error.message;
+            }
+            ui.get('cacheClearState').textContent = `已清理运行期缓存 ${subtitleCount + mediaCount} 项（字幕 ${subtitleCount}，TMDB ${mediaCount}）；${verificationStatus}。`;
         };
         ui.get('loginSubtitles').onclick = () => runTask(async () => {
             try {

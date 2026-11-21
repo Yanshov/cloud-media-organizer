@@ -344,6 +344,11 @@
         const searchCache = new Map();
         const seasonPreparations = new Map(), archiveCache = new Map(), transfers = new Map();
         let assrtEpisodes = new WeakMap();
+        const clearCache = () => {
+            const count = unavailableSources.size + workConflicts.size + searchCache.size + seasonPreparations.size + archiveCache.size;
+            unavailableSources.clear(); workConflicts.clear(); searchCache.clear(); seasonPreparations.clear(); archiveCache.clear(); assrtEpisodes = new WeakMap();
+            return count;
+        };
         const assrtRequest = paced(1500,async (endpoint,params,config,verify) => {
             verify();
             const result = await subtitleRemoteJson('https://api.assrt.net/v1/sub/' + endpoint,{method:'POST',
@@ -753,7 +758,8 @@
                 if (!row.parsed.tv || row.parsed.season == null || row.parsed.episode == null || row.parsed.endEpisode && row.parsed.endEpisode !== row.parsed.episode) return [];
                 return this.subdlSearch(row,{...config,seasonSearch:true,subdlCacheOnly:true},onFiles,verify,report);
             },
-            logout() { token = ''; tokenKey = ''; searchCache.clear(); seasonPreparations.clear(); archiveCache.clear(); workConflicts.clear(); },
+            logout() { token = ''; tokenKey = ''; clearCache(); },
+            clearCache,
             async login(username, password, config) {
                 token = ''; tokenKey = '';
                 if (!username || !password) throw new Error('请输入 OpenSubtitles 用户名和密码');
@@ -1706,7 +1712,7 @@
                 GM_setValue(verifiedKey,[...verifiedEntries]);
             },
             forget(node) { if (verifiedEntries.delete(verifiedIdentity(node)) && verifiedKey) GM_setValue(verifiedKey,[...verifiedEntries]); },
-            clear() { verifiedEntries.clear(); if (verifiedKey) GM_setValue(verifiedKey,[]); }
+            clear() { const count = verifiedEntries.size; verifiedEntries.clear(); if (verifiedKey) GM_setValue(verifiedKey,[]); return count; }
         };
         const savedReceipts = receiptKey && GM_getValue(receiptKey, []);
         const receipts = new Map(Array.isArray(savedReceipts) ? savedReceipts.filter(entry => Array.isArray(entry) && typeof entry[0] === 'string' && entry[1] && typeof entry[1].name === 'string' && Number.isSafeInteger(entry[1].size) && /^[a-f0-9]{32}$/i.test(entry[1].md5 || '')) : []);

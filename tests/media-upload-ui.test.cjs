@@ -34,6 +34,9 @@ async function tmdbSearchAndEpisodeAliases() {
     const client=clientContext.tmdbClient('fixture-token');
     const early=await client.search('Film',results=>results.length===1);assert.equal(early.length,1);assert.equal(calls,1,'Unique first-page match stops pagination');
     calls=0;const later=await client.search('Other',results=>results.length>=3);assert.equal(later.length,3);assert.equal(calls,3,'Search continues only until callback accepts accumulated results');
+    assert.ok(clientContext.clearMediaRequestCaches()>0,'Cache manager removes TMDB request entries');
+    await client.get('/search/multi',{query:'Other',include_adult:'false',page:2});assert.equal(calls,4,'Clearing request cache makes TMDB fetch the page again');
+    await client.get('/search/multi',{query:'Other',include_adult:'false',page:2});assert.equal(calls,4,'TMDB requests are cached again after clearing');
     const episodeContext=load(part('    async function mediaSeasonEpisodes(', '    function tmdbClient('));
     const season=await episodeContext.mediaSeasonEpisodes({get:async(path,params={})=>params.language==='en-US'?{episodes:[{episode_number:1,name:'Crimson Sky'}]}:{air_date:'2024-01-01',episodes:[{episode_number:1,name:'血色天空'}]}},42,1);
     assert.equal(season.year,'2024');assert.deepEqual(Array.from(season.episodes[0].aliases),['血色天空','Crimson Sky']);
@@ -611,7 +614,7 @@ async function subtitleUI() {
     assert.doesNotMatch(panelMarkup,/重搜未完成项|复制完整报告|复制未补齐路径/);assert.match(panelMarkup,/id="openSubtitlesSettings"/);assert.match(panelMarkup,/id="subtitleAccountSettings"/);
     const openSettings=panelMarkup.slice(panelMarkup.indexOf('<details id="openSubtitlesSettings"'),panelMarkup.indexOf('<label>字幕语言'));
     assert.match(openSettings,/useOpenSubtitles[\s\S]*openSubtitlesKey[\s\S]*subtitleAccountSettings/);assert.doesNotMatch(openSettings,/^<details[^>]*\bopen\b/);
-    assert.deepEqual(Array.from(movedSettings),['subtitleSettings','openSubtitlesSettings']);
+    assert.deepEqual(Array.from(movedSettings),['subtitleSettings','openSubtitlesSettings','cacheSettings']);
     await ctx.checkInventory();
     assert.match(get('subtitleSummary').textContent,/检查未确认 1/);assert.equal(queries,0);assert.equal(get('fillSubtitles').disabled,true);assert.equal(elements.has('recheckSubtitles'),false);
     broken=false;await ctx.checkInventory();assert.match(get('subtitleSummary').textContent,/有字幕 1/);assert.equal(queries,0);assert.equal(reads,2);

@@ -344,6 +344,10 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 #workspaceSettings .sync-item{margin:0;padding:0;border:0;background:transparent;min-inline-size:0}#workspaceSettings h3>svg{width:18px;height:18px;flex:none;color:var(--accent)}
 #workspaceSettings .sync-item h3{display:flex;align-items:center;gap:8px;margin:0 0 8px;font-size:18px}
 #settingsBasics .sync-item{border-top:1px solid var(--border);padding-top:8px}#settingsBasics .sync-item h3{display:none}
+#settingsBasics .sync-item:has(#cacheSettings) h3{display:flex;margin-bottom:4px}
+#settingsBasics #cacheSettings{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+#settingsBasics #cacheSettings>p{flex:1;min-width:min(100%,320px);margin:0}
+#settingsBasics #cacheSettings .panel-actions{align-items:center;margin:0}
 #settingsModels .sync-item{display:flex;flex-direction:column;padding:18px 20px;border:1px solid var(--border);border-radius:12px;background:var(--surface)}
 #settingsModels .sync-item:has(#mediaAISettings){background:var(--panel)}
 #settingsModels .sync-item h3{margin-bottom:12px;font-size:20px}

@@ -260,10 +260,15 @@
             <label>字幕语言<select id="subtitleLanguage" title="中文优先双语、简体，再繁体。"><option value="zh-cn,zh-tw,zh">中文（简体 / 繁体）</option><option value="zh-cn">简体中文</option><option value="zh-tw">繁体中文</option><option value="en">英文</option></select></label>
             <div class="panel-actions"><button id="saveSubtitleSettings">保存设置</button><button id="forgetSubtitleKey">清除凭证</button></div>
             </section>
+            <section id="cacheSettings">
+            <p>清理字幕搜索、压缩包、TMDB 查询缓存和当前账号的字幕正文核验缓存。不会清除密钥、整理记录或上传恢复记录。</p>
+            <div class="panel-actions"><button id="clearAppCache" type="button">清理缓存</button><span id="cacheClearState" role="status" aria-live="polite"></span></div>
+            </section>
             <details id="subtitleDiagnostics" name="subtitleFooter"><summary>${flow ? '详细日志' : '字幕运行日志'}</summary><div class="panel-actions"><button id="copySubtitleLog">复制日志</button><button id="clearSubtitleLog">清空日志</button></div><textarea id="subtitleLog" readonly spellcheck="false" aria-label="字幕运行日志"></textarea></details>
 `, 'subtitle');
         ui.moveSettings(['subtitleSettings'], '字幕来源与设置', '#settingsModels');
         ui.moveSettings(['openSubtitlesSettings'], 'OpenSubtitles', '#settingsModels');
+        ui.moveSettings(['cacheSettings'], '缓存管理', '#settingsBasics');
         let inventory = [], drive = null, subtitleContext = null, checkedScope = null, deletePlan = null, busy = false, cancelled = false, reviewCandidates = null;
         const deleteSelection = new Set(), pendingDeletes = new Set();
         let scan = null, searching = false, seasonView = null, importDraft = null, importPicker = null;
@@ -1491,6 +1496,21 @@
             const currentDrive = drive || subtitleDrive({session:provider === '光鸭' ? {provider,token:capture.token} : recover123Session(),source:{}});
             currentDrive.verified?.clear();
             ui.get('openSubtitlesKey').value = ''; ui.get('subdlKey').value = ''; ui.get('assrtKey').value = ''; ui.get('subtitlePassword').value = ''; service.logout(); ui.get('subtitleLoginState').textContent = '未登录'; GM_setValue('cross-drive-subtitle-settings', settings()); status('已清除凭证和当前账号的字幕核验记录。');
+        };
+        ui.get('clearAppCache').onclick = () => {
+            const subtitleCount = service.clearCache();
+            const mediaCount = clearMediaRequestCaches();
+            let verificationStatus = '未找到当前账号的字幕核验记录';
+            try {
+                const session = provider === '光鸭' ? {provider,token:capture.token} : recover123Session();
+                if (session?.token) {
+                    const verifiedCount = subtitleDrive({session,source:{}}).verified.clear();
+                    verificationStatus = `已清理当前账号字幕正文核验记录 ${verifiedCount} 条`;
+                }
+            } catch (error) {
+                verificationStatus = '当前账号核验记录未清理：' + error.message;
+            }
+            ui.get('cacheClearState').textContent = `已清理运行期缓存 ${subtitleCount + mediaCount} 项（字幕 ${subtitleCount}，TMDB ${mediaCount}）；${verificationStatus}。`;
         };
         ui.get('loginSubtitles').onclick = () => runTask(async () => {
             try {

@@ -461,6 +461,11 @@
         return {videos, linked, namesByParent, unmatched, refreshSubtitleLinks, readSubtitleLinks};
     }
     const tmdbClients = new Map();
+    function clearMediaRequestCaches() {
+        let cleared = 0;
+        for (const client of tmdbClients.values()) cleared += client.clearCache();
+        return cleared;
+    }
     /** Loads episode names and adds English aliases from matching episode IDs when available. */
     async function mediaSeasonEpisodes(client, seriesId, seasonNumber) {
         const path = '/tv/' + seriesId + '/season/' + seasonNumber;
@@ -500,7 +505,11 @@
             evict(cache, 500);
             return entry.promise;
         };
-        const client = { get, async search(query, earlyStop = null) {
+        const client = { get, clearCache() {
+            const size = cache.size;
+            cache.clear();
+            return size;
+        }, async search(query, earlyStop = null) {
             const first = await get('/search/multi', { query, include_adult: 'false' });
             const results = [...first.results], maxPage = Math.min(first.total_pages || 1, 5);
             for (let page = 2; !(earlyStop && await earlyStop(results)) && page <= maxPage; page++) {

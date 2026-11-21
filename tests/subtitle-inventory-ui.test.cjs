@@ -16,6 +16,7 @@ const linked = new Map(['complete','invalid','pending'].map(id => [id,[{id:'s-' 
 const siblings = new Map(videos.map(video => [video.parentId,[video,...(linked.get(video.id)||[])]]));
 const elements = new Map(), queried = [], deleted = [];
 let reads = 0, saves = 0, empty = false, collectionError = false, pauseRead = null, recycleResult = null, panelBusy = false;
+let cacheClears = 0, mediaCacheClears = 0, verifiedCacheClears = 0, movedSettings = [];
 let season = [], missingEpisodes = new Set(), protectedEpisodes = new Set();
 let trackResult, restoreResult, listResult, reconcileResult, candidateResult, importWrite;
 const uploaded = [];
@@ -27,7 +28,7 @@ const ctx = vm.createContext({URL, TextEncoder, TextDecoder, Uint8Array, Date,
         for (const tag of html.matchAll(/<([^\s>]+)[^>]*\bid="([^"]+)"[^>]*>/g)) {
             const el = element(tag[1]); el.checked = /\bchecked\b/.test(tag[0]); el.disabled = /\bdisabled\b/.test(tag[0]); elements.set(tag[2],el);
         }
-        return {get,moveSettings(){},busy(value){panelBusy = value;}};
+        return {get,moveSettings(ids){movedSettings.push(...ids);},busy(value){panelBusy = value;}};
     },
     mediaFileHistory:()=>null,
     collectMediaSelection:async () => { if (listResult) await listResult; if (collectionError) throw Error('目录读取失败'); return {videos:empty ? [] : season.length ? season : videos,linked}; },
@@ -43,7 +44,7 @@ const ctx = vm.createContext({URL, TextEncoder, TextDecoder, Uint8Array, Date,
         const episode = name.match(/S(\d+)E(\d+)/);
         return episode ? {query:name.startsWith('第二部') ? '第二部' : '假面骑士双骑',year:2009,tv:true,season:Number(episode[1]),episode:Number(episode[2])} : {query:'同名影片',year:2020,tv:false};
     }, mediaBonusName:() => false, mediaRecords:{get:() => null,restore:(...args)=>restoreResult?.(...args)}, mediaStem:name => name.replace(/\.[^.]+$/,''),
-    createSubtitleService:() => ({thunderSearch:async row => {
+    createSubtitleService:() => ({clearCache:() => {cacheClears++;return 3;},thunderSearch:async row => {
         queried.push(row.node.id);
         if (candidateResult) return candidateResult(row);
         if (row.node.id === 'failure' || row.node.id === 'ep-48') throw Object.assign(Error('来源连接失败'),{phase:'subtitle-source'});
@@ -52,7 +53,9 @@ const ctx = vm.createContext({URL, TextEncoder, TextDecoder, Uint8Array, Date,
         return row.node.id === 'ready' ? [{source:'迅雷',name:'同名影片.2020.简体.srt',ext:'srt',language:'zh-cn',titleMatched:true}] : [];
     },fetchFile:async candidate => ({result:{ext:'srt',fileName:candidate.ext === 'zip'
         ? '剧名.S01E0'+candidate.parsed.episode+'.简体.srt' : candidate.name},bytes:valid})}),
-    subtitleDrive:() => ({verified:{get(){},forget(){}},reconcile:async row => { await reconcileResult?.(row); return []; },
+    recover123Session:() => ({provider:'123',token:'test',base:'https://drive.example'}),
+    clearMediaRequestCaches:() => {mediaCacheClears++;return 2;},
+    subtitleDrive:() => ({verified:{get(){},forget(){},clear(){verifiedCacheClears++;return 5;}},reconcile:async row => { await reconcileResult?.(row); return []; },
         inspectEmbedded:async node => {
             if (trackResult) return trackResult(node);
             if (!node.id.startsWith('ep-')) return;
@@ -125,6 +128,12 @@ const view = value => {get('subtitleView').value = value; get('subtitleView').on
     stateRow.organizePending=true;state=stateContext.videoState(stateRow);
     assert.equal(state.execution,'unconfirmed');assert.match(state.blocker,/待核对/);
     ctx.initSubtitles();
+    assert.ok(movedSettings.includes('cacheSettings'),'Cache management appears in Settings');
+    assert.equal(typeof get('clearAppCache').onclick,'function','Cache clear button is wired');
+    get('clearAppCache').onclick();
+    assert.deepEqual([cacheClears,mediaCacheClears,verifiedCacheClears],[1,1,1]);
+    assert.match(get('cacheClearState').textContent,/字幕 3，TMDB 2/);
+    assert.match(get('cacheClearState').textContent,/正文核验记录 5 条/);
     assert.equal(get('subtitleView').value,'incomplete');
     assert.equal(elements.has('recheckSubtitles'),false);
     let releaseRead;
