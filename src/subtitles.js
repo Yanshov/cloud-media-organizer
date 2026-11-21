@@ -1599,19 +1599,25 @@
     }
     async function inspectMkvSubtitleTracks(size, readRange, check = () => {}) {
         if (!Number.isSafeInteger(size) || size < 1) throw new Error('视频大小未知，无法安全分段读取');
-        const windowSize = 64 * 1024, windows = new Map();
+        const windowSize = 4 * 1024, maxWindows = 128, windows = new Map();
         const read = async (offset, length) => {
-            if (!Number.isSafeInteger(offset + length) || offset + length > size) throw new Error('MKV 元素超出文件范围');
+            if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(length) || length < 0
+                || !Number.isSafeInteger(offset + length) || offset + length > size) throw new Error('MKV 元素超出文件范围');
             const result = new Uint8Array(length);
             for (let written = 0; written < length;) {
                 check();
                 const position = offset + written, start = Math.floor(position / windowSize) * windowSize;
                 if (!windows.has(start)) {
-                    if (windows.size >= 8) throw new Error('达到 512 KiB 分段读取上限');
-                    const end = Math.min(start + windowSize, size);
+                    if (windows.size >= maxWindows) throw new Error('达到 512 KiB 分段读取上限');
+                    let end = Math.min(Math.ceil((offset + length) / windowSize) * windowSize,
+                        start + (maxWindows - windows.size) * windowSize, size);
+                    for (let next = start + windowSize; next < end; next += windowSize) {
+                        if (windows.has(next)) { end = next; break; }
+                    }
                     const bytes = await readRange(start, end - 1); check();
                     if (bytes.length !== end - start) throw new Error('MKV 片段长度不正确');
-                    windows.set(start, bytes);
+                    for (let next = start; next < end; next += windowSize)
+                        windows.set(next, bytes.subarray(next - start, next - start + windowSize));
                 }
                 const chunk = windows.get(start).subarray(position - start, position - start + length - written);
                 result.set(chunk, written); written += chunk.length;
@@ -1650,8 +1656,44 @@
                 offset = field.end;
             }
         }
+        async function* childrenAt(start, limit) {
+            for (let offset = start; offset < limit;) {
+                const field = await at(offset, limit);
+                if (field.unknown) throw new Error('MKV 元数据包含未知长度的元素');
+                yield field;
+                offset = field.end;
+            }
+        }
+        const readTracks = async tracks => {
+            let chinese = false, entries = 0;
+            for await (const entry of childrenAt(tracks.data, tracks.end)) {
+                if (entry.id !== 0xae) continue;
+                entries++;
+                const fields = [];
+                // Skip codec payloads and read only the track's type, language and name.
+                for await (const field of childrenAt(entry.data, entry.end)) fields.push(field);
+                const types = fields.filter(item => item.id === 0x83), type = types[0];
+                if (types.length !== 1 || type.end - type.data < 1 || type.end - type.data > 8) throw new Error('MKV 轨道缺少有效的类型信息');
+                const bytes = await read(type.data, type.end - type.data);
+                if (bytes.at(-1) !== 0x11 || !bytes.subarray(0, -1).every(value => value === 0)) continue;
+                const enabled = fields.find(item => item.id === 0xb9);
+                if (enabled) {
+                    if (enabled.end - enabled.data < 1 || enabled.end - enabled.data > 8) throw new Error('MKV 轨道启用信息无效');
+                    if ((await read(enabled.data, enabled.end - enabled.data)).every(value => value === 0)) continue;
+                }
+                const readText = async field => {
+                    if (!field) return '';
+                    if (field.end - field.data > 64 * 1024) throw new Error('MKV 轨道文本超过读取上限');
+                    return new TextDecoder().decode(await read(field.data, field.end - field.data)).replace(/\0+$/, '').trim();
+                };
+                const tag = fields.find(item => item.id === 0x22b59d) || fields.find(item => item.id === 0x22b59c);
+                if (mkvChineseSubtitle(await readText(tag), await readText(fields.find(item => item.id === 0x536e)))) chinese = true;
+            }
+            if (!entries) throw new Error('MKV 轨道表没有有效轨道');
+            return chinese;
+        };
         const ebml = await at(0, size);
-        if (ebml.id !== 0x1a45dfa3 || ebml.unknown || ebml.end - ebml.data > windowSize) throw new Error('不是有效的 MKV 文件头');
+        if (ebml.id !== 0x1a45dfa3 || ebml.unknown || ebml.end - ebml.data > 64 * 1024) throw new Error('不是有效的 MKV 文件头');
         const metadata = await read(ebml.data, ebml.end - ebml.data);
         const docType = [...children(metadata)].find(field => field.id === 0x4282);
         if (!docType || new TextDecoder().decode(metadata.subarray(docType.data, docType.end)) !== 'matroska') throw new Error('视频容器不是 Matroska');
@@ -1666,28 +1708,31 @@
         for (let next = segment.data, count = 0; next < segment.end && count < 128; count++) {
             const field = await at(next, segment.end);
             if (field.unknown) throw new Error('遇到未知长度的 MKV 元素，无法继续定位轨道表');
-            if (field.id === 0x1654ae6b) {
-                const length = field.end - field.data;
-                if (length > windowSize * 8) throw new Error('MKV 轨道表超过读取上限');
-                const tracks = await read(field.data, length);
-                let chinese = false, entries = 0;
-                for (const entry of children(tracks)) {
-                    if (entry.id !== 0xae) continue;
-                    entries++;
-                    const fields = [...children(tracks, entry.data, entry.end)];
-                    const types = fields.filter(item => item.id === 0x83);
-                    const type = types[0];
-                    if (types.length !== 1 || type.end - type.data < 1 || type.end - type.data > 8) throw new Error('MKV 轨道缺少有效的类型信息');
-                    const bytes = tracks.subarray(type.data, type.end);
-                    if (bytes.at(-1) !== 0x11 || !bytes.subarray(0, -1).every(value => value === 0)) continue;
-                    const enabled = fields.find(item => item.id === 0xb9);
-                    if (enabled && tracks.subarray(enabled.data, enabled.end).every(value => value === 0)) continue;
-                    const readText = field => field ? new TextDecoder().decode(tracks.subarray(field.data, field.end)).replace(/\0+$/, '').trim() : '';
-                    const tag = fields.find(item => item.id === 0x22b59d) || fields.find(item => item.id === 0x22b59c);
-                    if (mkvChineseSubtitle(readText(tag), readText(fields.find(item => item.id === 0x536e)))) chinese = true;
+            if (field.id === 0x1654ae6b) return readTracks(field);
+            if (field.id === 0x114d9b74 && field.end - field.data <= 64 * 1024) {
+                const seekHead = await read(field.data, field.end - field.data);
+                const positions = [];
+                try {
+                    for (const entry of children(seekHead)) {
+                        if (entry.id !== 0x4dbb) continue;
+                        const fields = [...children(seekHead, entry.data, entry.end)];
+                        const id = fields.find(item => item.id === 0x53ab), position = fields.find(item => item.id === 0x53ac);
+                        if (!id || id.end - id.data !== 4 || !position || position.end - position.data < 1 || position.end - position.data > 8) continue;
+                        if (new DataView(seekHead.buffer, seekHead.byteOffset + id.data, 4).getUint32(0) !== 0x1654ae6b) continue;
+                        let offset = 0;
+                        for (const byte of seekHead.subarray(position.data, position.end)) offset = offset * 256 + byte;
+                        // SeekPosition is relative to the Segment payload, not the file.
+                        const target = segment.data + offset;
+                        if (Number.isSafeInteger(target) && target >= segment.data && target < segment.end) positions.push(target);
+                    }
+                } catch { positions.length = 0; } // A damaged optional index falls back to sequential headers.
+                for (const target of positions) {
+                    const bytes = await read(target, Math.min(12, segment.end - target));
+                    let tracks;
+                    try { tracks = header(bytes, target, segment.end); }
+                    catch { continue; }
+                    if (tracks.id === 0x1654ae6b && !tracks.unknown) return readTracks(tracks);
                 }
-                if (!entries) throw new Error('MKV 轨道表没有有效轨道');
-                return chinese;
             }
             next = field.end;
         }

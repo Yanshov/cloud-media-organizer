@@ -337,7 +337,10 @@
                 row.autoCandidates?.some(candidate => !candidate.downloadFailed && !subtitleCandidateNameIssue(row,candidate))
                 || row.sources?.some(source => source.deferred || source.deferredTerms?.length)
             ));
-        const eligibleFill = rows => mergedSubtitleFillTargets(rows,readyToFill,covered);
+        const eligibleFill = rows => {
+            const available = new Set(mergedSubtitleFillTargets(inventory,readyToFill,covered));
+            return rows.filter(row => available.has(row));
+        };
         const videoState = (row, fillTargets = null) => {
             const media = row.media;
             const coverage = awaitingCheck(row) ? row.checkState : subtitleCoverageState(row);
@@ -733,6 +736,7 @@
                 }
                 if (flow && checkedScope !== null) {
                     const actionRows = rows.filter(row => !row.organized && !row.organizePending && !covered(row) && subtitleCoverageState(row) === 'missing');
+                    const unconfirmed = rows.filter(row => !row.organized && !row.organizePending && !covered(row) && subtitleCoverageState(row) === 'unconfirmed');
                     const knownSeason = !season || first.parsed.season != null && actionRows.every(row => row.parsed.episode != null);
                     const fill = eligibleFill(rows);
                     const foundCount = actionRows.filter(row => row.autoCandidates?.length).length;
@@ -747,7 +751,8 @@
                         if (season && !fill.length && actionRows.some(row => row.cardSearched)) {
                             const note = document.createElement('p');
                             const blocked = actionRows.find(row => subtitleCandidateNameIssue(row,row.selectedCandidate));
-                            note.textContent = '已找到候选 ' + foundCount + '/' + actionRows.length + ' 集 · ' + (foundCount < actionRows.length
+                            note.textContent = '已找到候选 ' + foundCount + '/' + (actionRows.length + unconfirmed.length) + ' 集 · ' + (unconfirmed.length
+                                ? unconfirmed.length + ' 集字幕检查未确认，请复查已有字幕' : foundCount < actionRows.length
                                 ? '整季候选不完整，可导入字幕' : blocked ? subtitleCandidateNameIssue(blocked,blocked.selectedCandidate) : '整季补齐条件未通过，请查看日志');
                             box.append(note);
                         } else if (season && fill.length) {
@@ -905,6 +910,9 @@
             if (!config.assrtKey && !config.thunder && !(config.open && config.key) && !(config.subdl && config.subdlKey)) { ui.openSettings('subtitleSettings'); status('请启用迅雷免 Key 搜索，或配置其他字幕来源。'); return; }
             meter(0,rows.length);
             diag('查找开始', `视频 ${rows.length}，语言 ${config.language}，启用来源：${[config.assrtKey && '射手网整季包',config.thunder && '迅雷', config.subdl && 'SubDL', config.open && config.key && 'OpenSubtitles'].filter(Boolean).join('、') || '无'}`);
+            const searchedGroups = new Set(rows.map(row => row.groupKey));
+            const unconfirmed = inventory.filter(row => searchedGroups.has(row.groupKey) && subtitleCoverageState(row) === 'unconfirmed');
+            for (const row of unconfirmed) diag('查找跳过', row.node.name + ' · 字幕检查未确认 · ' + (row.embedded?.message || row.searchMessage || row.error || '请复查已有字幕'));
             if (!config.thunder) diag('来源跳过', '迅雷 已关闭');
             if (!config.open) diag('来源跳过', 'OpenSubtitles 已关闭');
             else if (!config.key) diag('来源跳过', 'OpenSubtitles 未配置 API Key');
@@ -993,7 +1001,8 @@
                 const sourceFailures = rows.filter(row => row.sources?.some(source => source.error || source.paused || source.cacheError
                     || source.queries?.some(query => query.error))).length;
                 const message = '已处理 ' + done + '/' + rows.length + ' · ' + (sourceFailures ? sourceFailures + ' 项遇到来源错误 · ' : '')
-                    + (flow ? '找到候选 ' + rows.filter(row => row.autoCandidates?.length).length + ' · 可补齐 ' + eligibleFill(rows).length : subtitleSearchSummary(rows,searchLabels));
+                    + (flow ? '找到候选 ' + rows.filter(row => row.autoCandidates?.length).length + ' · 可补齐 ' + eligibleFill(rows).length : subtitleSearchSummary(rows,searchLabels))
+                    + (unconfirmed.length ? ' · 同组字幕检查未确认 ' + unconfirmed.length + ' 项，请复查已有字幕' : '');
                 status('查找结束 · ' + message); diag('查找结束',message);
             } catch (error) {
                 const message = '已处理 ' + done + '/' + rows.length + ' · ' + error.message;

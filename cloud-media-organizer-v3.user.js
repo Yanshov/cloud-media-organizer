@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v3.0（重构版）
 // @namespace    local.cloud-media-organizer
-// @version      3.0.16
+// @version      3.0.17
 // @description  面向百度网盘、123 云盘和光鸭网盘的浏览器脚本，支持跨盘 JSON 清单、影视整理与字幕补齐。
 // @match        https://pan.baidu.com/*
 // @match        https://yun.baidu.com/*
@@ -40,7 +40,7 @@
     if (typeof navigator !== 'undefined' && (navigator.userAgentData?.mobile || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
         navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) return;
 
-    const VERSION = '3.0.16';
+    const VERSION = '3.0.17';
     let jsonTaskStopped = false;
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
@@ -6502,19 +6502,25 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
     }
     async function inspectMkvSubtitleTracks(size, readRange, check = () => {}) {
         if (!Number.isSafeInteger(size) || size < 1) throw new Error('视频大小未知，无法安全分段读取');
-        const windowSize = 64 * 1024, windows = new Map();
+        const windowSize = 4 * 1024, maxWindows = 128, windows = new Map();
         const read = async (offset, length) => {
-            if (!Number.isSafeInteger(offset + length) || offset + length > size) throw new Error('MKV 元素超出文件范围');
+            if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(length) || length < 0
+                || !Number.isSafeInteger(offset + length) || offset + length > size) throw new Error('MKV 元素超出文件范围');
             const result = new Uint8Array(length);
             for (let written = 0; written < length;) {
                 check();
                 const position = offset + written, start = Math.floor(position / windowSize) * windowSize;
                 if (!windows.has(start)) {
-                    if (windows.size >= 8) throw new Error('达到 512 KiB 分段读取上限');
-                    const end = Math.min(start + windowSize, size);
+                    if (windows.size >= maxWindows) throw new Error('达到 512 KiB 分段读取上限');
+                    let end = Math.min(Math.ceil((offset + length) / windowSize) * windowSize,
+                        start + (maxWindows - windows.size) * windowSize, size);
+                    for (let next = start + windowSize; next < end; next += windowSize) {
+                        if (windows.has(next)) { end = next; break; }
+                    }
                     const bytes = await readRange(start, end - 1); check();
                     if (bytes.length !== end - start) throw new Error('MKV 片段长度不正确');
-                    windows.set(start, bytes);
+                    for (let next = start; next < end; next += windowSize)
+                        windows.set(next, bytes.subarray(next - start, next - start + windowSize));
                 }
                 const chunk = windows.get(start).subarray(position - start, position - start + length - written);
                 result.set(chunk, written); written += chunk.length;
@@ -6553,8 +6559,44 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 offset = field.end;
             }
         }
+        async function* childrenAt(start, limit) {
+            for (let offset = start; offset < limit;) {
+                const field = await at(offset, limit);
+                if (field.unknown) throw new Error('MKV 元数据包含未知长度的元素');
+                yield field;
+                offset = field.end;
+            }
+        }
+        const readTracks = async tracks => {
+            let chinese = false, entries = 0;
+            for await (const entry of childrenAt(tracks.data, tracks.end)) {
+                if (entry.id !== 0xae) continue;
+                entries++;
+                const fields = [];
+                // Skip codec payloads and read only the track's type, language and name.
+                for await (const field of childrenAt(entry.data, entry.end)) fields.push(field);
+                const types = fields.filter(item => item.id === 0x83), type = types[0];
+                if (types.length !== 1 || type.end - type.data < 1 || type.end - type.data > 8) throw new Error('MKV 轨道缺少有效的类型信息');
+                const bytes = await read(type.data, type.end - type.data);
+                if (bytes.at(-1) !== 0x11 || !bytes.subarray(0, -1).every(value => value === 0)) continue;
+                const enabled = fields.find(item => item.id === 0xb9);
+                if (enabled) {
+                    if (enabled.end - enabled.data < 1 || enabled.end - enabled.data > 8) throw new Error('MKV 轨道启用信息无效');
+                    if ((await read(enabled.data, enabled.end - enabled.data)).every(value => value === 0)) continue;
+                }
+                const readText = async field => {
+                    if (!field) return '';
+                    if (field.end - field.data > 64 * 1024) throw new Error('MKV 轨道文本超过读取上限');
+                    return new TextDecoder().decode(await read(field.data, field.end - field.data)).replace(/\0+$/, '').trim();
+                };
+                const tag = fields.find(item => item.id === 0x22b59d) || fields.find(item => item.id === 0x22b59c);
+                if (mkvChineseSubtitle(await readText(tag), await readText(fields.find(item => item.id === 0x536e)))) chinese = true;
+            }
+            if (!entries) throw new Error('MKV 轨道表没有有效轨道');
+            return chinese;
+        };
         const ebml = await at(0, size);
-        if (ebml.id !== 0x1a45dfa3 || ebml.unknown || ebml.end - ebml.data > windowSize) throw new Error('不是有效的 MKV 文件头');
+        if (ebml.id !== 0x1a45dfa3 || ebml.unknown || ebml.end - ebml.data > 64 * 1024) throw new Error('不是有效的 MKV 文件头');
         const metadata = await read(ebml.data, ebml.end - ebml.data);
         const docType = [...children(metadata)].find(field => field.id === 0x4282);
         if (!docType || new TextDecoder().decode(metadata.subarray(docType.data, docType.end)) !== 'matroska') throw new Error('视频容器不是 Matroska');
@@ -6569,28 +6611,31 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         for (let next = segment.data, count = 0; next < segment.end && count < 128; count++) {
             const field = await at(next, segment.end);
             if (field.unknown) throw new Error('遇到未知长度的 MKV 元素，无法继续定位轨道表');
-            if (field.id === 0x1654ae6b) {
-                const length = field.end - field.data;
-                if (length > windowSize * 8) throw new Error('MKV 轨道表超过读取上限');
-                const tracks = await read(field.data, length);
-                let chinese = false, entries = 0;
-                for (const entry of children(tracks)) {
-                    if (entry.id !== 0xae) continue;
-                    entries++;
-                    const fields = [...children(tracks, entry.data, entry.end)];
-                    const types = fields.filter(item => item.id === 0x83);
-                    const type = types[0];
-                    if (types.length !== 1 || type.end - type.data < 1 || type.end - type.data > 8) throw new Error('MKV 轨道缺少有效的类型信息');
-                    const bytes = tracks.subarray(type.data, type.end);
-                    if (bytes.at(-1) !== 0x11 || !bytes.subarray(0, -1).every(value => value === 0)) continue;
-                    const enabled = fields.find(item => item.id === 0xb9);
-                    if (enabled && tracks.subarray(enabled.data, enabled.end).every(value => value === 0)) continue;
-                    const readText = field => field ? new TextDecoder().decode(tracks.subarray(field.data, field.end)).replace(/\0+$/, '').trim() : '';
-                    const tag = fields.find(item => item.id === 0x22b59d) || fields.find(item => item.id === 0x22b59c);
-                    if (mkvChineseSubtitle(readText(tag), readText(fields.find(item => item.id === 0x536e)))) chinese = true;
+            if (field.id === 0x1654ae6b) return readTracks(field);
+            if (field.id === 0x114d9b74 && field.end - field.data <= 64 * 1024) {
+                const seekHead = await read(field.data, field.end - field.data);
+                const positions = [];
+                try {
+                    for (const entry of children(seekHead)) {
+                        if (entry.id !== 0x4dbb) continue;
+                        const fields = [...children(seekHead, entry.data, entry.end)];
+                        const id = fields.find(item => item.id === 0x53ab), position = fields.find(item => item.id === 0x53ac);
+                        if (!id || id.end - id.data !== 4 || !position || position.end - position.data < 1 || position.end - position.data > 8) continue;
+                        if (new DataView(seekHead.buffer, seekHead.byteOffset + id.data, 4).getUint32(0) !== 0x1654ae6b) continue;
+                        let offset = 0;
+                        for (const byte of seekHead.subarray(position.data, position.end)) offset = offset * 256 + byte;
+                        // SeekPosition is relative to the Segment payload, not the file.
+                        const target = segment.data + offset;
+                        if (Number.isSafeInteger(target) && target >= segment.data && target < segment.end) positions.push(target);
+                    }
+                } catch { positions.length = 0; } // A damaged optional index falls back to sequential headers.
+                for (const target of positions) {
+                    const bytes = await read(target, Math.min(12, segment.end - target));
+                    let tracks;
+                    try { tracks = header(bytes, target, segment.end); }
+                    catch { continue; }
+                    if (tracks.id === 0x1654ae6b && !tracks.unknown) return readTracks(tracks);
                 }
-                if (!entries) throw new Error('MKV 轨道表没有有效轨道');
-                return chinese;
             }
             next = field.end;
         }
@@ -7172,7 +7217,10 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 row.autoCandidates?.some(candidate => !candidate.downloadFailed && !subtitleCandidateNameIssue(row,candidate))
                 || row.sources?.some(source => source.deferred || source.deferredTerms?.length)
             ));
-        const eligibleFill = rows => mergedSubtitleFillTargets(rows,readyToFill,covered);
+        const eligibleFill = rows => {
+            const available = new Set(mergedSubtitleFillTargets(inventory,readyToFill,covered));
+            return rows.filter(row => available.has(row));
+        };
         const videoState = (row, fillTargets = null) => {
             const media = row.media;
             const coverage = awaitingCheck(row) ? row.checkState : subtitleCoverageState(row);
@@ -7568,6 +7616,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 }
                 if (flow && checkedScope !== null) {
                     const actionRows = rows.filter(row => !row.organized && !row.organizePending && !covered(row) && subtitleCoverageState(row) === 'missing');
+                    const unconfirmed = rows.filter(row => !row.organized && !row.organizePending && !covered(row) && subtitleCoverageState(row) === 'unconfirmed');
                     const knownSeason = !season || first.parsed.season != null && actionRows.every(row => row.parsed.episode != null);
                     const fill = eligibleFill(rows);
                     const foundCount = actionRows.filter(row => row.autoCandidates?.length).length;
@@ -7582,7 +7631,8 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                         if (season && !fill.length && actionRows.some(row => row.cardSearched)) {
                             const note = document.createElement('p');
                             const blocked = actionRows.find(row => subtitleCandidateNameIssue(row,row.selectedCandidate));
-                            note.textContent = '已找到候选 ' + foundCount + '/' + actionRows.length + ' 集 · ' + (foundCount < actionRows.length
+                            note.textContent = '已找到候选 ' + foundCount + '/' + (actionRows.length + unconfirmed.length) + ' 集 · ' + (unconfirmed.length
+                                ? unconfirmed.length + ' 集字幕检查未确认，请复查已有字幕' : foundCount < actionRows.length
                                 ? '整季候选不完整，可导入字幕' : blocked ? subtitleCandidateNameIssue(blocked,blocked.selectedCandidate) : '整季补齐条件未通过，请查看日志');
                             box.append(note);
                         } else if (season && fill.length) {
@@ -7740,6 +7790,9 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             if (!config.assrtKey && !config.thunder && !(config.open && config.key) && !(config.subdl && config.subdlKey)) { ui.openSettings('subtitleSettings'); status('请启用迅雷免 Key 搜索，或配置其他字幕来源。'); return; }
             meter(0,rows.length);
             diag('查找开始', `视频 ${rows.length}，语言 ${config.language}，启用来源：${[config.assrtKey && '射手网整季包',config.thunder && '迅雷', config.subdl && 'SubDL', config.open && config.key && 'OpenSubtitles'].filter(Boolean).join('、') || '无'}`);
+            const searchedGroups = new Set(rows.map(row => row.groupKey));
+            const unconfirmed = inventory.filter(row => searchedGroups.has(row.groupKey) && subtitleCoverageState(row) === 'unconfirmed');
+            for (const row of unconfirmed) diag('查找跳过', row.node.name + ' · 字幕检查未确认 · ' + (row.embedded?.message || row.searchMessage || row.error || '请复查已有字幕'));
             if (!config.thunder) diag('来源跳过', '迅雷 已关闭');
             if (!config.open) diag('来源跳过', 'OpenSubtitles 已关闭');
             else if (!config.key) diag('来源跳过', 'OpenSubtitles 未配置 API Key');
@@ -7828,7 +7881,8 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 const sourceFailures = rows.filter(row => row.sources?.some(source => source.error || source.paused || source.cacheError
                     || source.queries?.some(query => query.error))).length;
                 const message = '已处理 ' + done + '/' + rows.length + ' · ' + (sourceFailures ? sourceFailures + ' 项遇到来源错误 · ' : '')
-                    + (flow ? '找到候选 ' + rows.filter(row => row.autoCandidates?.length).length + ' · 可补齐 ' + eligibleFill(rows).length : subtitleSearchSummary(rows,searchLabels));
+                    + (flow ? '找到候选 ' + rows.filter(row => row.autoCandidates?.length).length + ' · 可补齐 ' + eligibleFill(rows).length : subtitleSearchSummary(rows,searchLabels))
+                    + (unconfirmed.length ? ' · 同组字幕检查未确认 ' + unconfirmed.length + ' 项，请复查已有字幕' : '');
                 status('查找结束 · ' + message); diag('查找结束',message);
             } catch (error) {
                 const message = '已处理 ' + done + '/' + rows.length + ' · ' + error.message;
