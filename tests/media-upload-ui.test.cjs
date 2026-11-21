@@ -62,15 +62,29 @@ async function bundledSeasonEpisodeMapping() {
     assert.deepEqual(JSON.parse(JSON.stringify(range)),{start:1,end:24});
     const seasons=[{season_number:1,episode_count:11},{season_number:2,episode_count:13}];
     const map=vm.runInContext('mediaMapSeasonPackageEpisode',parser);
+    const mapAbsolute=vm.runInContext('mediaMapAbsoluteSeasonEpisode',parser);
     assert.deepEqual(JSON.parse(JSON.stringify(map(range,seasons,13))),{season:2,episode:2});
     assert.deepEqual(JSON.parse(JSON.stringify(map(range,seasons,24))),{season:2,episode:13});
     assert.equal(map(range,[{season_number:1,episode_count:12},{season_number:2,episode_count:13}],13),null,
         'A package range that disagrees with TMDB counts remains unconfirmed');
+    assert.deepEqual(JSON.parse(JSON.stringify(mapAbsolute([{season_number:1,episode_count:25},{season_number:2,episode_count:12}],2,26))),
+        {season:2,episode:1},'Absolute episode 26 in a Season 02 directory maps after the first 25 episodes');
+    assert.deepEqual(JSON.parse(JSON.stringify(mapAbsolute([{season_number:1,episode_count:25},{season_number:2,episode_count:12}],2,37))),
+        {season:2,episode:12});
+    assert.equal(mapAbsolute([{season_number:1,episode_count:25},{season_number:2,episode_count:12}],2,13),null,
+        'Season-local numbering remains unchanged');
+    const recordChecks=load(part('    function mediaRecordScopeConflict(', '    function mediaRecognitionGroup('));
+    assert.match(recordChecks.mediaRecordScopeConflict({explicitSeason:1,explicitEpisode:1,workNumberedCount:26},'tv',
+        {seasons:[{season_number:1,episode_count:10}]}),/26.*10/);
+    assert.equal(recordChecks.mediaRecordScopeConflict({explicitSeason:1,explicitEpisode:1,workNumberedCount:26},'tv',
+        {seasons:[{season_number:1,episode_count:26}]}),'', 'A stored series matching all 26 distinct episode numbers remains reusable');
+    assert.match(recordChecks.mediaRecordScopeConflict({explicitSeason:1,explicitEpisode:1,workNumberedCount:1},'movie',{}),/剧集编号/);
+    let episodeCounts=new Map([[1,11],[2,13]]);
     const validation=load(part('        async function validateEpisode(row) {','        async function matchGroup('),{
         checkStopped(){},mediaSeasonPackageRange:vm.runInContext('mediaSeasonPackageRange',parser),
-        mediaMapSeasonPackageEpisode:map,client:{},
+        mediaMapSeasonPackageEpisode:map,mediaMapAbsoluteSeasonEpisode:mapAbsolute,client:{},
         log(){},
-        mediaSeasonEpisodes:async(_client,_id,season)=>({year:'',episodes:Array.from({length:season===1?11:13},(_,index)=>({episode_number:index+1}))}),
+        mediaSeasonEpisodes:async(_client,_id,season)=>({year:'',episodes:Array.from({length:episodeCounts.get(season)},(_,index)=>({episode_number:index+1}))}),
         mediaPath:()=> '剧集/忧国的莫里亚蒂.2020/Season 02/episode.mkv'
     });
     vm.runInContext(part('        async function validateEpisode(row) {','        async function matchGroup(')+'\nthis.validateEpisode=validateEpisode;',validation);
@@ -78,6 +92,12 @@ async function bundledSeasonEpisodeMapping() {
         season:null,episode:13,endEpisode:null,explicitEpisode:13,sourceYear:'',standalone:false};
     await validation.validateEpisode(row);
     assert.equal(row.season,2);assert.equal(row.episode,2);assert.equal(row.error,'');
+    episodeCounts=new Map([[1,25],[2,12]]);
+    const absoluteRow={node:{name:'Attack on Titan - Episode 26.mkv',folders:['Season 02']},recognitionFolders:['Season 02'],
+        detail:{id:1429,seasons:[{season_number:1,episode_count:25},{season_number:2,episode_count:12}]},type:'tv',season:2,episode:26,
+        endEpisode:null,explicitSeason:null,explicitEpisode:26,sourceYear:'2017',standalone:false};
+    await validation.validateEpisode(absoluteRow);
+    assert.equal(absoluteRow.season,2);assert.equal(absoluteRow.episode,1);assert.equal(absoluteRow.error,'');
     console.log('PASS bundled-season mapping: ambiguous folder does not force season 1; verified 01-24 package maps absolute 13 to S02E02');
 }
 
@@ -156,6 +176,20 @@ async function mediaFallbackFlow() {
         await context.matchGroup([row],'剧场版 作品 银色之翼');
         assert.equal(row.match,match);
     }
+    let earlyStopProvided;
+    context.client.search=async (_query,earlyStop)=>{
+        earlyStopProvided=typeof earlyStop==='function';
+        return [
+            {id:101,media_type:'tv',name:'Cowboy Bebop',first_air_date:'2021-01-01'},
+            {id:1,media_type:'tv',name:'Cowboy Bebop',first_air_date:'1998-04-03'}
+        ];
+    };
+    context.client.get=async path=>({seasons:[{season_number:1,episode_count:path.endsWith('/101')?10:26}]});
+    context.mediaCandidatePreference=()=>({type:'tv'});
+    const cowboy={node:{id:'cowboy',name:'Cowboy.Bebop.S01E01.mkv'},tv:true,season:1,episode:1,sourceYear:'',workNumberedCount:26};
+    await context.matchGroup([cowboy],'Cowboy Bebop');
+    assert.equal(earlyStopProvided,false,'Without a release year, do not stop at one same-title TV match on an early page');
+    assert.equal(cowboy.match,'tv:1','A same-title candidate with only ten episodes cannot explain the 26-episode release');
     console.log('PASS media scan flow: normal TMDB first; AI handles unmatched/ambiguous titles; recovered title rechecked; network failures stay manual');
 }
 

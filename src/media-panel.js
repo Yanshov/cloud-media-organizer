@@ -451,6 +451,16 @@
                     else if (row.season == null && regular.length === 1 && row.explicitEpisode > 0 && row.explicitEpisode <= regular[0].episode_count
                         && !row.standalone && !/特别篇|特別篇|剧场版|劇場版|特典|番外|\b(?:special|sp|ova|oad|movie)\b/i.test([row.node.name,...(row.node.folders || [])].join(' '))) row.season = regular[0].season_number;
                 }
+                if (row.type === 'tv' && row.season != null && row.explicitSeason == null) {
+                    const absolute = mediaMapAbsoluteSeasonEpisode(row.detail.seasons || [],row.season,row.explicitEpisode);
+                    if (absolute) {
+                        row.episode = absolute.episode;
+                        row.endEpisode = null;
+                        row.episodeInferred = true;
+                        log('跨季集号映射', row.node.name + ' · 全剧第 ' + row.explicitEpisode + ' 集 → S'
+                            + String(row.season).padStart(2,'0') + 'E' + String(row.episode).padStart(2,'0'));
+                    }
+                }
                 if (row.type === 'tv' && row.season != null) {
                     const season = await mediaSeasonEpisodes(client, row.detail.id, row.season);
                     row.seasonEpisodes = season.episodes;
@@ -518,6 +528,12 @@
                         .some(title => theatrical ? key(mediaTheatricalQuery(title)) === key(mediaTheatricalQuery(query)) : key(title) === key(query)));
                     const matches = [];
                     for (const candidate of named) {
+                        if (candidate.media_type === 'tv' && !reference.sourceYear && reference.workNumberedCount > 1) {
+                            const detail = await client.get('/tv/' + candidate.id);
+                            const episodeCount = (detail.seasons || []).filter(season => season.season_number > 0)
+                                .reduce((total,season) => total + (Number(season.episode_count) || 0),0);
+                            if (episodeCount && reference.workNumberedCount > episodeCount) continue;
+                        }
                         if (!reference.sourceYear || (candidate.release_date || candidate.first_air_date || '').startsWith(reference.sourceYear)) { matches.push(candidate); continue; }
                         if (candidate.media_type !== 'tv') continue;
                         const detail = await client.get('/tv/' + candidate.id);
@@ -525,7 +541,7 @@
                     }
                     return matches;
                 };
-                try { candidates = await client.search(query, async results => (await reliable(results)).length === 1); }
+                try { candidates = await client.search(query, reference.sourceYear ? async results => (await reliable(results)).length === 1 : undefined); }
                 catch (error) { lookupError = error.message; }
                 let exact = await reliable(candidates);
                 if (!exact.length && !lookupError && /剧场版|劇場版/.test(query)) {
@@ -671,6 +687,15 @@
                         try {
                             Object.assign(row, {query:saved.query, sourceYear:saved.sourceYear, season:saved.season, episode:saved.episode, endEpisode:saved.endEpisode, aiAssisted:saved.aiAssisted});
                             await choose(row, saved.match); await validateEpisode(row);
+                            const conflict = mediaRecordScopeConflict(row,saved.type,row.detail);
+                            if (conflict) {
+                                const parsed = parseMediaName(row.node.name,row.recognitionFolders);
+                                Object.assign(row,parsed,{query:parsed.query,sourceYear:parsed.year,title:'',type:'',year:'',category:'',
+                                    detail:null,match:'',matchFailure:'',seasonEpisodes:[],error:'',aiAssisted:false,aiType:'',episodeInferred:false});
+                                row.group = mediaRecognitionGroup(row,false);
+                                log('整理记录冲突',row.node.name + ' · ' + conflict + '；忽略旧记录，重新识别整组选集');
+                                return 'skipped';
+                            }
                             if (readyRow(row)) { row.group = JSON.stringify([row.node.parentId, row.type, row.title, row.type === 'tv' ? '' : row.node.id]); row.reusedRecord = true; return; }
                         } catch (error) { verify(); if (error.stop) throw error; }
                     }

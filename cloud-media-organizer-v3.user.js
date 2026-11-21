@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v3.0（重构版）
 // @namespace    local.cloud-media-organizer
-// @version      3.0.14
+// @version      3.0.15
 // @description  面向百度网盘、123 云盘和光鸭网盘的浏览器脚本，支持跨盘 JSON 清单、影视整理与字幕补齐。
 // @match        https://pan.baidu.com/*
 // @match        https://yun.baidu.com/*
@@ -40,7 +40,7 @@
     if (typeof navigator !== 'undefined' && (navigator.userAgentData?.mobile || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
         navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) return;
 
-    const VERSION = '3.0.14';
+    const VERSION = '3.0.15';
     let jsonTaskStopped = false;
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
@@ -2651,6 +2651,16 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         }
         return null;
     }
+    function mediaMapAbsoluteSeasonEpisode(seasons, seasonNumber, absoluteEpisode) {
+        if (!Number.isInteger(seasonNumber) || seasonNumber < 1 || !Number.isInteger(absoluteEpisode)) return null;
+        const regular = seasons.filter(season => season.season_number > 0 && Number.isInteger(season.episode_count) && season.episode_count > 0)
+            .sort((a,b) => a.season_number - b.season_number);
+        const index = regular.findIndex(season => season.season_number === seasonNumber);
+        if (index < 0 || absoluteEpisode <= regular[index].episode_count) return null;
+        const previousEpisodes = regular.slice(0,index).reduce((total,season) => total + season.episode_count,0);
+        const episode = absoluteEpisode - previousEpisodes;
+        return episode > 0 && episode <= regular[index].episode_count ? {season:seasonNumber,episode} : null;
+    }
     function mediaBracketTitle(name) {
         const stem = mediaStem(name).normalize('NFKC').replace(/[【】]/g, match => match === '【' ? '[' : ']');
         const parts = [...stem.matchAll(/\[([^\]]+)\]/g)].map(match => match[1].trim());
@@ -3824,6 +3834,15 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             for (const row of group) { row.workVideoCount = group.length; row.workNumberedCount = numbered; }
         }
     }
+    function mediaRecordScopeConflict(row, type, detail) {
+        if (type === 'movie' && (row.explicitSeason != null || row.explicitEpisode != null))
+            return '文件含剧集编号，但已保存记录指向电影';
+        if (type !== 'tv') return '';
+        const total = (detail?.seasons || []).filter(season => season.season_number > 0)
+            .reduce((count,season) => count + (Number(season.episode_count) || 0),0);
+        return total > 0 && row.workNumberedCount > total
+            ? '本组选区有 ' + row.workNumberedCount + ' 个不同集号，已保存作品只有 ' + total + ' 集' : '';
+    }
     function mediaRecognitionGroup(row, aiEnabled) {
         // Isolate movies before asking AI; never apply one movie title to siblings.
         if (aiEnabled && (!row.tv || row.standalone)) return 'file:' + row.node.id;
@@ -4381,6 +4400,16 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     else if (row.season == null && regular.length === 1 && row.explicitEpisode > 0 && row.explicitEpisode <= regular[0].episode_count
                         && !row.standalone && !/特别篇|特別篇|剧场版|劇場版|特典|番外|\b(?:special|sp|ova|oad|movie)\b/i.test([row.node.name,...(row.node.folders || [])].join(' '))) row.season = regular[0].season_number;
                 }
+                if (row.type === 'tv' && row.season != null && row.explicitSeason == null) {
+                    const absolute = mediaMapAbsoluteSeasonEpisode(row.detail.seasons || [],row.season,row.explicitEpisode);
+                    if (absolute) {
+                        row.episode = absolute.episode;
+                        row.endEpisode = null;
+                        row.episodeInferred = true;
+                        log('跨季集号映射', row.node.name + ' · 全剧第 ' + row.explicitEpisode + ' 集 → S'
+                            + String(row.season).padStart(2,'0') + 'E' + String(row.episode).padStart(2,'0'));
+                    }
+                }
                 if (row.type === 'tv' && row.season != null) {
                     const season = await mediaSeasonEpisodes(client, row.detail.id, row.season);
                     row.seasonEpisodes = season.episodes;
@@ -4448,6 +4477,12 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                         .some(title => theatrical ? key(mediaTheatricalQuery(title)) === key(mediaTheatricalQuery(query)) : key(title) === key(query)));
                     const matches = [];
                     for (const candidate of named) {
+                        if (candidate.media_type === 'tv' && !reference.sourceYear && reference.workNumberedCount > 1) {
+                            const detail = await client.get('/tv/' + candidate.id);
+                            const episodeCount = (detail.seasons || []).filter(season => season.season_number > 0)
+                                .reduce((total,season) => total + (Number(season.episode_count) || 0),0);
+                            if (episodeCount && reference.workNumberedCount > episodeCount) continue;
+                        }
                         if (!reference.sourceYear || (candidate.release_date || candidate.first_air_date || '').startsWith(reference.sourceYear)) { matches.push(candidate); continue; }
                         if (candidate.media_type !== 'tv') continue;
                         const detail = await client.get('/tv/' + candidate.id);
@@ -4455,7 +4490,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     }
                     return matches;
                 };
-                try { candidates = await client.search(query, async results => (await reliable(results)).length === 1); }
+                try { candidates = await client.search(query, reference.sourceYear ? async results => (await reliable(results)).length === 1 : undefined); }
                 catch (error) { lookupError = error.message; }
                 let exact = await reliable(candidates);
                 if (!exact.length && !lookupError && /剧场版|劇場版/.test(query)) {
@@ -4601,6 +4636,15 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                         try {
                             Object.assign(row, {query:saved.query, sourceYear:saved.sourceYear, season:saved.season, episode:saved.episode, endEpisode:saved.endEpisode, aiAssisted:saved.aiAssisted});
                             await choose(row, saved.match); await validateEpisode(row);
+                            const conflict = mediaRecordScopeConflict(row,saved.type,row.detail);
+                            if (conflict) {
+                                const parsed = parseMediaName(row.node.name,row.recognitionFolders);
+                                Object.assign(row,parsed,{query:parsed.query,sourceYear:parsed.year,title:'',type:'',year:'',category:'',
+                                    detail:null,match:'',matchFailure:'',seasonEpisodes:[],error:'',aiAssisted:false,aiType:'',episodeInferred:false});
+                                row.group = mediaRecognitionGroup(row,false);
+                                log('整理记录冲突',row.node.name + ' · ' + conflict + '；忽略旧记录，重新识别整组选集');
+                                return 'skipped';
+                            }
                             if (readyRow(row)) { row.group = JSON.stringify([row.node.parentId, row.type, row.title, row.type === 'tv' ? '' : row.node.id]); row.reusedRecord = true; return; }
                         } catch (error) { verify(); if (error.stop) throw error; }
                     }

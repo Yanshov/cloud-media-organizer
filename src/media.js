@@ -68,6 +68,16 @@
         }
         return null;
     }
+    function mediaMapAbsoluteSeasonEpisode(seasons, seasonNumber, absoluteEpisode) {
+        if (!Number.isInteger(seasonNumber) || seasonNumber < 1 || !Number.isInteger(absoluteEpisode)) return null;
+        const regular = seasons.filter(season => season.season_number > 0 && Number.isInteger(season.episode_count) && season.episode_count > 0)
+            .sort((a,b) => a.season_number - b.season_number);
+        const index = regular.findIndex(season => season.season_number === seasonNumber);
+        if (index < 0 || absoluteEpisode <= regular[index].episode_count) return null;
+        const previousEpisodes = regular.slice(0,index).reduce((total,season) => total + season.episode_count,0);
+        const episode = absoluteEpisode - previousEpisodes;
+        return episode > 0 && episode <= regular[index].episode_count ? {season:seasonNumber,episode} : null;
+    }
     function mediaBracketTitle(name) {
         const stem = mediaStem(name).normalize('NFKC').replace(/[【】]/g, match => match === '【' ? '[' : ']');
         const parts = [...stem.matchAll(/\[([^\]]+)\]/g)].map(match => match[1].trim());
@@ -1240,6 +1250,15 @@
             const numbered = new Set(group.filter(row => row.episode != null).map(row => [row.season, row.episode].join(':'))).size;
             for (const row of group) { row.workVideoCount = group.length; row.workNumberedCount = numbered; }
         }
+    }
+    function mediaRecordScopeConflict(row, type, detail) {
+        if (type === 'movie' && (row.explicitSeason != null || row.explicitEpisode != null))
+            return '文件含剧集编号，但已保存记录指向电影';
+        if (type !== 'tv') return '';
+        const total = (detail?.seasons || []).filter(season => season.season_number > 0)
+            .reduce((count,season) => count + (Number(season.episode_count) || 0),0);
+        return total > 0 && row.workNumberedCount > total
+            ? '本组选区有 ' + row.workNumberedCount + ' 个不同集号，已保存作品只有 ' + total + ' 集' : '';
     }
     function mediaRecognitionGroup(row, aiEnabled) {
         // Isolate movies before asking AI; never apply one movie title to siblings.
