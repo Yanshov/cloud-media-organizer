@@ -33,7 +33,8 @@ self.onmessage = async event => {
     try {
         if (event.data.type === 'open') {
             const data = event.data.bytes;
-            const wasmBinary = Uint8Array.from(atob(SUBTITLE_RAR_WASM), character => character.charCodeAt(0));
+            const compressed = Uint8Array.from(atob(SUBTITLE_RAR_WASM_DEFLATE), character => character.charCodeAt(0));
+            const wasmBinary = inflateRarWasm(compressed, new Uint8Array(SUBTITLE_RAR_WASM_SIZE));
             extractor = await SubtitleUnrar.createExtractorFromData({data,wasmBinary});
             limits = event.data.limits;
             entries = rarEntries(extractor.getFileList());
