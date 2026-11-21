@@ -2,6 +2,27 @@
     const MEDIA_SUB = /\.(srt|ass|ssa|vtt|sub|idx)$/i;
     const mediaStem = name => name.replace(/\.[^.]+$/, '');
     const mediaClean = value => String(value).split('：').map(part => part.normalize('NFKC')).join('：').replace(/:/g, '：').replace(/[\\/*?"<>|\x00-\x1f]/g, ' ').replace(/\s+/g, ' ').trim().replace(/[. ]+$/, '');
+
+    const MEDIA_RESOLUTION_TAG = '(?:(?:240|360|480|540|576|720|1080|1440|2160|4320)p|(?:480|576|1080)i)';
+    const MEDIA_RESOLUTION_ALIASES = {
+        '4k':'2160p', '8k':'4320p',
+        '640x360':'360p', '720x480':'480p', '960x540':'540p', '720x576':'576p',
+        '1280x720':'720p', '1920x1080':'1080p', '2560x1440':'1440p', '3840x2160':'2160p', '7680x4320':'4320p'
+    };
+    const MEDIA_RESOLUTION_TOKEN = [MEDIA_RESOLUTION_TAG, ...Object.keys(MEDIA_RESOLUTION_ALIASES).map(tag => tag.replace('x','[x×]'))].join('|');
+    const MEDIA_RESOLUTION_EXACT = new RegExp('^(?:' + MEDIA_RESOLUTION_TOKEN + ')$','i');
+    const MEDIA_RESOLUTION_BOUNDARY = '(?<![a-z0-9])(?:' + MEDIA_RESOLUTION_TOKEN + ')(?![a-z0-9])';
+    const MEDIA_RESOLUTION_MATCH = new RegExp(MEDIA_RESOLUTION_BOUNDARY,'gi');
+    const MEDIA_RELEASE_START = new RegExp(String.raw`\bS\d{1,2}E\d|\bSeason[ ._-]*\d{1,2}|\bSE?\d{1,2}\b|\b\d{1,2}x\d|\b(?:EP?|Episode)[ ._-]*\d{1,3}(?=$|[. _-])|第\s*[0-9一二三四五六七八九十零〇两]+\s*[季集话]|${MEDIA_RESOLUTION_BOUNDARY}|\b(?:BluRay|WEB[ ._-]?DL|WEBRip|REMUX|HDR|DV|x26[45]|h[ ._-]?26[45]|HEVC|AVC|DTS|AAC|AC3)\b`,'i');
+
+    function mediaResolution(name) {
+        const tags = new Set(Array.from(mediaStem(name).normalize('NFKC').matchAll(MEDIA_RESOLUTION_MATCH), ([value]) => {
+            const tag = value.toLowerCase().replace('×','x');
+            return MEDIA_RESOLUTION_ALIASES[tag] || tag;
+        }));
+        return tags.size === 1 ? tags.values().next().value : '';
+    }
+
     function mediaSeasonNumber(value) {
         const text = String(value).normalize('NFKC');
         const numeric = text.match(/(?:\bSeason[ ._-]*|(?:^|[^a-z0-9])SE?)(\d{1,2})(?=E\d|[^0-9]|$)/i);
@@ -31,7 +52,7 @@
         const stem = mediaStem(name).normalize('NFKC').replace(/[【】]/g, match => match === '【' ? '[' : ']');
         const brackets = [...stem.matchAll(/\[([^\]]+)\]/g)].map(m => m[1].trim());
         const bracketEpisode = brackets.find(value => /^(?:EP?\s*)?\d{1,3}(?:v\d+)?$/i.test(value));
-        const isReleaseTag = value => /^(?:\d{3,4}p|\d{4}|4k|8k|BDRip|BluRay|WEB[ ._-]?DL|WEBRip|DVD|REMUX|HEVC.*|AVC.*|x26[45].*|H[ .]?26[45].*|FLAC.*|AAC.*|DTS.*|AC3.*|HDR.*|DV|10bit|8bit|CHS|CHT|ENG|简繁.*|简体.*|繁体.*|中字.*|動畫瘋|动画疯|CXRAW|KRSUB|DBD[- ]?Raws?|中文配音|电影|電影|剧场版|劇場版)$/i.test(value) || /(?:raws|字幕组|sub|rip)$/i.test(value);
+        const isReleaseTag = value => MEDIA_RESOLUTION_EXACT.test(value) || /^(?:\d{3,4}p|\d{4}|4k|8k|BDRip|BluRay|WEB[ ._-]?DL|WEBRip|DVD|REMUX|HEVC.*|AVC.*|x26[45].*|H[ .]?26[45].*|FLAC.*|AAC.*|DTS.*|AC3.*|HDR.*|DV|10bit|8bit|CHS|CHT|ENG|简繁.*|简体.*|繁体.*|中字.*|動畫瘋|动画疯|CXRAW|KRSUB|DBD[- ]?Raws?|中文配音|电影|電影|剧场版|劇場版)$/i.test(value) || /(?:raws|字幕组|sub|rip)$/i.test(value);
         const workBracket = mediaBracketTitle(name);
         const bracketTitle = workBracket?.title || brackets.find(value => value !== bracketEpisode && !isReleaseTag(value) && !/^(?:S\d+E\d+|Season\s*\d+)$/i.test(value) && /[\p{L}]/u.test(value));
         const ep = stem.match(/(?:^|[. _-])S(\d{1,2})[. _-]*E(\d{1,3})(?:[. _-]*E(\d{1,3}))?/i)
@@ -49,7 +70,7 @@
                 const release = new RegExp('(?:^|[. _（(\\[-])' + yearMatch[1] + '(?=$|[. _）)\\]-])').exec(text);
                 if (release && text.slice(0, release.index).trim()) text = text.slice(0, release.index);
             }
-            return text.split(/\bS\d{1,2}E\d|\bSeason[ ._-]*\d{1,2}|\bSE?\d{1,2}\b|\b\d{1,2}x\d|\b(?:EP?|Episode)[ ._-]*\d{1,3}(?=$|[. _-])|第\s*[0-9一二三四五六七八九十零〇两]+\s*[季集话]|\b(?:2160p|1080p|720p|480p|4k|BluRay|WEB[ ._-]?DL|WEBRip|REMUX|HDR|DV|x26[45]|h[ ._-]?26[45]|HEVC|AVC|DTS|AAC|AC3)\b/i)[0].replace(/[._]/g, ' ').replace(/[-\s]+$/, '').trim();
+            return text.split(MEDIA_RELEASE_START)[0].replace(/[._]/g, ' ').replace(/[-\s]+$/, '').trim();
         };
         let query = workBracket ? cut(workBracket.title) : cut(stem) || (bracketTitle ? cut(bracketTitle) : '');
         // Only inspect the file name: a mixed season folder may mention movies
@@ -173,6 +194,8 @@
             folders.push('Season ' + season);
         }
         if (categoryRoot === category) folders.shift();
+        const resolution = mediaResolution(row.node.name);
+        if (resolution) filename += '.' + resolution;
         filename += row.node.name.slice(row.node.name.lastIndexOf('.'));
         if ([...folders, filename].some(name => name.length >= 256 || /[\\\/:*?"<>|\x00-\x1f]/.test(name))) throw new Error('目标名称过长或含 123 不允许的字符，请修改标准片名');
         return folders.join('/') + '/' + filename;
@@ -662,15 +685,14 @@
     }
 
     const mediaStandardFolder = name => (/^.+\.(?:19|20)\d{2}$/.test(name) || /^Season \d{2}$/.test(name) || !!mediaExistingCategory([name])) && mediaClean(name) === name;
+    const MEDIA_CANONICAL_STEM = new RegExp(String.raw`^(.+\.(?:19|20)\d{2}(?:\.S\d{2}E\d{2,3}(?:E\d{2,3})?)?(?:\.${MEDIA_RESOLUTION_TAG})?)(?=\.|$)`);
     function mediaStandardNode(node) {
         if (node.directory) return mediaStandardFolder(node.name);
         if (!MEDIA_VIDEO.test(node.name) && !MEDIA_SUB.test(node.name)) return false;
         if (mediaClean(node.name) !== node.name) return false;
         const stem = mediaStem(node.name);
-        if (/^.+\.(?:19|20)\d{2}(?:\.S\d{2}E\d{2,3}(?:E\d{2,3})?)?$/.test(stem)) return true;
-        if (!MEDIA_SUB.test(node.name)) return false;
-        const base = stem.match(/^(.+\.(?:19|20)\d{2}(?:\.S\d{2}E\d{2,3}(?:E\d{2,3})?)?)(?=\.)/);
-        return !!base && mediaSubtitleSuffix(base[1] + '.mkv', node.name) !== null;
+        const base = stem.match(MEDIA_CANONICAL_STEM)?.[1];
+        return !!base && (base === stem || MEDIA_SUB.test(node.name) && mediaSubtitleSuffix(base + '.mkv',node.name) !== null);
     }
     function mediaCanonicalResolver(client, check = () => {}) {
         const works = new Map(), seasons = new Map();
@@ -678,7 +700,7 @@
             check();
             if (node.directory && (mediaExistingCategory([node.name]) || /^Season \d{2}$/.test(node.name))) return node.name;
             const subtitle = !node.directory && MEDIA_SUB.test(node.name);
-            const subtitleBase = subtitle && mediaStem(node.name).match(/^(.+\.(?:19|20)\d{2}(?:\.S\d{2}E\d{2,3}(?:E\d{2,3})?)?)(?=\.|$)/)?.[1];
+            const subtitleBase = subtitle && mediaStem(node.name).match(MEDIA_CANONICAL_STEM)?.[1];
             const suffix = subtitleBase && mediaSubtitleSuffix(subtitleBase + '.mkv',node.name);
             if (subtitle && (typeof suffix !== 'string' || !subtitleBase)) return null;
             const nameToParse = node.directory ? node.name + '.mkv' : subtitle ? subtitleBase + '.mkv' : node.name;

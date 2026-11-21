@@ -39,11 +39,12 @@ function fixture() {
         mediaRecords: {remember: () => {}, save: () => {}},
         mediaSubtitleLinks: () => ({linked:new Map([['v',[{id:'s',name:'old.zh-cn.srt',suffix:'.zh-cn'}]]])}),
         source: {children: async () => []}, targetSession: {parent: 'root'}, targetPath: 'library',
-        mediaPath: row => row.destination, mediaStem: value => value.replace(/\.[^.]+$/, ''),
         relativeParts: value => value.split('/'),
         mediaOrganizerWriter: () => ({prepare: async () => {state.preparations++; return [];}, execute: async () => {state.writes++;}})
     });
     vm.runInContext(
+        part('    const MEDIA_VIDEO', '    function mediaSeasonNumber(') +
+        part('    function mediaCategory(', '    function mediaSubtitleSuffix(') +
         part('    function createPanelTask(', '    function panelControls(') +
         part('    async function forEachConcurrent(', '    function cachedDriveChildren(') +
         part('    function cachedDriveChildren(', '    function titleKey(') +
@@ -51,6 +52,8 @@ function fixture() {
         part('        const invalidate =', '        let mediaBusy =') +
         part('        const generatePreview =', "        ui.get('previewMedia').onclick") +
         '\nthis.generate = generatePreview; this.checkStale = refreshStalePreview;', ctx);
+    const standardPath = ctx.mediaPath;
+    ctx.mediaPath = row => row.destination ?? standardPath(row);
     return {ctx, state, elements};
 }
 
@@ -105,6 +108,23 @@ function fixture() {
     assert.equal(ctx.batch, null); assert.equal(elements.runMedia.disabled, true);
     assert.equal(state.locks.at(-1), false); assert.match(state.messages.at(-1), /listing failed/);
     assert.equal(state.writes, 0);
+    const resolution = fixture();
+    Object.assign(resolution.ctx.rows[0], {destination:undefined, title:'Movie', year:'2000', type:'movie'});
+    resolution.ctx.rows[0].node.name = 'Movie.2000.3840×2160.4K.mkv';
+    await resolution.ctx.generate();
+    assert.deepEqual(Array.from(resolution.ctx.batch, item => item.destination), [
+        '电影/Movie.2000/Movie.2000.2160p.mkv', '电影/Movie.2000/Movie.2000.2160p.zh-cn.srt'
+    ]);
+    for (const [input,expected] of [
+        ['Series.S01E02E03.1080P.mkv','Series.2024.S01E02E03.1080p.mkv'],
+        ['Series.S01E02E03.720p.1080p.mkv','Series.2024.S01E02E03.mkv'],
+        ['Series.S01E02E03.2048kbps.mkv','Series.2024.S01E02E03.mkv']
+    ]) {
+        const row = {node:{name:input},title:'Series',year:'2024',type:'tv',category:'剧集',season:1,episode:2,endEpisode:3};
+        assert.equal(resolution.ctx.mediaPath(row),'剧集/Series.2024/Season 01/' + expected);
+    }
+
+
     const merged = fixture();
     merged.ctx.rows.push({include:true,ready:true,destination:'Other.mkv',node:{id:'bad',path:'bad.mkv'}});
     merged.ctx.mediaFileMetadata = async node => {

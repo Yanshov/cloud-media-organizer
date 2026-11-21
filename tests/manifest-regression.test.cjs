@@ -180,7 +180,7 @@ async function manifests(){
 }
 
 async function sharedHelpers(){
- const ctx=load(part('    const MEDIA_VIDEO', '    const tmdbClients')+part('    function mediaCanonicalResolver(', '    const mediaPlaybackAttachment')+part('    function mediaWorkCounts(', '    function initMediaOrganizer('));
+ const ctx=load(part('    const MEDIA_VIDEO', '    const tmdbClients')+part('    const mediaStandardFolder', '    const mediaPlaybackAttachment')+part('    function mediaWorkCounts(', '    function initMediaOrganizer('));
  const entries=new Map([['a',1],['b',2],['c',3]]);
  ctx.evict(entries,2);assert.deepEqual([...entries.keys()],['b','c']);
  ctx.evict(entries,2);assert.equal(entries.size,2);ctx.evict(entries,0);assert.equal(entries.size,0);
@@ -205,14 +205,23 @@ async function sharedHelpers(){
  await ctx.resolveMediaSpecials([...episodes,extra,unrelated],{get:async()=>({episodes:[{name:'Bonus Story',episode_number:1}]})});
  assert.equal(extra.match,'tv:1');assert.equal(extra.season,0);assert.equal(extra.episode,1);
  assert.ok(episodes.every(row=>row.season===1));assert.equal(unrelated.match,undefined);
+ assert.equal(ctx.parseMediaName('Film.[1440p].mkv').query,'Film');
+ assert.equal(ctx.parseMediaName('Film_1920x1080.mkv').query,'Film');
  const searches=[],lookups=[];
  const resolve=ctx.mediaCanonicalResolver({
     search:async query=>{searches.push(query);return [{...detail,media_type:'tv'}];},
     get:async target=>{lookups.push(target);return target.includes('/season/')?{episodes:[{episode_number:1},{episode_number:2}]}:detail;}
  });
- assert.equal(await resolve({name:'Love.Death.and.Robots.2019.S01E01.1080p.mkv'}),'Love, Death & Robots.2019.S01E01.mkv');
+ assert.equal(await resolve({name:'Love.Death.and.Robots.2019.S01E01.1080p.mkv'}),'Love, Death & Robots.2019.S01E01.1080p.mkv');
  assert.equal(await resolve({name:'02.mkv'},['Love.Death.and.Robots.2019','Season 01']),'Love, Death & Robots.2019.S01E02.mkv');
  assert.equal(await resolve({name:'Love.Death.and.Robots.2019.S01E01.zh-cn.ass'}),'Love, Death & Robots.2019.S01E01.zh-cn.ass');
+ const episodeName = 'Love, Death & Robots.2019.S01E01.1080p.mkv';
+ const subtitleName = 'Love, Death & Robots.2019.S01E01.1080p.zh-cn.ass';
+ assert.equal(await resolve({name:episodeName}),episodeName,'Naming cleanup accepts the reorganized video');
+ assert.equal(await resolve({name:subtitleName}),subtitleName,'Naming cleanup accepts the reorganized subtitle');
+ assert.equal(ctx.mediaStandardNode({name:episodeName}),true);
+ assert.equal(ctx.mediaStandardNode({name:subtitleName}),true);
+ assert.equal(ctx.mediaStandardNode({name:'Love, Death & Robots.2019.S01E01.1080p'}),false);
  assert.equal(await resolve({name:'Love.Death.and.Robots.2019.S01E99.mkv'}),null);
  assert.equal(searches.length,1,'The same series shares recognition across episodes and subtitles');
  assert.deepEqual(lookups,['/tv/1','/tv/1/season/1']);
