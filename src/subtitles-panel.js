@@ -1316,6 +1316,7 @@
             if (!targets.length) { status('当前没有可补齐的字幕候选。'); return; }
             const groups = merged ? [...groupBatch(targets,row => row.parsed.tv ? row.groupKey : null).values()] : [targets];
             const pausedDownloads = new Set();
+            service.resetDownloadBatch?.();
             const fillGroup = async rows => {
             meter(0,rows.length);
             config.reviewCandidates = reviewCandidates;
@@ -1394,7 +1395,7 @@
                                 suspicious ||= !!error.subtitleSuspicious;
                                 const source = row.sources?.find(source => source.name === candidate.source);
                                 if (source) saveSubtitleSourceReport(source, config, {downloadErrors:[error.message]});
-                                const paused = isSubtitleSourceError(error) && subtitleSourcePaused(candidate.source,error)
+                                const paused = error.downloadPaused || isSubtitleSourceError(error) && subtitleSourcePaused(candidate.source,error)
                                     || error.phase === 'transfer' && [429,509].includes(error.status);
                                 if (paused) {
                                     pausedDownloads.add(candidate.source);

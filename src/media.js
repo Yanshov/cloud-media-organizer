@@ -1120,14 +1120,40 @@
         };
         let jsonFormatSupported = true;
         const chat = async body => {
-            let data;
-            try { data = await request('chat/completions', {...body,...(jsonFormatSupported ? {response_format:{type:'json_object'}} : {})}); }
-            catch (error) {
-                if (error.status !== 400 || !jsonFormatSupported) throw error;
-                jsonFormatSupported = false;
-                data = await request('chat/completions',body);
+            for (let attempt = 0; attempt < 2; attempt++) {
+                let data;
+                try { data = await request('chat/completions', {...body,...(jsonFormatSupported ? {response_format:{type:'json_object'}} : {})}); }
+                catch (error) {
+                    if (error.status !== 400 || !jsonFormatSupported) throw error;
+                    jsonFormatSupported = false;
+                    data = await request('chat/completions',body);
+                }
+                const choice = data?.choices?.[0], message = choice?.message;
+                const content = Array.isArray(message?.content)
+                    ? message.content.filter(part => part?.type === 'text' || part?.type === 'output_text').map(part => part.text || '').join('')
+                    : message?.content;
+                const empty = typeof content !== 'string' || !content.trim();
+                if (!attempt && empty && choice?.finish_reason === 'stop' && jsonFormatSupported) {
+                    jsonFormatSupported = false;
+                    continue;
+                }
+                try {
+                    if (empty) throw Object.assign(new Error('大模型返回空正文'),{aiParse:true});
+                    return parseMediaAIResponse(content,[apiKey]);
+                } catch (error) {
+                    if (!attempt && error.aiParse && choice?.finish_reason === 'length') {
+                        body = {...body,max_tokens:Math.min(Math.max(body.max_tokens * 2,4096),8192)};
+                        continue;
+                    }
+                    if (error.aiParse) {
+                        const usage = data?.usage || {};
+                        error.message += '；结束原因 ' + String(choice?.finish_reason || '未返回').slice(0,40)
+                            + '；生成 token ' + (usage.completion_tokens ?? '未返回')
+                            + '；推理 token ' + (usage.completion_tokens_details?.reasoning_tokens ?? '未返回');
+                    }
+                    throw error;
+                }
             }
-            return parseMediaAIResponse(data?.choices?.[0]?.message?.content,[config.key]);
         };
         const complete = (instruction, payload, maxTokens) => chat({
             model:config.model, messages:[{role:'system',content:instruction},{role:'user',content:JSON.stringify(payload)}], max_tokens:maxTokens, stream:false

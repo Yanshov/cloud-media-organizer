@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v3.0（重构版）
 // @namespace    local.cloud-media-organizer
-// @version      3.0.17
+// @version      3.0.18
 // @description  面向百度网盘、123 云盘和光鸭网盘的浏览器脚本，支持跨盘 JSON 清单、影视整理与字幕补齐。
 // @match        https://pan.baidu.com/*
 // @match        https://yun.baidu.com/*
@@ -40,7 +40,7 @@
     if (typeof navigator !== 'undefined' && (navigator.userAgentData?.mobile || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
         navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) return;
 
-    const VERSION = '3.0.17';
+    const VERSION = '3.0.18';
     let jsonTaskStopped = false;
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
@@ -3707,14 +3707,40 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         };
         let jsonFormatSupported = true;
         const chat = async body => {
-            let data;
-            try { data = await request('chat/completions', {...body,...(jsonFormatSupported ? {response_format:{type:'json_object'}} : {})}); }
-            catch (error) {
-                if (error.status !== 400 || !jsonFormatSupported) throw error;
-                jsonFormatSupported = false;
-                data = await request('chat/completions',body);
+            for (let attempt = 0; attempt < 2; attempt++) {
+                let data;
+                try { data = await request('chat/completions', {...body,...(jsonFormatSupported ? {response_format:{type:'json_object'}} : {})}); }
+                catch (error) {
+                    if (error.status !== 400 || !jsonFormatSupported) throw error;
+                    jsonFormatSupported = false;
+                    data = await request('chat/completions',body);
+                }
+                const choice = data?.choices?.[0], message = choice?.message;
+                const content = Array.isArray(message?.content)
+                    ? message.content.filter(part => part?.type === 'text' || part?.type === 'output_text').map(part => part.text || '').join('')
+                    : message?.content;
+                const empty = typeof content !== 'string' || !content.trim();
+                if (!attempt && empty && choice?.finish_reason === 'stop' && jsonFormatSupported) {
+                    jsonFormatSupported = false;
+                    continue;
+                }
+                try {
+                    if (empty) throw Object.assign(new Error('大模型返回空正文'),{aiParse:true});
+                    return parseMediaAIResponse(content,[apiKey]);
+                } catch (error) {
+                    if (!attempt && error.aiParse && choice?.finish_reason === 'length') {
+                        body = {...body,max_tokens:Math.min(Math.max(body.max_tokens * 2,4096),8192)};
+                        continue;
+                    }
+                    if (error.aiParse) {
+                        const usage = data?.usage || {};
+                        error.message += '；结束原因 ' + String(choice?.finish_reason || '未返回').slice(0,40)
+                            + '；生成 token ' + (usage.completion_tokens ?? '未返回')
+                            + '；推理 token ' + (usage.completion_tokens_details?.reasoning_tokens ?? '未返回');
+                    }
+                    throw error;
+                }
             }
-            return parseMediaAIResponse(data?.choices?.[0]?.message?.content,[config.key]);
         };
         const complete = (instruction, payload, maxTokens) => chat({
             model:config.model, messages:[{role:'system',content:instruction},{role:'user',content:JSON.stringify(payload)}], max_tokens:maxTokens, stream:false
@@ -5059,7 +5085,11 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         }
         const fileTitle = clean(name);
         const numbered = fileTitle.match(/^(.*?\D)(\d{1,2})?$/);
-        if (numbered && [...aliases].some(alias => {
+        const unseasoned = parsed.tv && !/S\d+[ ._-]*E\d+/i.test(name);
+        const fileEpisode = unseasoned && (parseMediaName(name).episode
+            ?? Number(mediaStem(name).split(MEDIA_RELEASE_START)[0].match(/(?:^|[ ._[(\-])(\d{1,3})[ ._\])\[-]*$/)?.[1]));
+        const episodeNumber = Number.isInteger(fileEpisode) && fileEpisode > 0 && fileEpisode === Number(numbered?.[2]);
+        if (numbered && !episodeNumber && [...aliases].some(alias => {
             const targetNumbered = alias.match(/^(.*?\D)(\d{1,2})?$/);
             return targetNumbered && targetNumbered[1] === numbered[1] && (targetNumbered[2] || '') !== (numbered[2] || '');
         })) return {titleMatched:false, hardMismatch:true, matchReason:'片名续集编号不符'};
@@ -5245,11 +5275,12 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         let token = '', tokenKey = '';
         const unavailableSources = new Map(), workConflicts = new Map();
         const searchCache = new Map();
-        const seasonPreparations = new Map(), archiveCache = new Map(), transfers = new Map();
+        const seasonPreparations = new Map(), archiveCache = new Map(), transfers = new Map(), downloadPauses = new Map();
+        const downloadQueues = new Map(), downloadStarted = new Map();
         let assrtEpisodes = new WeakMap();
         const clearCache = () => {
-            const count = unavailableSources.size + workConflicts.size + searchCache.size + seasonPreparations.size + archiveCache.size;
-            unavailableSources.clear(); workConflicts.clear(); searchCache.clear(); seasonPreparations.clear(); archiveCache.clear(); assrtEpisodes = new WeakMap();
+            const count = unavailableSources.size + workConflicts.size + searchCache.size + seasonPreparations.size + archiveCache.size + downloadPauses.size;
+            unavailableSources.clear(); workConflicts.clear(); searchCache.clear(); seasonPreparations.clear(); archiveCache.clear(); downloadPauses.clear(); assrtEpisodes = new WeakMap();
             return count;
         };
         const assrtRequest = paced(1500,async (endpoint,params,config,verify) => {
@@ -5312,11 +5343,32 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 + (partial.size < rows.length ? '，缺集由其他来源补查' : '，来自多个字幕包'));
         };
         const archiveWork = paced(0,async (work,verify) => { check(); verify(); return work(); });
-        const transfer = (result,verify) => {
+        const transfer = (result,verify,source) => {
             check(); verify();
-            const key = result.url;
+            const key = JSON.stringify([source,result.url]);
             if (!transfers.has(key)) {
-                const pending = subtitleBinary(key,{allowHttp:result.allowHttp === true});
+                const queued = source === 'SubDL' || source === '射手网';
+                const run = async () => {
+                    check(); verify();
+                    const paused = downloadPauses.get(source);
+                    if (paused) throw Object.assign(new Error(source + ' 本批下载已暂停：' + paused.message),
+                        {phase:'transfer',downloadPaused:true});
+                    if (queued) {
+                        await pause(Math.max(0,1100 - (Date.now() - (downloadStarted.get(source) || 0))));
+                        verify();
+                        downloadStarted.set(source,Date.now());
+                    }
+                    try { return await subtitleBinary(result.url,{allowHttp:result.allowHttp === true}); }
+                    catch (error) {
+                        if (error.phase === 'transfer' && [429,509].includes(error.status)) {
+                            downloadPauses.set(source,error);
+                            unavailableSources.set(source,error.message);
+                            log('下载来源暂停',source + ' · ' + error.message + ' · 后续排队请求转用其他来源');
+                        }
+                        throw error;
+                    }
+                };
+                const pending = queued ? enqueueByKey(downloadQueues,source,run) : run();
                 transfers.set(key,pending);
                 const clear = () => { if (transfers.get(key) === pending) transfers.delete(key); };
                 pending.then(clear,clear);
@@ -5326,7 +5378,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         const archiveData = async (url,verify) => {
             check(); verify();
             if (!archiveCache.has(url)) {
-                const entry = subtitleBinary(url).then(bytes => ({bytes,index:subtitleArchiveIndex(bytes,verify)}))
+                const entry = transfer({url},verify,'SubDL').then(bytes => ({bytes,index:subtitleArchiveIndex(bytes,verify)}))
                     .catch(error => { archiveCache.delete(url); throw error; });
                 archiveCache.set(url,entry); evict(archiveCache,3); // At most three 16 MiB archives.
             }
@@ -5408,7 +5460,8 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 await seasonPreparations.get(key); check(); verify();
             },
             assrtCachedEpisode(row) { return assrtEpisodes.get(row) || []; },
-            resetSearchBatch() { unavailableSources.clear(); seasonPreparations.clear(); workConflicts.clear(); assrtEpisodes = new WeakMap(); },
+            resetSearchBatch() { unavailableSources.clear(); downloadPauses.clear(); seasonPreparations.clear(); workConflicts.clear(); assrtEpisodes = new WeakMap(); },
+            resetDownloadBatch() { downloadPauses.clear(); },
             searchUnavailable(name) { return unavailableSources.get(name); },
             pauseSearchSource(name, reason) { unavailableSources.set(name, reason); },
             thunderCachedEpisode(row, config, onFiles = () => {}, verify = () => {}, report) {
@@ -5603,7 +5656,11 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                             if (!fallback) { reject('语言',item.name); continue; }
                             const fields = [...(Array.isArray(item.releases) ? item.releases.filter(value => typeof value === 'string') : []),item.release_name || '',String(item.name || '').replace(/\.zip$/i,'')];
                             const unpacked = Array.isArray(item.unpack_files) ? item.unpack_files.filter(file => file?.url && /\.(srt|ass|ssa|vtt)$/i.test(file.name || '')) : [];
-                            const files = unpacked.length ? unpacked : [{name:item.name,url:item.url,season:item.season,episode:item.episode}];
+                            const files = unpacked.length ? [...unpacked] : [{name:item.name,url:item.url,season:item.season,episode:item.episode}];
+                            if (unpacked.length && item.url && (/\.zip$/i.test(item.name || '') || /\.zip(?:[?#]|$)/i.test(item.url))) {
+                                const name = /\.zip$/i.test(item.name || '') ? item.name : (item.name || item.release_name || '') + '.zip';
+                                files.push({name,url:item.url,season:item.season});
+                            }
                             for (const file of files) {
                                 const name = String(file.name || ''), ext = name.split('.').pop().toLowerCase();
                                 if (!['srt','ass','ssa','vtt','zip'].includes(ext) || !file.url) { reject('格式',name); continue; }
@@ -5615,7 +5672,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                                 const exactEpisode = tagged ? exactSubtitleEpisode(name,parsed) : Number(file.season) === parsed.season && Number(file.episode) === parsed.episode && (unpacked.length > 0 || !item.full_season && !(Number(item.episode_end) > Number(item.episode_from)));
                                 // SubDL uses season=0 for unknown metadata; an explicit SxxExx filename still identifies the episode.
                                 if ((!parsed.tv && tagged) || parsed.tv && (tagged && !exactEpisode || !exactEpisode && ext !== 'zip' || Number(file.season) > 0 && Number(file.season) !== parsed.season
-                                    || unpacked.length > 0 && Number(file.episode) > 0 && Number(file.episode) !== parsed.episode)) { reject('季集',name); continue; }
+                                    || ext !== 'zip' && unpacked.length > 0 && Number(file.episode) > 0 && Number(file.episode) !== parsed.episode)) { reject('季集',name); continue; }
                                 const archiveTitle = name.replace(/\.zip$/i,'');
                                 const archiveIdentity = ext === 'zip' && subtitleWorkIdentity(parsed,[],archiveTitle);
                                 if (archiveIdentity?.hardMismatch) { reject('年份',name); continue; }
@@ -5726,13 +5783,13 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                             progress('SubDL 压缩包选择',file.name);
                             return {result,bytes:file.bytes};
                         },verify);
-                        const bytes = await transfer(result,verify);
+                        const bytes = await transfer(result,verify,candidate.source);
                         verify();
                         return {result,bytes};
                     } catch (error) {
                         verify();
-                        if (attempt || error.phase !== 'transfer' || !([401,403,408,429,500,502,503,504].includes(error.status) || error.retryable)) throw error;
-                        progress('下载重试', `${candidate.source} · ${new URL(result.url).hostname} · ${error.message}；刷新下载地址后重试一次`);
+                        if (attempt || error.downloadPaused || error.phase !== 'transfer' || !([401,403,408,500,502,503,504].includes(error.status) || error.retryable)) throw error;
+                        progress('下载重试', `${candidate.source} · ${new URL(result.url).hostname} · ${error.message}；稍后重试一次`);
                         if (candidate.source === 'SubDL') archiveCache.delete(candidate.url);
                         await pause(1500);
                     }
@@ -5898,7 +5955,19 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 onprogress: event => { if (event.loaded > limit || event.lengthComputable && event.total > limit) fail('响应超过大小限制，已停止读取'); },
                 onload: response => {
                     if (rejected) return;
-                    if (response.status < 200 || response.status >= 300) { reject(Object.assign(new Error('文件传输失败（HTTP ' + response.status + '）'), {status:response.status, phase:'transfer'})); return; }
+                    if (response.status < 200 || response.status >= 300) {
+                        let payload;
+                        try { payload = JSON.parse(new TextDecoder().decode(new Uint8Array(response.response || new ArrayBuffer(0)).subarray(0,8192))); }
+                        catch { /* Error bodies can be HTML. */ }
+                        const code = typeof payload?.error === 'string' ? payload.error : payload?.code;
+                        const reason = new Map([['daily_limit','当日下载额度已用完'],['api_download_limit_exceeded','账号下载额度已用完'],['rate_limit','请求过频'],['service_busy','来源服务繁忙']]).get(code)
+                            || ([429,509].includes(response.status) ? '来源限制，具体频率或额度原因未返回' : '');
+                        const retry = String(response.responseHeaders || '').match(/^retry-after:\s*(.+)$/im)?.[1]?.trim();
+                        const retryAfterMs = retry ? Math.max(0,/^\d+$/.test(retry) ? Number(retry) * 1000 : Date.parse(retry) - Date.now()) || 0 : 0;
+                        reject(Object.assign(new Error('文件传输失败（HTTP ' + response.status + '）' + (reason ? '：' + reason : '')
+                            + (retryAfterMs ? '，服务要求等待 ' + Math.ceil(retryAfterMs / 1000) + ' 秒' : '')), {status:response.status,phase:'transfer',retryAfterMs}));
+                        return;
+                    }
                     const data = new Uint8Array(response.response || new ArrayBuffer(0));
                     if (data.length > limit) { reject(new Error('响应超过大小限制')); return; }
                     if (range) {
@@ -6029,7 +6098,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             const identity = candidate.identityMatched || candidate.titleMatched || candidate.aiAccepted;
             const reliable = !candidate.downloadFailed && !candidate.hardMismatch && !!identity && lang && !editionMismatch;
             const preference = wanted.indexOf(candidate.language);
-            return {candidate, reliable, preference:subtitlePreference(candidate, language), score:(candidate.identityMatched ? 100 : 0) + (candidate.titleMatched ? 50 : 0) + overlaps * 10 + (lang ? 5 : 0) + (preference < 0 ? 0 : (wanted.length - preference) / 10)};
+            return {candidate, reliable, preference:subtitlePreference(candidate, language), score:(candidate.identityMatched ? 100 : 0) + (candidate.titleMatched ? 50 : 0) + (candidate.seasonPackVerified ? 20 : 0) + overlaps * 10 + (lang ? 5 : 0) + (preference < 0 ? 0 : (wanted.length - preference) / 10)};
         }).sort((a,b) => Number(!!a.candidate.opaque) - Number(!!b.candidate.opaque) || Number(b.reliable) - Number(a.reliable) || b.preference - a.preference || b.score - a.score);
         row.candidates = scored.map(item => item.candidate);
         row.autoCandidates = scored.filter(item => item.reliable).map(item => item.candidate);
@@ -8196,6 +8265,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             if (!targets.length) { status('当前没有可补齐的字幕候选。'); return; }
             const groups = merged ? [...groupBatch(targets,row => row.parsed.tv ? row.groupKey : null).values()] : [targets];
             const pausedDownloads = new Set();
+            service.resetDownloadBatch?.();
             const fillGroup = async rows => {
             meter(0,rows.length);
             config.reviewCandidates = reviewCandidates;
@@ -8274,7 +8344,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                                 suspicious ||= !!error.subtitleSuspicious;
                                 const source = row.sources?.find(source => source.name === candidate.source);
                                 if (source) saveSubtitleSourceReport(source, config, {downloadErrors:[error.message]});
-                                const paused = isSubtitleSourceError(error) && subtitleSourcePaused(candidate.source,error)
+                                const paused = error.downloadPaused || isSubtitleSourceError(error) && subtitleSourcePaused(candidate.source,error)
                                     || error.phase === 'transfer' && [429,509].includes(error.status);
                                 if (paused) {
                                     pausedDownloads.add(candidate.source);
