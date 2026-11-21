@@ -10,7 +10,7 @@ const part = (a, b) => {
 };
 
 function fixture() {
-    const elements = Object.fromEntries(['runMedia', 'mediaPreview', 'mediaPreviewPanel'].map(id => [id, {disabled: true, textContent: ''}]));
+    const elements = Object.fromEntries(['runMedia', 'previewMedia', 'mediaAllowMissing', 'mediaPreview', 'mediaPreviewPanel'].map(id => [id, {disabled: true, textContent: ''}]));
     const state = {locks: [], messages: [], preparations: 0, writes: 0, owner: null};
     const claim = (pane, busy) => {
         if (busy && state.owner && state.owner !== pane) throw Error('another task is active');
@@ -24,7 +24,8 @@ function fixture() {
                 {canOrganize:row.ready,blocker:'作品匹配未确认'}])),
             sameSubtitles: () => true,
             coverage: () => 'complete',
-            previewShown: () => {}
+            previewShown: () => {},
+            finishOrganizing: (organized,uncertain) => {state.organized = [...organized]; state.uncertain = [...uncertain];}
         },
         rows: [{include: true, ready: true, destination: 'Movie.2000.mkv', node: {id: 'v', path: 'old.mkv'}, subtitles: [{id: 's', name: 'old.zh-cn.srt', suffix: '.zh-cn'}]}],
         cancelled: false, batch: null, batchWriter: null, history:null, previewRevision:'',readSubtitleLinks:null,
@@ -40,7 +41,12 @@ function fixture() {
         mediaSubtitleLinks: () => ({linked:new Map([['v',[{id:'s',name:'old.zh-cn.srt',suffix:'.zh-cn'}]]])}),
         source: {children: async () => []}, targetSession: {parent: 'root'}, targetPath: 'library',
         relativeParts: value => value.split('/'),
-        mediaOrganizerWriter: () => ({prepare: async () => {state.preparations++; return [];}, execute: async () => {state.writes++;}})
+        mediaOrganizerWriter: () => ({
+            prepare: async items => {state.preparations++; state.prepared = Array.from(items); return [];},
+            validate: async () => {},
+            execute: async item => {state.writes++; state.executed = item.node.id; return '已整理';},
+            recycleEmptySeasonSources: async () => 0
+        })
     });
     vm.runInContext(
         part('    const MEDIA_VIDEO', '    function mediaSeasonNumber(') +
@@ -50,7 +56,7 @@ function fixture() {
         part('    function cachedDriveChildren(', '    function titleKey(') +
         '\nconst runTask = createPanelTask(ui, updateControls); this.runOther = createPanelTask(otherUi, () => {});\n' +
         part('        const invalidate =', '        let mediaBusy =') +
-        part('        const generatePreview =', "        ui.get('previewMedia').onclick") +
+        part('        const generatePreview =', '\n    }\n') +
         '\nthis.generate = generatePreview; this.checkStale = refreshStalePreview;', ctx);
     const standardPath = ctx.mediaPath;
     ctx.mediaPath = row => row.destination ?? standardPath(row);
@@ -142,6 +148,58 @@ function fixture() {
         assert.equal(resolution.ctx.mediaPath(row),'剧集/Series.2024/Season 01/' + expected);
     }
 
+    const organized = fixture();
+    const videoName = '真相捕捉.2019.S03E02.mp4';
+    const subtitleName = '真相捕捉.2019.S03E02.zh-cn.ass';
+    const video = {id:'v',name:videoName,path:videoName,parentId:'season'};
+    const subtitle = {id:'s',name:subtitleName,path:subtitleName,parentId:'season',suffix:'.zh-cn'};
+    const job = organized.ctx.rows[0];
+    Object.assign(job,{node:video,destination:'剧集/真相捕捉.2019/Season 03/' + videoName});
+    const season = {id:'season',name:'Season 03',directory:true};
+    const listings = new Map([
+        ['root',[{id:'tv',name:'剧集',directory:true}]],
+        ['tv',[{id:'work',name:'真相捕捉.2019',directory:true}]],
+        ['work',[season]],
+        ['season',[video,subtitle]]
+    ]);
+    organized.ctx.source.children = async ({id}) => listings.get(id) || [];
+    const unmatched = {path:'旧目录/来源未确认.ass'};
+    organized.ctx.readSubtitleLinks = async () => ({linked:new Map([['v',[subtitle]]]),unmatched:[unmatched]});
+    await organized.ctx.generate();
+    assert.equal(organized.ctx.batch,null);
+    assert.equal(organized.state.preparations,0,'An entirely standard selection needs no executable plan');
+    assert.equal(organized.elements.runMedia.disabled,true);
+    assert.match(organized.elements.mediaPreview.textContent,/当前没有文件需要改名或移动/);
+    assert.ok(organized.elements.mediaPreview.textContent.includes(unmatched.path));
+    assert.doesNotMatch(organized.elements.mediaPreview.textContent,/真相捕捉/);
+
+    Object.assign(subtitle,{parentId:'old',name:'The Capture S03E02 Lone Wolves.ass',path:'旧目录/The Capture S03E02 Lone Wolves.ass'});
+    listings.set('season',[video]);
+    await organized.ctx.generate();
+    assert.deepEqual(Array.from(organized.ctx.batch,item => item.node.id),['s']);
+    assert.deepEqual(organized.state.prepared.map(item => [item.node.id,Boolean(item.atDestination)]),[['v',true],['s',false]]);
+    assert.doesNotMatch(organized.elements.mediaPreview.textContent,/\.mp4/);
+    assert.match(organized.elements.mediaPreview.textContent,/The Capture S03E02 Lone Wolves/);
+    assert.match(organized.state.messages.at(-1),/待整理 1 个文件/);
+    await organized.elements.runMedia.onclick();
+    assert.equal(organized.state.writes,1);
+    assert.equal(organized.state.executed,'s');
+    assert.deepEqual(organized.state.organized,['v']);
+    assert.match(organized.state.messages.at(-1),/已处理 1\/1/);
+
+    video.parentId = 'old';
+    listings.set('season',[]);
+    await organized.ctx.generate();
+    assert.deepEqual(Array.from(organized.ctx.batch,item => item.node.id),['v','s'],'A correct filename in a different folder still needs moving');
+    video.parentId = 'season';
+    video.name = videoName.replace('S03E02','s03e02');
+    listings.set('season',[video]);
+    await organized.ctx.generate();
+    assert.equal(organized.ctx.batch[0].node.id,'v','Case differences in the filename still need renaming');
+    video.name = videoName;
+    season.name = 'season 03';
+    await organized.ctx.generate();
+    assert.equal(organized.ctx.batch[0].node.id,'v','Case differences in the season folder still need renaming');
 
     const merged = fixture();
     merged.ctx.rows.push({include:true,ready:true,destination:'Other.mkv',node:{id:'bad',path:'bad.mkv'}});

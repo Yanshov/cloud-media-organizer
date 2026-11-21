@@ -514,16 +514,28 @@
         const history = mediaFileHistory(session);
         const subtitleSnapshots = new Map();
         const plannedSubtitles = new Map();
+        const videoAnchors = new Map();
         const emptiedSeasonSources = new Map();
         let targetSnapshots = [];
         let checkPlan = () => {};
-        const targetScope = async (destination,children,check) => {
+        const matchesMetadata = (expected,file) =>
+            (expected.size == null || file.size == null || file.size === expected.size) &&
+            (!expected.md5 || !file.md5 || file.md5.toLowerCase() === expected.md5.toLowerCase());
+        const targetScope = async (destination,children,check,expected) => {
             let parent = session.parent;
             const found = [];
-            for (const part of relativeParts(destination)) {
+            const parts = relativeParts(destination);
+            for (const [index,part] of parts.entries()) {
                 check();
                 const matches = (await children(parent)).filter(node => node.name.normalize('NFKC').toLowerCase() === part.normalize('NFKC').toLowerCase());
                 found.push(matches.map(node => [String(node.id),node.name,!!node.directory,node.size,node.md5]).sort((a,b) => a[0].localeCompare(b[0])));
+                if (expected) {
+                    const [match] = matches, directory = index < parts.length - 1;
+                    if (matches.length !== 1 || match.name !== part || !!match.directory !== directory
+                        || !directory && (String(match.id) !== String(expected.id) || String(parent) !== String(expected.parentId)
+                            || !matchesMetadata(expected,match)))
+                        throw new Error('已就位的文件发生变化，请重新生成预览：' + destination);
+                }
                 if (matches.length !== 1 || !matches[0].directory) break;
                 parent = matches[0].id;
             }
@@ -562,6 +574,7 @@
             bindings.clear(); scopeSnapshots.clear(); targetSnapshots = [];
             const videos = items.filter(item => item.node.id === item.videoId), candidates = new Map();
             for (const item of videos) {
+                if (item.atDestination) continue;
                 const parts = relativeParts(item.destination); parts.pop();
                 const ancestors = item.node.ancestors || [];
                 // Flat TV folders are work folders, not season folders.
@@ -579,11 +592,13 @@
             }
             const children = cachedDriveChildren(source,new Map(),check);
             await batchStage(items,'整理目标快照（文件）',log,async (item,verify,index) => {
-                targetSnapshots[index] = [item.destination,await targetScope(item.destination,children,verify)];
+                targetSnapshots[index] = [item.destination,await targetScope(item.destination,children,verify,item.atDestination ? item.node : undefined)];
             },check);
             const byId = new Map(videos.map(item => [String(item.node.id), item]));
             subtitleSnapshots.clear();
             plannedSubtitles.clear();
+            videoAnchors.clear();
+            for (const item of videos) if (item.atDestination) videoAnchors.set(String(item.node.id),item);
             for (const item of items) if (item.node.id !== item.videoId) {
                 const id = String(item.videoId);
                 if (!plannedSubtitles.has(id)) plannedSubtitles.set(id,new Map());
@@ -620,7 +635,7 @@
                 const matches = parentId == null ? [] : (await children(parentId)).filter(node => node.name === name);
                 if (matches.length > 1 || matches.length && !matches[0].directory) throw new Error('目标目录同名冲突：' + path);
                 const original = bindings.get(path);
-                if (matches.length && original && matches[0].id !== original.id) bindings.delete(path);
+                if (matches.length && original) bindings.delete(path);
                 const id = matches[0]?.id ?? original?.id ?? null;
                 projected.set(path,id); return id;
             };
@@ -705,25 +720,27 @@
             verify();
             const original = item.node, parts = relativeParts(item.destination), name = parts.pop();
             if (original.id == null || original.id === '') throw new Error('原文件缺少文件 ID，保留原状');
-            const matchesMetadata = file =>
-                (original.size == null || file.size == null || file.size === original.size) &&
-                (!original.md5 || !file.md5 || file.md5.toLowerCase() === original.md5.toLowerCase());
             const needsDetail = file => (original.md5 && !file.md5) || (original.size != null && file.size == null);
             const oldNodes = await source.children({ id: original.parentId });
             verify();
             let current = oldNodes.find(node => node.id === original.id);
             if (current && needsDetail(current)) current = await mediaFileMetadata(current, source);
-            if (!current || current.name !== original.name || current.directory || !matchesMetadata(current)) throw new Error('预览后原文件发生变化，请重新识别');
-            if (history && original.id === item.videoId && plannedSubtitles.has(String(item.videoId))) {
+            if (!current || current.name !== original.name || current.directory || !matchesMetadata(original,current)) throw new Error('预览后原文件发生变化，请重新识别');
+            const videoId = String(item.videoId);
+            const anchor = videoAnchors.get(videoId);
+            if (anchor) await targetScope(anchor.destination, id => source.children({id}), verify, anchor.node);
+            const video = original.id === item.videoId ? original : anchor?.node;
+            if (history && video && plannedSubtitles.has(videoId)) {
                 const records = history.load();
-                for (const subtitle of plannedSubtitles.get(String(item.videoId)).values()) {
+                const subtitles = video === original ? plannedSubtitles.get(videoId).values() : [original];
+                for (const subtitle of subtitles) {
                     if (!history.get(subtitle,subtitle.parentId,records)?.videoId)
-                        history.link({node:original},subtitle,subtitle.language,subtitle.suffix);
+                        history.link({node:video},subtitle,subtitle.language,subtitle.suffix);
                 }
             }
             let parentId = original.parentId;
             verify();
-            const targetId = await ensure(parts.join('/'),verify);
+            const targetId = anchor ? anchor.node.parentId : await ensure(parts.join('/'),verify);
             const destNodes = targetId === parentId ? oldNodes : await source.children({ id: targetId });
             verify();
             const occupied = (list, n) => list.some(node => node.name.toLowerCase() === n.toLowerCase() && node.id !== original.id);
@@ -736,7 +753,7 @@
                     if (i) await sleep(500);
                     let found = (await source.children({ id: parentId })).find(node => node.id === original.id && node.name === expected);
                     if (found && needsDetail(found)) found = await mediaFileMetadata(found, source);
-                    if (found && !found.directory && matchesMetadata(found)) { current = found; return; }
+                    if (found && !found.directory && matchesMetadata(original,found)) { current = found; return; }
                 }
                 throw new Error('请求已提交但结果未确认，请刷新后重新识别；文件 ID：' + original.id);
             };

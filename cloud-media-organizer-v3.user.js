@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v3.0（重构版）
 // @namespace    local.cloud-media-organizer
-// @version      3.0.9
+// @version      3.0.10
 // @description  面向百度网盘、123 云盘和光鸭网盘的浏览器脚本，支持跨盘 JSON 清单、影视整理与字幕补齐。
 // @match        https://pan.baidu.com/*
 // @match        https://yun.baidu.com/*
@@ -40,7 +40,7 @@
     if (typeof navigator !== 'undefined' && (navigator.userAgentData?.mobile || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
         navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) return;
 
-    const VERSION = '3.0.9';
+    const VERSION = '3.0.10';
     let jsonTaskStopped = false;
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
@@ -3097,16 +3097,28 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         const history = mediaFileHistory(session);
         const subtitleSnapshots = new Map();
         const plannedSubtitles = new Map();
+        const videoAnchors = new Map();
         const emptiedSeasonSources = new Map();
         let targetSnapshots = [];
         let checkPlan = () => {};
-        const targetScope = async (destination,children,check) => {
+        const matchesMetadata = (expected,file) =>
+            (expected.size == null || file.size == null || file.size === expected.size) &&
+            (!expected.md5 || !file.md5 || file.md5.toLowerCase() === expected.md5.toLowerCase());
+        const targetScope = async (destination,children,check,expected) => {
             let parent = session.parent;
             const found = [];
-            for (const part of relativeParts(destination)) {
+            const parts = relativeParts(destination);
+            for (const [index,part] of parts.entries()) {
                 check();
                 const matches = (await children(parent)).filter(node => node.name.normalize('NFKC').toLowerCase() === part.normalize('NFKC').toLowerCase());
                 found.push(matches.map(node => [String(node.id),node.name,!!node.directory,node.size,node.md5]).sort((a,b) => a[0].localeCompare(b[0])));
+                if (expected) {
+                    const [match] = matches, directory = index < parts.length - 1;
+                    if (matches.length !== 1 || match.name !== part || !!match.directory !== directory
+                        || !directory && (String(match.id) !== String(expected.id) || String(parent) !== String(expected.parentId)
+                            || !matchesMetadata(expected,match)))
+                        throw new Error('已就位的文件发生变化，请重新生成预览：' + destination);
+                }
                 if (matches.length !== 1 || !matches[0].directory) break;
                 parent = matches[0].id;
             }
@@ -3145,6 +3157,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             bindings.clear(); scopeSnapshots.clear(); targetSnapshots = [];
             const videos = items.filter(item => item.node.id === item.videoId), candidates = new Map();
             for (const item of videos) {
+                if (item.atDestination) continue;
                 const parts = relativeParts(item.destination); parts.pop();
                 const ancestors = item.node.ancestors || [];
                 // Flat TV folders are work folders, not season folders.
@@ -3162,11 +3175,13 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             }
             const children = cachedDriveChildren(source,new Map(),check);
             await batchStage(items,'整理目标快照（文件）',log,async (item,verify,index) => {
-                targetSnapshots[index] = [item.destination,await targetScope(item.destination,children,verify)];
+                targetSnapshots[index] = [item.destination,await targetScope(item.destination,children,verify,item.atDestination ? item.node : undefined)];
             },check);
             const byId = new Map(videos.map(item => [String(item.node.id), item]));
             subtitleSnapshots.clear();
             plannedSubtitles.clear();
+            videoAnchors.clear();
+            for (const item of videos) if (item.atDestination) videoAnchors.set(String(item.node.id),item);
             for (const item of items) if (item.node.id !== item.videoId) {
                 const id = String(item.videoId);
                 if (!plannedSubtitles.has(id)) plannedSubtitles.set(id,new Map());
@@ -3203,7 +3218,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 const matches = parentId == null ? [] : (await children(parentId)).filter(node => node.name === name);
                 if (matches.length > 1 || matches.length && !matches[0].directory) throw new Error('目标目录同名冲突：' + path);
                 const original = bindings.get(path);
-                if (matches.length && original && matches[0].id !== original.id) bindings.delete(path);
+                if (matches.length && original) bindings.delete(path);
                 const id = matches[0]?.id ?? original?.id ?? null;
                 projected.set(path,id); return id;
             };
@@ -3288,25 +3303,27 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             verify();
             const original = item.node, parts = relativeParts(item.destination), name = parts.pop();
             if (original.id == null || original.id === '') throw new Error('原文件缺少文件 ID，保留原状');
-            const matchesMetadata = file =>
-                (original.size == null || file.size == null || file.size === original.size) &&
-                (!original.md5 || !file.md5 || file.md5.toLowerCase() === original.md5.toLowerCase());
             const needsDetail = file => (original.md5 && !file.md5) || (original.size != null && file.size == null);
             const oldNodes = await source.children({ id: original.parentId });
             verify();
             let current = oldNodes.find(node => node.id === original.id);
             if (current && needsDetail(current)) current = await mediaFileMetadata(current, source);
-            if (!current || current.name !== original.name || current.directory || !matchesMetadata(current)) throw new Error('预览后原文件发生变化，请重新识别');
-            if (history && original.id === item.videoId && plannedSubtitles.has(String(item.videoId))) {
+            if (!current || current.name !== original.name || current.directory || !matchesMetadata(original,current)) throw new Error('预览后原文件发生变化，请重新识别');
+            const videoId = String(item.videoId);
+            const anchor = videoAnchors.get(videoId);
+            if (anchor) await targetScope(anchor.destination, id => source.children({id}), verify, anchor.node);
+            const video = original.id === item.videoId ? original : anchor?.node;
+            if (history && video && plannedSubtitles.has(videoId)) {
                 const records = history.load();
-                for (const subtitle of plannedSubtitles.get(String(item.videoId)).values()) {
+                const subtitles = video === original ? plannedSubtitles.get(videoId).values() : [original];
+                for (const subtitle of subtitles) {
                     if (!history.get(subtitle,subtitle.parentId,records)?.videoId)
-                        history.link({node:original},subtitle,subtitle.language,subtitle.suffix);
+                        history.link({node:video},subtitle,subtitle.language,subtitle.suffix);
                 }
             }
             let parentId = original.parentId;
             verify();
-            const targetId = await ensure(parts.join('/'),verify);
+            const targetId = anchor ? anchor.node.parentId : await ensure(parts.join('/'),verify);
             const destNodes = targetId === parentId ? oldNodes : await source.children({ id: targetId });
             verify();
             const occupied = (list, n) => list.some(node => node.name.toLowerCase() === n.toLowerCase() && node.id !== original.id);
@@ -3319,7 +3336,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     if (i) await sleep(500);
                     let found = (await source.children({ id: parentId })).find(node => node.id === original.id && node.name === expected);
                     if (found && needsDetail(found)) found = await mediaFileMetadata(found, source);
-                    if (found && !found.directory && matchesMetadata(found)) { current = found; return; }
+                    if (found && !found.directory && matchesMetadata(original,found)) { current = found; return; }
                 }
                 throw new Error('请求已提交但结果未确认，请刷新后重新识别；文件 ID：' + original.id);
             };
@@ -4647,40 +4664,71 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 let checkedPaths = 0; meter('检查目标路径', 0, items.length);
                 await batchStage(items,'目标路径预检（文件）',log,async (item,verify) => {
                     let parentId = targetSession.parent;
+                    let exactFolders = true;
                     const parts = relativeParts(item.destination);
                     for (let i = 0; i < parts.length; i++) {
                         verify();
-                        const matches = (await children(parentId)).filter(node => node.name.toLowerCase() === parts[i].toLowerCase());
+                        const name = parts[i], nameKey = name.normalize('NFKC').toLowerCase();
+                        const matches = (await children(parentId)).filter(node => node.name.normalize('NFKC').toLowerCase() === nameKey);
                         if (!matches.length) break;
-                        if (matches.length > 1 || i < parts.length - 1 && !matches[0].directory || i === parts.length - 1 && matches[0].id !== item.node.id) {
+                        const [match] = matches, leaf = i === parts.length - 1;
+                        if (matches.length > 1 || (leaf ? match.directory || String(match.id) !== String(item.node.id) : !match.directory)) {
                             conflicts.add(item.videoId); log('目标同名冲突，视频及字幕已跳过：' + item.destination); break;
                         }
-                        parentId = matches[0].id;
+                        if (leaf) {
+                            item.atDestination = exactFolders && match.name === name && item.node.name === name
+                                && String(parentId) === String(item.node.parentId);
+                        } else {
+                            exactFolders &&= match.name === name;
+                            parentId = match.id;
+                        }
                     }
                     meter('检查目标路径', ++checkedPaths, items.length);
-                    return conflicts.has(item.videoId) ? 'failed' : undefined;
+                    if (conflicts.has(item.videoId)) return 'failed';
+                    if (item.atDestination) return 'skipped';
                 },checkStopped,8,'共享目录列表合并读取，按完整预览判定冲突');
                 for (const row of rows) if (conflicts.has(row.node.id)) row.error = '目标同名冲突，请修改名称或取消此项；本次已跳过';
                 const accepted = items.filter(item => !conflicts.has(item.videoId));
                 if (!accepted.length) throw new Error('所有已匹配项目存在同名冲突，请调整后重试');
                 checkStopped();
                 mediaRecords.save();
+                const changes = accepted.filter(item => !item.atDestination);
+                const changingVideos = new Set(changes.map(item => item.videoId));
+                const unchanged = accepted.length - changes.length;
+                const skipped = [...blocked.values()].reduce((total,count) => total + count,conflicts.size);
+                const unchangedNote = unchanged ? '名称和位置已规范，略过 ' + unchanged + ' 个文件。' : '';
+                const skippedNote = skipped ? '另有 ' + skipped + ' 个视频暂无法整理，原因见日志。' : '';
+                const unmatchedNote = selectedLinks?.unmatched.length ? '未配对字幕，保留原位（' + selectedLinks.unmatched.length + ' 个）\n'
+                    + selectedLinks.unmatched.map(sub => sub.path).join('\n') : '';
+                if (unchangedNote) log(unchangedNote);
+                if (unmatchedNote) log('未配对字幕，保留原位（' + selectedLinks.unmatched.length + ' 个），路径见整理预览。');
+                if (!changes.length) {
+                    await flow.requireScope();
+                    const message = ['当前没有文件需要改名或移动。',unchangedNote,skippedNote].filter(Boolean).join(' ');
+                    ui.get('mediaPreview').textContent = [message,unmatchedNote].filter(Boolean).join('\n\n');
+                    ui.get('mediaPreviewPanel').open = true;
+                    flow.previewShown();
+                    meter('预览完成', items.length, items.length);
+                    progress(message);
+                    return;
+                }
                 const writer = mediaOrganizerWriter(targetSession, source, readSubtitleLinks);
-                const directoryPlans = await writer.prepare(accepted,checkStopped,log); checkStopped();
+                const plannedGroups = accepted.filter(item => changingVideos.has(item.videoId));
+                const directoryPlans = await writer.prepare(plannedGroups,checkStopped,log); checkStopped();
                 const directoryPreview = directoryPlans.map(plan => `文件夹整体改名/移动：${plan.folder.path || plan.folder.name}\n目标：/${[targetPath,plan.destination].filter(Boolean).join('/')}\n随文件夹保留并移动的内容（${plan.contents.length} 项）：\n${plan.contents.map(node => '  ' + node.path + (node.directory ? '/' : '')).join('\n')}`).join('\n\n');
                 await flow.requireScope();
-                for (const id of new Set(accepted.map(item => String(item.videoId)))) if (flow.coverage(id) === 'missing') without.push(id);
-                const note = without.length ? '允许无字幕整理（' + without.length + ' 个视频）\n' + accepted.filter(item => String(item.node.id) === String(item.videoId) && without.includes(String(item.videoId))).map(item => item.node.originalPath || item.node.path).join('\n') + '\n\n' : '';
-                previewRevision = history?.revision(accepted.map(item => item.videoId)) || '';
-                batch = accepted; batchWriter = writer; ui.get('mediaPreview').textContent = note + (directoryPreview ? directoryPreview + '\n\n逐文件目标：\n' : '') + accepted.map(item => `原：${item.node.originalPath || item.node.path}\n新：/${[targetPath, item.destination].filter(Boolean).join('/')}`).join('\n\n');
-                if (selectedLinks?.unmatched.length) ui.get('mediaPreview').textContent += '\n\n未配对字幕，保留原位（' + selectedLinks.unmatched.length + ' 个）\n'
-                    + selectedLinks.unmatched.map(sub => sub.path).join('\n');
-                if (accepted.some(item => mediaStandardSeasonFolder(relativeParts(item.destination).at(-2))))
-                    ui.get('mediaPreview').textContent += '\n\n整理后，搬空的剧集来源目录将移入回收站。';
+                for (const id of changingVideos) if (flow.coverage(String(id)) === 'missing') without.push(String(id));
+                const note = without.length ? '允许无字幕整理（' + without.length + ' 个视频）\n' + changes.filter(item => String(item.node.id) === String(item.videoId) && without.includes(String(item.videoId))).map(item => item.node.originalPath || item.node.path).join('\n') : '';
+                const filePreview = changes.map(item => `原：${item.node.originalPath || item.node.path}\n新：/${[targetPath, item.destination].filter(Boolean).join('/')}`).join('\n\n');
+                const cleanupNote = changes.some(item => mediaStandardSeasonFolder(relativeParts(item.destination).at(-2)))
+                    ? '整理后，搬空的剧集来源目录将移入回收站。' : '';
+                previewRevision = history?.revision([...changingVideos]) || '';
+                batch = changes; batchWriter = writer;
+                ui.get('mediaPreview').textContent = [note,directoryPreview,directoryPreview ? '逐文件目标：\n' + filePreview : filePreview,unmatchedNote,cleanupNote].filter(Boolean).join('\n\n');
                 ui.get('mediaPreviewPanel').open = true;
                 flow.previewShown();
                 meter('预览就绪', items.length, items.length);
-                progress(`预览 ${accepted.length} 个文件（含字幕），跳过 ${rows.filter(r => r.include && (!readyRow(r) || conflicts.has(r.node.id))).length} 个待确认视频。点击确认执行即可整批处理。`);
+                progress([`待整理 ${changes.length} 个文件（含字幕）。`,unchangedNote,skippedNote].filter(Boolean).join(' '));
             } catch (error) { stopMeter(); progress('无法生成预览：' + error.message); log('预览失败：' + error.message); }
             finally { render(); }
         }, true);
@@ -4723,7 +4771,14 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 verify();
                 progress(`重命名 ${completed + failed + skipped + 1}/${items.length}：${item.node.name}`);
                 if (failedVideos.has(item.videoId)) { skipped++; log('视频未完成，字幕保留：' + item.node.path); meter('重命名文件',completed + failed + skipped,items.length); continue; }
-                try { log(item.destination + '：' + await writer.execute(item,verify)); completed++; const row = rowsById.get(item.node.id); if (row) { organized.add(String(row.node.id)); mediaRecords.remember(row); mediaRecords.save(); } }
+                try {
+                    log(item.destination + '：' + await writer.execute(item,verify));
+                    completed++;
+                    const row = rowsById.get(item.videoId);
+                    if (row && !organized.has(String(item.videoId))) {
+                        organized.add(String(item.videoId)); mediaRecords.remember(row); mediaRecords.save();
+                    }
+                }
                 catch (error) { observe(error); outcome = 'failed'; failed++; uncertain.add(String(item.videoId)); if (item.node.id === item.videoId) failedVideos.add(item.videoId); log(item.node.path + '：未完成；' + error.message); if (error.stop || error.phase === 'drive-auth' || [401,403].includes(error.status)) throw error; }
                 meter('重命名文件',completed + failed + skipped,items.length);
               }

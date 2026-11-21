@@ -166,7 +166,8 @@ async function recoverLeftoverSubtitle() {
     const destination = 'Season 03/美国众神.2017.S03E08.1080p';
     const plan = async () => {
         const selection = await scan();
-        const items = [{node:selection.videos[0],destination:destination+'.mkv',videoId:episode.id},
+        const [node] = selection.videos;
+        const items = [{node,destination:destination+'.mkv',videoId:episode.id,atDestination:node.name === destination.split('/').at(-1)+'.mkv'},
             ...selection.linked.get(episode.id).map(node => ({node,destination:destination+node.suffix+'.ass',videoId:episode.id}))];
         const writer = api.mediaOrganizerWriter(session,source,selection.readSubtitleLinks);
         await writer.prepare(items);
@@ -187,11 +188,27 @@ async function recoverLeftoverSubtitle() {
     state.moveError = '';
     const retry = await plan();
     assert.equal(retry.items.length,2,'The recorded link still identifies a subtitle after a successful rename and failed move');
+    assert.equal(retry.items[0].atDestination,true);
     await retry.writer.validate();
-    await retry.writer.execute(retry.items[0]);
+    const mutationsBeforeRetry = state.mutations;
+    episode.parentId = old.id;
+    await assert.rejects(retry.writer.execute(retry.items[1]),/已就位的文件发生变化/);
+    assert.equal(state.mutations,mutationsBeforeRetry);
+    episode.parentId = target.id;
     await retry.writer.execute(retry.items[1]);
+    assert.equal(state.mutations,mutationsBeforeRetry+1,'Retry moves the subtitle with no video mutation');
     assert.equal(subtitle.parentId,target.id);
     assert.equal((await scan()).linked.get(episode.id)[0].suffix,'.chs');
+
+    const unrecorded = {id:'extra-caption',name:'美国众神.2017.S03E08.1080p.cht.srt',parentId:old.id,size:55};
+    state.entries.push(unrecorded);
+    const extra = await plan();
+    assert.equal(extra.items.length,3);
+    assert.equal((await extra.writer.prepare(extra.items)).length,0,'Existing standard folders need no whole-folder operation');
+    await extra.writer.validate();
+    await extra.writer.execute(extra.items.find(item => item.node.id === unrecorded.id));
+    assert.equal(unrecorded.parentId,target.id);
+    assert.equal(history.get(unrecorded,target.id)?.videoId,episode.id);
 }
 
 async function onlineSeasonSearch() {
