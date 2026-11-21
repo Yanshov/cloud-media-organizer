@@ -879,12 +879,14 @@
                 for (const group of subtitleSearchGroups(rows)) {
                     if (!group[0]?.parsed.tv) continue;
                     const targets = group.filter(row => !covered(row));
-                    const available = targets.filter(row => row.autoCandidates?.some(candidate => !candidate.downloadFailed));
-                    if (!targets.length || available.length === targets.length) continue;
+                    const missing = targets.filter(row => !row.autoCandidates?.some(candidate => !candidate.downloadFailed));
+                    if (!missing.length) continue;
                     for (const row of targets) {
                         row.selectedCandidate = null;
                     }
-                    diag('整季转手动导入', group[0].parsed.query + ' · 自动结果未覆盖全部缺字幕集，保留日志并停止逐集补齐');
+                    const episodes = missing.map(row => 'S' + String(row.parsed.season).padStart(2,'0') + 'E' + String(row.parsed.episode).padStart(2,'0'));
+                    diag('整季转手动导入', group[0].parsed.query + ' · 可靠候选覆盖 ' + (targets.length - missing.length) + '/' + targets.length
+                        + ' · 缺少可靠候选：' + episodes.join('、') + ' · 停止逐集补齐');
                 }
                 const sourceFailures = rows.filter(row => row.sources?.some(source => source.error || source.paused || source.cacheError
                     || source.queries?.some(query => query.error))).length;

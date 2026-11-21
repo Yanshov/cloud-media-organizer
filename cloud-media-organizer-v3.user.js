@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v3.0（重构版）
 // @namespace    local.cloud-media-organizer
-// @version      3.0.30
+// @version      3.0.31
 // @description  面向百度网盘、123 云盘和光鸭网盘的浏览器脚本，支持跨盘 JSON 清单、影视整理与字幕补齐。
 // @match        https://pan.baidu.com/*
 // @match        https://yun.baidu.com/*
@@ -197,7 +197,7 @@ SOFTWARE.
     if (typeof navigator !== 'undefined' && (navigator.userAgentData?.mobile || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
         navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) return;
 
-    const VERSION = '3.0.30';
+    const VERSION = '3.0.31';
     let jsonTaskStopped = false;
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
@@ -5503,13 +5503,18 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         const readThunderDetails = subtitleRequestPool(0,2,async (item,url,verify) => {
             const bytes = await transfer({url,allowHttp:true},verify,'迅雷');
             check(); verify();
-            const {text} = subtitleDecode(bytes);
-            const videoName = subtitleProjectVideo(text);
-            if (!videoName) return null;
-            const dialogue = subtitleDialogue(text,String(item.ext).toLowerCase());
-            if (!dialogue) return null;
-            log('字幕正文线索',item.name + ' · 内部视频名：' + videoName);
-            return {videoName,chinese:/[\u3400-\u9fff]/.test(dialogue)};
+            try {
+                const {text} = subtitleDecode(bytes);
+                const videoName = subtitleProjectVideo(text);
+                if (!videoName) return null;
+                const dialogue = subtitleDialogue(text,String(item.ext).toLowerCase());
+                if (!dialogue) return null;
+                log('字幕正文线索',item.name + ' · 内部视频名：' + videoName);
+                return {videoName,chinese:/[\u3400-\u9fff]/.test(dialogue)};
+            } catch (error) {
+                log('字幕正文线索失败',item.name + ' · ' + error.message + ' · 已缓存解析失败结果');
+                return null;
+            }
         });
         const recoverThunderDetails = async (items,row,verify) => {
             if (!row.parsed.tv || !row.parsed.workResolved) return;
@@ -5605,7 +5610,10 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 const plainQueries = names.map(name => name + suffix);
                 const chapter = subtitleReleaseChapter(parsed);
                 const chapterQuery = chapter && chapter + (config.seasonSearch ? '' : ' ' + String(parsed.episode).padStart(2,'0'));
-                const queries = [...new Set([chapterQuery,withRelease && original.replace(/\.[^.]+$/,''),...plainQueries].filter(Boolean))].slice(0,3);
+                const chapterEpisodeQuery = chapter && !config.seasonSearch
+                    && chapter + ' S' + parsed.season + 'E' + String(parsed.episode).padStart(2,'0');
+                const queries = [...new Set([chapterEpisodeQuery,chapterQuery,withRelease && original.replace(/\.[^.]+$/,''),...plainQueries].filter(Boolean))]
+                    .slice(0,chapterEpisodeQuery ? 4 : 3);
                 const filter = (items, {parsed:target,node}) => {
                     const candidates = [], seen = new Set(), excluded = {年份:0,季集:0,语言:0,内容:0,无关:0,待确认上限:0,格式:0,重复:0}, rejectionSamples = [];
                     const sampleRejection = (name, reason) => { if (rejectionSamples.length < 8) rejectionSamples.push(`${name}（${reason}）`); };
@@ -7921,12 +7929,14 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 for (const group of subtitleSearchGroups(rows)) {
                     if (!group[0]?.parsed.tv) continue;
                     const targets = group.filter(row => !covered(row));
-                    const available = targets.filter(row => row.autoCandidates?.some(candidate => !candidate.downloadFailed));
-                    if (!targets.length || available.length === targets.length) continue;
+                    const missing = targets.filter(row => !row.autoCandidates?.some(candidate => !candidate.downloadFailed));
+                    if (!missing.length) continue;
                     for (const row of targets) {
                         row.selectedCandidate = null;
                     }
-                    diag('整季转手动导入', group[0].parsed.query + ' · 自动结果未覆盖全部缺字幕集，保留日志并停止逐集补齐');
+                    const episodes = missing.map(row => 'S' + String(row.parsed.season).padStart(2,'0') + 'E' + String(row.parsed.episode).padStart(2,'0'));
+                    diag('整季转手动导入', group[0].parsed.query + ' · 可靠候选覆盖 ' + (targets.length - missing.length) + '/' + targets.length
+                        + ' · 缺少可靠候选：' + episodes.join('、') + ' · 停止逐集补齐');
                 }
                 const sourceFailures = rows.filter(row => row.sources?.some(source => source.error || source.paused || source.cacheError
                     || source.queries?.some(query => query.error))).length;

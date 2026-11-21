@@ -1,7 +1,7 @@
     if (typeof navigator !== 'undefined' && (navigator.userAgentData?.mobile || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
         navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) return;
 
-    const VERSION = '3.0.30';
+    const VERSION = '3.0.31';
     let jsonTaskStopped = false;
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);

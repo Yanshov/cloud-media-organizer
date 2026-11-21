@@ -496,13 +496,18 @@
         const readThunderDetails = subtitleRequestPool(0,2,async (item,url,verify) => {
             const bytes = await transfer({url,allowHttp:true},verify,'迅雷');
             check(); verify();
-            const {text} = subtitleDecode(bytes);
-            const videoName = subtitleProjectVideo(text);
-            if (!videoName) return null;
-            const dialogue = subtitleDialogue(text,String(item.ext).toLowerCase());
-            if (!dialogue) return null;
-            log('字幕正文线索',item.name + ' · 内部视频名：' + videoName);
-            return {videoName,chinese:/[\u3400-\u9fff]/.test(dialogue)};
+            try {
+                const {text} = subtitleDecode(bytes);
+                const videoName = subtitleProjectVideo(text);
+                if (!videoName) return null;
+                const dialogue = subtitleDialogue(text,String(item.ext).toLowerCase());
+                if (!dialogue) return null;
+                log('字幕正文线索',item.name + ' · 内部视频名：' + videoName);
+                return {videoName,chinese:/[\u3400-\u9fff]/.test(dialogue)};
+            } catch (error) {
+                log('字幕正文线索失败',item.name + ' · ' + error.message + ' · 已缓存解析失败结果');
+                return null;
+            }
         });
         const recoverThunderDetails = async (items,row,verify) => {
             if (!row.parsed.tv || !row.parsed.workResolved) return;
@@ -598,7 +603,10 @@
                 const plainQueries = names.map(name => name + suffix);
                 const chapter = subtitleReleaseChapter(parsed);
                 const chapterQuery = chapter && chapter + (config.seasonSearch ? '' : ' ' + String(parsed.episode).padStart(2,'0'));
-                const queries = [...new Set([chapterQuery,withRelease && original.replace(/\.[^.]+$/,''),...plainQueries].filter(Boolean))].slice(0,3);
+                const chapterEpisodeQuery = chapter && !config.seasonSearch
+                    && chapter + ' S' + parsed.season + 'E' + String(parsed.episode).padStart(2,'0');
+                const queries = [...new Set([chapterEpisodeQuery,chapterQuery,withRelease && original.replace(/\.[^.]+$/,''),...plainQueries].filter(Boolean))]
+                    .slice(0,chapterEpisodeQuery ? 4 : 3);
                 const filter = (items, {parsed:target,node}) => {
                     const candidates = [], seen = new Set(), excluded = {年份:0,季集:0,语言:0,内容:0,无关:0,待确认上限:0,格式:0,重复:0}, rejectionSamples = [];
                     const sampleRejection = (name, reason) => { if (rejectionSamples.length < 8) rejectionSamples.push(`${name}（${reason}）`); };
