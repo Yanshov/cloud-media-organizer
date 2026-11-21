@@ -20,7 +20,10 @@
         evict(entries,1000);
         const valid = work => work && ['movie','tv'].includes(work.type) && /^\d+$/.test(String(work.id))
             && Array.isArray(work.aliases) && Date.now() - work.updatedAt < 30 * 86400000;
-        const get = (type,id) => { const work = entries.get(type + ':' + id); return valid(work) ? {...work,aliases:[...work.aliases]} : null; };
+        const get = (type,id) => {
+            const work = entries.get(type + ':' + id);
+            return valid(work) ? {...work,aliases:[...work.aliases],seasons:work.seasons?.map(season => ({...season}))} : null;
+        };
         return mediaWorkLibrary.instance = {
             get,
             find(parsed) {
@@ -36,6 +39,7 @@
                 entries.set(identity,{type,id:String(detail.id),title:detail.title || detail.name,
                     year:(detail.release_date || detail.first_air_date || '').slice(0,4), aliases:mediaWorkNames(detail),
                     runtimeSeconds:type === 'movie' && Number(detail.runtime) > 0 ? Number(detail.runtime) * 60 : undefined,
+                    seasons:type === 'tv' ? detail.seasons?.map(({season_number,episode_count}) => ({season_number,episode_count})) : undefined,
                     updatedAt:Date.now()});
                 evict(entries,1000); GM_setValue(key,[...entries]);
             }
@@ -64,12 +68,13 @@
             parsed.aliases = [...new Set([...(parsed.aliases || []),...work.aliases])].slice(0,40);
             parsed.year ||= work.year;
             if (work.runtimeSeconds) parsed.runtimeSeconds = work.runtimeSeconds;
+            parsed.seasons = parsed.tv ? work.seasons?.map(season => ({...season})) : undefined;
             parsed.workResolved = true;
             return true;
         };
         check();
         const cached = parsed.tmdbId ? library.get(type,parsed.tmdbId) : library.find(parsed);
-        if (cached && (!cached.partial || !credential)) { log('作品资料复用', `${parsed.query} · ${type}:${cached.id} · ${cached.aliases.length} 个名称`); return apply(cached); }
+        if (cached && (!cached.partial && (!parsed.tv || cached.seasons?.length) || !credential)) { log('作品资料复用', `${parsed.query} · ${type}:${cached.id} · ${cached.aliases.length} 个名称`); return apply(cached); }
         if (!credential) return false;
         const client = tmdbClient(credential);
         let id = parsed.tmdbId || cached?.id;
@@ -93,5 +98,6 @@
         }
         const detail = await mediaWorkDetail(client,type,id,check);
         return apply({id:detail.id,aliases:mediaWorkNames(detail),year:(detail.release_date || detail.first_air_date || '').slice(0,4),
+            seasons:detail.seasons,
             runtimeSeconds:type === 'movie' && Number(detail.runtime) > 0 ? Number(detail.runtime) * 60 : undefined});
     }

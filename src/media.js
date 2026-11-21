@@ -74,6 +74,7 @@
             .sort((a,b) => a.season_number - b.season_number);
         const index = regular.findIndex(season => season.season_number === seasonNumber);
         if (index < 0 || absoluteEpisode <= regular[index].episode_count) return null;
+        if (regular.slice(0,index + 1).some((season,position) => season.season_number !== position + 1)) return null;
         const previousEpisodes = regular.slice(0,index).reduce((total,season) => total + season.episode_count,0);
         const episode = absoluteEpisode - previousEpisodes;
         return episode > 0 && episode <= regular[index].episode_count ? {season:seasonNumber,episode} : null;

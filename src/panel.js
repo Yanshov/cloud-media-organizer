@@ -358,11 +358,10 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 #settingsModels .sync-item:has(#openSubtitlesSettings:not([open])) h3{margin:0}
 #workspaceSettings:has(#openSubtitlesSettings[open]) #subtitleSettings{gap:2px}
 #workspaceSettings:has(#openSubtitlesSettings[open]) #subtitleSettings>label{margin-block:2px}
-#workspaceSettings:has(#openSubtitlesSettings[open]) #subtitleSettings>label:has(#subtitleLanguage,#subdlKey){
+#workspaceSettings:has(#openSubtitlesSettings[open]) #subtitleSettings>label:has(#subtitleLanguage){
     display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:8px
 }
 #workspaceSettings:has(#openSubtitlesSettings[open]) #subtitleSettings .credential-head{display:grid;gap:0}
-#workspaceSettings:has(#openSubtitlesSettings[open]) #subdlKey{margin:0}
 #openSubtitlesSettings[open]{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;column-gap:10px}
 #openSubtitlesSettings[open]>label:has(#openSubtitlesKey),#subtitleAccountSettings{grid-column:1/-1}
 #subtitleAccountSettings>div{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
