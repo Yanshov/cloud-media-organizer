@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v3.0（重构版）
 // @namespace    local.cloud-media-organizer
-// @version      3.0.32
+// @version      3.0.33
 // @description  面向百度网盘、123 云盘和光鸭网盘的浏览器脚本，支持跨盘 JSON 清单、影视整理与字幕补齐。
 // @match        https://pan.baidu.com/*
 // @match        https://yun.baidu.com/*
@@ -197,7 +197,7 @@ SOFTWARE.
     if (typeof navigator !== 'undefined' && (navigator.userAgentData?.mobile || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
         navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) return;
 
-    const VERSION = '3.0.32';
+    const VERSION = '3.0.33';
     let jsonTaskStopped = false;
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
@@ -5128,13 +5128,11 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             if (!chapters.has(key)) chapters.set(key,{title,episodes:new Set()});
             chapters.get(key).episodes.add(parsed.episode);
         }
-        if (chapters.size !== 1) return null;
-        const [key,chapter] = [...chapters][0];
-        if (chapter.episodes.size < 2 || rows.some(row => {
-            const original = subtitleReleaseChapter(row.parsed);
-            return original && subtitleTitleKey(original) !== key;
-        })) return null;
-        return {title:chapter.title,count:chapter.episodes.size};
+        const supported = [...chapters.values()].filter(chapter => chapter.episodes.size >= 2);
+        if (supported.length === 1) return {title:supported[0].title,count:supported[0].episodes.size};
+        return {title:'',reason:supported.length > 1 ? '多个篇章分别得到不同集字幕支持，无法确定本次缺集所属篇章'
+            : chapters.size ? '同一篇章的有效线索不足两集'
+            : '已有字幕缺少可对应当前作品与季集的内部视频名'};
     }
     function subtitleWorkIdentity(parsed, fields, name) {
         const titleNumbers = String(parsed.query || '').match(/(?:19|20)\d{2}/g) || [];
@@ -7896,7 +7894,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             const config = settings();
             if (!config.assrtKey && !config.thunder && !(config.open && config.key)) { ui.openSettings('subtitleSettings'); status('请启用迅雷免 Key 搜索，或配置其他字幕来源。'); return; }
             meter(0,rows.length);
-            diag('查找开始', `视频 ${rows.length}，语言 ${config.language}，启用来源：${[config.assrtKey && '射手网整季包',config.thunder && '迅雷', config.open && config.key && 'OpenSubtitles'].filter(Boolean).join('、') || '无'}`);
+            diag('查找开始', `v${VERSION} · 视频 ${rows.length}，语言 ${config.language}，启用来源：${[config.assrtKey && '射手网整季包',config.thunder && '迅雷', config.open && config.key && 'OpenSubtitles'].filter(Boolean).join('、') || '无'}`);
             const searchedGroups = new Set(rows.map(row => row.groupKey));
             const unconfirmed = inventory.filter(row => searchedGroups.has(row.groupKey) && subtitleCoverageState(row) === 'unconfirmed');
             for (const row of unconfirmed) diag('查找跳过', row.node.name + ' · 字幕检查未确认 · ' + (row.embedded?.message || row.searchMessage || row.error || '请复查已有字幕'));
@@ -7930,6 +7928,8 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             try {
                 drive.assertReady?.();
                 diag('并发策略','视频任务上限 8，AI 请求上限 2；同季命名判断合并，优先使用整季缓存');
+                for (const row of rows.filter(row => row.parsed.tv)) diag('原名搜索线索',row.node.name + ' · '
+                    + (subtitleReleaseChapter(row.parsed) || '未取得独立篇章名，将检查同季已有字幕'));
                 const releaseGroups = subtitleSearchGroups(inventory).filter(group => group[0].parsed.tv
                     && searchedGroups.has(group[0].groupKey)
                     && group.some(row => subtitleCoverageState(row) === 'missing' && !subtitleReleaseChapter(row.parsed)));
@@ -7953,7 +7953,13 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 },check,8,'仅补读旧核验记录缺少的 ASS/SSA 视频名线索，结果随正文核验缓存保存');
                 for (const group of releaseGroups) {
                     const chapter = subtitleSeasonRelease(group);
-                    if (!chapter) continue;
+                    if (!chapter.title) {
+                        const samples = group.filter(row => row.complete && row.verification?.projectVideoName)
+                            .slice(0,3).map(row => row.node.name + ' → ' + row.verification.projectVideoName);
+                        diag('同季线索未采用',group[0].parsed.query + ' · S' + String(group[0].parsed.season).padStart(2,'0')
+                            + ' · ' + chapter.reason + (samples.length ? ' · 正文样例：' + samples.join('；') : ''));
+                        continue;
+                    }
                     for (const row of group) if (!subtitleReleaseChapter(row.parsed)) row.parsed.videoReleaseTitle = chapter.title;
                     diag('同季搜索线索',`${group[0].parsed.query} · S${String(group[0].parsed.season).padStart(2,'0')} · ${chapter.count} 集已有字幕支持篇章名：${chapter.title}`);
                 }
@@ -8022,7 +8028,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         const checkDirectory = async (context, collected) => {
             const started = Date.now();
             const limit = 8;
-            diag('检查开始','读取当前选中的视频与已有字幕 · 并发上限 ' + limit);
+            diag('检查开始','v' + VERSION + ' · 读取当前选中的视频与已有字幕 · 并发上限 ' + limit);
             searching = false; seasonView = null;
             const batch = scan = {scope:scan?.scope, interrupted:false};
             let framePending = false;

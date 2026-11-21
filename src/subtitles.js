@@ -120,13 +120,11 @@
             if (!chapters.has(key)) chapters.set(key,{title,episodes:new Set()});
             chapters.get(key).episodes.add(parsed.episode);
         }
-        if (chapters.size !== 1) return null;
-        const [key,chapter] = [...chapters][0];
-        if (chapter.episodes.size < 2 || rows.some(row => {
-            const original = subtitleReleaseChapter(row.parsed);
-            return original && subtitleTitleKey(original) !== key;
-        })) return null;
-        return {title:chapter.title,count:chapter.episodes.size};
+        const supported = [...chapters.values()].filter(chapter => chapter.episodes.size >= 2);
+        if (supported.length === 1) return {title:supported[0].title,count:supported[0].episodes.size};
+        return {title:'',reason:supported.length > 1 ? '多个篇章分别得到不同集字幕支持，无法确定本次缺集所属篇章'
+            : chapters.size ? '同一篇章的有效线索不足两集'
+            : '已有字幕缺少可对应当前作品与季集的内部视频名'};
     }
     function subtitleWorkIdentity(parsed, fields, name) {
         const titleNumbers = String(parsed.query || '').match(/(?:19|20)\d{2}/g) || [];
