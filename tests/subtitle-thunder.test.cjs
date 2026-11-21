@@ -105,6 +105,55 @@ async function sourceDiagnostics() {
     console.log('PASS source diagnostics: raw counts, exclusions, partial failure, pause reason and redaction');
 }
 
+async function releaseEpisodeMatching() {
+    const release = episode => '[DBD-Raws][Yuukoku no Moriarty][' + String(episode).padStart(2,'0') + '][1080P][BDRip][HEVC-10bit][FLAC]';
+    const files = Array.from({length:24}, (_, i) => file(release(i + 1)+'.scjp.ass',{languages:[]}));
+    const chinese = file(release(13)+'.tcjp.ass',{languages:[]});
+    const otherFiles = [
+        file(release(13).replace('[DBD-Raws]','[Other-Raws]')+'.scjp.ass'),
+        file(release(13).replace('[1080P]','[720P]')+'.scjp.ass'),
+        file(release(13).replace('Moriarty','Moriarty Yuri no Tsuioku')+'.scjp.ass'),
+        file(release(13)+'.S02E13.scjp.ass'),
+        file(release(13)+'.Extra.scjp.ass')
+    ];
+    const requests = [], ctx = load({GM_xmlhttpRequest:options=>{
+        requests.push(new URL(options.url).searchParams.get('name'));
+        options.onload({status:200,responseText:JSON.stringify({code:0,data:[...files,chinese,...otherFiles]})});
+        return {abort(){}};
+    }});
+    vm.runInContext(part('    const MEDIA_VIDEO', '    // A special episode is still part') +
+        part('    function mediaSubtitleSuffix(', '    async function mediaFileMetadata('),ctx);
+    const service = ctx.createSubtitleService();
+    const config = {language,thunder:true};
+    const makeRow = episode => ({node:{name:release(episode)+'.mkv'},
+        parsed:{query:'忧国的莫里亚蒂',aliases:['Yuukoku no Moriarty'],tv:true,season:1,episode}});
+    for (let i = 1; i <= files.length; i++) {
+        const target = makeRow(i);
+        await ctx.searchSubtitleSources(target,config,service);
+        assert.deepEqual(Array.from(target.autoCandidates,candidate=>candidate.name),i === 13 ? [files[i - 1].name,chinese.name] : [files[i - 1].name]);
+        assert.equal(target.selectedCandidate.language,'zh-cn');
+    }
+    assert.equal(requests.length,1,'Other matching episodes reuse the provider response');
+    assert.equal(ctx.subtitleFileInfo(chinese.name).language,'zh-tw');
+    assert.equal(ctx.mediaSubtitleSuffix(release(13)+'.mkv',chinese.name),'.tcjp');
+
+    const renamed = makeRow(13);
+    renamed.node = {name:'忧国的莫里亚蒂.2020.S01E13.1080p.mkv',originalName:renamed.node.name};
+    const backup = {source:'SubDL',name:'Moriarty.the.Patriot.S01E13.cht.ass',language:'zh-tw',titleMatched:true};
+    service.subdlCachedEpisode = async () => [backup];
+    const providers = {...config,subdl:true,subdlKey:'fixture'};
+    await ctx.searchSubtitleSources(renamed,providers,service);
+    assert.equal(renamed.selectedCandidate,backup);
+    backup.downloadFailed = true;
+    await ctx.searchSubtitleSources(renamed,providers,service,()=>{},()=>{},true);
+    assert.equal(renamed.selectedCandidate?.name,files[12].name,'SubDL download failure falls back to the same release and episode');
+    const wrongEpisode = makeRow(13);
+    wrongEpisode.parsed.episode = 14;
+    await ctx.searchSubtitleSources(wrongEpisode,config,service);
+    assert.equal(wrongEpisode.selectedCandidate,null);
+    console.log('PASS Thunder bracket episodes: all 24 logged filenames match, wrong releases and episodes stay unconfirmed, and fallback works after renaming');
+}
+
 async function sourceOrder() {
     const ctx=load(),calls=[],mono={source:'SubDL',name:'电影.2000.简体.srt',language:'zh-cn',titleMatched:true};
     const bilingual={source:'迅雷',name:'电影.2000.繁体&英文.ass',language:'zh-tw',bilingual:true,titleMatched:true};
@@ -183,4 +232,4 @@ async function thunderOnlyUI() {
     console.log('PASS thunder-only UI: no key or video sample, busy lock, search/download/save flow and explicit disabled preference');
 }
 
-(async()=>{await searchAndDownloads();await episodesAndErrors();await sourceDiagnostics();await sourceOrder();await thunderOnlyUI()})().catch(error=>{console.error(error);process.exitCode=1});
+(async()=>{await searchAndDownloads();await episodesAndErrors();await releaseEpisodeMatching();await sourceDiagnostics();await sourceOrder();await thunderOnlyUI()})().catch(error=>{console.error(error);process.exitCode=1});

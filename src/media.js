@@ -213,7 +213,7 @@
         if (sub.toLowerCase() === video.toLowerCase()) return '';
         if (!sub.toLowerCase().startsWith(video.toLowerCase())) return null;
         const suffix = sub.slice(video.length).replace(/zh[._ -](cn|tw|hans|hant)(?=[. _&+-]|$)/gi, 'zh$1');
-        return /^(?:[. _&+-](?:zh(?:cn|tw|hans|hant)?|chs|cht|chi|zho|en|eng|ja|jpn|ko|kor|简体|繁体|简中|繁中|中文|英文|双语|中英|forced|default|sdh|synced|简英|繁英))+$/i.test(suffix)
+        return /^(?:[. _&+-](?:zh(?:cn|tw|hans|hant)?|chs|cht|scjp|tcjp|chi|zho|en|eng|ja|jpn|ko|kor|简体|繁体|简中|繁中|中文|英文|双语|中英|forced|default|sdh|synced|简英|繁英))+$/i.test(suffix)
             ? suffix.replace(/[ _&+-]+/g, '.').replace(/zh(cn|tw|hans|hant)(?=[.]|$)/gi, 'zh-$1') : null;
     }
     async function mediaFileMetadata(node, source) {
