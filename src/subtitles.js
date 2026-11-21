@@ -549,8 +549,7 @@
                 const withRelease = !config.seasonSearch && (/\b(?:BluRay|BDRip|WEB[ ._-]?(?:DL|Rip)|REMUX|HDTV|x26[45]|extended|theatrical)\b/i.test(original)
                     || parsed.tv && /\b(?:2160p|1080p|720p)\b/i.test(original));
                 const plainQueries = names.map(name => name + suffix);
-                const queries = config.correctionName ? [config.correctionName + suffix]
-                    : (withRelease ? [...new Set([original.replace(/\.[^.]+$/,''),...plainQueries])] : plainQueries).slice(0,3);
+                const queries = (withRelease ? [...new Set([original.replace(/\.[^.]+$/,''),...plainQueries])] : plainQueries).slice(0,3);
                 const filter = (items, {parsed:target,node}) => {
                     const candidates = [], seen = new Set(), excluded = {年份:0,季集:0,语言:0,内容:0,无关:0,待确认上限:0,格式:0,重复:0}, rejectionSamples = [];
                     const sampleRejection = (name, reason) => { if (rejectionSamples.length < 8) rejectionSamples.push(`${name}（${reason}）`); };
@@ -661,7 +660,7 @@
             },
             async search(row, config, report = () => {}) {
                 const parsed = row.parsed;
-                const title = config.correctionName || subtitleQueryTitle(parsed.query, parsed.year);
+                const title = subtitleQueryTitle(parsed.query, parsed.year);
                 if (!title) throw subtitleSourceError('无法从文件名识别作品名称');
                 if (parsed.tv && (parsed.season === null || parsed.episode === null)) throw subtitleSourceError('缺少明确季集，请先在影视整理中确认季集并重命名');
                 if (parsed.endEpisode && parsed.endEpisode !== parsed.episode) throw subtitleSourceError('合并多集视频需要单独匹配字幕，本次未自动查询');
@@ -1197,83 +1196,6 @@
             || source.queries?.some(query => query.error) || source.downloadErrors?.length)) return 'failed';
         return sources.some(source => source.count != null) ? 'notFound' : 'unsearched';
     }
-    function createSubtitleWorkCorrection(ai, credential) {
-        const works = new Map();
-        let parseFailures = 0, paused = false;
-        const identify = paced(0, async (row, check) => {
-            check();
-            if (paused) return null;
-            const {parsed, node} = row;
-            const type = parsed.tv ? 'tv' : 'movie';
-            const client = tmdbClient(credential);
-            const attempted = subtitleSearchNames(parsed);
-            const safe = value => subtitleDiagnosticText(value, {key:credential}).slice(0,160);
-            const eligible = item => item.media_type === type && /^\d+$/.test(String(item.id))
-                && String(item.release_date || item.first_air_date || '').slice(0,4) === String(parsed.year);
-            const known = (await client.search(parsed.query)).filter(eligible).slice(0,8);
-            check();
-            let suggestion;
-            try {
-                suggestion = await ai.correctSubtitleWork({name:safe(node.name), folders:(node.folders || []).slice(-2).map(safe),
-                    work:{type,year:parsed.year,season:parsed.season,names:attempted.map(safe)},
-                    candidates:known.map(({id,title,name,original_title,original_name}) => ({id,title:safe(title || name),original:safe(original_title || original_name)}))});
-                check(); parseFailures = 0;
-            } catch (error) {
-                check();
-                parseFailures = error.aiParse ? parseFailures + 1 : 0;
-                if (parseFailures >= 2 || [401,403,429,509].includes(error.status)) paused = true;
-                throw error;
-            }
-            const proposed = suggestion?.title;
-            const picked = Number.isSafeInteger(suggestion?.id) && known.find(item => String(item.id) === String(suggestion.id));
-            if (suggestion?.id != null && !picked) return null;
-            if (!picked && (typeof proposed !== 'string' || !proposed.trim() || proposed.length > 120 || /https?:|[\r\n<>]/i.test(proposed))) return null;
-            const nameToVerify = picked ? picked.title || picked.name : proposed;
-            if (typeof nameToVerify !== 'string' || !nameToVerify.trim()) return null;
-            const matches = (await client.search(nameToVerify)).filter(item => eligible(item)
-                && mediaWorkNames(item).some(name => titleKey(name) === titleKey(nameToVerify)));
-            check();
-            if (matches.length !== 1 || picked && String(picked.id) !== String(matches[0].id)) return null;
-            const id = String(matches[0].id);
-            const detail = await client.get('/' + type + '/' + id,{append_to_response:'alternative_titles'});
-            check();
-            if (String(detail.id) !== id || (detail.release_date || detail.first_air_date || '').slice(0,4) !== String(parsed.year)) return null;
-            if (detail.media_type && detail.media_type !== type) return null;
-            const aliases = mediaWorkNames(detail);
-            const normalized = aliases.map(titleKey);
-            // Model suggestions need an existing trusted title or an exact filename/folder title as evidence.
-            const recognized = [parsed.query,...(parsed.aliases || []),...(node.folders || []).slice(-2)]
-                .some(name => normalized.includes(titleKey(subtitleQueryTitle(name,parsed.year))));
-            if (!recognized) return null;
-            if (typeof proposed === 'string' && !picked && !normalized.includes(titleKey(proposed))) return null;
-            const name = aliases.map(alias => subtitleQueryTitle(alias,parsed.year)).find(alias => alias && !attempted.some(term => titleKey(term) === titleKey(alias)));
-            return name ? {client,id,aliases,name,seasons:detail.seasons} : null;
-        });
-        return async (row, check) => {
-            const {parsed} = row;
-            const phase = subtitleSearchState(row);
-            if (paused || parsed.tmdbId || !parsed.year || !parsed.query || row.complete || row.embedded?.chinese || row.writeBlocked
-                || row.selectedCandidate || row.workLookupFailed || row.sources?.some(source => source.error || source.paused || source.downloadErrors?.length || source.queries?.some(query => query.error))
-                || !['notFound','choice'].includes(phase)
-                || parsed.tv && (parsed.season == null || parsed.episode == null || parsed.endEpisode && parsed.endEpisode !== parsed.episode)) return null;
-            const parsedNames = subtitleSearchNames(parsed).map(titleKey);
-            const differentFolderTitle = (row.node.folders || []).slice(-2).some(folder => {
-                const title = titleKey(subtitleQueryTitle(folder,parsed.year));
-                return title.length >= 2 && !/^(?:movies?|tv|series|\d+|s\d+|season\d+|电影|剧集|动漫|纪录片|综艺|第\d+季)$/i.test(title) && !parsedNames.includes(title);
-            });
-            if (phase !== 'choice' && !differentFolderTitle) return null;
-            const key = JSON.stringify([parsed.tv,titleKey(parsed.query),parsed.year,parsed.season,(row.node.folders || []).slice(-2).map(titleKey)]);
-            if (!works.has(key)) works.set(key, identify(row,check));
-            const result = await works.get(key); check();
-            if (!result) return null;
-            if (parsed.tv) {
-                const episode = await result.client.get('/tv/' + result.id + '/season/' + parsed.season + '/episode/' + parsed.episode);
-                check();
-                if (Number(episode.season_number) !== parsed.season || Number(episode.episode_number) !== parsed.episode) return null;
-            }
-            return {name:result.name, parsed:{...parsed,tmdbId:result.id,seasons:parsed.tv ? result.seasons : undefined,aliases:[...new Set([...(parsed.aliases || []),...result.aliases])],workResolved:true}};
-        };
-    }
     function subtitleDiagnosticText(value, {key, assrtKey, password} = {}) {
         let message = String(value ?? '').replace(/https?:\/\/[^\s"'<>]+/gi, value => {
             try { return new URL(value).origin + '/[地址已隐藏]'; } catch { return '[地址已隐藏]'; }
@@ -1432,22 +1354,9 @@
             if (accepted) log('AI 字幕建议',`${row.node.name} · ${accepted} 份候选通过作品与季集复核`);
         };
     }
-    function subtitleSearchSummary(rows, labels = subtitleSearchLabels) {
-        const coverage = {complete:0,missing:0,unconfirmed:0};
-        const search = {unsearched:0,ready:0,choice:0,unconfirmed:0,notFound:0,failed:0};
-        for (const row of rows) {
-            const state = subtitleCoverageState(row);
-            coverage[state]++;
-            if (state !== 'complete') search[subtitleSearchState(row)]++;
-        }
-        const counts = new Map();
-        for (const [state,count] of Object.entries(search)) if (count) counts.set(labels[state], (counts.get(labels[state]) || 0) + count);
-        return [`视频 ${rows.length} · 有字幕 ${coverage.complete} · 缺可用字幕 ${coverage.missing} · 检查未确认 ${coverage.unconfirmed}`, ...Array.from(counts, ([label,count]) => label + ' ' + count)].join(' · ');
-    }
     function subtitleSearchMessage(row) {
         const message = row.selectedCandidate
-            ? row.aiSuggested ? 'AI 建议了这份字幕，请核对候选名称；可在下拉框更改后补齐。' : row.manualCandidate ? '已手动选择字幕，点击“补齐字幕”下载并写入视频目录。' : `已自动择优，${row.autoCandidates.length} 个可靠候选；点击“补齐字幕”下载并写入视频目录，下载内容不符时尝试下一份。`
-            : row.manualCandidate ? '已跳过此视频；重新选择字幕后可补齐。'
+            ? row.aiSuggested ? 'AI 建议了这份字幕，请核对候选名称后补齐。' : `已自动择优，${row.autoCandidates.length} 个可靠候选；点击“补齐字幕”下载并写入视频目录，下载内容不符时尝试下一份。`
             : row.candidates?.length ? '找到候选，但作品或语言未确认，需手动选择。'
             : subtitleSearchState(row) === 'failed' ? '查询有失败，请查看各来源结果。'
                 : subtitleSearchState(row) === 'notFound' ? '已查询来源未找到匹配项。' : '尚未查询任何来源。';
@@ -1455,9 +1364,9 @@
             ...(row.sources || []).map(source => source.name + '：' + subtitleSourceSummary(source))].filter(Boolean).join('\n');
     }
     async function searchSubtitleSources(row, config, service, log = () => {}, check = () => {}, resume = false) {
-        if (!resume && !config.correctionName) { row.error = ''; row.candidates = []; row.selectedCandidate = null; row.manualCandidate = false; row.aiSuggested = false; row.sources = []; row.seasonCacheHit = false; }
+        if (!resume) { row.error = ''; row.candidates = []; row.selectedCandidate = null; row.aiSuggested = false; row.sources = []; row.seasonCacheHit = false; }
         const title = subtitleQueryTitle(row.parsed.query, row.parsed.year);
-        if (!resume && !config.correctionName && row.parsed.tv) {
+        if (!resume && row.parsed.tv) {
             for (const [name,enabled,method] of [['迅雷',config.thunder,'thunderCachedEpisode'],['射手网',config.assrtKey,'assrtCachedEpisode']]) {
                 if (!enabled || !service[method] || service.searchUnavailable?.(name)) continue;
                 check();
@@ -1500,21 +1409,8 @@
         if (!resume && !row.selectedCandidate) log('查找阶段', `${row.node.name} · 使用片名及作品别名搜索字幕来源`);
         const run = async (name, enabled, configured, search) => {
             check();
-            if (config.correctionName) {
-                const source = row.sources.find(source => source.name === name);
-                const terms = source?.queries || [];
-                const termKeys = new Set(terms.map(({term}) => {
-                    if (name === '迅雷') return titleKey(term.replace(/ S\d+E\d+$/, ''));
-                    const params = new URLSearchParams(term);
-                    return titleKey(params.get('film_name') || params.get('query') || '');
-                }).filter(Boolean));
-                // OpenSubtitles keeps its single-query budget. A verified new name can use an unused alias slot elsewhere.
-                if (termKeys.has(titleKey(config.correctionName)) || termKeys.size >= (name === 'OpenSubtitles' ? 1 : 3)) return;
-                if (source?.count != null && !source.queries?.length) return;
-            }
-            if (!resume && !config.correctionName && row.sources.some(source => source.name === name && source.count != null)) return;
+            if (!resume && row.sources.some(source => source.name === name && source.count != null)) return;
             let previous = row.sources.find(source => source.name === name && source.cacheError);
-            if (config.correctionName) previous = row.sources.find(source => source.name === name);
             if (resume) {
                 previous = row.sources.find(source => source.name === name && (source.deferred || source.deferredTerms?.length));
                 if (!previous) return;
@@ -1582,32 +1478,10 @@
             return candidates;
         });
         if (!row.selectedCandidate) log('查找阶段', `${row.node.name} · 迅雷片名搜索`);
-        await run('迅雷', config.thunder, true, (report, source) => service.thunderSearch(row, {...config,thunderOffset:config.correctionName ? 0 : source.thunderOffset}, message => log('迅雷 文件列表', message), check, report));
+        await run('迅雷', config.thunder, true, (report, source) => service.thunderSearch(row, {...config,thunderOffset:source.thunderOffset}, message => log('迅雷 文件列表', message), check, report));
         await run('OpenSubtitles', config.open, config.key, report => service.search(row, config, report));
         check(); selectSubtitleCandidate(row, config.language);
         row.searchMessage = subtitleSearchMessage(row);
-    }
-    async function applySubtitleWorkCorrection(row, correctWork, config, service, log, check) {
-        if (!correctWork) return;
-        try {
-            const suggestion = await correctWork(row, check);
-            if (!suggestion) return;
-            const revised = {...row,parsed:suggestion.parsed,sources:row.sources.map(source => ({...source})),
-                candidates:[],autoCandidates:[],selectedCandidate:null,aiSuggested:false};
-            await searchSubtitleSources(revised,{...config,correctionName:suggestion.name},service,log,check);
-            check();
-            row.sources = revised.sources;
-            if (revised.selectedCandidate || !row.candidates.length && revised.candidates.length) {
-                Object.assign(row,{parsed:revised.parsed,candidates:revised.candidates,selectedCandidate:revised.selectedCandidate,
-                    autoCandidates:revised.autoCandidates,aiSuggested:revised.aiSuggested});
-            }
-            row.searchMessage = subtitleSearchMessage(row);
-            log('作品纠正补查', suggestion.name);
-        } catch (error) {
-            check();
-            if (error.stop) throw error;
-            log('作品纠正未采用', error.message);
-        }
     }
     function subtitleVerificationContext(row) {
         if (!row) return '';

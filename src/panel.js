@@ -615,20 +615,6 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             }
         };
     }
-    function scheduleLogDisplay(box, lines) {
-        let pending = false;
-        const paint = () => {
-            pending = false;
-            box.value = lines.join('\n');
-            box.scrollTop = box.scrollHeight;
-        };
-        return () => {
-            if (pending) return;
-            pending = true;
-            if (typeof requestAnimationFrame === 'function') requestAnimationFrame(paint);
-            else paint();
-        };
-    }
     function panelControls(ui) {
         return ['json', 'manifest', 'jsonFile', 'historyFile', 'generate', 'exportManifest', 'transfer', 'start', 'chooseManifest', 'chooseJsonFile', 'copyJson', 'save', 'saveJson', 'incremental', 'resetHistory', 'importHistory', 'syncExisting'].map(ui.get).filter(Boolean);
     }

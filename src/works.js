@@ -26,12 +26,6 @@
         };
         return mediaWorkLibrary.instance = {
             get,
-            find(parsed) {
-                if (!parsed.year || !parsed.query) return null;
-                const matches = [...entries.values()].filter(work => valid(work) && work.type === (parsed.tv ? 'tv' : 'movie')
-                    && String(work.year) === String(parsed.year) && work.aliases.some(name => titleKey(name) === titleKey(parsed.query)));
-                return matches.length === 1 ? get(matches[0].type,matches[0].id) : null;
-            },
             remember(type,detail) {
                 if (!['movie','tv'].includes(type) || !/^\d+$/.test(String(detail.id))) return;
                 const identity = type + ':' + detail.id;
@@ -59,45 +53,4 @@
         } catch (error) { check(); if (error.stop || /编号或年份/.test(error.message)) throw error; }
         check(); mediaWorkLibrary().remember(type,result);
         return result;
-    }
-    async function resolveMediaWork(parsed,credential,check = () => {},log = () => {}) {
-        const type = parsed.tv ? 'tv' : 'movie', library = mediaWorkLibrary();
-        const apply = work => {
-            if (!parsed.tv && parsed.year && work.year && String(parsed.year) !== String(work.year)) throw new Error('作品资料年份与目标不一致');
-            parsed.tmdbId = String(work.id);
-            parsed.aliases = [...new Set([...(parsed.aliases || []),...work.aliases])].slice(0,40);
-            parsed.year ||= work.year;
-            if (work.runtimeSeconds) parsed.runtimeSeconds = work.runtimeSeconds;
-            parsed.seasons = parsed.tv ? work.seasons?.map(season => ({...season})) : undefined;
-            parsed.workResolved = true;
-            return true;
-        };
-        check();
-        const cached = parsed.tmdbId ? library.get(type,parsed.tmdbId) : library.find(parsed);
-        if (cached && (!cached.partial && (!parsed.tv || cached.seasons?.length) || !credential)) { log('作品资料复用', `${parsed.query} · ${type}:${cached.id} · ${cached.aliases.length} 个名称`); return apply(cached); }
-        if (!credential) return false;
-        const client = tmdbClient(credential);
-        let id = parsed.tmdbId || cached?.id;
-        if (!id) {
-            if (!parsed.year || !parsed.query) return false;
-            const results = await client.search(parsed.query); check();
-            const matches = [];
-            for (const item of results.filter(item => item.media_type === type
-                && (item.release_date || item.first_air_date || '').slice(0,4) === String(parsed.year))) {
-                let names = mediaWorkNames(item);
-                if (!names.some(name => titleKey(name) === titleKey(parsed.query))) {
-                    for (const language of ['zh-CN','zh-TW']) {
-                        const local = await client.get(`/${type}/${item.id}`,{language}); check();
-                        if (String(local.id) === String(item.id) && (local.release_date || local.first_air_date || '').slice(0,4) === String(parsed.year)) names.push(...mediaWorkNames(local));
-                    }
-                }
-                if (names.some(name => titleKey(name) === titleKey(parsed.query))) matches.push(item);
-            }
-            if (matches.length !== 1) return false;
-            id = matches[0].id;
-        }
-        const detail = await mediaWorkDetail(client,type,id,check);
-        return apply({id:detail.id,aliases:mediaWorkNames(detail),year:(detail.release_date || detail.first_air_date || '').slice(0,4),
-            seasons:detail.seasons,
-            runtimeSeconds:type === 'movie' && Number(detail.runtime) > 0 ? Number(detail.runtime) * 60 : undefined});
     }
