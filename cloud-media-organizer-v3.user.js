@@ -1641,6 +1641,11 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 const files = normalizeFiles(JSON.parse(ui.get('json').value));
                 ui.get('progress').textContent = `准备导入 ${files.length} 项…`;
                 const target = { id: provider === '123' ? current123Parent() : currentBaiduPath() };
+                const prepareManifestEntry = async (file, ensure) => {
+                    const parts = relativeParts(file.path), name = parts.pop();
+                    const parent = await ensure(file.type === 'directory' ? file.path : parts.join('/'));
+                    return {name,parent};
+                };
                 const runBatch = async (label, reason, importEntry) => {
                     let failed = 0, processed = 0;
                     try {
@@ -1698,8 +1703,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                         '123 写入沿用 750ms 节流，共享路径复用在途建目录',
                         (file,verify) => enqueueByKey(names,file.path.toLowerCase(),async () => {
                             verify();
-                            const parts = relativeParts(file.path), name = parts.pop();
-                            const parent = await ensure(file.type === 'directory' ? file.path : parts.join('/'));
+                            const {name,parent} = await prepareManifestEntry(file,ensure);
                             if (file.type === 'directory') return;
                             verify();
                             const sameName = (await source.children({id:parent})).filter(item => item.name.toLowerCase() === name.toLowerCase());
@@ -1761,8 +1765,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     let saved = 0, missed = 0, skipped = 0;
                     const {failed,processed} = await runBatch('百度导入预检与转存（清单项目）',
                         '共享路径复用在途建目录，百度分页顺序读取', async (file,verify) => {
-                            const parts = relativeParts(file.path), name = parts.pop();
-                            const parent = await ensure(file.type === 'directory' ? file.path : parts.join('/'));
+                            const {name,parent} = await prepareManifestEntry(file,ensure);
                             if (file.type === 'directory') return;
                             verify();
                             const entries = await children(parent);
