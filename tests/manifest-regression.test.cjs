@@ -180,7 +180,7 @@ async function manifests(){
 }
 
 async function sharedHelpers(){
- const ctx=load(part('    const MEDIA_VIDEO', '    const tmdbClients')+part('    const mediaStandardFolder', '    const mediaPlaybackAttachment')+part('    function mediaWorkCounts(', '    function initMediaOrganizer('));
+ const ctx=load(part('    const MEDIA_VIDEO', '    const tmdbClients')+part('    async function mediaSeasonEpisodes(', '    function tmdbClient(')+part('    const mediaStandardFolder', '    const mediaPlaybackAttachment')+part('    function mediaWorkCounts(', '    function initMediaOrganizer('));
  const entries=new Map([['a',1],['b',2],['c',3]]);
  ctx.evict(entries,2);assert.deepEqual([...entries.keys()],['b','c']);
  ctx.evict(entries,2);assert.equal(entries.size,2);ctx.evict(entries,0);assert.equal(entries.size,0);

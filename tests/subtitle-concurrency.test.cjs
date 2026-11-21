@@ -18,7 +18,25 @@ async function limitsAndDrain() {
     let cancelled=false;const stop=gate(),calls=[];
     const task=ctx.forEachConcurrent([0,1,2],2,async(i,check)=>{calls.push(i);await stop.promise;check()},()=>{if(cancelled)throw Error('已停止')});
     const rejection=assert.rejects(task,/已停止/);cancelled=true;stop.release();await rejection;assert.deepEqual(calls,[0,1]);
+    for (const reason of [undefined,null,false,0,'']) {
+        const attempted = [];
+        await ctx.forEachConcurrent([1,2],1,async item => {
+            attempted.push(item);
+            throw reason;
+        }).then(() => assert.fail('The batch must reject'), error => assert.equal(error,reason));
+        assert.deepEqual(attempted,[1],'A rejected task must stop dispatch even if its reason is falsy');
+    }
     console.log('PASS concurrency pool: real overlap capped at 3, refill, stop/auth halt new work, drain active tasks and reject late writes');
+}
+function connectedGroups() {
+    const chain = Array.from({length:25_000}, (_, index) => index);
+    const groups = ctx.connectedBatch([...chain,'independent'], item => {
+        if (item === 'independent') return [item];
+        return item === chain.length - 1 ? [0] : [item,item + 1];
+    });
+    assert.equal(groups.length,2);
+    assert.deepEqual(Array.from(groups[0]),chain,'Transitive groups retain input order across a long chain');
+    assert.deepEqual(Array.from(groups[1]),['independent']);
 }
 async function seasonPipeline() {
     const row=(name,season,episode)=>({node:{name},parsed:{query:name,tv:season!=null,year:2020,season,episode},sources:[],candidates:[]});
@@ -44,4 +62,4 @@ async function aiQueue() {
     await Promise.all([row(),row(),row()].map(r=>bodyReview(r,'1\n00:00:01,000 --> 00:00:03,000\n合成对白\n','srt')));assert.equal(calls,2);
     console.log('PASS AI queue: concurrent callers are serialized; third candidate/body review makes zero model calls after 2 parse failures');
 }
-(async()=>{await limitsAndDrain();await seasonPipeline();await aiQueue()})().catch(e=>{console.error(e);process.exitCode=1});
+(async()=>{await limitsAndDrain();connectedGroups();await seasonPipeline();await aiQueue()})().catch(e=>{console.error(e);process.exitCode=1});

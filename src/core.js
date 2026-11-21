@@ -33,9 +33,10 @@
     function evict(map, max) {
         while (map.size > max) map.delete(map.keys().next().value);
     }
+    /** Runs a limited number of tasks at once and drains active tasks after the first failure. */
     async function forEachConcurrent(items, limit, run, check = () => {}) {
-        let next = 0, failure = null;
-        const verify = () => { if (failure) throw failure; check(); };
+        let next = 0, failure;
+        const verify = () => { if (failure) throw failure.error; check(); };
         const worker = async () => {
             try {
                 while (next < items.length) {
@@ -43,16 +44,17 @@
                     const index = next++;
                     await run(items[index],verify,index);
                 }
-            } catch (error) { failure ||= error; }
+            } catch (error) { failure ??= {error}; }
         };
         // Drain active work before allowing another UI task to start.
         await Promise.all(Array.from({length:Math.min(limit, items.length)}, worker));
         verify();
     }
 
-    async function batchStage(items, label, log, run, check = () => {}, limit = 8, reason = '') {
+    /** Collects one batch summary across one or more sequential groups of concurrent tasks. */
+    function createBatchStage(label, log, limit, reason = '') {
         const started = Date.now();
-        let active = 0, peak = 0, success = 0, failed = 0, skipped = 0, timeout = 0, limited = 0;
+        let total = 0, active = 0, peak = 0, success = 0, failed = 0, skipped = 0, timeout = 0, limited = 0;
         const seen = new WeakSet();
         const observe = error => {
             if (!error) return;
@@ -63,27 +65,40 @@
             if ([408,504].includes(error.status) || /超时|timed? ?out|timeout/i.test(error.message || error)) timeout++;
             if ([429,509].includes(error.status) || /限流|请求过频|HTTP (?:429|509)|返回码 (?:429|509)/i.test(error.message || error)) limited++;
         };
-        try {
-            await forEachConcurrent(items,limit,async (item,verify,index) => {
-                active++;
-                peak = Math.max(peak,active);
-                try {
-                    const state = await run(item,verify,index,observe);
-                    if (state === 'skipped') skipped++;
-                    else if (state === 'failed') failed++;
-                    else success++;
-                } catch (error) {
-                    observe(error);
-                    failed++;
-                    throw error;
-                } finally { active--; }
-            },check);
-        } finally {
-            log?.(label + ' · 总量 ' + items.length + ' · 上限 ' + limit + ' · 峰值 ' + peak + ' · 耗时 '
-                + ((Date.now() - started) / 1000).toFixed(2) + ' 秒 · 成功 ' + success + ' · 失败 ' + failed
-                + ' · 跳过 ' + skipped + ' · 未派发 ' + (items.length - success - failed - skipped)
-                + ' · 超时 ' + timeout + ' · 限流 ' + limited + (reason ? ' · ' + reason : ''));
-        }
+        return {
+            /** Runs a group and adds its results to the stage totals. */
+            run(items, run, check) {
+                total += items.length;
+                return forEachConcurrent(items,limit,async (item,verify,index) => {
+                    active++;
+                    peak = Math.max(peak,active);
+                    try {
+                        const state = await run(item,verify,index,observe);
+                        if (state === 'skipped') skipped++;
+                        else if (state === 'failed') failed++;
+                        else success++;
+                    } catch (error) {
+                        observe(error);
+                        failed++;
+                        throw error;
+                    } finally { active--; }
+                },check);
+            },
+            /** Logs the final counts and peak concurrency. */
+            report() {
+                log?.(label + ' · 总量 ' + total + ' · 上限 ' + limit + ' · 峰值 ' + peak + ' · 耗时 '
+                    + ((Date.now() - started) / 1000).toFixed(2) + ' 秒 · 成功 ' + success + ' · 失败 ' + failed
+                    + ' · 跳过 ' + skipped + ' · 未派发 ' + (total - success - failed - skipped)
+                    + ' · 超时 ' + timeout + ' · 限流 ' + limited + (reason ? ' · ' + reason : ''));
+            }
+        };
+    }
+
+    /** Runs one batch and reports its outcome, including after cancellation. */
+    async function batchStage(items, label, log, run, check = () => {}, limit = 8, reason = '') {
+        const stage = createBatchStage(label,log,limit,reason);
+        try { await stage.run(items,run,check); }
+        finally { stage.report(); }
     }
     function groupBatch(items, keyOf) {
         const groups = new Map();
@@ -94,9 +109,16 @@
         }
         return [...groups.values()];
     }
+    /** Groups items that share keys, including connections through other items. */
     function connectedBatch(items, keysOf) {
         const groups = [], byKey = new Map();
-        const root = group => group.parent ? (group.parent = root(group.parent)) : group;
+        const root = group => {
+            while (group.parent) {
+                if (group.parent.parent) group.parent = group.parent.parent;
+                group = group.parent;
+            }
+            return group;
+        };
         for (const item of items) {
             const group = {item, parent:null};
             groups.push(group);
@@ -117,12 +139,12 @@
         tail.then(() => { if (queues.get(key) === tail) queues.delete(key); });
         return task;
     }
+    /** Visits each unique node by layer while tracking its original tree position. */
     async function walkTree(roots, keyOf, visit, check, log, label = '目录遍历（目录/文件）') {
         check();
         let pending = roots.map((node,index) => ({node,order:[index]}));
         const seen = new Set();
-        const started = Date.now();
-        let total = 0, peak = 0, completed = 0, failed = 0, timeout = 0, limited = 0;
+        const stage = createBatchStage(label,log,8);
         try {
             while (pending.length) {
                 const layer = pending.filter(({node}) => {
@@ -132,29 +154,14 @@
                     return true;
                 });
                 const next = [];
-                total += layer.length;
-                let active = 0;
-                await forEachConcurrent(layer,8,async ({node,order},verify,index) => {
-                    peak = Math.max(peak,++active);
-                    try {
-                        const children = await visit(node,verify,order);
-                        verify();
-                        next[index] = (children || []).map((node,childIndex) => ({node,order:[...order,childIndex]}));
-                        completed++;
-                    } catch (error) {
-                        failed++;
-                        if ([408,504].includes(error.status) || /超时|timeout/i.test(error.message)) timeout++;
-                        if ([429,509].includes(error.status) || /限流|请求过频|HTTP (?:429|509)/i.test(error.message)) limited++;
-                        throw error;
-                    } finally { active--; }
+                await stage.run(layer,async ({node,order},verify,index) => {
+                    const children = await visit(node,verify,order);
+                    verify();
+                    next[index] = (children || []).map((node,childIndex) => ({node,order:[...order,childIndex]}));
                 },check);
                 pending = next.flat();
             }
-        } finally {
-            log?.(label + ' · 总量 ' + total + ' · 上限 8 · 峰值 ' + peak + ' · 耗时 '
-                + ((Date.now() - started) / 1000).toFixed(2) + ' 秒 · 成功 ' + completed + ' · 失败 ' + failed
-                + ' · 跳过 0 · 未派发 ' + (total - completed - failed) + ' · 超时 ' + timeout + ' · 限流 ' + limited);
-        }
+        } finally { stage.report(); }
     }
     function compareTreeOrder(a, b) {
         for (let i = 0; i < Math.min(a.length,b.length); i++) if (a[i] !== b[i]) return a[i] - b[i];

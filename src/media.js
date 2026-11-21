@@ -90,6 +90,7 @@
     }
     // A special episode is still part of the programme; only explicit bonus labels count.
     const mediaBonusName = name => /花絮|幕后|幕後|预告|預告|制作特辑|製作特輯|拍摄特辑|拍攝特輯|(?:^|[^a-z0-9])(?:extras?|featurettes?|trailers?|teasers?|bloopers?|outtakes?|sample|behind[ ._-]+the[ ._-]+scenes|special[ ._-]+features)(?=$|[^a-z0-9])/i.test(mediaStem(name));
+    /** Identifies special episodes using the related series and its season zero titles. */
     async function resolveMediaSpecials(rows,client,parentPath = '',check = () => {},log) {
         const key = titleKey;
         const scopes = row => [...parentPath.split('/').filter(Boolean).map((name, i, parts) => ({ id: 'path:' + parts.slice(0, i + 1).join('/'), name })), ...(row.node.ancestors || []).map(a => ({ id: 'id:' + a.id, name: a.name }))];
@@ -111,11 +112,9 @@
         }
         const cache = new Map();
         const episodesOf = detail => {
-            if (!cache.has(detail.id)) cache.set(detail.id, (async () => {
-                const local = await client.get('/tv/' + detail.id + '/season/0');
-                const english = await client.get('/tv/' + detail.id + '/season/0', { language: 'en-US' });
-                return (local.episodes || []).map(ep => ({ ...ep, aliases: [ep.name, (english.episodes || []).find(e => e.episode_number === ep.episode_number && (!e.id || !ep.id || e.id === ep.id))?.name].filter(Boolean) }));
-            })());
+            if (!cache.has(detail.id)) {
+                cache.set(detail.id,mediaSeasonEpisodes(client,detail.id,0).then(({episodes}) => episodes));
+            }
             return cache.get(detail.id);
         };
         await batchStage(rows,'特别篇归属检查（视频）',log,async (row,verify,index,observe) => {
@@ -152,13 +151,18 @@
                     .some(alias => key(alias).length >= 3 && [key(alias),key(alias) + '特别篇',key(alias) + '特別篇',key(alias) + 'special',
                         key(alias) + '番外篇',key(alias) + 'sp',key(alias) + 'ova',key(alias) + 'oad'].includes(genericTitle)))
                     matches = episodes;
-                if (matches.length === 1) {
-                    Object.assign(row, { detail, match: 'tv:' + detail.id, type: 'tv', title: detail.name, year: (detail.first_air_date || '').slice(0, 4), category: mediaCategory(detail, 'tv'), season: 0, episode: matches[0].episode_number, endEpisode: null, episodeInferred: true, error: '' });
-                    changed[index] = row;
-                } else if (explicit) {
-                    Object.assign(row, { detail, match: 'tv:' + detail.id, type: 'tv', title: detail.name, year: (detail.first_air_date || '').slice(0, 4), season: 0, episode: null, error: '已定位特别篇；标题或播出日期无法唯一对应，请下拉选择集名' });
-                    changed[index] = row;
+                const episode = matches.length === 1 ? matches[0] : null;
+                if (!episode && !explicit) return;
+                Object.assign(row, {
+                    detail, match:'tv:' + detail.id, type:'tv', title:detail.name,
+                    year:(detail.first_air_date || '').slice(0,4), season:0, episode:episode?.episode_number ?? null
+                });
+                if (episode) {
+                    Object.assign(row,{category:mediaCategory(detail,'tv'),endEpisode:null,episodeInferred:true,error:''});
+                } else {
+                    row.error = '已定位特别篇；标题或播出日期无法唯一对应，请下拉选择集名';
                 }
+                changed[index] = row;
             } catch (error) {
                 observe(error);
                 verify();
@@ -326,16 +330,19 @@
         return {videos, linked, namesByParent, unmatched};
     }
     const tmdbClients = new Map();
+    /** Loads episode names and adds English aliases from matching episode IDs when available. */
     async function mediaSeasonEpisodes(client, seriesId, seasonNumber) {
         const path = '/tv/' + seriesId + '/season/' + seasonNumber;
         const [season, english] = await Promise.all([client.get(path), client.get(path, { language: 'en-US' }).catch(() => null)]);
-        const englishEpisodes = new Map((english?.episodes || []).map(episode => [episode.episode_number, episode.name]));
+        const englishEpisodes = new Map((english?.episodes || []).map(episode => [episode.episode_number, episode]));
         return {
             year: (season.air_date || '').slice(0, 4),
-            episodes: (season.episodes || []).map(episode => ({
-                ...episode,
-                aliases: [...new Set([episode.name, englishEpisodes.get(episode.episode_number)].filter(Boolean))]
-            }))
+            episodes: (season.episodes || []).map(episode => {
+                const englishEpisode = englishEpisodes.get(episode.episode_number);
+                const englishName = englishEpisode && (!englishEpisode.id || !episode.id || String(englishEpisode.id) === String(episode.id))
+                    ? englishEpisode.name : '';
+                return {...episode, aliases:[...new Set([episode.name,englishName].filter(Boolean))]};
+            })
         };
     }
     function tmdbClient(credential) {
@@ -404,6 +411,7 @@
         try { await removeGuangyaNode(item, source, mediaGuangyaPost(session.token), sleep, () => {}); }
         catch (error) { if (!error.terminal) error.pending = true; throw error; }
     }
+    /** Prepares organization plans, rechecks their scope, and performs confirmed writes. */
     function mediaOrganizerWriter(session, source) {
         const guangya = session.provider === '光鸭';
         const post = guangya ? mediaGuangyaPost(session.token, 0) : paced(700, async (path, body) => {
@@ -412,7 +420,7 @@
             return result;
         });
         const directories = new Map([['', session.parent]]), bindings = new Map(), scopeSnapshots = new Map();
-        const history = typeof mediaFileHistory === 'function' ? mediaFileHistory(session) : null;
+        const history = mediaFileHistory(session);
         const subtitleSnapshots = new Map();
         const emptiedSeasonSources = new Map();
         let targetSnapshots = [];
@@ -451,6 +459,7 @@
                 return pending.get(id);
             };
         }
+        /** Captures the target, subtitle links, and source folders for execution-time validation. */
         async function prepare(items,check = () => {},log) {
             checkPlan = check;
             bindings.clear(); scopeSnapshots.clear(); targetSnapshots = [];
@@ -470,7 +479,7 @@
                 }
             }
             const children = cachedDriveChildren(source,new Map(),check);
-            if (log) await batchStage(items,'整理目标快照（文件）',log,async (item,verify,index) => {
+            await batchStage(items,'整理目标快照（文件）',log,async (item,verify,index) => {
                 targetSnapshots[index] = [item.destination,await targetScope(item.destination,children,verify)];
             },check);
             const byId = new Map(videos.map(item => [String(item.node.id), item]));
@@ -482,7 +491,7 @@
                 planned.get(id).add(String(item.node.id));
             }
             const links = linksByDirectory(children);
-            if (typeof MEDIA_SUB !== 'undefined') await batchStage(videos,'预览字幕关联（视频）',log,async ({node}) => {
+            await batchStage(videos,'预览字幕关联（视频）',log,async ({node}) => {
                 const id = String(node.id);
                 const found = (await links(node.parentId)).get(id) || [];
                 if (found.some(sub => !planned.get(id)?.has(String(sub.id))) || found.length !== (planned.get(id)?.size || 0))
@@ -494,7 +503,7 @@
                 if (paths.size !== 1) return 'skipped';
                 const path = [...paths][0], contents = await scanScope(folder.id, children), ids = contents.filter(node => !node.directory && MEDIA_VIDEO.test(node.name)).map(node => node.id);
                 if (!ids.length || ids.some(id => !byId.has(id) || !byId.get(id).destination.startsWith(path + '/'))) return 'skipped';
-                if (typeof MEDIA_SUB !== 'undefined' && contents.some(node => !node.directory && MEDIA_SUB.test(node.name)
+                if (contents.some(node => !node.directory && MEDIA_SUB.test(node.name)
                     && !ids.some(id => planned.get(id)?.has(node.id)))) return 'skipped';
                 verify();
                 proposed[index] = {folder,path,contents};

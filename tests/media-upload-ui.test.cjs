@@ -39,6 +39,12 @@ async function tmdbSearchAndEpisodeAliases() {
     assert.equal(season.year,'2024');assert.deepEqual(Array.from(season.episodes[0].aliases),['血色天空','Crimson Sky']);
     const fallback=await episodeContext.mediaSeasonEpisodes({get:async(_path,params={})=>{if(params.language)throw Error('English unavailable');return {episodes:[{episode_number:1,name:'血色天空'}]}}},42,1);
     assert.deepEqual(Array.from(fallback.episodes[0].aliases),['血色天空'],'English lookup failure retains local season results');
+    const mismatched = await episodeContext.mediaSeasonEpisodes({
+        get:async (_path, params = {}) => ({episodes:[params.language
+            ? {id:2, episode_number:1, name:'Other Episode'}
+            : {id:1, episode_number:1, name:'血色天空'}]})
+    },42,1);
+    assert.deepEqual(Array.from(mismatched.episodes[0].aliases),['血色天空'],'A different episode ID cannot supply an alias');
     console.log('PASS TMDB efficiency and episodes: unique match stops page fetches; English episode aliases augment Chinese names; English lookup failure falls back');
 }
 
@@ -315,7 +321,8 @@ function treeFixture(numeric=false,nested=false) {
     const nodes=[folder,...(nested?[season]:[]),video,attachment];const mutations=[];
     const children=async({id:parentId})=>nodes.filter(n=>n.parentId===parentId).map(n=>({...n}));
     const ctx=load(part('    function mediaOrganizerWriter(', '    const mediaStandardFolder'),{
-        MEDIA_VIDEO:/\.(mkv|mp4)$/i,mediaExistingCategory:parts=>parts[0]==='电影',relativeParts:p=>p.split('/').filter(Boolean),
+        MEDIA_VIDEO:/\.(mkv|mp4)$/i,MEDIA_SUB:/\.(ass|srt)$/i,mediaFileHistory:()=>null,mediaSubtitleLinks:()=>({linked:new Map()}),
+        mediaExistingCategory:parts=>parts[0]==='电影',relativeParts:p=>p.split('/').filter(Boolean),
         recycleMedia:async folder=>{assert.ok(!nodes.some(n=>n.parentId===folder.id));nodes.splice(nodes.findIndex(n=>n.id===folder.id),1);},
         hasFileMetadata:n=>!!n.md5,mediaFileMetadata:async n=>n,sleep:async()=>{},paced:(_ms,fn)=>fn,apiCode:()=>0,
         requestJson:async(url,opts)=>{const body=JSON.parse(opts.body);mutations.push([url,body]);
@@ -392,7 +399,7 @@ async function folders() {
     const late=treeFixture();await late.writer.prepare([late.item]);late.nodes.push({id:'cat',parentId:'0',name:'电影',directory:true},{id:'target',parentId:'cat',name:'新片名.2000',directory:true});
     await assert.rejects(late.writer.execute(late.item),/预览后出现同名项目/);assert.equal(late.mutations.length,0);
     const changedTarget=treeFixture();
-    await changedTarget.writer.prepare([changedTarget.item],()=>{},()=>{});
+    await changedTarget.writer.prepare([changedTarget.item]);
     changedTarget.nodes.push({id:'late-cat',parentId:'0',name:'电影',directory:true});
     await assert.rejects(changedTarget.writer.validate(),/整理目标已变化/);
     assert.equal(changedTarget.mutations.length,0);

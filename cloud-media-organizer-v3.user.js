@@ -72,9 +72,10 @@
     function evict(map, max) {
         while (map.size > max) map.delete(map.keys().next().value);
     }
+    /** Runs a limited number of tasks at once and drains active tasks after the first failure. */
     async function forEachConcurrent(items, limit, run, check = () => {}) {
-        let next = 0, failure = null;
-        const verify = () => { if (failure) throw failure; check(); };
+        let next = 0, failure;
+        const verify = () => { if (failure) throw failure.error; check(); };
         const worker = async () => {
             try {
                 while (next < items.length) {
@@ -82,16 +83,17 @@
                     const index = next++;
                     await run(items[index],verify,index);
                 }
-            } catch (error) { failure ||= error; }
+            } catch (error) { failure ??= {error}; }
         };
         // Drain active work before allowing another UI task to start.
         await Promise.all(Array.from({length:Math.min(limit, items.length)}, worker));
         verify();
     }
 
-    async function batchStage(items, label, log, run, check = () => {}, limit = 8, reason = '') {
+    /** Collects one batch summary across one or more sequential groups of concurrent tasks. */
+    function createBatchStage(label, log, limit, reason = '') {
         const started = Date.now();
-        let active = 0, peak = 0, success = 0, failed = 0, skipped = 0, timeout = 0, limited = 0;
+        let total = 0, active = 0, peak = 0, success = 0, failed = 0, skipped = 0, timeout = 0, limited = 0;
         const seen = new WeakSet();
         const observe = error => {
             if (!error) return;
@@ -102,27 +104,40 @@
             if ([408,504].includes(error.status) || /超时|timed? ?out|timeout/i.test(error.message || error)) timeout++;
             if ([429,509].includes(error.status) || /限流|请求过频|HTTP (?:429|509)|返回码 (?:429|509)/i.test(error.message || error)) limited++;
         };
-        try {
-            await forEachConcurrent(items,limit,async (item,verify,index) => {
-                active++;
-                peak = Math.max(peak,active);
-                try {
-                    const state = await run(item,verify,index,observe);
-                    if (state === 'skipped') skipped++;
-                    else if (state === 'failed') failed++;
-                    else success++;
-                } catch (error) {
-                    observe(error);
-                    failed++;
-                    throw error;
-                } finally { active--; }
-            },check);
-        } finally {
-            log?.(label + ' · 总量 ' + items.length + ' · 上限 ' + limit + ' · 峰值 ' + peak + ' · 耗时 '
-                + ((Date.now() - started) / 1000).toFixed(2) + ' 秒 · 成功 ' + success + ' · 失败 ' + failed
-                + ' · 跳过 ' + skipped + ' · 未派发 ' + (items.length - success - failed - skipped)
-                + ' · 超时 ' + timeout + ' · 限流 ' + limited + (reason ? ' · ' + reason : ''));
-        }
+        return {
+            /** Runs a group and adds its results to the stage totals. */
+            run(items, run, check) {
+                total += items.length;
+                return forEachConcurrent(items,limit,async (item,verify,index) => {
+                    active++;
+                    peak = Math.max(peak,active);
+                    try {
+                        const state = await run(item,verify,index,observe);
+                        if (state === 'skipped') skipped++;
+                        else if (state === 'failed') failed++;
+                        else success++;
+                    } catch (error) {
+                        observe(error);
+                        failed++;
+                        throw error;
+                    } finally { active--; }
+                },check);
+            },
+            /** Logs the final counts and peak concurrency. */
+            report() {
+                log?.(label + ' · 总量 ' + total + ' · 上限 ' + limit + ' · 峰值 ' + peak + ' · 耗时 '
+                    + ((Date.now() - started) / 1000).toFixed(2) + ' 秒 · 成功 ' + success + ' · 失败 ' + failed
+                    + ' · 跳过 ' + skipped + ' · 未派发 ' + (total - success - failed - skipped)
+                    + ' · 超时 ' + timeout + ' · 限流 ' + limited + (reason ? ' · ' + reason : ''));
+            }
+        };
+    }
+
+    /** Runs one batch and reports its outcome, including after cancellation. */
+    async function batchStage(items, label, log, run, check = () => {}, limit = 8, reason = '') {
+        const stage = createBatchStage(label,log,limit,reason);
+        try { await stage.run(items,run,check); }
+        finally { stage.report(); }
     }
     function groupBatch(items, keyOf) {
         const groups = new Map();
@@ -133,9 +148,16 @@
         }
         return [...groups.values()];
     }
+    /** Groups items that share keys, including connections through other items. */
     function connectedBatch(items, keysOf) {
         const groups = [], byKey = new Map();
-        const root = group => group.parent ? (group.parent = root(group.parent)) : group;
+        const root = group => {
+            while (group.parent) {
+                if (group.parent.parent) group.parent = group.parent.parent;
+                group = group.parent;
+            }
+            return group;
+        };
         for (const item of items) {
             const group = {item, parent:null};
             groups.push(group);
@@ -156,12 +178,12 @@
         tail.then(() => { if (queues.get(key) === tail) queues.delete(key); });
         return task;
     }
+    /** Visits each unique node by layer while tracking its original tree position. */
     async function walkTree(roots, keyOf, visit, check, log, label = '目录遍历（目录/文件）') {
         check();
         let pending = roots.map((node,index) => ({node,order:[index]}));
         const seen = new Set();
-        const started = Date.now();
-        let total = 0, peak = 0, completed = 0, failed = 0, timeout = 0, limited = 0;
+        const stage = createBatchStage(label,log,8);
         try {
             while (pending.length) {
                 const layer = pending.filter(({node}) => {
@@ -171,29 +193,14 @@
                     return true;
                 });
                 const next = [];
-                total += layer.length;
-                let active = 0;
-                await forEachConcurrent(layer,8,async ({node,order},verify,index) => {
-                    peak = Math.max(peak,++active);
-                    try {
-                        const children = await visit(node,verify,order);
-                        verify();
-                        next[index] = (children || []).map((node,childIndex) => ({node,order:[...order,childIndex]}));
-                        completed++;
-                    } catch (error) {
-                        failed++;
-                        if ([408,504].includes(error.status) || /超时|timeout/i.test(error.message)) timeout++;
-                        if ([429,509].includes(error.status) || /限流|请求过频|HTTP (?:429|509)/i.test(error.message)) limited++;
-                        throw error;
-                    } finally { active--; }
+                await stage.run(layer,async ({node,order},verify,index) => {
+                    const children = await visit(node,verify,order);
+                    verify();
+                    next[index] = (children || []).map((node,childIndex) => ({node,order:[...order,childIndex]}));
                 },check);
                 pending = next.flat();
             }
-        } finally {
-            log?.(label + ' · 总量 ' + total + ' · 上限 8 · 峰值 ' + peak + ' · 耗时 '
-                + ((Date.now() - started) / 1000).toFixed(2) + ' 秒 · 成功 ' + completed + ' · 失败 ' + failed
-                + ' · 跳过 0 · 未派发 ' + (total - completed - failed) + ' · 超时 ' + timeout + ' · 限流 ' + limited);
-        }
+        } finally { stage.report(); }
     }
     function compareTreeOrder(a, b) {
         for (let i = 0; i < Math.min(a.length,b.length); i++) if (a[i] !== b[i]) return a[i] - b[i];
@@ -2665,6 +2672,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
     }
     // A special episode is still part of the programme; only explicit bonus labels count.
     const mediaBonusName = name => /花絮|幕后|幕後|预告|預告|制作特辑|製作特輯|拍摄特辑|拍攝特輯|(?:^|[^a-z0-9])(?:extras?|featurettes?|trailers?|teasers?|bloopers?|outtakes?|sample|behind[ ._-]+the[ ._-]+scenes|special[ ._-]+features)(?=$|[^a-z0-9])/i.test(mediaStem(name));
+    /** Identifies special episodes using the related series and its season zero titles. */
     async function resolveMediaSpecials(rows,client,parentPath = '',check = () => {},log) {
         const key = titleKey;
         const scopes = row => [...parentPath.split('/').filter(Boolean).map((name, i, parts) => ({ id: 'path:' + parts.slice(0, i + 1).join('/'), name })), ...(row.node.ancestors || []).map(a => ({ id: 'id:' + a.id, name: a.name }))];
@@ -2686,11 +2694,9 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         }
         const cache = new Map();
         const episodesOf = detail => {
-            if (!cache.has(detail.id)) cache.set(detail.id, (async () => {
-                const local = await client.get('/tv/' + detail.id + '/season/0');
-                const english = await client.get('/tv/' + detail.id + '/season/0', { language: 'en-US' });
-                return (local.episodes || []).map(ep => ({ ...ep, aliases: [ep.name, (english.episodes || []).find(e => e.episode_number === ep.episode_number && (!e.id || !ep.id || e.id === ep.id))?.name].filter(Boolean) }));
-            })());
+            if (!cache.has(detail.id)) {
+                cache.set(detail.id,mediaSeasonEpisodes(client,detail.id,0).then(({episodes}) => episodes));
+            }
             return cache.get(detail.id);
         };
         await batchStage(rows,'特别篇归属检查（视频）',log,async (row,verify,index,observe) => {
@@ -2727,13 +2733,18 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     .some(alias => key(alias).length >= 3 && [key(alias),key(alias) + '特别篇',key(alias) + '特別篇',key(alias) + 'special',
                         key(alias) + '番外篇',key(alias) + 'sp',key(alias) + 'ova',key(alias) + 'oad'].includes(genericTitle)))
                     matches = episodes;
-                if (matches.length === 1) {
-                    Object.assign(row, { detail, match: 'tv:' + detail.id, type: 'tv', title: detail.name, year: (detail.first_air_date || '').slice(0, 4), category: mediaCategory(detail, 'tv'), season: 0, episode: matches[0].episode_number, endEpisode: null, episodeInferred: true, error: '' });
-                    changed[index] = row;
-                } else if (explicit) {
-                    Object.assign(row, { detail, match: 'tv:' + detail.id, type: 'tv', title: detail.name, year: (detail.first_air_date || '').slice(0, 4), season: 0, episode: null, error: '已定位特别篇；标题或播出日期无法唯一对应，请下拉选择集名' });
-                    changed[index] = row;
+                const episode = matches.length === 1 ? matches[0] : null;
+                if (!episode && !explicit) return;
+                Object.assign(row, {
+                    detail, match:'tv:' + detail.id, type:'tv', title:detail.name,
+                    year:(detail.first_air_date || '').slice(0,4), season:0, episode:episode?.episode_number ?? null
+                });
+                if (episode) {
+                    Object.assign(row,{category:mediaCategory(detail,'tv'),endEpisode:null,episodeInferred:true,error:''});
+                } else {
+                    row.error = '已定位特别篇；标题或播出日期无法唯一对应，请下拉选择集名';
                 }
+                changed[index] = row;
             } catch (error) {
                 observe(error);
                 verify();
@@ -2901,16 +2912,19 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         return {videos, linked, namesByParent, unmatched};
     }
     const tmdbClients = new Map();
+    /** Loads episode names and adds English aliases from matching episode IDs when available. */
     async function mediaSeasonEpisodes(client, seriesId, seasonNumber) {
         const path = '/tv/' + seriesId + '/season/' + seasonNumber;
         const [season, english] = await Promise.all([client.get(path), client.get(path, { language: 'en-US' }).catch(() => null)]);
-        const englishEpisodes = new Map((english?.episodes || []).map(episode => [episode.episode_number, episode.name]));
+        const englishEpisodes = new Map((english?.episodes || []).map(episode => [episode.episode_number, episode]));
         return {
             year: (season.air_date || '').slice(0, 4),
-            episodes: (season.episodes || []).map(episode => ({
-                ...episode,
-                aliases: [...new Set([episode.name, englishEpisodes.get(episode.episode_number)].filter(Boolean))]
-            }))
+            episodes: (season.episodes || []).map(episode => {
+                const englishEpisode = englishEpisodes.get(episode.episode_number);
+                const englishName = englishEpisode && (!englishEpisode.id || !episode.id || String(englishEpisode.id) === String(episode.id))
+                    ? englishEpisode.name : '';
+                return {...episode, aliases:[...new Set([episode.name,englishName].filter(Boolean))]};
+            })
         };
     }
     function tmdbClient(credential) {
@@ -2979,6 +2993,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         try { await removeGuangyaNode(item, source, mediaGuangyaPost(session.token), sleep, () => {}); }
         catch (error) { if (!error.terminal) error.pending = true; throw error; }
     }
+    /** Prepares organization plans, rechecks their scope, and performs confirmed writes. */
     function mediaOrganizerWriter(session, source) {
         const guangya = session.provider === '光鸭';
         const post = guangya ? mediaGuangyaPost(session.token, 0) : paced(700, async (path, body) => {
@@ -2987,7 +3002,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             return result;
         });
         const directories = new Map([['', session.parent]]), bindings = new Map(), scopeSnapshots = new Map();
-        const history = typeof mediaFileHistory === 'function' ? mediaFileHistory(session) : null;
+        const history = mediaFileHistory(session);
         const subtitleSnapshots = new Map();
         const emptiedSeasonSources = new Map();
         let targetSnapshots = [];
@@ -3026,6 +3041,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 return pending.get(id);
             };
         }
+        /** Captures the target, subtitle links, and source folders for execution-time validation. */
         async function prepare(items,check = () => {},log) {
             checkPlan = check;
             bindings.clear(); scopeSnapshots.clear(); targetSnapshots = [];
@@ -3045,7 +3061,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 }
             }
             const children = cachedDriveChildren(source,new Map(),check);
-            if (log) await batchStage(items,'整理目标快照（文件）',log,async (item,verify,index) => {
+            await batchStage(items,'整理目标快照（文件）',log,async (item,verify,index) => {
                 targetSnapshots[index] = [item.destination,await targetScope(item.destination,children,verify)];
             },check);
             const byId = new Map(videos.map(item => [String(item.node.id), item]));
@@ -3057,7 +3073,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 planned.get(id).add(String(item.node.id));
             }
             const links = linksByDirectory(children);
-            if (typeof MEDIA_SUB !== 'undefined') await batchStage(videos,'预览字幕关联（视频）',log,async ({node}) => {
+            await batchStage(videos,'预览字幕关联（视频）',log,async ({node}) => {
                 const id = String(node.id);
                 const found = (await links(node.parentId)).get(id) || [];
                 if (found.some(sub => !planned.get(id)?.has(String(sub.id))) || found.length !== (planned.get(id)?.size || 0))
@@ -3069,7 +3085,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 if (paths.size !== 1) return 'skipped';
                 const path = [...paths][0], contents = await scanScope(folder.id, children), ids = contents.filter(node => !node.directory && MEDIA_VIDEO.test(node.name)).map(node => node.id);
                 if (!ids.length || ids.some(id => !byId.has(id) || !byId.get(id).destination.startsWith(path + '/'))) return 'skipped';
-                if (typeof MEDIA_SUB !== 'undefined' && contents.some(node => !node.directory && MEDIA_SUB.test(node.name)
+                if (contents.some(node => !node.directory && MEDIA_SUB.test(node.name)
                     && !ids.some(id => planned.get(id)?.has(node.id)))) return 'skipped';
                 verify();
                 proposed[index] = {folder,path,contents};

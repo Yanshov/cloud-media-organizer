@@ -108,8 +108,25 @@ async function interruptedTraversal(scan, fromSelection, stop) {
     assert.deepEqual(details, [], 'A response arriving after Stop must not trigger metadata reads');
 }
 
+async function traversalFailureSummary() {
+    const log = [];
+    const permission = Object.assign(Error('返回码 509'), {status:509});
+    const root = directory(1, '根目录');
+    const source = {
+        parentId:'0',
+        async children({id}) {
+            if (id === root.id) return [directory(2,'读取失败'),directory(3,'同层目录')];
+            throw permission;
+        }
+    };
+    await assert.rejects(collectTree([root],source,undefined,'',undefined,message => log.push(message)), error => error === permission);
+    assert.equal(log.length,1,'Traversal reports once across all layers');
+    assert.match(log[0],/总量 3.*成功 1 · 失败 2.*限流 1/,'One repeated error contributes only once to the rate-limit count');
+}
+
 (async () => {
     await deepSelection();
+    await traversalFailureSummary();
     for (const stop of [false, true]) {
         await interruptedTraversal((roots, source, check) => collectTree(roots, source, undefined, '', check), false, stop);
         await interruptedTraversal((roots, source, check) => collectMediaSelection(roots, source, undefined, check), true, stop);
