@@ -180,12 +180,16 @@
     function mediaExistingCategory(folders) {
         return folders.find(name => ['电影', '剧集', '纪录片', '综艺', '动漫'].includes(name)) || '';
     }
+    function mediaStandardSeasonFolder(name) {
+        return /^Season \d{2}(?:\.\d{3,4}[pi])?$/.test(name);
+    }
     function mediaPath(row, categoryRoot = '') {
         const title = mediaClean(row.title), year = String(row.year);
         if (!title || !/^(19|20)\d{2}$/.test(year)) throw new Error('请确认片名和四位年份');
         const category = row.detail ? mediaCategory(row.detail, row.type) : row.category === '纪录片' ? '纪录片' : row.type === 'movie' ? '电影' : row.category;
         if (!['电影', '剧集', '纪录片', '综艺', '动漫'].includes(category)) throw new Error('请选择分类');
         const stem = title + '.' + year;
+        const resolution = mediaResolution(row.node.name);
         let filename = stem, folders = [category, stem];
         if (row.type === 'tv') {
             if (!Number.isInteger(row.season) || row.season < 0 || row.season > 99 || !Number.isInteger(row.episode) || row.episode < 1 || row.episode > 999) throw new Error('剧集需要明确的季号和集号');
@@ -195,10 +199,9 @@
                 if (!Number.isInteger(row.endEpisode) || row.endEpisode < row.episode || row.endEpisode > 999) throw new Error('多集文件的结束集号无效');
                 filename += 'E' + String(row.endEpisode).padStart(2, '0');
             }
-            folders.push('Season ' + season);
+            folders.push('Season ' + season + (resolution ? '.' + resolution : ''));
         }
         if (categoryRoot === category) folders.shift();
-        const resolution = mediaResolution(row.node.name);
         if (resolution) filename += '.' + resolution;
         filename += row.node.name.slice(row.node.name.lastIndexOf('.'));
         if ([...folders, filename].some(name => name.length >= 256 || /[\\\/:*?"<>|\x00-\x1f]/.test(name))) throw new Error('目标名称过长或含 123 不允许的字符，请修改标准片名');
@@ -286,11 +289,32 @@
         const videos = siblings.filter(node => !node.directory && MEDIA_VIDEO.test(node.name));
         const linked = new Map(), unmatched = [], records = history?.load();
         const videosById = new Map(videos.map(video => [String(video.id),video]));
+        const explicitEpisode = name => /(?:^|[. _-])S\d{1,2}[. _-]*E\d{1,3}(?:[. _-]*E\d{1,3})?(?=$|[. _-])/i.exec(mediaStem(name));
+        const episodeVideos = new Map();
         for (const sub of siblings.filter(node => !node.directory && MEDIA_SUB.test(node.name))) {
             const saved = history?.get(sub,parentId,records);
             const intended = saved?.videoId && videosById.get(saved.videoId);
             const candidates = saved?.videoId ? (history.associated(saved,intended,parentId) ? [intended] : [])
                 : videos.filter(video => mediaSubtitleSuffix(video.name,sub.name) !== null);
+            const marker = !saved?.videoId && !candidates.length && explicitEpisode(sub.name);
+            const episodeSuffix = marker ? mediaSubtitleSuffix(mediaStem(sub.name).slice(0,marker.index + marker[0].length) + '.mkv',sub.name) : null;
+            if (episodeSuffix !== null) {
+                const subtitle = parseMediaName(sub.name);
+                const title = titleKey(subtitle.query);
+                if (title) for (const video of videos) {
+                    if (!episodeVideos.has(video)) {
+                        const parsed = explicitEpisode(video.name) ? parseMediaName(video.name) : null;
+                        const original = history?.get(video,parentId,records)?.original;
+                        const record = parsed && mediaRecords.get({...video,parentId});
+                        const titles = [parsed?.query,record?.query,...(record?.aliases || []),original && parseMediaName(original).query];
+                        episodeVideos.set(video,{parsed,titles:new Set(titles.filter(Boolean).map(titleKey))});
+                    }
+                    const {parsed,titles} = episodeVideos.get(video);
+                    if (parsed && !parsed.standalone && !subtitle.standalone
+                        && parsed.season === subtitle.season && parsed.episode === subtitle.episode && parsed.endEpisode === subtitle.endEpisode
+                        && (!parsed.year || !subtitle.year || parsed.year === subtitle.year) && titles.has(title)) candidates.push(video);
+                }
+            }
             if (candidates.length !== 1) { unmatched.push(sub); continue; }
             const video = candidates[0];
             const inferred = mediaSubtitleSuffix(video.name,sub.name);
@@ -298,7 +322,7 @@
             // An older .synced subtitle may have been saved with a different video basename.
             const legacySuffix = saved && /\.synced$/i.test(mediaStem(sub.name))
                 ? (saved.language === 'und' ? '' : languageSuffix) + '.synced' : '';
-            const suffix = inferred || legacySuffix || languageSuffix;
+            const suffix = inferred || episodeSuffix || legacySuffix || languageSuffix;
             if (!linked.has(String(video.id))) linked.set(String(video.id),[]);
             linked.get(String(video.id)).push({...sub,parentId,suffix,language:saved?.language});
         }
@@ -311,23 +335,30 @@
             if (!videosByParent.has(video.parentId)) videosByParent.set(video.parentId, []);
             videosByParent.get(video.parentId).push(video);
         }
-        const linked = new Map(videos.map(video => [video.id, []])), namesByParent = new Map(), unmatched = [];
+        const linked = new Map(), namesByParent = new Map(), unmatched = [], entriesByParent = new Map();
         const records = history?.load();
         for (const [parentId,siblings] of videosByParent) {
             const entries = await children(parentId);
+            entriesByParent.set(parentId,entries);
             namesByParent.set(parentId,new Set(entries.map(node => node.name.toLowerCase())));
-            const found = mediaSubtitleLinks(entries,parentId,history);
-            const attachPath = sub => ({...sub,parentId,folders:siblings[0].folders,ancestors:siblings[0].ancestors,
-                path:[...siblings[0].folders,sub.name].join('/')});
             for (const video of siblings) {
                 const record = history?.get(video,parentId,records);
                 if (record?.original) video.originalName = record.original;
-                linked.set(video.id,(found.linked.get(String(video.id)) || []).map(attachPath));
             }
-            unmatched.push(...found.unmatched.map(attachPath));
         }
-        check();
-        return {videos, linked, namesByParent, unmatched};
+        const refreshSubtitleLinks = () => {
+            unmatched.length = 0;
+            for (const [parentId,siblings] of videosByParent) {
+                check();
+                const found = mediaSubtitleLinks(entriesByParent.get(parentId),parentId,history);
+                const attachPath = sub => ({...sub,parentId,folders:siblings[0].folders,ancestors:siblings[0].ancestors,
+                    path:[...siblings[0].folders,sub.name].join('/')});
+                for (const video of siblings) linked.set(video.id,(found.linked.get(String(video.id)) || []).map(attachPath));
+                unmatched.push(...found.unmatched.map(attachPath));
+            }
+        };
+        refreshSubtitleLinks();
+        return {videos, linked, namesByParent, unmatched, refreshSubtitleLinks};
     }
     const tmdbClients = new Map();
     /** Loads episode names and adds English aliases from matching episode IDs when available. */
@@ -394,8 +425,9 @@
     async function mediaContext(provider, previous) {
         if (provider === '123') {
             const session = recover123Session(), source = pan123Source(session);
-            const path = previous?.session.token === session.token && previous.session.parent === session.parent
-                ? previous.path : await export123ParentPath(source);
+            const sameFolder = previous?.session.token === session.token && previous.session.parent === session.parent;
+            source.mediaBreadcrumbs = sameFolder ? previous.source?.mediaBreadcrumbs || [] : [];
+            const path = sameFolder ? previous.path : await export123ParentPath(source,source.mediaBreadcrumbs);
             return { session, source, path, selected: selectedItems('123') };
         }
         const folder = currentGuangyaFolder();
@@ -468,7 +500,9 @@
                 const parts = relativeParts(item.destination); parts.pop();
                 const ancestors = item.node.ancestors || [];
                 // Flat TV folders are work folders, not season folders.
-                if (/^Season \d+$/.test(parts.at(-1)) && ancestors.length && !/^(?:season[ ._-]*\d+|s\d+|第[一二三四五六七八九十百零0-9]+季|\d+季)$/i.test(ancestors.at(-1).name.trim())) parts.pop();
+                if (mediaStandardSeasonFolder(parts.at(-1)) && ancestors.length
+                    && !mediaStandardSeasonFolder(ancestors.at(-1).name)
+                    && !/^(?:season[ ._-]*\d+|s\d+|第[一二三四五六七八九十百零0-9]+季|\d+季)$/i.test(ancestors.at(-1).name.trim())) parts.pop();
                 // Match existing work/season directories from the leaf upwards; category is separate.
                 for (let offset = 1; offset < parts.length && offset <= ancestors.length; offset++) {
                     const folder = ancestors[ancestors.length - offset];
@@ -654,18 +688,18 @@
             if (move) await changeParent();
             if (rename && !renameFirst) await changeName();
             if (move) {
-                if (item.videoId === original.id && parts.some(part => /^Season \d+$/.test(part))) {
-                    const crumbs = source.breadcrumbs || [];
+                if (item.videoId === original.id && mediaStandardSeasonFolder(parts.at(-1))) {
+                    const crumbs = source.mediaBreadcrumbs || source.breadcrumbs || [];
                     const current = crumbs.at(-1);
                     const scope = [];
                     if (current && current.id === source.parentId) {
-                        const start = /^(?:season[ ._-]*\d+|s\d+|第.+季)$/i.test(current.name) ? Math.max(0,crumbs.length-2) : crumbs.length-1;
+                        const start = mediaSeasonNumber(current.name) != null ? Math.max(0,crumbs.length-2) : crumbs.length-1;
                         for (let i=start; i<crumbs.length; i++) scope.push({...crumbs[i],parentId:crumbs[i-1]?.id || '0',path:crumbs.slice(0,i+1).map(folder=>folder.name).join('/')});
                     }
                     const ancestors = [...scope,...(original.ancestors || [])].map((folder,depth)=>({...folder,depth}));
                     for (const folder of ancestors.reverse()) {
                         if ([session.parent,'0'].some(id => String(id) === String(folder.id)) ||
-                            mediaExistingCategory([folder.name]) || folder.name === '云添加') break;
+                            mediaExistingCategory([folder.name]) || /^(?:来自[：:]\s*)?云添加$/.test(folder.name)) break;
                         emptiedSeasonSources.set(folder.id,folder);
                     }
                 }
@@ -693,7 +727,7 @@
         return { prepare, validate, execute, executionKeys, recycleEmptySeasonSources };
     }
 
-    const mediaStandardFolder = name => (/^.+\.(?:19|20)\d{2}$/.test(name) || /^Season \d{2}$/.test(name) || !!mediaExistingCategory([name])) && mediaClean(name) === name;
+    const mediaStandardFolder = name => (/^.+\.(?:19|20)\d{2}$/.test(name) || mediaStandardSeasonFolder(name) || !!mediaExistingCategory([name])) && mediaClean(name) === name;
     const MEDIA_CANONICAL_STEM = new RegExp(String.raw`^(.+\.(?:19|20)\d{2}(?:\.S\d{2}E\d{2,3}(?:E\d{2,3})?)?(?:\.${MEDIA_RESOLUTION_TAG})?)(?=\.|$)`);
     function mediaStandardNode(node) {
         if (node.directory) return mediaStandardFolder(node.name);
@@ -707,7 +741,7 @@
         const works = new Map(), seasons = new Map();
         return async (node, folders = []) => {
             check();
-            if (node.directory && (mediaExistingCategory([node.name]) || /^Season \d{2}$/.test(node.name))) return node.name;
+            if (node.directory && (mediaExistingCategory([node.name]) || mediaStandardSeasonFolder(node.name))) return node.name;
             const subtitle = !node.directory && MEDIA_SUB.test(node.name);
             const subtitleBase = subtitle && mediaStem(node.name).match(MEDIA_CANONICAL_STEM)?.[1];
             const suffix = subtitleBase && mediaSubtitleSuffix(subtitleBase + '.mkv',node.name);
@@ -755,18 +789,26 @@
         };
     }
     const mediaPlaybackAttachment = name => MEDIA_SUB.test(name) || /\.(?:ttf|otf|ttc|woff2?)$/i.test(name) || /(?:字体|字體|fonts?).*\.(?:zip|rar|7z)$/i.test(name);
-    async function planMediaCleanup(selected, source, progress = () => {}, {extras = false, includeSubtitles = false, resolveCanonical, parentPath = '', check = () => {}, log} = {}) {
+    async function planMediaCleanup(selected, source, progress = () => {}, {extras = false, emptyOnly = false, includeSubtitles = false, resolveCanonical, parentPath = '', check = () => {}, log} = {}) {
         if (!selected.length) throw new Error('请先勾选要清理的文件或文件夹');
         const plan = [], {parentId} = source;
         check();
         const roots = matchSelected(await source.children({id:parentId}), selected);
         check();
-        const label = extras ? '检查非正片：' : '识别并检查命名：';
+        const label = emptyOnly ? '检查空文件夹：' : extras ? '检查非正片：' : '识别并检查命名：';
         const baseFolders = parentPath.split('/').filter(Boolean);
         await walkTree(roots.map(node => ({node, parentId, path:node.name})), entry => entry.node.id, async (entry,verify,order) => {
             const {node, parentId, path} = entry;
             let {extraScope = null} = entry;
             progress(label + path);
+            if (emptyOnly) {
+                if (!node.directory) return;
+                const children = await source.children({id:node.id});
+                verify();
+                if (!children.length && !mediaExistingCategory([node.name]) && !/^(?:来自[：:]\s*)?云添加$/.test(node.name))
+                    plan.push({order,item:{id:node.id,parentId,name:node.name,path,directory:true,cleanup:'empty'}});
+                return children.filter(child => child.directory).map(child => ({node:child,parentId:node.id,path:path + '/' + child.name}));
+            }
             if (extras) {
                 if (node.directory) {
                     const folder = {id:node.id, parentId, name:node.name};
@@ -807,6 +849,14 @@
     async function removeMediaNonstandard(item,session,source,check = () => {}) {
         const old = (await source.children({ id: item.parentId })).find(n => n.id === item.id);
         if (!old) return '项目已不存在';
+        if (item.cleanup === 'empty') {
+            if (!old.directory || old.name !== item.name || String(item.id) === '0' || String(item.id) === String(session.parent)
+                || (await source.children({id:item.id})).length)
+                throw Object.assign(new Error('文件夹已变化或含有内容，已保留'), {retained:true});
+            check();
+            await recycleMedia(item,session,source);
+            return '空文件夹已移入回收站';
+        }
         if (item.cleanup === 'extras') {
             let scopeValid = false;
             if (item.extraScope) {

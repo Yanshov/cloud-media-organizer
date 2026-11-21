@@ -196,7 +196,7 @@
     function subtitleCandidateNameIssue(row, candidate) {
         if (!candidate || candidate.ext === 'zip') return '';
         try {
-            const name = subtitleUploadName(candidate.name,candidate.ext);
+            const name = subtitleCandidateUploadName(row,candidate,candidate.name,candidate.ext);
             return row.siblingNames?.has(name.toLowerCase()) ? '目标目录已有同名项目，待处理：' + name : '';
         } catch (error) { return error.message; }
     }
@@ -221,7 +221,7 @@
             const episodes = new Set(missing.map(row => row.parsed.episode));
             if (!missing.every(row => ready(row) && !row.selectedCandidate.hardMismatch && row.autoCandidates?.includes(row.selectedCandidate))) return [];
             const directFiles = missing.filter(row => row.selectedCandidate.ext !== 'zip');
-            const names = new Set(directFiles.map(row => JSON.stringify([row.node.parentId,row.selectedCandidate.name.toLowerCase()])));
+            const names = new Set(directFiles.map(row => JSON.stringify([row.node.parentId,subtitleCandidateUploadName(row,row.selectedCandidate,row.selectedCandidate.name,row.selectedCandidate.ext).toLowerCase()])));
             if (names.size !== directFiles.length) return [];
             if (episodes.has(null) || episodes.has(undefined) || episodes.size !== missing.length) return [];
             return missing;
@@ -644,8 +644,8 @@
                         box.append(line);
                     };
                     const allEmbedded = completed.length && completed.every(row => row.embedded?.chinese);
-                    count(allEmbedded ? '有字幕（内嵌中文）' : '有字幕',completed);
-                    const stillMissing = missing.filter(row => !pendingFill(row));
+                    if (completed.length) count(allEmbedded ? '有字幕（内嵌中文）' : '有字幕',completed);
+                    const stillMissing = missing.filter(row => !pendingFill(row) && !(flow && row.cardSearched && row.autoCandidates?.length));
                     if (stillMissing.length) count('没字幕',stillMissing);
                     if (unknown.length) count('检查未确认',unknown);
                     if (unchecked.length) count(scan?.interrupted ? '未检查完成' : '待检查／检查中',unchecked);
@@ -730,7 +730,8 @@
                     const actionRows = rows.filter(row => !row.organized && !row.organizePending && !covered(row) && subtitleCoverageState(row) === 'missing');
                     const knownSeason = !season || first.parsed.season != null && actionRows.every(row => row.parsed.episode != null);
                     const fill = eligibleFill(rows);
-                    if (season && actionRows.length && (!knownSeason || actionRows.some(row => row.cardSearched) && !fill.length)) {
+                    const foundCount = actionRows.filter(row => row.autoCandidates?.length).length;
+                    if (season && actionRows.length && (!knownSeason || actionRows.some(row => row.cardSearched) && foundCount < actionRows.length)) {
                         const link = document.createElement('a');
                         link.textContent = '按片名找整季字幕包 ↗';
                         link.href = 'https://assrt.net/sub/?searchword=' + encodeURIComponent(first.media?.detail?.name || first.parsed.query);
@@ -740,7 +741,9 @@
                     if (actionRows.length && knownSeason) {
                         if (season && !fill.length && actionRows.some(row => row.cardSearched)) {
                             const note = document.createElement('p');
-                            note.textContent = '自动候选未覆盖当前选区的全部缺字幕集，请导入字幕。';
+                            const blocked = actionRows.find(row => subtitleCandidateNameIssue(row,row.selectedCandidate));
+                            note.textContent = '已找到候选 ' + foundCount + '/' + actionRows.length + ' 集 · ' + (foundCount < actionRows.length
+                                ? '整季候选不完整，可导入字幕' : blocked ? subtitleCandidateNameIssue(blocked,blocked.selectedCandidate) : '整季补齐条件未通过，请查看日志');
                             box.append(note);
                         } else if (season && fill.length) {
                             const note = document.createElement('p'); note.textContent = '已找到字幕 · 待补齐 ' + fill.length + ' 集，点击上方「补齐字幕」'; box.append(note);
@@ -985,7 +988,7 @@
                 const sourceFailures = rows.filter(row => row.sources?.some(source => source.error || source.paused || source.cacheError
                     || source.queries?.some(query => query.error))).length;
                 const message = '已处理 ' + done + '/' + rows.length + ' · ' + (sourceFailures ? sourceFailures + ' 项遇到来源错误 · ' : '')
-                    + subtitleSearchSummary(rows,searchLabels);
+                    + (flow ? '找到候选 ' + rows.filter(row => row.autoCandidates?.length).length + ' · 可补齐 ' + eligibleFill(rows).length : subtitleSearchSummary(rows,searchLabels));
                 status('查找结束 · ' + message); diag('查找结束',message);
             } catch (error) {
                 const message = '已处理 ' + done + '/' + rows.length + ' · ' + error.message;
@@ -1356,7 +1359,8 @@
                                 const {result, bytes} = await service.fetchFile(candidate, config, (phase, message) => diag(phase, `${row.node.name} · ${message}`), check); check();
                                 const {text, ...verification} = subtitleValidateContent(row, bytes, result.ext, config.language, diag);
                                 diag('正文校验', `${row.node.name} · ${candidate.source} 格式与语言通过，${bytes.length} 字节，${result.ext.toUpperCase()} · ${subtitleVerificationMessage(verification)}`);
-                                const name = subtitleUploadName(result.fileName ?? (candidate.ext === 'zip' ? undefined : candidate.name),result.ext);
+                                const originalName = result.fileName ?? (candidate.ext === 'zip' ? undefined : candidate.name);
+                                const name = merged ? subtitleCandidateUploadName(row,candidate,originalName,result.ext) : subtitleUploadName(originalName,result.ext);
                                 if (row.siblingNames?.has(name.toLowerCase())) throw new Error('目标目录已有同名项目，待处理：' + name);
                                 const detected = subtitleFileInfo(name).language;
                                 const language = detected || candidate.language || (config.language === 'en' ? 'en' : 'zh');
@@ -1591,7 +1595,10 @@
             };
             flow.inspect = async (context,collected) => {
                 flow.recognizing = false;
-                for (const row of inventory) updateIdentity(row);
+                for (const row of inventory) {
+                    row.subtitles = [...(collected.linked.get(row.node.id) || [])];
+                    updateIdentity(row);
+                }
                 const confirmed = await checkDirectory(context,collected);
                 flow.registryReady = confirmed && inventory.length > 0;
                 if (flow.registryReady) await flow.resolveSubtitleWorks?.(inventory,check);

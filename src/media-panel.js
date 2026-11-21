@@ -16,7 +16,7 @@
             <div id="mediaPreview"></div>
             <div id="mediaRows"></div>
             <section id="mediaCleanup" class="sync-preview" hidden>
-            <label>清理规则<select id="cleanupMode"><option value="extras">非正片与附件</option><option value="nonstandard">所有不规范项目</option></select></label>
+            <label>清理规则<select id="cleanupMode"><option value="extras">非正片与附件</option><option value="empty">仅空文件夹</option><option value="nonstandard">所有不规范项目</option></select></label>
             <label id="cleanupSubtitleOption"><input id="cleanupSubtitles" type="checkbox">同时清理字幕及字体（默认保留）</label>
             <p id="cleanupRule">清理图片、附件及已标记的花絮/预告；默认保留字幕、字体和普通视频。</p>
             <div class="panel-actions"><button id="checkCleanup">识别并检查清理范围</button><button id="runEmpty" disabled>确认清理</button></div>
@@ -95,25 +95,26 @@
         flow.controls.push(updateControls);
         const previewCleanup = () => runTask(async () => {
             const extras = ui.get('cleanupMode').value === 'extras';
-            emptyPlan = []; ui.get('emptyPreview').textContent = ''; meter(extras ? '检查非正片与附件' : '检查不规范项目');
+            const emptyOnly = ui.get('cleanupMode').value === 'empty';
+            emptyPlan = []; ui.get('emptyPreview').textContent = ''; meter(emptyOnly ? '检查空文件夹' : extras ? '检查非正片与附件' : '检查不规范项目');
             try {
                 const context = await mediaContext(provider); emptySession = context.session; emptySource = context.source; checkStopped();
-                const canonical = extras ? null : mediaCanonicalResolver(tmdbClient(ui.get('tmdbKey').value),checkStopped);
+                const canonical = extras || emptyOnly ? null : mediaCanonicalResolver(tmdbClient(ui.get('tmdbKey').value),checkStopped);
                 const plan = await planMediaCleanup(context.selected, emptySource, message => {
                     checkStopped(); progress(message);
                     if (message.startsWith('保留，未确认')) log(message);
-                }, {extras, includeSubtitles:extras && ui.get('cleanupSubtitles').checked, resolveCanonical:canonical, parentPath:context.path, check:checkStopped, log});
+                }, {extras,emptyOnly,includeSubtitles:extras && ui.get('cleanupSubtitles').checked,resolveCanonical:canonical,parentPath:context.path,check:checkStopped,log});
                 checkStopped();
-                ui.get('emptyPreview').textContent = plan.map(item => `${item.directory ? '删除整个文件夹及全部内容' : '删除文件'}：${item.path}${item.reason ? '\n原因：' + item.reason : ''}${item.expectedName ? '\n应为标准名称：' + item.expectedName : ''}`).join('\n\n') || (extras ? '未发现非正片文件。' : '没有已确认命名不规范的项目。未确认的作品已保留，详见日志。');
+                ui.get('emptyPreview').textContent = plan.map(item => `${emptyOnly ? '回收空文件夹' : item.directory ? '删除整个文件夹及全部内容' : '删除文件'}：${item.path}${item.reason ? '\n原因：' + item.reason : ''}${item.expectedName ? '\n应为标准名称：' + item.expectedName : ''}`).join('\n\n') || (emptyOnly ? '未发现空文件夹。' : extras ? '未发现非正片文件。' : '没有已确认命名不规范的项目。未确认的作品已保留，详见日志。');
                 emptyPlan = plan;
-                meter('检查结束', emptyPlan.length, emptyPlan.length); progress(`可清理 ${emptyPlan.length} 个${extras ? '非正片文件' : '不规范项目（文件夹包含全部内容）'}；尚未删除`);
+                meter('检查结束', emptyPlan.length, emptyPlan.length); progress(`可清理 ${emptyPlan.length} 个${emptyOnly ? '空文件夹' : extras ? '非正片文件' : '不规范项目（文件夹包含全部内容）'}；尚未删除`);
             } catch (error) { stopMeter(); progress('检查失败：' + error.message); }
         }, true);
         const changeCleanupRule = () => {
             emptyPlan = []; ui.get('runEmpty').disabled = true; ui.get('emptyPreview').textContent = '';
             ui.get('cleanupRule').textContent = ui.get('cleanupMode').value === 'extras'
                 ? (ui.get('cleanupSubtitles').checked ? '清理选中范围内的字幕、字体、图片、其他附件、花絮和预告；保留普通视频及特别篇。' : '清理图片、其他附件、花絮和预告；保留字幕、字体、普通视频及特别篇。')
-                : '使用 TMDB 识别所选范围，核对标准命名。无法确认的作品会保留。清单中的整文件夹包含全部内容。';
+                : ui.get('cleanupMode').value === 'empty' ? '预览所选范围内的空文件夹，回收前再次检查。' : '使用 TMDB 识别所选范围，核对标准命名。无法确认的作品会保留。清单中的整文件夹包含全部内容。';
         };
         ui.get('cleanupMode').onchange = () => { ui.get('cleanupSubtitleOption').hidden = ui.get('cleanupMode').value !== 'extras'; changeCleanupRule(); };
         ui.get('cleanupSubtitles').onchange = changeCleanupRule;
@@ -686,6 +687,7 @@
                 checkStopped();
                 for (const row of rows) if (readyRow(row)) mediaRecords.remember(row);
                 mediaRecords.save();
+                if (collected.unmatched.length) collected.refreshSubtitleLinks();
                 meter('识别结束', matched, groups.size);
                 for (const sub of collected.unmatched) log('字幕未唯一关联，保留原状：' + sub.path);
                 return await flow.inspect(context,collected);
@@ -783,7 +785,7 @@
                 const note = without.length ? '允许无字幕整理（' + without.length + ' 个视频）\n' + accepted.filter(item => String(item.node.id) === String(item.videoId) && without.includes(String(item.videoId))).map(item => item.node.originalPath || item.node.path).join('\n') + '\n\n' : '';
                 previewRevision = history?.revision(accepted.map(item => item.videoId)) || '';
                 batch = accepted; batchWriter = writer; ui.get('mediaPreview').textContent = note + (directoryPreview ? directoryPreview + '\n\n逐文件目标：\n' : '') + accepted.map(item => `原：${item.node.originalPath || item.node.path}\n新：/${[targetPath, item.destination].filter(Boolean).join('/')}`).join('\n\n');
-                if (accepted.some(item => /\/Season \d+\//.test(item.destination)))
+                if (accepted.some(item => mediaStandardSeasonFolder(relativeParts(item.destination).at(-2))))
                     ui.get('mediaPreview').textContent += '\n\n整理后，搬空的剧集来源目录将移入回收站。';
                 ui.get('mediaPreviewPanel').open = true;
                 flow.previewShown();
@@ -817,7 +819,8 @@
 
             const items = batch, writer = batchWriter; invalidate();
             meter('重命名文件', 0, items.length);
-            let completed = 0, failed = 0, skipped = 0; const failedVideos = new Set();
+            let completed = 0, failed = 0, skipped = 0, interrupted = false;
+            const failedVideos = new Set();
             const rowsById = new Map(rows.map(row => [row.node.id, row]));
             const organized = new Set(), uncertain = new Set();
             try { if (!writer) throw new Error('执行计划已失效，请重新生成预览'); checkStopped(); await writer.validate(log); }
@@ -831,17 +834,17 @@
                 progress(`重命名 ${completed + failed + skipped + 1}/${items.length}：${item.node.name}`);
                 if (failedVideos.has(item.videoId)) { skipped++; log('视频未完成，字幕保留：' + item.node.path); meter('重命名文件',completed + failed + skipped,items.length); continue; }
                 try { log(item.destination + '：' + await writer.execute(item,verify)); completed++; const row = rowsById.get(item.node.id); if (row) { organized.add(String(row.node.id)); mediaRecords.remember(row); mediaRecords.save(); } }
-                catch (error) { observe(error); outcome = 'failed'; failed++; uncertain.add(String(item.videoId)); if (item.node.id === item.videoId) failedVideos.add(item.videoId); log(item.node.path + '：未完成；' + error.message); if (error.stop) throw error; }
+                catch (error) { observe(error); outcome = 'failed'; failed++; uncertain.add(String(item.videoId)); if (item.node.id === item.videoId) failedVideos.add(item.videoId); log(item.node.path + '：未完成；' + error.message); if (error.stop || error.phase === 'drive-auth' || [401,403].includes(error.status)) throw error; }
                 meter('重命名文件',completed + failed + skipped,items.length);
               }
               return outcome;
             },checkStopped,8,'同组先视频后字幕，共享移动目录和文件冲突顺序执行'); }
-            catch (error) { log('整理中断：' + error.message); }
+            catch (error) { interrupted = true; log('整理中断：' + error.message); }
             const processed = completed + failed + skipped;
             meter(failed || processed < items.length ? '处理结束（含未完成项）' : '整理完成',processed,items.length);
 
             let cleanup = '';
-            if (completed === items.length && !failed && writer.recycleEmptySeasonSources) {
+            if (completed && !interrupted) {
                 try {
                     const count = await writer.recycleEmptySeasonSources(checkStopped,log);
                     if (count) cleanup = ' · 已回收空目录 ' + count;

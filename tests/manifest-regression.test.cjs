@@ -7,7 +7,9 @@ const MEDIA_VIDEO=/\.(mkv|mp4)$/i,MEDIA_SUB=/\.(srt|ass|ssa|vtt)$/i;
 const matchSelected=(nodes,selected)=>nodes.filter(n=>selected.some(s=>s.id===n.id));
 const core=part('    function nonNegativeInteger(', '    function existingFileMessage(');
 function languageAndLinking(){
- const ctx=load(part('    function mediaSubtitleSuffix(', '    const tmdbClients'),{MEDIA_VIDEO,MEDIA_SUB,matchSelected,mediaStem:n=>n.replace(/\.[^.]+$/,''),hasFileMetadata:()=>true});
+ const ctx=load(part('    const MEDIA_VIDEO', '    const mediaBonusName') + part('    function titleKey(', '    function guangyaAuthHeaders(') +
+  part('    function mediaSubtitleSuffix(', '    const tmdbClients'),{matchSelected,hasFileMetadata:()=>true,
+  mediaRecords:{get:node=>node.name.startsWith('美国众神.') ? {aliases:['American Gods']} : null}});
  return (async()=>{
  const video={id:'v',name:'电影.2000.mkv'},subtitle={id:'s',name:''};
  for(const [suffix,canonical] of [['.zh-cn','.zh-cn'],['.zh.cn','.zh-cn'],['.ZH_CN','.zh-CN'],['.zh-tw.en','.zh-tw.en'],['.zh.hans','.zh-hans'],['.zh-hant','.zh-hant'],['.简体&英文','.简体.英文'],['.简英','.简英']]){
@@ -24,6 +26,16 @@ function languageAndLinking(){
  const linked=ctx.mediaSubtitleLinks([video,original,legacy],'p',history).linked.get('v');
  assert.deepEqual(Array.from(linked,sub=>sub.suffix),['.zh','.zh.synced'],'Previously saved copies keep a distinct suffix during organization');
  assert.equal(ctx.mediaSubtitleSuffix(video.name,'电影.2000.zh.synced.srt'),'.zh.synced');
+ const episode={id:'e8',name:'美国众神.2017.S03E08.1080p.mkv'};
+ const legacyName={id:'e8-sub',name:'American.Gods.S03E08.ass'};
+ const tagged={id:'tagged',name:'American.Gods.S03E08.cht.srt'};
+ const wrongNames=['American.Gods.S02E08.ass','American.Gods.S03E09.ass','American.Gods.2009.S03E08.ass','American.Gods.S03E08E09.ass','American.Demons.S03E08.ass'];
+ const wrong=wrongNames.map((name,index)=>({name,id:'wrong-'+index}));
+ const recovered=ctx.mediaSubtitleLinks([episode,legacyName,tagged,...wrong],'p');
+ assert.deepEqual(Array.from(recovered.linked.get('e8'),sub=>[sub.id,sub.suffix]),[['e8-sub',''],['tagged','.cht']]);
+ assert.deepEqual(Array.from(recovered.unmatched,sub=>sub.name),wrongNames);
+ const alternate={...episode,id:'alternate',name:'美国众神.2017.S03E08.2160p.mkv'};
+ assert.equal(ctx.mediaSubtitleLinks([episode,alternate,legacyName],'p').linked.size,0);
  let nodes=[video],reads=0;const drive={parentId:'p',children:async()=>{reads++;return nodes}};
  await ctx.collectMediaSelection([video],drive);nodes=[video,{id:'s',name:'电影.2000.zh-cn.srt'}];
  const scan=await ctx.collectMediaSelection([video],drive);assert.equal(scan.linked.get('v').length,1);assert.equal(reads,2,'Every new scan reads fresh data');

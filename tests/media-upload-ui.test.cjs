@@ -134,7 +134,9 @@ async function subtitleIdentityHandoff() {
     });
     inspect.flow.resolveSubtitleWorks=async(rows)=>{assert.equal(rows[0].media,media);events.push('subtitle-handoff');};
     vm.runInContext(part('            flow.inspect = async (context,collected) => {','            flow.syncWorks ='),inspect);
-    assert.equal(await inspect.flow.inspect(inspect.context,{}),true);
+    const linked = new Map([['v',[{id:'s',name:'Film.2000.srt'}]]]);
+    assert.equal(await inspect.flow.inspect(inspect.context,{linked}),true);
+    assert.equal(inspect.inventory[0].subtitles[0].id,'s');
     assert.deepEqual(events,['identity','coverage','subtitle-handoff'],'Trusted subtitle identity runs after the directory coverage check');
     assert.equal(inspect.flow.registryReady,true);
 
@@ -320,8 +322,9 @@ function treeFixture(numeric=false,nested=false) {
     const attachment={id:id('21'),parentId:parent.id,name:'poster.jpg',directory:false,size:10,md5:'b'.repeat(32)};
     const nodes=[folder,...(nested?[season]:[]),video,attachment];const mutations=[];
     const children=async({id:parentId})=>nodes.filter(n=>n.parentId===parentId).map(n=>({...n}));
-    const ctx=load(part('    function mediaOrganizerWriter(', '    const mediaStandardFolder'),{
+    const ctx=load(part('    function mediaStandardSeasonFolder(', '    function mediaPath(') + part('    function mediaOrganizerWriter(', '    const mediaStandardFolder'),{
         MEDIA_VIDEO:/\.(mkv|mp4)$/i,MEDIA_SUB:/\.(ass|srt)$/i,mediaFileHistory:()=>null,mediaSubtitleLinks:()=>({linked:new Map()}),
+        mediaSeasonNumber:name=>/^Season \d+/.test(name) ? Number(name.match(/\d+/)[0]) : null,
         mediaExistingCategory:parts=>parts[0]==='电影',relativeParts:p=>p.split('/').filter(Boolean),
         recycleMedia:async folder=>{assert.ok(!nodes.some(n=>n.parentId===folder.id));nodes.splice(nodes.findIndex(n=>n.id===folder.id),1);},
         hasFileMetadata:n=>!!n.md5,mediaFileMetadata:async n=>n,sleep:async()=>{},paced:(_ms,fn)=>fn,apiCode:()=>0,
@@ -344,6 +347,7 @@ async function folders() {
     direct.source.parentId = direct.season.id;
     direct.source.breadcrumbs = [direct.folder,direct.season];
     direct.item.node.ancestors = [];
+    direct.item.destination = '电影/新片名.2000/Season 01.1080p/new.1080p.mkv';
     direct.nodes.splice(direct.nodes.indexOf(direct.attachment),1);
     await direct.writer.prepare([direct.item]);
     await direct.writer.validate();
@@ -430,6 +434,22 @@ async function cleanup() {
     const source={parentId:'p',children:async()=>nodes};
     const protectedPlan=await ctx.planMediaCleanup([{}],source,undefined,{extras:true});assert.deepEqual(Array.from(protectedPlan,n=>n.id),['i','b']);
     const all=await ctx.planMediaCleanup([{}],source,undefined,{extras:true,includeSubtitles:true});assert.deepEqual(Array.from(all,n=>n.id),['s','f','a','i','b']);
+    const recycled=[];
+    const emptyCtx=load(part('    const mediaPlaybackAttachment', '    async function recycleMedia123('),{
+        MEDIA_VIDEO:/\.mkv$/,MEDIA_SUB:/\.(srt|ass)$/,matchSelected:nodes=>nodes,
+        mediaExistingCategory:names=>names.includes('剧集'),recycleMedia:async item=>recycled.push(item.id)
+    });
+    const empty={id:'release',name:'American.Gods.S02.1080p[rartv]',directory:true}, category={id:'tv',name:'剧集',directory:true};
+    const contents=new Map([['p',[empty,category]],['release',[]],['tv',[]]]);
+    const emptySource={parentId:'p',children:async ({id})=>contents.get(id)};
+    const plan=await emptyCtx.planMediaCleanup([empty,category],emptySource,undefined,{emptyOnly:true});
+    assert.deepEqual(Array.from(plan,item=>item.id),['release']);
+    contents.get('release').push({id:'sub',name:'American.Gods.S02E08.ass'});
+    await assert.rejects(emptyCtx.removeMediaNonstandard(plan[0],{parent:'p'},emptySource),/含有内容/);
+    assert.deepEqual(recycled,[]);
+    contents.get('release').pop();
+    await emptyCtx.removeMediaNonstandard(plan[0],{parent:'p'},emptySource);
+    assert.deepEqual(recycled,['release']);
     const button={},messages=[];let deletes=0;
     const handler = part("        ui.get('runEmpty').onclick =", "        ui.get('mediaAIProvider').onchange");
     const lifecycle = part('    function createPanelTask(', '    function panelControls(');

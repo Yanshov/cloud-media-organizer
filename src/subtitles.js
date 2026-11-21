@@ -435,10 +435,6 @@
             });
         });
         const pause = async ms => { for (let left = ms; left > 0; left -= 500) { check(); await wait(Math.min(left, 500)); } check(); };
-        const exactSubtitleEpisode = (name, parsed) => {
-            const found = [...String(name).matchAll(/S(\d{1,2})[ ._-]*E(\d{1,3})(?!\d)/gi)];
-            return found.length === 1 && Number(found[0][1]) === parsed.season && Number(found[0][2]) === parsed.episode && !/E\d+[ ._-]*[-~][ ._-]*(?:E)?\d+/i.test(name);
-        };
         return {
             async prepareSeason(rows,config,verify = () => {}) {
                 const row = rows.find(row => row.parsed.episode != null && (!row.parsed.endEpisode || row.parsed.endEpisode === row.parsed.episode)), parsed = row?.parsed;
@@ -1028,6 +1024,19 @@
     }
     function subtitleVerificationMessage(result) {
         return `格式/语言通过；${({file:'对白范围与视频文件时长相符', unknown:'无时长参考', reference:'TMDB 仅作作品时长参考', 'reference-difference':'与 TMDB 作品时长参考有差异'})[result.evidence] || '时长证据待确认'}；${result.work?.status === 'supported' ? 'AI 支持作品归属（非实证）' : '作品归属未确认'}；未核对音画同步`;
+    }
+    function exactSubtitleEpisode(name, parsed) {
+        const found = [...String(name).matchAll(/S(\d{1,2})[ ._-]*E(\d{1,3})(?!\d)/gi)];
+        return found.length === 1 && Number(found[0][1]) === parsed.season && Number(found[0][2]) === parsed.episode && !/E\d+[ ._-]*[-~][ ._-]*(?:E)?\d+/i.test(name);
+    }
+    function subtitleCandidateUploadName(row,candidate,name,ext) {
+        try { return subtitleUploadName(name,ext); }
+        catch (error) {
+            if (candidate.source !== '迅雷' || !candidate.titleMatched || candidate.hardMismatch || candidate.opaque
+                || !row.parsed?.tv || !exactSubtitleEpisode(candidate.name,row.parsed)
+                || !['srt','ass','ssa','vtt'].includes(ext) || candidate.ext !== ext) throw error;
+            return subtitleUploadName(mediaStem(row.node.name) + '.' + ext,ext);
+        }
     }
     function subtitleUploadName(name, ext) {
         if (typeof name !== 'string' || !name.trim()) throw new Error('来源未提供字幕原名，待处理');

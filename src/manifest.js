@@ -239,7 +239,7 @@
         if (capture.parent123 != null) return capture.parent123;
         throw new Error('未识别到当前目录，请打开“全部文件”中的目标文件夹');
     }
-    async function export123ParentPath(source) {
+    async function export123ParentPath(source, breadcrumbs) {
         if (source.parentId === '0') return '';
         const url = new URL(location.href);
         const raw = url.searchParams.get('homeFilePath') ?? routeHashParams(url.hash).get('homeFilePath');
@@ -251,6 +251,7 @@
             const folder = (await source.children({ id: parent })).find(item => item.id === id && item.directory);
             if (!folder || relativeParts(folder.name).length !== 1) throw new Error('无法读取完整源目录树，请从网盘根目录逐层打开源文件夹后导出');
             names.push(folder.name);
+            breadcrumbs?.push({id,name:folder.name});
             parent = id;
         }
         return names.join('/');

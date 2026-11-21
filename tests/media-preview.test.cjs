@@ -121,7 +121,8 @@ function fixture() {
         ['Series.S01E02E03.2048kbps.mkv','Series.2024.S01E02E03.mkv']
     ]) {
         const row = {node:{name:input},title:'Series',year:'2024',type:'tv',category:'剧集',season:1,episode:2,endEpisode:3};
-        assert.equal(resolution.ctx.mediaPath(row),'剧集/Series.2024/Season 01/' + expected);
+        const seasonFolder = expected.includes('.1080p.') ? 'Season 01.1080p' : 'Season 01';
+        assert.equal(resolution.ctx.mediaPath(row),'剧集/Series.2024/' + seasonFolder + '/' + expected);
     }
 
 
