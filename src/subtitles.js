@@ -1366,6 +1366,12 @@
                 source.count = cached.length;
                 row.sources.push(source);
                 selectSubtitleCandidate(row, config.language);
+                const assrtBackup = name !== '射手网' && config.assrtKey && !service.searchUnavailable?.('射手网')
+                    ? service.assrtCachedEpisode?.(row) : null;
+                if (assrtBackup?.length) {
+                    row.sources.push({name:'射手网',deferred:true,cachedCandidates:assrtBackup,skipped:'已匹配整季包，保留为下载备选'});
+                    log('整季备选', row.node.name + ' · 射手网已匹配本集，首选字幕失败后自动尝试');
+                }
                 log('整季快速命中', `${row.node.name} · ${name} · 复查缓存中的片名、年份及准确季集后选中；跳过本集视频取样与来源搜索，下载后仍检查正文`);
                 break;
             }
@@ -1449,6 +1455,11 @@
                 log('来源耗时', `${row.node.name} · ${name} · 查询 ${(((fetchedAt || Date.now()) - started) / 1000).toFixed(1)} 秒${fetchedAt ? '，候选判断 ' + ((Date.now() - fetchedAt) / 1000).toFixed(1) + ' 秒' : ''}`);
             }
         };
+        if (resume) await run('射手网', !!config.assrtKey, true, (_report, source) => {
+            const candidates = source.cachedCandidates || [];
+            delete source.cachedCandidates;
+            return candidates;
+        });
         if (!row.selectedCandidate) log('查找阶段', `${row.node.name} · 迅雷片名搜索`);
         await run('迅雷', config.thunder, true, (report, source) => service.thunderSearch(row, {...config,thunderOffset:config.correctionName ? 0 : source.thunderOffset}, message => log('迅雷 文件列表', message), check, report));
         if (config.subdl) await run('SubDL', true, config.subdlKey, report => service.subdlSearch(row, config, message => log('SubDL 文件列表',message),check,report));

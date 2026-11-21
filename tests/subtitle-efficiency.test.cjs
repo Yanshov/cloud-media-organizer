@@ -30,22 +30,55 @@ async function sources() {
   calls.length=0;service.subdlSearch=async()=>[{...mono,language:'en',name:'Rick.and.Morty.S01E01.eng.srt',bilingual:false}];await ctx.searchSubtitleSources(row(),{...config,language:'en'},service);assert.equal(calls.length,1,'Reliable English stops duplicate English queries');
  console.log('PASS efficiency sources: title providers run in order; reliable candidates defer later calls; failed downloads resume deferred providers once; unconfirmed and English cases remain covered');
 }
-async function fillFallback() {
+async function fillFallback({hasSeasonPack = false, packDownloadFails = false} = {}) {
  const elements=new Map(),calls=[],valid=new TextEncoder().encode('1\n00:00:01,000 --> 00:20:03,000\n中文字幕 Test\n');let saves=0;
  const element=()=>({value:'',checked:false,disabled:false,hidden:false,dataset:{},style:{},children:[],textContent:'',append(...children){this.children.push(...children)},appendChild(child){this.children.push(child)},replaceChildren(...children){this.children=children},querySelectorAll(){return []}});
- const video={id:'v',name:'瑞克和莫蒂.2013.S01E01.mkv',size:10000,folders:[],path:'瑞克和莫蒂.2013.S01E01.mkv'};
- const bi={source:'SubDL',name:'瑞克和莫蒂.S01E01.简体&英文.srt',ext:'srt',language:'zh-cn',bilingual:true,titleMatched:true};
+ const videoName = '风骚律师.2015.S06E06.1080p.mkv';
+ const video={id:'v',name:videoName,size:10000,folders:[],path:videoName};
+ const bi={source:'SubDL',name:'tt3032476.S06E06.fixture.ZH.srt',ext:'srt',language:'zh-cn',titleMatched:true};
+ const thunder={...bi,source:'迅雷',name:'Better.Call.Saul.S06E06.2160p.WEB.H265-PECULATE.简体.srt'};
+ const assrt={...bi,source:'射手网',name:'Better.Call.Saul.S06E06.简体.srt'};
+ let seasonPack = hasSeasonPack ? [assrt] : [];
  const ctx=load({document:{createElement:element},makePanel:(_title,html)=>{
   for(const tag of html.matchAll(/<[^>]+\bid="([^"]+)"[^>]*>/g)){const el=element();el.checked=/\bchecked\b/.test(tag[0]);el.disabled=/\bdisabled\b/.test(tag[0]);elements.set(tag[1],el)}
   return {get:id=>elements.get(id),moveSettings(){},openSettings(){},busy(){}};
  },mediaContext:async()=>({selected:[video],session:{parent:'root',token:'fixture'},source:{},path:'剧集'}),mediaFileHistory:()=>null, selectedTreeCache:{stale:true},
- collectMediaSelection:async()=>({videos:[video],linked:new Map()}),parseMediaName:()=>row().parsed,mediaBonusName:()=>false,mediaRecords:{get:()=>null},mediaStem:name=>name.replace(/\.[^.]+$/,''),
+ collectMediaSelection:async()=>({videos:[video],linked:new Map()}),parseMediaName:()=>row('风骚律师',6,6,2015).parsed,mediaBonusName:()=>false,mediaRecords:{get:()=>null},mediaStem:name=>name.replace(/\.[^.]+$/,''),
  subtitleDrive:()=>({reconcile:async()=>[],save:async(_row,name)=>{saves++;calls.push('save');return {id:'s',name}}})});
- ctx.createSubtitleService=()=>({thunderSearch:async()=>{calls.push('thunder');return [{...bi,source:'迅雷'}]},subdlSearch:async()=>{calls.push('subdl');return [{...bi,source:'SubDL'}]},fetchFile:async c=>{calls.push('download-'+c.source);if(c.source==='迅雷')throw Error('正文无效');return {result:{ext:'srt'},bytes:valid}}});
+ ctx.createSubtitleService=()=>({
+  thunderCachedEpisode:async()=>hasSeasonPack ? [thunder] : [],
+  assrtCachedEpisode:()=>seasonPack,
+  thunderSearch:async()=>{calls.push('thunder');return [thunder]},
+  subdlSearch:async()=>{calls.push('subdl');return [bi]},
+  fetchFile:async candidate=>{
+   calls.push('download-'+candidate.source);
+   const invalid = candidate === thunder || candidate === assrt && packDownloadFails;
+   return {result:{ext:'srt'},bytes:invalid ? Uint8Array.of(0xff,0xff,0xff) : valid};
+  }
+ });
  vm.runInContext(part('    function createPanelTask(', '    function panelControls(')+part('    function subtitleInventory(', '    if (location.hostname'),ctx);ctx.initSubtitles();elements.get('subdlKey').value='test';elements.get('useSubdl').checked=true;
- await elements.get('readSubtitles').onclick();assert.deepEqual(calls,['thunder']);
- await elements.get('fillSubtitles').onclick();assert.deepEqual(calls,['thunder','download-迅雷','subdl','download-SubDL','save']);assert.equal(saves,1);assert.match(elements.get('subtitleSummary').textContent,/有字幕 1/);
- assert.match(elements.get('subtitleLog').value,/来源补查/);
- console.log('PASS efficiency fill integration: failed Thunder download triggers deferred SubDL search, validates its body and uploads exactly once; no re-download of failed candidates');
+ if (hasSeasonPack) elements.get('assrtKey').value='fixture';
+ const expected = hasSeasonPack ? [] : ['thunder'];
+ await elements.get('readSubtitles').onclick();
+ assert.deepEqual(calls, expected);
+ // Searching subtitles for another season can reset the service's prepared season cache.
+ seasonPack = [];
+ expected.push('download-迅雷');
+ if (hasSeasonPack) expected.push('download-射手网');
+ if (!hasSeasonPack || packDownloadFails) expected.push('subdl','download-SubDL');
+ expected.push('save');
+ await elements.get('fillSubtitles').onclick();
+ assert.deepEqual(calls,expected);
+ assert.equal(saves,1);
+ assert.match(elements.get('subtitleSummary').textContent,/有字幕 1/);
+ assert.match(elements.get('subtitleLog').value,/候选失败[^\n]*字幕文本解码失败/);
+ if (hasSeasonPack) assert.match(elements.get('subtitleLog').value,/整季备选[^\n]*射手网/);
+ console.log('PASS efficiency fill integration:', expected.join(' → '));
 }
-(async()=>{years();await sources();await fillFallback()})().catch(e=>{console.error(e);process.exitCode=1});
+(async()=>{
+ years();
+ await sources();
+ await fillFallback();
+ await fillFallback({hasSeasonPack:true});
+ await fillFallback({hasSeasonPack:true,packDownloadFails:true});
+})().catch(e=>{console.error(e);process.exitCode=1});

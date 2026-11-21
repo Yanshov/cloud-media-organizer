@@ -1355,6 +1355,7 @@
                             attempted.add(candidate);
                             check();
                             if (pausedDownloads.has(candidate.source)) {
+                                candidate.downloadFailed = true;
                                 failures.push(candidate.source + ' 本批下载已暂停');
                                 continue;
                             }
