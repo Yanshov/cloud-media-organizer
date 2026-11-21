@@ -190,8 +190,7 @@
         if (!['电影', '剧集', '纪录片', '综艺', '动漫'].includes(category)) throw new Error('请选择分类');
         const stem = title + '.' + year;
         const resolution = mediaResolution(row.node.name);
-        const resolutionSuffix = resolution ? '.' + resolution : '';
-        const folders = [category, row.type === 'tv' ? stem + resolutionSuffix : stem];
+        const folders = [category, stem];
         let filename = stem;
         if (row.type === 'tv') {
             if (!Number.isInteger(row.season) || row.season < 0 || row.season > 99 || !Number.isInteger(row.episode) || row.episode < 1 || row.episode > 999) throw new Error('剧集需要明确的季号和集号');
@@ -204,7 +203,7 @@
             folders.push('Season ' + season);
         }
         if (categoryRoot === category) folders.shift();
-        filename += resolutionSuffix;
+        if (resolution) filename += '.' + resolution;
         filename += row.node.name.slice(row.node.name.lastIndexOf('.'));
         if ([...folders, filename].some(name => name.length >= 256 || /[\\\/:*?"<>|\x00-\x1f]/.test(name))) throw new Error('目标名称过长或含 123 不允许的字符，请修改标准片名');
         return folders.join('/') + '/' + filename;

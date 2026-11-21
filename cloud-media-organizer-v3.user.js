@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v3.0（重构版）
 // @namespace    local.cloud-media-organizer
-// @version      3.0.7
+// @version      3.0.8
 // @description  面向百度网盘、123 云盘和光鸭网盘的浏览器脚本，支持跨盘 JSON 清单、影视整理与字幕补齐。
 // @match        https://pan.baidu.com/*
 // @match        https://yun.baidu.com/*
@@ -40,7 +40,7 @@
     if (typeof navigator !== 'undefined' && (navigator.userAgentData?.mobile || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
         navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) return;
 
-    const VERSION = '3.0.7';
+    const VERSION = '3.0.8';
     let jsonTaskStopped = false;
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
@@ -2773,8 +2773,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         if (!['电影', '剧集', '纪录片', '综艺', '动漫'].includes(category)) throw new Error('请选择分类');
         const stem = title + '.' + year;
         const resolution = mediaResolution(row.node.name);
-        const resolutionSuffix = resolution ? '.' + resolution : '';
-        const folders = [category, row.type === 'tv' ? stem + resolutionSuffix : stem];
+        const folders = [category, stem];
         let filename = stem;
         if (row.type === 'tv') {
             if (!Number.isInteger(row.season) || row.season < 0 || row.season > 99 || !Number.isInteger(row.episode) || row.episode < 1 || row.episode > 999) throw new Error('剧集需要明确的季号和集号');
@@ -2787,7 +2786,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             folders.push('Season ' + season);
         }
         if (categoryRoot === category) folders.shift();
-        filename += resolutionSuffix;
+        if (resolution) filename += '.' + resolution;
         filename += row.node.name.slice(row.node.name.lastIndexOf('.'));
         if ([...folders, filename].some(name => name.length >= 256 || /[\\\/:*?"<>|\x00-\x1f]/.test(name))) throw new Error('目标名称过长或含 123 不允许的字符，请修改标准片名');
         return folders.join('/') + '/' + filename;
