@@ -1,7 +1,7 @@
     function subtitleRemoteJson(url, options = {}) {
         const timeout = options.timeout || 30000;
         const hostname = new URL(url).hostname;
-        if (!['api.opensubtitles.com', 'api-shoulei-ssl.xunlei.com', 'api.subdl.com'].includes(hostname)) throw new Error('不支持的字幕接口地址');
+        if (!['api.opensubtitles.com', 'api-shoulei-ssl.xunlei.com', 'api.subdl.com','api.assrt.net'].includes(hostname)) throw new Error('不支持的字幕接口地址');
         if (typeof GM_xmlhttpRequest !== 'function') throw new Error('需要 Tampermonkey 的跨域请求权限，请更新并保存完整脚本');
         return new Promise((resolve, reject) => GM_xmlhttpRequest({
             url, method: options.method || 'GET', headers: options.headers || {}, data: options.body,
@@ -343,6 +343,48 @@
         const unavailableSources = new Map(), workConflicts = new Map();
         const searchCache = new Map();
         const seasonPreparations = new Map(), archiveCache = new Map(), transfers = new Map();
+        let assrtEpisodes = new WeakMap();
+        const assrtRequest = paced(1500,async (endpoint,params,config,verify) => {
+            verify();
+            const result = await subtitleRemoteJson('https://api.assrt.net/v1/sub/' + endpoint,{method:'POST',
+                headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({...params,token:config.assrtKey}).toString()});
+            verify();
+            if (result?.status !== 0) throw subtitleSourceError('射手网查询失败，状态码 ' + result?.status,{status:result?.status === 30900 ? 429 : 0});
+            return Array.isArray(result.sub?.subs) ? result.sub.subs : [];
+        });
+        const prepareAssrt = async (rows,config,verify) => {
+            const visited = new Set();
+            for (const title of subtitleSearchNames(rows[0].parsed)) {
+                const hits = await assrtRequest('search',{q:title,cnt:8},config,verify);
+                for (const hit of hits) {
+                    if (!Number.isSafeInteger(hit.id) || visited.has(hit.id) || visited.size >= 8) continue;
+                    visited.add(hit.id);
+                    const [pack] = await assrtRequest('detail',{id:hit.id},config,verify);
+                    if (String(pack?.id) !== String(hit.id) || !Array.isArray(pack.filelist)) continue;
+                    const found = new Map();
+                    for (const file of pack.filelist.slice(0,200)) {
+                        const name = file.f;
+                        if (typeof name !== 'string' || !/\.(?:srt|ass|ssa|vtt)$/i.test(name) || /[/\\]/.test(name)) continue;
+                        const match = matchSubtitleImport(name,rows,pack.filename);
+                        if (!match.row || match.reason || match.needsIdentity) continue;
+                        let url;
+                        try { url = new URL(file.url); } catch { continue; }
+                        if (!['http:','https:'].includes(url.protocol) || !/(^|\.)assrt\.net$/i.test(url.hostname) || url.username || url.password) continue;
+                        url.protocol = 'https:';
+                        const fallback = /简/.test(pack.lang?.desc) ? 'zh-cn' : /繁/.test(pack.lang?.desc) ? 'zh-tw' : '';
+                        const info = subtitleFileInfo(name,fallback);
+                        if (!config.language.split(',').includes(info.language)) continue;
+                        if (found.has(match.row)) { found.set(match.row,null); continue; }
+                        found.set(match.row,{source:'射手网',name,...info,url:url.href,ext:name.split('.').pop().toLowerCase(),titleMatched:true,release:pack.filename});
+                    }
+                    if (!rows.every(target => found.get(target))) continue;
+                    for (const [target,candidate] of found) assrtEpisodes.set(target,[candidate]);
+                    log('射手网整季包',pack.filename + ' · 已对应 ' + rows.length + ' 集');
+                    return;
+                }
+            }
+            log('射手网整季包',rows[0].parsed.query + ' · 未找到完整覆盖的字幕包');
+        };
         const archiveWork = paced(0,async (work,verify) => { check(); verify(); return work(); });
         const transfer = (result,verify) => {
             check(); verify();
@@ -402,7 +444,7 @@
                 const row = rows.find(row => row.parsed.episode != null && (!row.parsed.endEpisode || row.parsed.endEpisode === row.parsed.episode)), parsed = row?.parsed;
                 if (!parsed?.tv || parsed.season == null || !parsed.query) return;
                 const key = JSON.stringify([parsed.tmdbId || '',parsed.query,parsed.year,parsed.season,subtitleSearchNames(parsed),config.language,
-                    config.thunder,config.subdl,config.subdlKey]);
+                    config.thunder,config.subdl,config.subdlKey,config.assrtKey,rows.map(target => target.node.id || target.parsed.episode)]);
                 if (!seasonPreparations.has(key)) {
                     const task = (async () => {
                         log('整季搜索', `${parsed.query} · S${String(parsed.season).padStart(2,'0')} · 优先取得整季文件列表，逐集复核，缺集再补查`);
@@ -425,8 +467,10 @@
                                     catch (error) { verify(); if (error.stop) throw error; log('整季压缩包', `${candidate.name} · ${error.message}；保留其他候选`); }
                                 }
                             }]
-                        ].filter(([name,enabled]) => enabled && !unavailableSources.has(name));
-                        for (const [name,,run] of sources) {
+                        ];
+                        if (config.assrtKey) sources.push(['射手网',true,() => prepareAssrt(rows,config,verify)]);
+                        for (const [name,enabled,run] of sources) {
+                            if (!enabled || unavailableSources.has(name)) continue;
                             try { await run(); }
                             catch (error) {
                                 check(); verify(); if (!isSubtitleSourceError(error)) throw error;
@@ -441,7 +485,8 @@
                 }
                 await seasonPreparations.get(key); check(); verify();
             },
-            resetSearchBatch() { unavailableSources.clear(); seasonPreparations.clear(); workConflicts.clear(); },
+            assrtCachedEpisode(row) { return assrtEpisodes.get(row) || []; },
+            resetSearchBatch() { unavailableSources.clear(); seasonPreparations.clear(); workConflicts.clear(); assrtEpisodes = new WeakMap(); },
             searchUnavailable(name) { return unavailableSources.get(name); },
             pauseSearchSource(name, reason) { unavailableSources.set(name, reason); },
             thunderCachedEpisode(row, config, onFiles = () => {}, verify = () => {}, report) {
@@ -771,7 +816,7 @@
             },
             async download(candidate, config) {
                 if (candidate.source === '迅雷') return {url:subtitleDownloadUrl(candidate.url,{allowHttp:true}), ext:candidate.ext,fileName:candidate.name,allowHttp:true};
-                if (candidate.source === 'SubDL') return {url:subtitleDownloadUrl(candidate.url),ext:candidate.ext,fileName:candidate.name};
+                if (candidate.source === 'SubDL' || candidate.source === '射手网') return {url:subtitleDownloadUrl(candidate.url),ext:candidate.ext,fileName:candidate.name};
                 const result = await request('/download', config, {file_id:candidate.fileId});
                 const ext = String(result?.file_name || candidate.name).split('.').pop().toLowerCase();
                 return {url:subtitleDownloadUrl(result?.link), ext,fileName:result?.file_name || candidate.name};
@@ -1287,7 +1332,7 @@
         if (!resume && !config.correctionName) { row.error = ''; row.candidates = []; row.selectedCandidate = null; row.manualCandidate = false; row.aiSuggested = false; row.sources = []; }
         const title = subtitleQueryTitle(row.parsed.query, row.parsed.year);
         if (!resume && !config.correctionName && row.parsed.tv) {
-            for (const [name,enabled,method] of [['SubDL',config.subdl && config.subdlKey,'subdlCachedEpisode'],['迅雷',config.thunder,'thunderCachedEpisode']]) {
+            for (const [name,enabled,method] of [['SubDL',config.subdl && config.subdlKey,'subdlCachedEpisode'],['迅雷',config.thunder,'thunderCachedEpisode'],['射手网',config.assrtKey,'assrtCachedEpisode']]) {
                 if (!enabled || !service[method] || service.searchUnavailable?.(name)) continue;
                 check();
                 const source = {name};

@@ -10,13 +10,13 @@ const encoded = text => new TextEncoder().encode(text);
 const lang = 'zh-cn,zh-tw,zh';
 const srt = '1\n00:00:01,000 --> 00:20:03,000\n合成中文字幕\n';
 const video = (id,name,folder='目录') => ({id,parentId:folder,name,size:1234,folders:[folder],path:folder+'/'+name});
-function fixture() {
+function fixture(assrtApi) {
     const memory = new Map(), state = {writes:0,lists:0,entries:[],response:'ok'};
     const ctx = vm.createContext({URL,URLSearchParams,TextEncoder,TextDecoder,Uint8Array,Blob,DecompressionStream,
         location:{hostname:'www.123pan.com'},setTimeout:fn=>setTimeout(fn,0),window:{fetch:()=>assert.fail('Unexpected network')},
         sourceQueries:state.sourceQueries = [], fixtureSubtitleSearch:async () => ({code:0,data:[{name:'电影.2000.BluRay.简体.srt',url:'https://subtitle.example/file.srt'}]}),
         GM_getValue:(key,fallback)=>memory.get(key) ?? fallback,GM_setValue:(key,value)=>memory.set(key,value),
-        fixtureRequest:async (url,options) => {
+        assrtApi, fixtureRequest:async (url,options) => {
             const input = JSON.parse(options.body);
             if (state.organize && url.endsWith('/file/rename')) {
                 state.mutations++;
@@ -30,7 +30,7 @@ function fixture() {
             if (state.response === 'lost') throw Error('连接断开');
             return {code:0,data:{Reuse:true}};
         }});
-    vm.runInContext(source.slice(0,bootstrap) + '\nrequestJson = fixtureRequest; subtitleRemoteJson = url => { sourceQueries.push(new URL(url).searchParams.get("name")); return fixtureSubtitleSearch(); }; globalThis.api = {subtitleInventory, subtitleImportGroups, planSubtitleImport, checkSubtitleImportDirectory, savePanelSubtitle, subtitleDrive, subtitleMd5, mediaFileHistory, mediaSubtitleLinks, readSubtitleImport, mediaOrganizerWriter, createSubtitleService}; })();',ctx);
+    vm.runInContext(source.slice(0,bootstrap) + '\nrequestJson = fixtureRequest; subtitleRemoteJson = assrtApi || (url => { sourceQueries.push(new URL(url).searchParams.get("name")); return fixtureSubtitleSearch(); }); globalThis.api = {subtitleInventory, subtitleImportGroups, planSubtitleImport, checkSubtitleImportDirectory, savePanelSubtitle, subtitleDrive, subtitleMd5, mediaFileHistory, mediaSubtitleLinks, readSubtitleImport, mediaOrganizerWriter, searchSubtitleSources, createSubtitleService}; })();',ctx);
     const collect = (videos,linked=new Map()) => ctx.api.subtitleInventory({videos,linked},'影视');
     return {api:ctx.api,memory,state,collect};
 }
@@ -94,6 +94,7 @@ function matching() {
 
 
 async function organizeAfterUpload() {
+    await onlineSeasonSearch();
     const {api,state,collect} = fixture();
     const node = {...video('v','电影.2000.BluRay-GROUP.mkv'),md5:'a'.repeat(32)};
     const session = {provider:'123',token:'test',parent:node.parentId,base:'https://api.123pan.com',headers:{}};
@@ -140,6 +141,31 @@ async function organizeAfterUpload() {
     assert.deepEqual(await compare(node),['电影.2000.BluRay-GROUP','电影.2000.BluRay.简体.srt']);
     assert.deepEqual(await compare({...item.node,originalName:original}),await compare(node));
     console.log('PASS original-name upload, stale preview rejection, account and directory recheck, legacy fallback, and retained original after confirmed organization');
+}
+
+async function onlineSeasonSearch() {
+    const numbers = Array.from({length:51},(_,index) => String(index+1).padStart(2,'0'));
+    const files = numbers.map(number => ({f:'假面骑士亚极陀 - '+number+'.ass',url:'https://file0.assrt.net/'+number}));
+    files.push({f:'假面骑士亚极陀 剧场版 - G4计划.ass',url:'https://file0.assrt.net/g4'});
+    const calls = [];
+    const {api,collect} = fixture(async (url,options) => {
+        assert.equal(new URLSearchParams(options.body).get('token'),'example');
+        calls.push(url);
+        return {status:0,sub:{subs:url.endsWith('/search') ? [{id:646618}] : [{id:646618,lang:{desc:'简'},filename:'[假面骑士亚极陀][TV_01-51][BD][Sub].zip',filelist:files}]}};
+    });
+    const rows = collect(numbers.map(number => video(number,'[DBD-Raws][假面骑士Agito]['+number+'][1080P].mkv')));
+    for (const target of rows) {
+        Object.assign(target.parsed,{tv:true,season:1,aliases:['假面骑士亚极陀']});
+        target.media = {detail:{seasons:[{season_number:1,episode_count:51}]}};
+    }
+    const service = api.createSubtitleService(), config = {assrtKey:'example',language:lang};
+    await service.prepareSeason(rows,config);
+    for (const target of rows) {
+        await api.searchSubtitleSources(target,config,service);
+        assert.equal(target.selectedCandidate?.source,'射手网');
+        assert.equal((await service.download(target.selectedCandidate,config)).url,'https://file0.assrt.net/'+target.node.id);
+    }
+    assert.equal(calls.length,2);
 }
 
 async function upload() {

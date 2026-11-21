@@ -252,6 +252,7 @@
             <label><input id="useThunder" type="checkbox" checked>迅雷 · 按片名搜索（免 Key，免费）</label>
             <label><input id="useSubdl" type="checkbox">SubDL（需个人 API Key，可选）</label>
             <label><span class="credential-head"><span>SubDL API Key</span><a href="https://subdl.com/api-doc" target="_blank" rel="noopener noreferrer">官网 API 说明 ↗</a></span><input id="subdlKey" type="password" autocomplete="off"></label>
+            <label><span class="credential-head"><span>射手网整季搜索 Token（可选）</span><a href="https://assrt.net/usercp.php" target="_blank" rel="noopener noreferrer">assrt.net ↗</a></span><input id="assrtKey" type="password" autocomplete="off"></label>
             <details id="openSubtitlesSettings"><summary>账号与 API</summary>
             <label><input id="useOpenSubtitles" type="checkbox">启用搜索</label>
             <label><span class="credential-head"><span>API Key</span><a href="https://www.opensubtitles.com/en/consumers" target="_blank" rel="noopener noreferrer">获取 API ↗</a></span><input id="openSubtitlesKey" type="password" autocomplete="off"></label>
@@ -276,12 +277,13 @@
         ui.get('useOpenSubtitles').checked = prefs.open === true;
         ui.get('useThunder').checked = prefs.thunder !== false;
         ui.get('useSubdl').checked = prefs.subdl === true;
+        ui.get('assrtKey').value = prefs.assrtKey || '';
         ui.get('subdlKey').value = prefs.subdlKey || '';
         ui.get('subtitleLanguage').value = prefs.language || 'zh-cn,zh-tw,zh';
-        const settings = () => ({key:ui.get('openSubtitlesKey').value.trim(), language:ui.get('subtitleLanguage').value, open:ui.get('useOpenSubtitles').checked, thunder:ui.get('useThunder').checked, subdl:ui.get('useSubdl').checked, subdlKey:ui.get('subdlKey').value.trim()});
+        const settings = () => ({assrtKey:ui.get('assrtKey').value.trim(),key:ui.get('openSubtitlesKey').value.trim(), language:ui.get('subtitleLanguage').value, open:ui.get('useOpenSubtitles').checked, thunder:ui.get('useThunder').checked, subdl:ui.get('useSubdl').checked, subdlKey:ui.get('subdlKey').value.trim()});
         const safeDiagnostic = text => {
             let clean = subtitleDiagnosticText(text,{...settings(),password:ui.get('subtitlePassword').value});
-            if (flow) for (const secret of [capture.token,capture.token123,ui.get('tmdbKey')?.value,ui.get('mediaAIKey')?.value]) {
+            if (flow) for (const secret of [ui.get('assrtKey')?.value,capture.token,capture.token123,ui.get('tmdbKey')?.value,ui.get('mediaAIKey')?.value]) {
                 if (secret?.trim()) clean = clean.split(secret.trim()).join('[已隐藏]');
             }
             return clean;
@@ -761,7 +763,7 @@
         const updateControls = (value,stoppable) => {
             busy = value;
             if (value) cancelled = false;
-            for (const id of ['readSubtitles','reviewSubtitleDeletes','confirmSubtitleDeletes','cancelSubtitleDeletes','importSubtitles','saveSubtitleSettings','forgetSubtitleKey','loginSubtitles','openSubtitlesKey','subtitleUsername','subtitlePassword','useOpenSubtitles','useThunder','subtitleLanguage','useSubdl','subdlKey']) ui.get(id).disabled = value;
+            for (const id of ['readSubtitles','reviewSubtitleDeletes','confirmSubtitleDeletes','cancelSubtitleDeletes','importSubtitles','saveSubtitleSettings','forgetSubtitleKey','loginSubtitles','openSubtitlesKey','subtitleUsername','subtitlePassword','useOpenSubtitles','useThunder','subtitleLanguage','useSubdl','subdlKey','assrtKey']) ui.get(id).disabled = value;
             const stop = ui.get('stopSubtitles');
             stop.hidden = stop.disabled = !value || !stoppable;
             if (flow) flow.requestRender(); else render();
@@ -888,9 +890,9 @@
             rows = rows.filter(row => !awaitingCheck(row) && subtitleCoverageState(row) === 'missing');
             if (!rows.length) { status(inventory.length ? '本次检查范围内没有可查找的缺字幕项目。' : '本次检查范围内没有正片视频。'); return; }
             const config = settings();
-            if (!config.thunder && !(config.open && config.key) && !(config.subdl && config.subdlKey)) { ui.openSettings('subtitleSettings'); status('请启用迅雷免 Key 搜索，或配置其他字幕来源。'); return; }
+            if (!config.assrtKey && !config.thunder && !(config.open && config.key) && !(config.subdl && config.subdlKey)) { ui.openSettings('subtitleSettings'); status('请启用迅雷免 Key 搜索，或配置其他字幕来源。'); return; }
             meter(0,rows.length);
-            diag('查找开始', `视频 ${rows.length}，语言 ${config.language}，启用来源：${[config.thunder && '迅雷', config.subdl && 'SubDL', config.open && config.key && 'OpenSubtitles'].filter(Boolean).join('、') || '无'}`);
+            diag('查找开始', `视频 ${rows.length}，语言 ${config.language}，启用来源：${[config.assrtKey && '射手网整季包',config.thunder && '迅雷', config.subdl && 'SubDL', config.open && config.key && 'OpenSubtitles'].filter(Boolean).join('、') || '无'}`);
             if (!config.thunder) diag('来源跳过', '迅雷 已关闭');
             if (!config.open) diag('来源跳过', 'OpenSubtitles 已关闭');
             else if (!config.key) diag('来源跳过', 'OpenSubtitles 未配置 API Key');
@@ -1469,7 +1471,7 @@
         ui.get('forgetSubtitleKey').onclick = () => {
             const currentDrive = drive || subtitleDrive({session:provider === '光鸭' ? {provider,token:capture.token} : recover123Session(),source:{}});
             currentDrive.verified?.clear();
-            ui.get('openSubtitlesKey').value = ''; ui.get('subdlKey').value = ''; ui.get('subtitlePassword').value = ''; service.logout(); ui.get('subtitleLoginState').textContent = '未登录'; GM_setValue('cross-drive-subtitle-settings', settings()); status('已清除凭证和当前账号的字幕核验记录。');
+            ui.get('openSubtitlesKey').value = ''; ui.get('subdlKey').value = ''; ui.get('assrtKey').value = ''; ui.get('subtitlePassword').value = ''; service.logout(); ui.get('subtitleLoginState').textContent = '未登录'; GM_setValue('cross-drive-subtitle-settings', settings()); status('已清除凭证和当前账号的字幕核验记录。');
         };
         ui.get('loginSubtitles').onclick = () => runTask(async () => {
             try {
