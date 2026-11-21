@@ -36,6 +36,22 @@ function languageAndLinking(){
  assert.deepEqual(Array.from(recovered.unmatched,sub=>sub.name),wrongNames);
  const alternate={...episode,id:'alternate',name:'美国众神.2017.S03E08.2160p.mkv'};
  assert.equal(ctx.mediaSubtitleLinks([episode,alternate,legacyName],'p').linked.size,0);
+ const oldFolder={id:'old',name:'American.Gods.S03',directory:true};
+ const newFolder={id:'new',name:'Season 03',directory:true};
+ const oldSubtitle={id:'old-sub',name:'American.Gods.S03E08.The.Unseen.1080p.BluRay.x264-GROUP.chs.eng.ass',size:42};
+ const lists=new Map([['0',[oldFolder,newFolder]],['old',[oldSubtitle]],['new',[episode]]]);
+ const source={parentId:'0',children:async ({id})=>lists.get(id)};
+ const selection=await ctx.collectMediaSelection([oldFolder,newFolder],source);
+ const captions=selection.linked.get(episode.id);
+ assert.deepEqual(Array.from(captions,sub=>[sub.id,sub.parentId,sub.path,sub.suffix]),
+   [[oldSubtitle.id,'old',oldFolder.name+'/'+oldSubtitle.name,'.chs.eng']]);
+ assert.equal(selection.unmatched.length,0);
+ const subtitleOnly=await ctx.collectMediaSelection([oldFolder],source);
+ assert.equal(subtitleOnly.unmatched[0].id,oldSubtitle.id);
+ lists.get('new').push({...alternate,name:episode.name.replace('.mkv','.mp4')});
+ const current=await selection.readSubtitleLinks(async id=>lists.get(id));
+ assert.equal(current.linked.get(episode.id).length,0,'A second plausible video invalidates the cross-directory pairing');
+ assert.equal(current.unmatched[0].id,oldSubtitle.id);
  let nodes=[video],reads=0;const drive={parentId:'p',children:async()=>{reads++;return nodes}};
  await ctx.collectMediaSelection([video],drive);nodes=[video,{id:'s',name:'电影.2000.zh-cn.srt'}];
  const scan=await ctx.collectMediaSelection([video],drive);assert.equal(scan.linked.get('v').length,1);assert.equal(reads,2,'Every new scan reads fresh data');

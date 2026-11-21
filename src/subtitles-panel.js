@@ -158,7 +158,7 @@
         const signature = sub => JSON.stringify([String(sub.id),sub.name,sub.size,String(sub.md5 || '').toLowerCase()]);
         if (nodes.some(sub => sub.name.toLowerCase() === name.toLowerCase()))
             throw new Error('目标已有同名项目，待处理');
-        const before = row.subtitles.map(signature).sort();
+        const before = row.subtitles.filter(sub => sub.parentId == null || String(sub.parentId) === String(row.node.parentId)).map(signature).sort();
         const after = (mediaSubtitleLinks(nodes,row.node.parentId,row.history).linked.get(String(row.node.id)) || []).map(signature).sort();
         if (before.length !== after.length || before.some((sub,index) => sub !== after[index]))
             throw new Error('目录中的关联字幕已变化，请重新检查目录后导入');
@@ -1189,6 +1189,7 @@
             diag('复查范围',ai ? '格式、语言、已有时长参考及 AI 对白证据；不核对音画同步' : '格式、语言及已有时长参考；作品归属和音画同步未确认');
             try {
                 await requireCheckedSelection();
+                const selectedLinks = await context.readSubtitleLinks?.(children);
                 seasonChoices.delete(rows[0].groupKey);
                 await batchStage(rows,'已有字幕复查（视频）',batchLog,async (row,verify,_index,observe) => {
                     const {node} = row;
@@ -1198,7 +1199,7 @@
                         checkedScope = null;
                         throw new Error('目标视频已变化，请重新查找字幕');
                     }
-                    if (!links.has(node.parentId)) links.set(node.parentId,mediaSubtitleLinks(siblings,node.parentId,context.history).linked);
+                    if (!links.has(node.parentId)) links.set(node.parentId,selectedLinks?.linked || mediaSubtitleLinks(siblings,node.parentId,context.history).linked);
                     const next = {...row,subtitles:[...(links.get(node.parentId).get(String(node.id)) || [])],embedded:undefined,
                         siblingNames:new Set(siblings.map(file => file.name.toLowerCase())),error:''};
                     const recovered = await currentDrive.reconcile(next, phase => diag('上传对账',phase),verify);
@@ -1244,15 +1245,20 @@
                     verify(); status(`删除字幕 ${deleted + failures.length + 1}/${targets.length}：${sub.name}`);
                     try {
                         const siblings = await subtitleContext.source.children({id:row.node.parentId}); verify();
-                        const current = siblings.find(node => String(node.id) === String(sub.id));
+                        const parentId = sub.parentId ?? row.node.parentId;
+                        const isLocal = String(parentId) === String(row.node.parentId);
+                        const captionFolder = isLocal ? siblings : await subtitleContext.source.children({id:parentId});
+                        const current = captionFolder.find(node => String(node.id) === String(sub.id));
                         const video = siblings.find(node => String(node.id) === String(row.node.id));
                         const sameFile = (now, before) => now && !now.directory && String(now.id) === String(before.id) && now.name === before.name && now.size === before.size && String(now.md5 || '').toLowerCase() === String(before.md5 || '').toLowerCase();
-                        const linked = mediaSubtitleLinks(siblings,row.node.parentId,subtitleContext.history).linked.get(String(row.node.id)) || [];
+                        const found = isLocal ? mediaSubtitleLinks(siblings,row.node.parentId,subtitleContext.history)
+                            : await subtitleContext.readSubtitleLinks?.(id => subtitleContext.source.children({id}));
+                        const linked = found?.linked.get(String(row.node.id)) || [];
                         if (!sameFile(current,sub) || !sameFile(video,row.node) || !linked.some(item => String(item.id) === String(sub.id)) || !MEDIA_SUB.test(current.name))
                             throw new Error('字幕或关联视频已变化，未删除；请重新检查目录');
                         if (!canDelete(row, sub)) continue;
                         verify();
-                        await recycleMedia({...current,parentId:row.node.parentId},subtitleContext.session,subtitleContext.source);
+                        await recycleMedia({...current,parentId},subtitleContext.session,subtitleContext.source);
                         if (flow) flow.invalidate('删除字幕使整理预览失效');
                         try { drive.verified?.forget(sub); } catch (error) { diag('核验缓存清理失败', `${sub.name} · ${error.message}`); }
                         row.subtitles = row.subtitles.filter(item => String(item.id) !== String(sub.id)); row.siblingNames?.delete(sub.name.toLowerCase()); deleteSelection.delete(String(sub.id)); touched.add(row); deleted++;

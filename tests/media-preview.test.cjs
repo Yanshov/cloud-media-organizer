@@ -27,7 +27,7 @@ function fixture() {
             previewShown: () => {}
         },
         rows: [{include: true, ready: true, destination: 'Movie.2000.mkv', node: {id: 'v', path: 'old.mkv'}, subtitles: [{id: 's', name: 'old.zh-cn.srt', suffix: '.zh-cn'}]}],
-        cancelled: false, batch: null, batchWriter: null, history:null, previewRevision:'',
+        cancelled: false, batch: null, batchWriter: null, history:null, previewRevision:'',readSubtitleLinks:null,
         ui: {busy: busy => claim('media', busy), get: id => {assert.ok(elements[id], 'Unexpected UI dependency: ' + id); return elements[id];}},
         otherUi: {busy: busy => claim('subtitles', busy)},
         updateControls: busy => {state.locks.push(busy); elements.runMedia.disabled = busy || !ctx.batch;},
@@ -122,6 +122,16 @@ function fixture() {
         '剧集/美国众神.2017/Season 03/美国众神.2017.S03E08.1080p.mkv',
         '剧集/美国众神.2017/Season 03/美国众神.2017.S03E08.1080p.zh-cn.srt'
     ]);
+    resolution.ctx.flow.context = {path:'库'};
+    resolution.ctx.readSubtitleLinks = async () => ({
+        linked:new Map([['v',[{id:'s',parentId:'old',name:'American.Gods.S03E08.ass',path:'旧目录/American.Gods.S03E08.ass',suffix:''}]]]),
+        unmatched:[{path:'旧目录/未识别.ass'}]
+    });
+    await resolution.ctx.generate();
+    assert.equal(resolution.ctx.batch[1].node.parentId,'old');
+    assert.equal(resolution.ctx.batch[1].destination,'剧集/美国众神.2017/Season 03/美国众神.2017.S03E08.1080p.ass');
+    assert.match(resolution.elements.mediaPreview.textContent,/原：\/库\/旧目录\/American\.Gods\.S03E08\.ass/);
+    assert.match(resolution.elements.mediaPreview.textContent,/未配对字幕，保留原位/);
     for (const [input,expected] of [
         ['Series.S01E02E03.1080P.mkv','Series.2024.S01E02E03.1080p.mkv'],
         ['Series.S01E02E03.4K.mkv','Series.2024.S01E02E03.2160p.mkv'],

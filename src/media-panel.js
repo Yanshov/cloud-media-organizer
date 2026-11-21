@@ -55,6 +55,7 @@
         ui.get('mediaAIState').textContent = aiSaved.enabled ? '大模型识别已启用。' : '未启用，不会发送大模型请求。';
         let rows = [], batch = null, batchWriter = null, session = null, source = null, client = null, targetSession = null, targetPath = '', emptyPlan = [], emptySession = null, emptySource = null;
         let history = null, previewRevision = '';
+        let readSubtitleLinks;
         const checkStopped = () => flow.check();
         const progress = message => flow.status(message);
         const meter = (stage, done = 0, total = null) => {
@@ -614,6 +615,7 @@
         async function scan() {
             flow.reset();
             invalidate(); rows = []; detail = null;
+            readSubtitleLinks = undefined;
             results.scrollTop = 0;
             ui.get('mediaPreviewPanel').open = false;
             render();
@@ -626,9 +628,11 @@
                 const root = mediaClassificationRoot(source, parentPath); targetPath = root.path; targetSession = { ...session, parent: root.id };
                 history = mediaFileHistory(session);
                 const collected = await collectMediaSelection(selected,source,progress,checkStopped,history,log);
+                readSubtitleLinks = collected.readSubtitleLinks;
+                context.readSubtitleLinks = readSubtitleLinks;
                 if (!collected.videos.length) {
                     meter('检查完成', 0, 0);
-                    progress('当前选区没有可识别的视频。');
+                    progress(collected.unmatched.length ? '选区里只有待配对的字幕，请一并勾选视频所在目录。' : '当前选区没有可识别的视频。');
                     return;
                 }
                 const credential = ui.get('tmdbKey').value.trim();
@@ -702,6 +706,7 @@
                 await flow.requireScope();
                 const items = [], paths = new Map(), conflicts = new Set(), without = [];
                 const included = rows.filter(r => r.include), sourceLists = cachedDriveChildren(source,new Map(),checkStopped); let checked = 0;
+                const selectedLinks = readSubtitleLinks ? await readSubtitleLinks(sourceLists) : null;
                 const states = flow.videoStates();
                 const blocked = new Map();
                 const noteBlocker = reason => blocked.set(reason,(blocked.get(reason) || 0) + 1);
@@ -716,7 +721,7 @@
                         log('预览跳过：' + row.node.path + '；' + reason);
                         return 'skipped';
                     }
-                    const fresh = mediaSubtitleLinks(await sourceLists(row.node.parentId),row.node.parentId,history);
+                    const fresh = selectedLinks || mediaSubtitleLinks(await sourceLists(row.node.parentId),row.node.parentId,history);
                     if (!flow.sameSubtitles(row,fresh.linked.get(String(row.node.id)) || []))
                         throw new Error('目录字幕已变化，请重新识别并检查：' + row.node.name);
                     if (!readyRow(row)) {
@@ -725,7 +730,8 @@
                     }
                     Object.assign(row.node, await mediaFileMetadata(row.node, source));
                     row.subtitles = (fresh.linked.get(String(row.node.id)) || []).map(sub => ({...sub,
-                        originalPath:row.node.originalPath?.replace(/[^/]+$/,() => sub.name),path:sub.name}));
+                        originalPath:sub.path ? '/' + [flow.context?.path,sub.path].filter(Boolean).join('/')
+                            : row.node.originalPath?.replace(/[^/]+$/,() => sub.name),path:sub.path || sub.name}));
                     mediaRecords.remember(row);
                     for (const sub of row.subtitles) { verify(); Object.assign(sub, await mediaFileMetadata(sub, source)); }
                     const destination = mediaPath(row);
@@ -777,7 +783,7 @@
                 if (!accepted.length) throw new Error('所有已匹配项目存在同名冲突，请调整后重试');
                 checkStopped();
                 mediaRecords.save();
-                const writer = mediaOrganizerWriter(targetSession, source);
+                const writer = mediaOrganizerWriter(targetSession, source, readSubtitleLinks);
                 const directoryPlans = await writer.prepare(accepted,checkStopped,log); checkStopped();
                 const directoryPreview = directoryPlans.map(plan => `文件夹整体改名/移动：${plan.folder.path || plan.folder.name}\n目标：/${[targetPath,plan.destination].filter(Boolean).join('/')}\n随文件夹保留并移动的内容（${plan.contents.length} 项）：\n${plan.contents.map(node => '  ' + node.path + (node.directory ? '/' : '')).join('\n')}`).join('\n\n');
                 await flow.requireScope();
@@ -785,6 +791,8 @@
                 const note = without.length ? '允许无字幕整理（' + without.length + ' 个视频）\n' + accepted.filter(item => String(item.node.id) === String(item.videoId) && without.includes(String(item.videoId))).map(item => item.node.originalPath || item.node.path).join('\n') + '\n\n' : '';
                 previewRevision = history?.revision(accepted.map(item => item.videoId)) || '';
                 batch = accepted; batchWriter = writer; ui.get('mediaPreview').textContent = note + (directoryPreview ? directoryPreview + '\n\n逐文件目标：\n' : '') + accepted.map(item => `原：${item.node.originalPath || item.node.path}\n新：/${[targetPath, item.destination].filter(Boolean).join('/')}`).join('\n\n');
+                if (selectedLinks?.unmatched.length) ui.get('mediaPreview').textContent += '\n\n未配对字幕，保留原位（' + selectedLinks.unmatched.length + ' 个）\n'
+                    + selectedLinks.unmatched.map(sub => sub.path).join('\n');
                 if (accepted.some(item => mediaStandardSeasonFolder(relativeParts(item.destination).at(-2))))
                     ui.get('mediaPreview').textContent += '\n\n整理后，搬空的剧集来源目录将移入回收站。';
                 ui.get('mediaPreviewPanel').open = true;

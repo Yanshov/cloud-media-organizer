@@ -23,6 +23,13 @@ function fixture(assrtApi) {
                 state.entries.find(file => file.id === input.fileId).name = input.fileName;
                 return {code:0};
             }
+            if (state.organize && url.endsWith('/file/mod_pid')) {
+                if (state.moveError) throw Error(state.moveError);
+                for (const entry of input.fileIdList)
+                    state.entries.find(file => file.id === entry.FileId).parentId = input.parentFileId;
+                state.mutations++;
+                return {code:0};
+            }
             assert.match(url,/\/file\/upload_request$/,'Subtitle phase only calls upload, never rename or move');
             assert.equal(input.duplicate,0);
             state.writes++;
@@ -30,7 +37,7 @@ function fixture(assrtApi) {
             if (state.response === 'lost') throw Error('连接断开');
             return {code:0,data:{Reuse:true}};
         }});
-    vm.runInContext(source.slice(0,bootstrap) + '\nrequestJson = fixtureRequest; subtitleRemoteJson = assrtApi || (url => { sourceQueries.push(new URL(url).searchParams.get("name")); return fixtureSubtitleSearch(); }); globalThis.api = {subtitleInventory, subtitleImportGroups, planSubtitleImport, checkSubtitleImportDirectory, savePanelSubtitle, subtitleDrive, subtitleMd5, mediaFileHistory, mediaSubtitleLinks, readSubtitleImport, mediaOrganizerWriter, searchSubtitleSources, createSubtitleService}; })();',ctx);
+    vm.runInContext(source.slice(0,bootstrap) + '\nrequestJson = fixtureRequest; subtitleRemoteJson = assrtApi || (url => { sourceQueries.push(new URL(url).searchParams.get("name")); return fixtureSubtitleSearch(); }); globalThis.api = {subtitleInventory, subtitleImportGroups, planSubtitleImport, checkSubtitleImportDirectory, savePanelSubtitle, subtitleDrive, subtitleMd5, mediaFileHistory, mediaSubtitleLinks, readSubtitleImport, collectMediaSelection, mediaOrganizerWriter, searchSubtitleSources, createSubtitleService}; })();',ctx);
     const collect = (videos,linked=new Map()) => ctx.api.subtitleInventory({videos,linked},'影视');
     return {api:ctx.api,memory,state,collect};
 }
@@ -143,6 +150,50 @@ async function organizeAfterUpload() {
     console.log('PASS original-name upload, stale preview rejection, account and directory recheck, legacy fallback, and retained original after confirmed organization');
 }
 
+async function recoverLeftoverSubtitle() {
+    const {api,state} = fixture();
+    const session = {provider:'123',token:'test',parent:'root',base:'https://api.123pan.com',headers:{}};
+    const source = {parentId:'root',children:async ({id}) => state.entries.filter(node => node.parentId === id).map(node => ({...node}))};
+    const old = {id:'old',key:'old',name:'旧目录',parentId:'root',directory:true};
+    const target = {id:'target',key:'target',name:'Season 03',parentId:'root',directory:true};
+    const episode = video('episode','American.Gods.S03E08.1080p.mkv',target.id);
+    const subtitle = {id:'caption',name:'American.Gods.S03E08.1080p.BluRay-GROUP.chs.ass',parentId:old.id,size:42};
+    const history = api.mediaFileHistory(session);
+    state.entries = [old,target,episode,subtitle];
+    state.organize = true;
+    state.mutations = 0;
+    const scan = () => api.collectMediaSelection([old,target],source,undefined,undefined,history);
+    const destination = 'Season 03/美国众神.2017.S03E08.1080p';
+    const plan = async () => {
+        const selection = await scan();
+        const items = [{node:selection.videos[0],destination:destination+'.mkv',videoId:episode.id},
+            ...selection.linked.get(episode.id).map(node => ({node,destination:destination+node.suffix+'.ass',videoId:episode.id}))];
+        const writer = api.mediaOrganizerWriter(session,source,selection.readSubtitleLinks);
+        await writer.prepare(items);
+        return {items,writer};
+    };
+    const first = await plan();
+    assert.equal(first.items.length,2);
+    subtitle.name += '.changed';
+    await assert.rejects(first.writer.validate(),/关联字幕在预览后变化/);
+    assert.equal(state.mutations,0);
+    subtitle.name = subtitle.name.replace(/\.changed$/,'');
+    await first.writer.validate();
+    await first.writer.execute(first.items[0]);
+    state.moveError = '移动请求失败';
+    await assert.rejects(first.writer.execute(first.items[1]),/移动请求失败/);
+    assert.equal(subtitle.parentId,old.id);
+    assert.equal(subtitle.name,'美国众神.2017.S03E08.1080p.chs.ass');
+    state.moveError = '';
+    const retry = await plan();
+    assert.equal(retry.items.length,2,'The recorded link still identifies a subtitle after a successful rename and failed move');
+    await retry.writer.validate();
+    await retry.writer.execute(retry.items[0]);
+    await retry.writer.execute(retry.items[1]);
+    assert.equal(subtitle.parentId,target.id);
+    assert.equal((await scan()).linked.get(episode.id)[0].suffix,'.chs');
+}
+
 async function onlineSeasonSearch() {
     const numbers = Array.from({length:51},(_,index) => String(index+1).padStart(2,'0'));
     const files = numbers.map(number => ({f:'假面骑士亚极陀 - '+number+'.ass',url:'https://file0.assrt.net/'+number}));
@@ -219,4 +270,4 @@ async function upload() {
     console.log('PASS import upload: production recheck, no overwrite, content readback and receipt recovery');
 }
 
-(async()=>{matching(); await upload(); await organizeAfterUpload();})().catch(error=>{console.error(error);process.exitCode=1;});
+(async()=>{matching(); await upload(); await organizeAfterUpload(); await recoverLeftoverSubtitle();})().catch(error=>{console.error(error);process.exitCode=1;});

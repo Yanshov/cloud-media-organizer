@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v3.0（重构版）
 // @namespace    local.cloud-media-organizer
-// @version      3.0.8
+// @version      3.0.9
 // @description  面向百度网盘、123 云盘和光鸭网盘的浏览器脚本，支持跨盘 JSON 清单、影视整理与字幕补齐。
 // @match        https://pan.baidu.com/*
 // @match        https://yun.baidu.com/*
@@ -40,7 +40,7 @@
     if (typeof navigator !== 'undefined' && (navigator.userAgentData?.mobile || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
         navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) return;
 
-    const VERSION = '3.0.8';
+    const VERSION = '3.0.9';
     let jsonTaskStopped = false;
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
@@ -2848,11 +2848,11 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 const ids = new Set(videoIds.map(String));
                 return JSON.stringify([...load()].filter(([,record]) => ids.has(record.videoId)));
             },
-            link(row,sub,language) {
+            link(row,sub,language,suffix) {
                 if (sub.id == null || row.node.id == null) return;
                 const entries = load(), id = String(sub.id);
-                save(entries,id,{file:snapshot(sub,row.node.parentId),original:sub.name,
-                    videoId:String(row.node.id),video:snapshot(row.node,row.node.parentId),language});
+                save(entries,id,{file:snapshot(sub,sub.parentId ?? row.node.parentId),original:sub.name,
+                    videoId:String(row.node.id),video:snapshot(row.node,row.node.parentId),language,suffix});
             },
             organized(before,after) {
                 const entries = load(), id = String(before.id);
@@ -2869,33 +2869,55 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             }
         };
     }
+    function mediaEpisodeSubtitle(name) {
+        const stem = mediaStem(name);
+        const marker = /(?:^|[. _-])S\d{1,2}[. _-]*E\d{1,3}(?:[. _-]*E\d{1,3})?(?=$|[. _-])/i.exec(stem);
+        if (!marker || /E\d+[ ._]*[-~][ ._]*(?:E)?\d+/i.test(stem)) return null;
+        const parsed = parseMediaName(name);
+        if (!parsed.query || parsed.standalone) return null;
+        const base = stem.slice(0,marker.index + marker[0].length);
+        const release = /[. _-](?:\d{3,4}[pi]|4k|8k|BluRay|BDRip|WEB[ ._-]?(?:DL|Rip)|REMUX|HDTV|DVDRip|[xh]26[45]|HEVC|AVC)(?=$|[. _-])/i;
+        const tail = stem.slice(base.length);
+        const suffix = mediaSubtitleSuffix(base + '.mkv',name);
+        if (suffix === null && !release.test(tail)) return null;
+        if (/(?:网络版|網絡版|ネット版|\bweb[ ._-]+edition\b)/i.test(name)) return null;
+        let languageSuffix = suffix;
+        if (languageSuffix === null) {
+            for (const separator of tail.matchAll(/[. _&+-]/g)) {
+                languageSuffix = mediaSubtitleSuffix('episode.mkv','episode' + tail.slice(separator.index) + '.srt');
+                if (languageSuffix !== null) break;
+            }
+        }
+        return {parsed,suffix:languageSuffix ?? '',resolution:mediaResolution(name)};
+    }
     function mediaSubtitleLinks(siblings, parentId, history) {
         const videos = siblings.filter(node => !node.directory && MEDIA_VIDEO.test(node.name));
         const linked = new Map(), unmatched = [], records = history?.load();
         const videosById = new Map(videos.map(video => [String(video.id),video]));
-        const explicitEpisode = name => /(?:^|[. _-])S\d{1,2}[. _-]*E\d{1,3}(?:[. _-]*E\d{1,3})?(?=$|[. _-])/i.exec(mediaStem(name));
         const episodeVideos = new Map();
         for (const sub of siblings.filter(node => !node.directory && MEDIA_SUB.test(node.name))) {
-            const saved = history?.get(sub,parentId,records);
+            const subParent = parentId ?? sub.parentId;
+            const saved = history?.get(sub,subParent,records);
             const intended = saved?.videoId && videosById.get(saved.videoId);
-            const candidates = saved?.videoId ? (history.associated(saved,intended,parentId) ? [intended] : [])
+            const candidates = saved?.videoId ? (history.associated(saved,intended,parentId ?? intended?.parentId) ? [intended] : [])
                 : videos.filter(video => mediaSubtitleSuffix(video.name,sub.name) !== null);
-            const marker = !saved?.videoId && !candidates.length && explicitEpisode(sub.name);
-            const episodeSuffix = marker ? mediaSubtitleSuffix(mediaStem(sub.name).slice(0,marker.index + marker[0].length) + '.mkv',sub.name) : null;
-            if (episodeSuffix !== null) {
-                const subtitle = parseMediaName(sub.name);
+            const episode = !saved?.videoId && !candidates.length ? mediaEpisodeSubtitle(sub.name) : null;
+            if (episode) {
+                const subtitle = episode.parsed;
                 const title = titleKey(subtitle.query);
                 if (title) for (const video of videos) {
                     if (!episodeVideos.has(video)) {
-                        const parsed = explicitEpisode(video.name) ? parseMediaName(video.name) : null;
-                        const original = history?.get(video,parentId,records)?.original;
-                        const record = parsed && mediaRecords.get({...video,parentId});
-                        const titles = [parsed?.query,record?.query,...(record?.aliases || []),original && parseMediaName(original).query];
-                        episodeVideos.set(video,{parsed,titles:new Set(titles.filter(Boolean).map(titleKey))});
+                        const parsed = parseMediaName(video.name);
+                        const videoParent = parentId ?? video.parentId;
+                        const original = history?.get(video,videoParent,records)?.original;
+                        const record = mediaRecords.get({...video,parentId:videoParent});
+                        const titles = [parsed.query,record?.query,...(record?.aliases || []),original && parseMediaName(original).query];
+                        episodeVideos.set(video,{parsed,resolution:mediaResolution(video.name),titles:new Set(titles.filter(Boolean).map(titleKey))});
                     }
-                    const {parsed,titles} = episodeVideos.get(video);
-                    if (parsed && !parsed.standalone && !subtitle.standalone
+                    const {parsed,resolution,titles} = episodeVideos.get(video);
+                    if (!parsed.standalone
                         && parsed.season === subtitle.season && parsed.episode === subtitle.episode && parsed.endEpisode === subtitle.endEpisode
+                        && (!episode.resolution || !resolution || episode.resolution === resolution)
                         && (!parsed.year || !subtitle.year || parsed.year === subtitle.year) && titles.has(title)) candidates.push(video);
                 }
             }
@@ -2906,9 +2928,9 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             // An older .synced subtitle may have been saved with a different video basename.
             const legacySuffix = saved && /\.synced$/i.test(mediaStem(sub.name))
                 ? (saved.language === 'und' ? '' : languageSuffix) + '.synced' : '';
-            const suffix = inferred || episodeSuffix || legacySuffix || languageSuffix;
+            const suffix = inferred || episode?.suffix || saved?.suffix || legacySuffix || languageSuffix;
             if (!linked.has(String(video.id))) linked.set(String(video.id),[]);
-            linked.get(String(video.id)).push({...sub,parentId,suffix,language:saved?.language});
+            linked.get(String(video.id)).push({...sub,parentId:subParent,suffix,language:saved?.language});
         }
         return {linked,unmatched};
     }
@@ -2920,29 +2942,65 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             videosByParent.get(video.parentId).push(video);
         }
         const linked = new Map(), namesByParent = new Map(), unmatched = [], entriesByParent = new Map();
+        const selectedSubtitles = new Map(nodes.filter(node => MEDIA_SUB.test(node.name)).map(node => [String(node.id),node]));
+        const subtitleParents = new Set([...videosByParent.keys(),...Array.from(selectedSubtitles.values(),node => node.parentId)]);
         const records = history?.load();
-        for (const [parentId,siblings] of videosByParent) {
+        for (const parentId of subtitleParents) {
             const entries = await children(parentId);
             entriesByParent.set(parentId,entries);
             namesByParent.set(parentId,new Set(entries.map(node => node.name.toLowerCase())));
-            for (const video of siblings) {
+            for (const video of videosByParent.get(parentId) || []) {
                 const record = history?.get(video,parentId,records);
                 if (record?.original) video.originalName = record.original;
             }
         }
-        const refreshSubtitleLinks = () => {
-            unmatched.length = 0;
-            for (const [parentId,siblings] of videosByParent) {
+        const linkEntries = entries => {
+            const result = new Map(), leftover = [], scopedVideos = [];
+            const selectedVideos = new Set(videos.map(node => String(node.id)));
+            for (const [parentId,files] of entries) {
                 check();
-                const found = mediaSubtitleLinks(entriesByParent.get(parentId),parentId,history);
-                const attachPath = sub => ({...sub,parentId,folders:siblings[0].folders,ancestors:siblings[0].ancestors,
-                    path:[...siblings[0].folders,sub.name].join('/')});
-                for (const video of siblings) linked.set(video.id,(found.linked.get(String(video.id)) || []).map(attachPath));
-                unmatched.push(...found.unmatched.map(attachPath));
+                const found = mediaSubtitleLinks(files,parentId,history);
+                const siblings = videosByParent.get(parentId) || [];
+                const attachPath = sub => {
+                    const origin = selectedSubtitles.get(String(sub.id)) || siblings[0];
+                    return {...sub,parentId,folders:origin?.folders || [],ancestors:origin?.ancestors || [],
+                        path:[...(origin?.folders || []),sub.name].join('/')};
+                };
+                for (const video of siblings) result.set(String(video.id),(found.linked.get(String(video.id)) || []).map(attachPath));
+                leftover.push(...found.unmatched.map(attachPath));
+                scopedVideos.push(...files.filter(node => !node.directory && MEDIA_VIDEO.test(node.name)).map(node => ({...node,parentId})));
             }
+            const historyEntries = history?.load();
+            const eligible = leftover.filter(sub => selectedSubtitles.get(String(sub.id))?.parentId === sub.parentId
+                && (history?.get(sub,sub.parentId,historyEntries)?.videoId || mediaEpisodeSubtitle(sub.name)));
+            const matched = new Set();
+            if (eligible.length) {
+                const across = mediaSubtitleLinks([...scopedVideos,...eligible],undefined,history);
+                for (const [id,subtitles] of across.linked) {
+                    if (!selectedVideos.has(id)) continue;
+                    for (const sub of subtitles) {
+                        matched.add(String(sub.id));
+                        result.get(id).push(sub);
+                    }
+                }
+            }
+            return {linked:result,unmatched:leftover.filter(sub => !matched.has(String(sub.id)))};
+        };
+        const refreshSubtitleLinks = () => {
+            const result = linkEntries(entriesByParent);
+            for (const video of videos) linked.set(video.id,result.linked.get(String(video.id)));
+            unmatched.length = 0;
+            for (const sub of result.unmatched) unmatched.push(sub);
+        };
+        const readSubtitleLinks = async list => {
+            const entries = new Map([...subtitleParents].map(id => [id,[]]));
+            await forEachConcurrent([...subtitleParents],8,async id => {
+                entries.set(id,await list(id));
+            },check);
+            return linkEntries(entries);
         };
         refreshSubtitleLinks();
-        return {videos, linked, namesByParent, unmatched, refreshSubtitleLinks};
+        return {videos, linked, namesByParent, unmatched, refreshSubtitleLinks, readSubtitleLinks};
     }
     const tmdbClients = new Map();
     /** Loads episode names and adds English aliases from matching episode IDs when available. */
@@ -3028,7 +3086,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         catch (error) { if (!error.terminal) error.pending = true; throw error; }
     }
     /** Prepares organization plans, rechecks their scope, and performs confirmed writes. */
-    function mediaOrganizerWriter(session, source) {
+    function mediaOrganizerWriter(session, source, readSubtitleLinks) {
         const guangya = session.provider === '光鸭';
         const post = guangya ? mediaGuangyaPost(session.token, 0) : paced(700, async (path, body) => {
             const result = await requestJson(session.base + path, { method: 'POST', credentials: 'omit', headers: { ...session.headers, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -3038,6 +3096,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         const directories = new Map([['', session.parent]]), bindings = new Map(), scopeSnapshots = new Map();
         const history = mediaFileHistory(session);
         const subtitleSnapshots = new Map();
+        const plannedSubtitles = new Map();
         const emptiedSeasonSources = new Map();
         let targetSnapshots = [];
         let checkPlan = () => {};
@@ -3070,7 +3129,12 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         const subtitleScopeKey = files => scopeKey(files.map(file => ({...file,id:String(file.id),name:file.name + '\0' + file.suffix})));
         function linksByDirectory(children) {
             const pending = new Map();
+            let selectedLinks;
             return id => {
+                if (readSubtitleLinks) {
+                    selectedLinks ||= readSubtitleLinks(children).then(result => result.linked);
+                    return selectedLinks;
+                }
                 if (!pending.has(id)) pending.set(id,children(id).then(files => mediaSubtitleLinks(files,id,history).linked));
                 return pending.get(id);
             };
@@ -3102,17 +3166,17 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             },check);
             const byId = new Map(videos.map(item => [String(item.node.id), item]));
             subtitleSnapshots.clear();
-            const planned = new Map();
+            plannedSubtitles.clear();
             for (const item of items) if (item.node.id !== item.videoId) {
                 const id = String(item.videoId);
-                if (!planned.has(id)) planned.set(id,new Set());
-                planned.get(id).add(String(item.node.id));
+                if (!plannedSubtitles.has(id)) plannedSubtitles.set(id,new Map());
+                plannedSubtitles.get(id).set(String(item.node.id),item.node);
             }
             const links = linksByDirectory(children);
             await batchStage(videos,'预览字幕关联（视频）',log,async ({node}) => {
                 const id = String(node.id);
                 const found = (await links(node.parentId)).get(id) || [];
-                if (found.some(sub => !planned.get(id)?.has(String(sub.id))) || found.length !== (planned.get(id)?.size || 0))
+                if (found.some(sub => !plannedSubtitles.get(id)?.has(String(sub.id))) || found.length !== (plannedSubtitles.get(id)?.size || 0))
                     throw new Error('关联字幕已变化，请重新生成预览：' + node.name);
                 subtitleSnapshots.set(node,subtitleScopeKey(found));
             },check);
@@ -3122,7 +3186,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 const path = [...paths][0], contents = await scanScope(folder.id, children), ids = contents.filter(node => !node.directory && MEDIA_VIDEO.test(node.name)).map(node => node.id);
                 if (!ids.length || ids.some(id => !byId.has(id) || !byId.get(id).destination.startsWith(path + '/'))) return 'skipped';
                 if (contents.some(node => !node.directory && MEDIA_SUB.test(node.name)
-                    && !ids.some(id => planned.get(id)?.has(node.id)))) return 'skipped';
+                    && !ids.some(id => plannedSubtitles.get(id)?.has(node.id)))) return 'skipped';
                 verify();
                 proposed[index] = {folder,path,contents};
             },check,8,'同一目录内按顺序读子树，绑定按原顺序合并');
@@ -3233,6 +3297,13 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             let current = oldNodes.find(node => node.id === original.id);
             if (current && needsDetail(current)) current = await mediaFileMetadata(current, source);
             if (!current || current.name !== original.name || current.directory || !matchesMetadata(current)) throw new Error('预览后原文件发生变化，请重新识别');
+            if (history && original.id === item.videoId && plannedSubtitles.has(String(item.videoId))) {
+                const records = history.load();
+                for (const subtitle of plannedSubtitles.get(String(item.videoId)).values()) {
+                    if (!history.get(subtitle,subtitle.parentId,records)?.videoId)
+                        history.link({node:original},subtitle,subtitle.language,subtitle.suffix);
+                }
+            }
             let parentId = original.parentId;
             verify();
             const targetId = await ensure(parts.join('/'),verify);
@@ -3272,7 +3343,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             if (move) await changeParent();
             if (rename && !renameFirst) await changeName();
             if (move) {
-                if (item.videoId === original.id && mediaStandardSeasonFolder(parts.at(-1))) {
+                if (mediaStandardSeasonFolder(parts.at(-1))) {
                     const crumbs = source.mediaBreadcrumbs || source.breadcrumbs || [];
                     const current = crumbs.at(-1);
                     const scope = [];
@@ -3866,6 +3937,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         ui.get('mediaAIState').textContent = aiSaved.enabled ? '大模型识别已启用。' : '未启用，不会发送大模型请求。';
         let rows = [], batch = null, batchWriter = null, session = null, source = null, client = null, targetSession = null, targetPath = '', emptyPlan = [], emptySession = null, emptySource = null;
         let history = null, previewRevision = '';
+        let readSubtitleLinks;
         const checkStopped = () => flow.check();
         const progress = message => flow.status(message);
         const meter = (stage, done = 0, total = null) => {
@@ -4425,6 +4497,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         async function scan() {
             flow.reset();
             invalidate(); rows = []; detail = null;
+            readSubtitleLinks = undefined;
             results.scrollTop = 0;
             ui.get('mediaPreviewPanel').open = false;
             render();
@@ -4437,9 +4510,11 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 const root = mediaClassificationRoot(source, parentPath); targetPath = root.path; targetSession = { ...session, parent: root.id };
                 history = mediaFileHistory(session);
                 const collected = await collectMediaSelection(selected,source,progress,checkStopped,history,log);
+                readSubtitleLinks = collected.readSubtitleLinks;
+                context.readSubtitleLinks = readSubtitleLinks;
                 if (!collected.videos.length) {
                     meter('检查完成', 0, 0);
-                    progress('当前选区没有可识别的视频。');
+                    progress(collected.unmatched.length ? '选区里只有待配对的字幕，请一并勾选视频所在目录。' : '当前选区没有可识别的视频。');
                     return;
                 }
                 const credential = ui.get('tmdbKey').value.trim();
@@ -4513,6 +4588,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 await flow.requireScope();
                 const items = [], paths = new Map(), conflicts = new Set(), without = [];
                 const included = rows.filter(r => r.include), sourceLists = cachedDriveChildren(source,new Map(),checkStopped); let checked = 0;
+                const selectedLinks = readSubtitleLinks ? await readSubtitleLinks(sourceLists) : null;
                 const states = flow.videoStates();
                 const blocked = new Map();
                 const noteBlocker = reason => blocked.set(reason,(blocked.get(reason) || 0) + 1);
@@ -4527,7 +4603,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                         log('预览跳过：' + row.node.path + '；' + reason);
                         return 'skipped';
                     }
-                    const fresh = mediaSubtitleLinks(await sourceLists(row.node.parentId),row.node.parentId,history);
+                    const fresh = selectedLinks || mediaSubtitleLinks(await sourceLists(row.node.parentId),row.node.parentId,history);
                     if (!flow.sameSubtitles(row,fresh.linked.get(String(row.node.id)) || []))
                         throw new Error('目录字幕已变化，请重新识别并检查：' + row.node.name);
                     if (!readyRow(row)) {
@@ -4536,7 +4612,8 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     }
                     Object.assign(row.node, await mediaFileMetadata(row.node, source));
                     row.subtitles = (fresh.linked.get(String(row.node.id)) || []).map(sub => ({...sub,
-                        originalPath:row.node.originalPath?.replace(/[^/]+$/,() => sub.name),path:sub.name}));
+                        originalPath:sub.path ? '/' + [flow.context?.path,sub.path].filter(Boolean).join('/')
+                            : row.node.originalPath?.replace(/[^/]+$/,() => sub.name),path:sub.path || sub.name}));
                     mediaRecords.remember(row);
                     for (const sub of row.subtitles) { verify(); Object.assign(sub, await mediaFileMetadata(sub, source)); }
                     const destination = mediaPath(row);
@@ -4588,7 +4665,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 if (!accepted.length) throw new Error('所有已匹配项目存在同名冲突，请调整后重试');
                 checkStopped();
                 mediaRecords.save();
-                const writer = mediaOrganizerWriter(targetSession, source);
+                const writer = mediaOrganizerWriter(targetSession, source, readSubtitleLinks);
                 const directoryPlans = await writer.prepare(accepted,checkStopped,log); checkStopped();
                 const directoryPreview = directoryPlans.map(plan => `文件夹整体改名/移动：${plan.folder.path || plan.folder.name}\n目标：/${[targetPath,plan.destination].filter(Boolean).join('/')}\n随文件夹保留并移动的内容（${plan.contents.length} 项）：\n${plan.contents.map(node => '  ' + node.path + (node.directory ? '/' : '')).join('\n')}`).join('\n\n');
                 await flow.requireScope();
@@ -4596,6 +4673,8 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 const note = without.length ? '允许无字幕整理（' + without.length + ' 个视频）\n' + accepted.filter(item => String(item.node.id) === String(item.videoId) && without.includes(String(item.videoId))).map(item => item.node.originalPath || item.node.path).join('\n') + '\n\n' : '';
                 previewRevision = history?.revision(accepted.map(item => item.videoId)) || '';
                 batch = accepted; batchWriter = writer; ui.get('mediaPreview').textContent = note + (directoryPreview ? directoryPreview + '\n\n逐文件目标：\n' : '') + accepted.map(item => `原：${item.node.originalPath || item.node.path}\n新：/${[targetPath, item.destination].filter(Boolean).join('/')}`).join('\n\n');
+                if (selectedLinks?.unmatched.length) ui.get('mediaPreview').textContent += '\n\n未配对字幕，保留原位（' + selectedLinks.unmatched.length + ' 个）\n'
+                    + selectedLinks.unmatched.map(sub => sub.path).join('\n');
                 if (accepted.some(item => mediaStandardSeasonFolder(relativeParts(item.destination).at(-2))))
                     ui.get('mediaPreview').textContent += '\n\n整理后，搬空的剧集来源目录将移入回收站。';
                 ui.get('mediaPreviewPanel').open = true;
@@ -6712,7 +6791,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         const signature = sub => JSON.stringify([String(sub.id),sub.name,sub.size,String(sub.md5 || '').toLowerCase()]);
         if (nodes.some(sub => sub.name.toLowerCase() === name.toLowerCase()))
             throw new Error('目标已有同名项目，待处理');
-        const before = row.subtitles.map(signature).sort();
+        const before = row.subtitles.filter(sub => sub.parentId == null || String(sub.parentId) === String(row.node.parentId)).map(signature).sort();
         const after = (mediaSubtitleLinks(nodes,row.node.parentId,row.history).linked.get(String(row.node.id)) || []).map(signature).sort();
         if (before.length !== after.length || before.some((sub,index) => sub !== after[index]))
             throw new Error('目录中的关联字幕已变化，请重新检查目录后导入');
@@ -7743,6 +7822,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             diag('复查范围',ai ? '格式、语言、已有时长参考及 AI 对白证据；不核对音画同步' : '格式、语言及已有时长参考；作品归属和音画同步未确认');
             try {
                 await requireCheckedSelection();
+                const selectedLinks = await context.readSubtitleLinks?.(children);
                 seasonChoices.delete(rows[0].groupKey);
                 await batchStage(rows,'已有字幕复查（视频）',batchLog,async (row,verify,_index,observe) => {
                     const {node} = row;
@@ -7752,7 +7832,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                         checkedScope = null;
                         throw new Error('目标视频已变化，请重新查找字幕');
                     }
-                    if (!links.has(node.parentId)) links.set(node.parentId,mediaSubtitleLinks(siblings,node.parentId,context.history).linked);
+                    if (!links.has(node.parentId)) links.set(node.parentId,selectedLinks?.linked || mediaSubtitleLinks(siblings,node.parentId,context.history).linked);
                     const next = {...row,subtitles:[...(links.get(node.parentId).get(String(node.id)) || [])],embedded:undefined,
                         siblingNames:new Set(siblings.map(file => file.name.toLowerCase())),error:''};
                     const recovered = await currentDrive.reconcile(next, phase => diag('上传对账',phase),verify);
@@ -7798,15 +7878,20 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     verify(); status(`删除字幕 ${deleted + failures.length + 1}/${targets.length}：${sub.name}`);
                     try {
                         const siblings = await subtitleContext.source.children({id:row.node.parentId}); verify();
-                        const current = siblings.find(node => String(node.id) === String(sub.id));
+                        const parentId = sub.parentId ?? row.node.parentId;
+                        const isLocal = String(parentId) === String(row.node.parentId);
+                        const captionFolder = isLocal ? siblings : await subtitleContext.source.children({id:parentId});
+                        const current = captionFolder.find(node => String(node.id) === String(sub.id));
                         const video = siblings.find(node => String(node.id) === String(row.node.id));
                         const sameFile = (now, before) => now && !now.directory && String(now.id) === String(before.id) && now.name === before.name && now.size === before.size && String(now.md5 || '').toLowerCase() === String(before.md5 || '').toLowerCase();
-                        const linked = mediaSubtitleLinks(siblings,row.node.parentId,subtitleContext.history).linked.get(String(row.node.id)) || [];
+                        const found = isLocal ? mediaSubtitleLinks(siblings,row.node.parentId,subtitleContext.history)
+                            : await subtitleContext.readSubtitleLinks?.(id => subtitleContext.source.children({id}));
+                        const linked = found?.linked.get(String(row.node.id)) || [];
                         if (!sameFile(current,sub) || !sameFile(video,row.node) || !linked.some(item => String(item.id) === String(sub.id)) || !MEDIA_SUB.test(current.name))
                             throw new Error('字幕或关联视频已变化，未删除；请重新检查目录');
                         if (!canDelete(row, sub)) continue;
                         verify();
-                        await recycleMedia({...current,parentId:row.node.parentId},subtitleContext.session,subtitleContext.source);
+                        await recycleMedia({...current,parentId},subtitleContext.session,subtitleContext.source);
                         if (flow) flow.invalidate('删除字幕使整理预览失效');
                         try { drive.verified?.forget(sub); } catch (error) { diag('核验缓存清理失败', `${sub.name} · ${error.message}`); }
                         row.subtitles = row.subtitles.filter(item => String(item.id) !== String(sub.id)); row.siblingNames?.delete(sub.name.toLowerCase()); deleteSelection.delete(String(sub.id)); touched.add(row); deleted++;
