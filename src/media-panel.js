@@ -520,12 +520,12 @@
                 if (!query) { group.forEach(row => { row.matchFailure = 'unmatched'; }); throw new Error('未提取到片名，请填写搜索片名后重新匹配'); }
                 let candidates = [], lookupError = '';
                 const reference = group.find(row => row.tv) || group[0];
-                const reliable = async (list, theatrical = false) => {
+                const reliable = async (list, theatrical = false, searchTitle = query) => {
                     const preference = mediaCandidatePreference(reference);
                     if (preference.conflict) return [];
                     const named = list.filter(c => (theatrical ? c.media_type === 'movie' && preference.type !== 'tv'
                         : !preference.type || c.media_type === preference.type) && [c.title,c.name,c.original_title,c.original_name].filter(Boolean)
-                        .some(title => theatrical ? key(mediaTheatricalQuery(title)) === key(mediaTheatricalQuery(query)) : key(title) === key(query)));
+                        .some(title => theatrical ? key(mediaTheatricalQuery(title)) === key(mediaTheatricalQuery(searchTitle)) : key(title) === key(searchTitle)));
                     const matches = [];
                     for (const candidate of named) {
                         if (candidate.media_type === 'tv' && !reference.sourceYear && reference.workNumberedCount > 1) {
@@ -556,6 +556,24 @@
                         } catch (error) {
                             if (error.stop) throw error;
                             verify(); lookupError = error.message;
+                        }
+                    }
+                }
+                if (!exact.length && !lookupError && reference.tv && !reference.standalone) {
+                    const parts = query.split(/\s*[:：·｜|]\s*|\s+[-–—]\s+|\s+/u).filter(Boolean);
+                    for (let length = parts.length - 1; length > 0; length--) {
+                        const shorter = parts.slice(0,length).join(' ').trim();
+                        if (key(shorter).length < 2 || key(shorter) === key(query)) continue;
+                        verify();
+                        log('作品识别回退搜索：' + query + ' → ' + shorter);
+                        try {
+                            const fallback = await client.search(shorter);
+                            candidates = [...new Map([...candidates,...fallback].map(item => [item.media_type + ':' + item.id,item])).values()];
+                            exact = await reliable(fallback,false,shorter);
+                            if (exact.length) break;
+                        } catch (error) {
+                            if (error.stop) throw error;
+                            verify(); lookupError = error.message; break;
                         }
                     }
                 }

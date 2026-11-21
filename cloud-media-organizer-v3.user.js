@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v3.0（重构版）
 // @namespace    local.cloud-media-organizer
-// @version      3.0.26
+// @version      3.0.27
 // @description  面向百度网盘、123 云盘和光鸭网盘的浏览器脚本，支持跨盘 JSON 清单、影视整理与字幕补齐。
 // @match        https://pan.baidu.com/*
 // @match        https://yun.baidu.com/*
@@ -197,7 +197,7 @@ SOFTWARE.
     if (typeof navigator !== 'undefined' && (navigator.userAgentData?.mobile || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
         navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) return;
 
-    const VERSION = '3.0.26';
+    const VERSION = '3.0.27';
     let jsonTaskStopped = false;
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
@@ -4564,12 +4564,12 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 if (!query) { group.forEach(row => { row.matchFailure = 'unmatched'; }); throw new Error('未提取到片名，请填写搜索片名后重新匹配'); }
                 let candidates = [], lookupError = '';
                 const reference = group.find(row => row.tv) || group[0];
-                const reliable = async (list, theatrical = false) => {
+                const reliable = async (list, theatrical = false, searchTitle = query) => {
                     const preference = mediaCandidatePreference(reference);
                     if (preference.conflict) return [];
                     const named = list.filter(c => (theatrical ? c.media_type === 'movie' && preference.type !== 'tv'
                         : !preference.type || c.media_type === preference.type) && [c.title,c.name,c.original_title,c.original_name].filter(Boolean)
-                        .some(title => theatrical ? key(mediaTheatricalQuery(title)) === key(mediaTheatricalQuery(query)) : key(title) === key(query)));
+                        .some(title => theatrical ? key(mediaTheatricalQuery(title)) === key(mediaTheatricalQuery(searchTitle)) : key(title) === key(searchTitle)));
                     const matches = [];
                     for (const candidate of named) {
                         if (candidate.media_type === 'tv' && !reference.sourceYear && reference.workNumberedCount > 1) {
@@ -4600,6 +4600,24 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                         } catch (error) {
                             if (error.stop) throw error;
                             verify(); lookupError = error.message;
+                        }
+                    }
+                }
+                if (!exact.length && !lookupError && reference.tv && !reference.standalone) {
+                    const parts = query.split(/\s*[:：·｜|]\s*|\s+[-–—]\s+|\s+/u).filter(Boolean);
+                    for (let length = parts.length - 1; length > 0; length--) {
+                        const shorter = parts.slice(0,length).join(' ').trim();
+                        if (key(shorter).length < 2 || key(shorter) === key(query)) continue;
+                        verify();
+                        log('作品识别回退搜索：' + query + ' → ' + shorter);
+                        try {
+                            const fallback = await client.search(shorter);
+                            candidates = [...new Map([...candidates,...fallback].map(item => [item.media_type + ':' + item.id,item])).values()];
+                            exact = await reliable(fallback,false,shorter);
+                            if (exact.length) break;
+                        } catch (error) {
+                            if (error.stop) throw error;
+                            verify(); lookupError = error.message; break;
                         }
                     }
                 }
