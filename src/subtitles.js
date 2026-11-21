@@ -1378,6 +1378,37 @@
     async function searchSubtitleSources(row, config, service, log = () => {}, check = () => {}, resume = false) {
         if (!resume) { row.error = ''; row.candidates = []; row.selectedCandidate = null; row.aiSuggested = false; row.sources = []; row.seasonCacheHit = false; }
         const title = subtitleQueryTitle(row.parsed.query, row.parsed.year);
+        const languageChecked = new Set();
+        const verifyCandidateLanguage = async selection => {
+            if (selection.selectedCandidate || !selection.parsed.tv || config.language !== 'en' && !config.language.split(',').includes('zh')) return;
+            for (const candidate of selection.candidates) {
+                if (!(candidate.titleMatched || candidate.identityMatched || candidate.aiAccepted) || candidate.hardMismatch
+                    || candidate.opaque || candidate.downloadFailed || isSubtitleArchive(candidate.ext)
+                    || !exactSubtitleEpisode(candidate.name,selection.parsed)) continue;
+                const key = JSON.stringify([candidate.source,candidate.url || candidate.fileId]);
+                if (languageChecked.has(key)) continue;
+                languageChecked.add(key);
+                check();
+                log('候选语言核验', `${row.node.name} · ${candidate.name} · 来源标注 ${candidate.language || '未知'}，读取正文核验`);
+                try {
+                    const {result,bytes} = await service.fetchFile(candidate,config,(phase,message) => log(phase,`${row.node.name} · ${message}`),check);
+                    check();
+                    subtitleValidateContent(selection,bytes,result.ext,config.language,(phase,message) => log(phase,`${row.node.name} · ${message}`));
+                    subtitleCandidateUploadName(selection,candidate,result.fileName ?? candidate.name,result.ext);
+                    candidate.language = config.language === 'en' ? 'en' : 'zh';
+                    candidate.matchReason = '';
+                    selectSubtitleCandidate(selection,config.language);
+                    log('候选语言通过', `${row.node.name} · ${candidate.name} · 正文格式、对白语言与时长检查通过`);
+                    if (selection.selectedCandidate) return;
+                } catch (error) {
+                    check();
+                    if (error.stop || error.phase === 'drive-auth') throw error;
+                    candidate.matchReason = subtitleDiagnosticText(error.message,config);
+                    log('候选语言未通过', `${row.node.name} · ${candidate.name} · ${candidate.matchReason}`);
+                    if (error.downloadPaused || subtitleSourcePaused(error)) break;
+                }
+            }
+        };
         if (!resume && row.parsed.tv) {
             for (const [name,enabled,method] of [['迅雷',config.thunder,'thunderCachedEpisode'],['射手网',config.assrtKey,'assrtCachedEpisode']]) {
                 if (!enabled || !service[method] || service.searchUnavailable?.(name)) continue;
@@ -1399,6 +1430,7 @@
                 if (!Array.isArray(cached)) throw new TypeError('整季缓存未返回候选列表：' + name);
                 const selection = {node:row.node,parsed:row.parsed,candidates:cached};
                 selectSubtitleCandidate(selection, config.language);
+                await verifyCandidateLanguage(selection);
                 if (!selection.selectedCandidate && cached.length && config.reviewCandidates)
                     await config.reviewCandidates(selection,cached,check);
                 check();
@@ -1463,6 +1495,7 @@
                 row.candidates.push(...fresh);
                 log('来源', `${name} 返回 ${found.length} 个文件候选`);
                 selectSubtitleCandidate(row, config.language);
+                await verifyCandidateLanguage(row);
                 if (!row.selectedCandidate && config.reviewCandidates) await config.reviewCandidates(row, fresh, check);
                 const kept = fresh.filter(candidate => row.candidates.includes(candidate)).length;
                 source.count = (earlier.count || 0) + kept;
