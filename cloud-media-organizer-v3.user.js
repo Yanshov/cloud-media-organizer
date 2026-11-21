@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v3.0（重构版）
 // @namespace    local.cloud-media-organizer
-// @version      3.0.25
+// @version      3.0.26
 // @description  面向百度网盘、123 云盘和光鸭网盘的浏览器脚本，支持跨盘 JSON 清单、影视整理与字幕补齐。
 // @match        https://pan.baidu.com/*
 // @match        https://yun.baidu.com/*
@@ -197,7 +197,7 @@ SOFTWARE.
     if (typeof navigator !== 'undefined' && (navigator.userAgentData?.mobile || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
         navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) return;
 
-    const VERSION = '3.0.25';
+    const VERSION = '3.0.26';
     let jsonTaskStopped = false;
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
@@ -5055,8 +5055,8 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
     function subtitleFileInfo(name, fallback = '') {
         const value = String(name).normalize('NFKC').toLowerCase();
         const tag = code => new RegExp('(?:^|[^\\p{L}\\p{N}])(?:' + code + ')(?=$|[^\\p{L}\\p{N}])', 'u').test(value);
-        const simplified = /zh[._-]?(?:cn|hans)|简体|简中|简英|简[&+ ]英/.test(value) || tag('chs|scjp');
-        const traditional = /zh[._-]?(?:tw|hant)|繁体|繁中|繁英|繁[&+ ]英/.test(value) || tag('cht|tcjp');
+        const simplified = /zh[._-]?(?:cn|hans)|简体|简中|简英|简[&+ ]英/.test(value) || tag('chs|sc|scjp');
+        const traditional = /zh[._-]?(?:tw|hant)|繁体|繁中|繁英|繁[&+ ]英/.test(value) || tag('cht|tc|tcjp');
         const chinese = simplified || traditional || tag('zh|zho|chi') || /中文|中英|双语|简繁/.test(value);
         const english = tag('en|eng') || /英文|中英|简英|繁英|[简繁][&+ ]英/.test(value);
         // Foreign suffixes override a multilingual package's Chinese label.
@@ -6015,21 +6015,26 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         let season = marker ? Number(marker[1]) : named.season;
         const episode = marker ? Number(marker[2]) : numbered ? Number(numbered[1]) : named.episode;
         let title = marker ? stem.slice(0,marker.index) : numbered ? stem.slice(0,numbered.index) : '';
-        const brackets = [...title.matchAll(/\[([^\]]+)\]/g)];
-        if (brackets.length) title = named.query;
+        const withoutGroup = title.replace(/^\s*\[[^\]]+\][ ._-]*/, '').trim();
+        if (withoutGroup && !withoutGroup.startsWith('[')) title = withoutGroup;
+        else if (title.includes('[')) title = named.query;
         title = title.replace(/(?:[ ._-]*(?:S\d{1,2}|Season[ ._-]*\d{1,2}|第\s*[零〇一二两三四五六七八九十\d]+\s*季))[ ._-]*$/i,'')
             .replace(/^[ ._\[\]-]+|[ ._\[\]-]+$/g,'').trim();
         const aliases = new Set([parsed.query,...(parsed.aliases || [])].filter(Boolean).map(titleKey));
         const seasons = (parsed.seasons || []).filter(item => item.season_number > 0);
         if (season == null && episode != null && parsed.workResolved && title) {
+            const releaseTitle = titleKey(parsed.videoReleaseTitle);
+            const subtitleTitle = titleKey(title);
+            if (releaseTitle && releaseTitle === subtitleTitle && !aliases.has(releaseTitle)
+                && seasons.some(item => item.season_number === parsed.season)) season = parsed.season;
             const suffix = title.match(/^(.*?)[ ._-]*(\d{1,2}|VIII|VII|VI|IV|IX|III|II|V|X|I)$/i);
             const roman = {I:1,II:2,III:3,IV:4,V:5,VI:6,VII:7,VIII:8,IX:9,X:10};
             const number = suffix && (/^\d+$/.test(suffix[2]) ? Number(suffix[2]) : roman[suffix[2].toUpperCase()]);
-            if (!aliases.has(titleKey(title)) && suffix && aliases.has(titleKey(suffix[1]))
+            if (season == null && !aliases.has(titleKey(title)) && suffix && aliases.has(titleKey(suffix[1]))
                 && seasons.some(item => item.season_number === number)) {
                 season = number;
                 title = suffix[1].trim();
-            } else {
+            } else if (season == null) {
                 const matches = seasons.filter(item => {
                     const label = titleKey(item.name);
                     if (!label || /^(?:season\d+|第[零〇一二两三四五六七八九十\d]+季)$/i.test(label)) return false;
@@ -7026,13 +7031,12 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         return groupBatch(eligible, row => row.parsed.tv ? row.groupKey : row);
     }
     async function planSubtitleImport(entries, rows, language, confirmed, log, check) {
-        const counts = new Map(), planned = [];
+        const planned = [];
         let inspected = 0;
         for (const entry of entries) {
             check();
             if (entry.error) { planned.push({...entry,state:'invalid',reason:entry.error}); continue; }
             const match = matchSubtitleImport(entry.name,rows,entry.archiveName), {row} = match;
-            if (!match.reason) counts.set(row,(counts.get(row) || 0) + 1);
             if (match.reason) { planned.push({...entry,row,state:'unmatched',reason:match.reason}); continue; }
             if (subtitleCovered(row)) { planned.push({...entry,row,state:'skip',reason:'已有可用字幕'}); continue; }
             if (row.writeBlocked) { planned.push({...entry,row,state:'unmatched',reason:'请重新检查目录，核对此前的操作结果'}); continue; }
@@ -7062,8 +7066,18 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 planned.push({...entry,row,state:'invalid',reason:error.message});
             }
         }
-        for (const entry of planned) if ((entry.state === 'ready' || entry.needsIdentity) && counts.get(entry.row) > 1) {
-            entry.state = 'unmatched'; entry.needsIdentity = false; entry.reason = '同一目标匹配到多份字幕，请仅重新选择其中一份';
+        for (const group of groupBatch(planned.filter(entry => entry.state === 'ready' || entry.needsIdentity),entry => entry.row)) {
+            if (group.length < 2) continue;
+            const preferences = group.map(entry => subtitlePreference({name:entry.name || entry.label,language:entry.language || ''},language));
+            const best = Math.max(...preferences);
+            const preferred = group.filter((entry,index) => preferences[index] === best);
+            if (best > 0 && preferred.length === 1 && group.every(entry => entry.state === 'ready')) {
+                for (const entry of group) if (entry !== preferred[0]) {
+                    entry.state = 'skip'; entry.reason = '已选择更符合语言偏好的字幕';
+                }
+            } else for (const entry of group) {
+                entry.state = 'unmatched'; entry.needsIdentity = false; entry.reason = '同一目标匹配到多份字幕，请仅重新选择其中一份';
+            }
         }
         return planned;
     }
@@ -8372,10 +8386,11 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     season:media.season ?? null,episode:media.episode ?? null,endEpisode:media.endEpisode ?? null,
                     tmdbId:media.match.split(':')[1],aliases:media.detail.workAliases || [],
                     seasons:media.type === 'tv' ? media.detail.seasons : undefined,
-                    runtimeSeconds:runtime > 0 ? runtime * 60 : undefined,workResolved:true});
+                    runtimeSeconds:runtime > 0 ? runtime * 60 : undefined,workResolved:true,
+                    videoReleaseTitle:parseMediaName(row.node.originalName || row.node.name).query});
             } else {
                 Object.assign(parsed,parseMediaName(row.node.name,[...flow.context.path.split('/').filter(Boolean),...row.node.folders]));
-                Object.assign(parsed,{tmdbId:undefined,aliases:[],seasons:undefined,runtimeSeconds:undefined,workResolved:false});
+                Object.assign(parsed,{tmdbId:undefined,aliases:[],seasons:undefined,runtimeSeconds:undefined,workResolved:false,videoReleaseTitle:undefined});
                 if (media.detail && media.type === 'tv') {
                     parsed.tv = true;
                     parsed.season = media.season ?? null;

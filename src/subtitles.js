@@ -66,8 +66,8 @@
     function subtitleFileInfo(name, fallback = '') {
         const value = String(name).normalize('NFKC').toLowerCase();
         const tag = code => new RegExp('(?:^|[^\\p{L}\\p{N}])(?:' + code + ')(?=$|[^\\p{L}\\p{N}])', 'u').test(value);
-        const simplified = /zh[._-]?(?:cn|hans)|简体|简中|简英|简[&+ ]英/.test(value) || tag('chs|scjp');
-        const traditional = /zh[._-]?(?:tw|hant)|繁体|繁中|繁英|繁[&+ ]英/.test(value) || tag('cht|tcjp');
+        const simplified = /zh[._-]?(?:cn|hans)|简体|简中|简英|简[&+ ]英/.test(value) || tag('chs|sc|scjp');
+        const traditional = /zh[._-]?(?:tw|hant)|繁体|繁中|繁英|繁[&+ ]英/.test(value) || tag('cht|tc|tcjp');
         const chinese = simplified || traditional || tag('zh|zho|chi') || /中文|中英|双语|简繁/.test(value);
         const english = tag('en|eng') || /英文|中英|简英|繁英|[简繁][&+ ]英/.test(value);
         // Foreign suffixes override a multilingual package's Chinese label.
@@ -1026,21 +1026,26 @@
         let season = marker ? Number(marker[1]) : named.season;
         const episode = marker ? Number(marker[2]) : numbered ? Number(numbered[1]) : named.episode;
         let title = marker ? stem.slice(0,marker.index) : numbered ? stem.slice(0,numbered.index) : '';
-        const brackets = [...title.matchAll(/\[([^\]]+)\]/g)];
-        if (brackets.length) title = named.query;
+        const withoutGroup = title.replace(/^\s*\[[^\]]+\][ ._-]*/, '').trim();
+        if (withoutGroup && !withoutGroup.startsWith('[')) title = withoutGroup;
+        else if (title.includes('[')) title = named.query;
         title = title.replace(/(?:[ ._-]*(?:S\d{1,2}|Season[ ._-]*\d{1,2}|第\s*[零〇一二两三四五六七八九十\d]+\s*季))[ ._-]*$/i,'')
             .replace(/^[ ._\[\]-]+|[ ._\[\]-]+$/g,'').trim();
         const aliases = new Set([parsed.query,...(parsed.aliases || [])].filter(Boolean).map(titleKey));
         const seasons = (parsed.seasons || []).filter(item => item.season_number > 0);
         if (season == null && episode != null && parsed.workResolved && title) {
+            const releaseTitle = titleKey(parsed.videoReleaseTitle);
+            const subtitleTitle = titleKey(title);
+            if (releaseTitle && releaseTitle === subtitleTitle && !aliases.has(releaseTitle)
+                && seasons.some(item => item.season_number === parsed.season)) season = parsed.season;
             const suffix = title.match(/^(.*?)[ ._-]*(\d{1,2}|VIII|VII|VI|IV|IX|III|II|V|X|I)$/i);
             const roman = {I:1,II:2,III:3,IV:4,V:5,VI:6,VII:7,VIII:8,IX:9,X:10};
             const number = suffix && (/^\d+$/.test(suffix[2]) ? Number(suffix[2]) : roman[suffix[2].toUpperCase()]);
-            if (!aliases.has(titleKey(title)) && suffix && aliases.has(titleKey(suffix[1]))
+            if (season == null && !aliases.has(titleKey(title)) && suffix && aliases.has(titleKey(suffix[1]))
                 && seasons.some(item => item.season_number === number)) {
                 season = number;
                 title = suffix[1].trim();
-            } else {
+            } else if (season == null) {
                 const matches = seasons.filter(item => {
                     const label = titleKey(item.name);
                     if (!label || /^(?:season\d+|第[零〇一二两三四五六七八九十\d]+季)$/i.test(label)) return false;

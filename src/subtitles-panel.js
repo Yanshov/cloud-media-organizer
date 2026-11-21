@@ -103,13 +103,12 @@
         return groupBatch(eligible, row => row.parsed.tv ? row.groupKey : row);
     }
     async function planSubtitleImport(entries, rows, language, confirmed, log, check) {
-        const counts = new Map(), planned = [];
+        const planned = [];
         let inspected = 0;
         for (const entry of entries) {
             check();
             if (entry.error) { planned.push({...entry,state:'invalid',reason:entry.error}); continue; }
             const match = matchSubtitleImport(entry.name,rows,entry.archiveName), {row} = match;
-            if (!match.reason) counts.set(row,(counts.get(row) || 0) + 1);
             if (match.reason) { planned.push({...entry,row,state:'unmatched',reason:match.reason}); continue; }
             if (subtitleCovered(row)) { planned.push({...entry,row,state:'skip',reason:'已有可用字幕'}); continue; }
             if (row.writeBlocked) { planned.push({...entry,row,state:'unmatched',reason:'请重新检查目录，核对此前的操作结果'}); continue; }
@@ -139,8 +138,18 @@
                 planned.push({...entry,row,state:'invalid',reason:error.message});
             }
         }
-        for (const entry of planned) if ((entry.state === 'ready' || entry.needsIdentity) && counts.get(entry.row) > 1) {
-            entry.state = 'unmatched'; entry.needsIdentity = false; entry.reason = '同一目标匹配到多份字幕，请仅重新选择其中一份';
+        for (const group of groupBatch(planned.filter(entry => entry.state === 'ready' || entry.needsIdentity),entry => entry.row)) {
+            if (group.length < 2) continue;
+            const preferences = group.map(entry => subtitlePreference({name:entry.name || entry.label,language:entry.language || ''},language));
+            const best = Math.max(...preferences);
+            const preferred = group.filter((entry,index) => preferences[index] === best);
+            if (best > 0 && preferred.length === 1 && group.every(entry => entry.state === 'ready')) {
+                for (const entry of group) if (entry !== preferred[0]) {
+                    entry.state = 'skip'; entry.reason = '已选择更符合语言偏好的字幕';
+                }
+            } else for (const entry of group) {
+                entry.state = 'unmatched'; entry.needsIdentity = false; entry.reason = '同一目标匹配到多份字幕，请仅重新选择其中一份';
+            }
         }
         return planned;
     }
@@ -1449,10 +1458,11 @@
                     season:media.season ?? null,episode:media.episode ?? null,endEpisode:media.endEpisode ?? null,
                     tmdbId:media.match.split(':')[1],aliases:media.detail.workAliases || [],
                     seasons:media.type === 'tv' ? media.detail.seasons : undefined,
-                    runtimeSeconds:runtime > 0 ? runtime * 60 : undefined,workResolved:true});
+                    runtimeSeconds:runtime > 0 ? runtime * 60 : undefined,workResolved:true,
+                    videoReleaseTitle:parseMediaName(row.node.originalName || row.node.name).query});
             } else {
                 Object.assign(parsed,parseMediaName(row.node.name,[...flow.context.path.split('/').filter(Boolean),...row.node.folders]));
-                Object.assign(parsed,{tmdbId:undefined,aliases:[],seasons:undefined,runtimeSeconds:undefined,workResolved:false});
+                Object.assign(parsed,{tmdbId:undefined,aliases:[],seasons:undefined,runtimeSeconds:undefined,workResolved:false,videoReleaseTitle:undefined});
                 if (media.detail && media.type === 'tv') {
                     parsed.tv = true;
                     parsed.season = media.season ?? null;
