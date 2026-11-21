@@ -1,5 +1,5 @@
     function subtitleInventory(collected, parentPath = '') {
-        return collected.videos.filter(node => !mediaBonusName(node.name)).map(node => {
+        return collected.videos.filter(node => !mediaSkipBonusVideo(node)).map(node => {
             const row = {node, subtitles:[...(collected.linked.get(node.id) || [])], complete:false,
                 siblingNames:collected.namesByParent?.get(node.parentId),
                 path:'/' + [parentPath, node.path].filter(Boolean).join('/')};
@@ -33,7 +33,7 @@
     }
     async function readSubtitleImport(files, check, log) {
         if (files.length > 200) throw new Error('一次最多选择 200 个本地文件');
-        let totalBytes = 0, inputBytes = 0, totalEntries = 0;
+        let inputBytes = 0, totalEntries = 0;
         const entries = [];
         await batchStage(files,'本地导入读取与解压（文件/ZIP/RAR）',log,async (file,verify,index,observe) => {
             const name = file.name;
@@ -47,24 +47,18 @@
                 const bytes = new Uint8Array(await file.arrayBuffer());
                 verify();
                 if (bytes.length !== file.size) throw new Error('本地文件大小已变化，请重新选择');
-                const reserve = archive => {
-                    verify();
-                    if (!archive.files.length) throw new Error('压缩包内没有支持的字幕');
-                    const count = archive.files.length, expanded = archive.files.reduce((sum,entry) => sum + entry.length,0);
-                    if (totalEntries + count > 200 || totalBytes + expanded > SUBTITLE_BATCH_LIMIT)
-                        throw new Error('本批最多检测 200 份字幕和 64 MiB 字幕');
-                    totalEntries += count;
-                    totalBytes += expanded;
-                };
-                const archive = isSubtitleArchive(ext) ? await subtitleReadArchive(bytes,ext,verify,true,reserve) : null;
-                if (!archive) reserve({files:[{length:bytes.length}]});
+                const archive = isSubtitleArchive(ext) ? await subtitleReadArchive(bytes,ext,verify,true) : null;
+                if (archive && !archive.files.length) throw new Error('压缩包内没有支持的字幕');
+                const count = archive ? archive.files.length : 1;
+                if (totalEntries + count > 2000) throw new Error('本批字幕目录超过 2000 项');
+                totalEntries += count;
                 const loaded = [];
-                if (archive) for (const entry of archive.files) {
-                    verify();
-                    const subtitle = await subtitleArchiveExtract(bytes,archive,entry,verify);
-                    loaded.push({...subtitle, archiveName:name, label:name + ' / ' + entry.path});
-                }
-                else loaded.push({name,label:name,ext,bytes});
+                if (archive) {
+                    const source = {bytes,index:archive};
+                    for (const entry of archive.files) loaded.push({name:entry.name,ext:entry.ext,source,archiveEntry:entry,
+                        archiveName:name,label:name + ' / ' + entry.path});
+                    log(name + ' · 已读取 ' + count + ' 份字幕目录，选择目标后按需解压检查');
+                } else loaded.push({name,label:name,ext,bytes});
                 entries[index] = loaded;
             } catch (error) {
                 observe(error);
@@ -72,8 +66,15 @@
                 entries[index] = [{name,label:name,error:error.message}];
                 return 'failed';
             }
-        },check,8,'单压缩包顺序解压，RAR 使用后台线程，输入和解压字节使用整批共用上限');
+        },check,8,'先读取目录，正文按导入目标提取，RAR 使用后台线程');
         return entries.flat();
+    }
+    async function subtitleImportBytes(entry, check) {
+        check();
+        if (entry.bytes) return entry.bytes;
+        const extracted = await subtitleArchiveExtract(entry.source.bytes,entry.source.index,entry.archiveEntry,check);
+        check();
+        return extracted.bytes;
     }
     function matchSubtitleImport(name, rows, archiveName = '') {
         const stem = mediaStem(name).normalize('NFKC');
@@ -127,29 +128,43 @@
         const eligible = inventory.filter(({parsed}) => !parsed.tv || parsed.season != null && parsed.episode != null);
         return groupBatch(eligible, row => row.parsed.tv ? row.groupKey : row);
     }
-    function planSubtitleImport(entries, rows, language, confirmed, log) {
-        const counts = new Map();
-        const planned = entries.map(entry => {
-            if (entry.error) return {...entry,state:'invalid',reason:entry.error};
+    async function planSubtitleImport(entries, rows, language, confirmed, log, check) {
+        const counts = new Map(), planned = [];
+        let inspected = 0;
+        for (const entry of entries) {
+            check();
+            if (entry.error) { planned.push({...entry,state:'invalid',reason:entry.error}); continue; }
             const match = matchSubtitleImport(entry.name,rows,entry.archiveName), {row} = match;
             if (!match.reason) counts.set(row,(counts.get(row) || 0) + 1);
+            if (match.reason) { planned.push({...entry,row,state:'unmatched',reason:match.reason}); continue; }
+            if (subtitleCovered(row)) { planned.push({...entry,row,state:'skip',reason:'已有可用字幕'}); continue; }
+            if (row.writeBlocked) { planned.push({...entry,row,state:'unmatched',reason:'请重新检查目录，核对此前的操作结果'}); continue; }
             try {
-                const {text, ...verification} = subtitleValidateContent(match.reason ? {node:{name:entry.label}} : row,entry.bytes,entry.ext,language,log);
-                if (match.reason) return {...entry,row,state:'unmatched',reason:match.reason};
-                if (subtitleCovered(row)) return {...entry,row,state:'skip',reason:'已有可用字幕'};
-                if (row.writeBlocked) return {...entry,row,state:'unmatched',reason:'请重新检查目录，核对此前的操作结果'};
-                if (match.needsIdentity && !confirmed.has(entry)) return {...entry,row,state:'unmatched',needsIdentity:true,reason:'文件名未标明作品，请确认归属'};
+                if (++inspected > 200) throw new Error('本次目标匹配超过 200 份字幕，请减少选区后分批导入');
+                log('导入正文检查',entry.label);
+                const bytes = await subtitleImportBytes(entry,check);
+                check();
+                const {text, ...verification} = subtitleValidateContent(row,bytes,entry.ext,language,log);
+                if (match.needsIdentity && !confirmed.has(entry)) {
+                    planned.push({...entry,row,state:'unmatched',needsIdentity:true,reason:'文件名未标明作品，请确认归属'});
+                    continue;
+                }
                 const marked = subtitleFileInfo(entry.name).language;
                 if (['zh-cn','zh-tw'].includes(language) && marked !== language)
-                    return {...entry,row,state:'invalid',reason:'字幕文件未标注当前设置要求的简繁语言'};
+                    throw new Error('字幕文件未标注当前设置要求的简繁语言');
                 const suffix = language === 'en' ? 'en' : marked?.startsWith('zh') ? marked : 'zh';
                 const name = subtitleUploadName(entry.name,entry.ext);
-                if (row.siblingNames?.has(name.toLowerCase())) return {...entry,row,state:'unmatched',reason:'目标目录已有同名项目，待处理'};
-                return {...entry,row,verification,state:'ready',name,language:suffix};
+                if (row.siblingNames?.has(name.toLowerCase())) {
+                    planned.push({...entry,row,state:'unmatched',reason:'目标目录已有同名项目，待处理'});
+                    continue;
+                }
+                planned.push({...entry,row,verification,digest:subtitleMd5(bytes),state:'ready',name,language:suffix});
             } catch (error) {
-                return {...entry,row,state:'invalid',reason:error.message};
+                check();
+                if (error.stop) throw error;
+                planned.push({...entry,row,state:'invalid',reason:error.message});
             }
-        });
+        }
         for (const entry of planned) if ((entry.state === 'ready' || entry.needsIdentity) && counts.get(entry.row) > 1) {
             entry.state = 'unmatched'; entry.needsIdentity = false; entry.reason = '同一目标匹配到多份字幕，请仅重新选择其中一份';
         }
@@ -785,16 +800,34 @@
         };
         const runTask = flow ? (...args) => flow.run(...args) : createPanelTask(ui,updateControls);
         if (flow) flow.controls.push(updateControls);
-        const reviewImport = () => {
+        const reviewImport = () => runTask(async () => {
             const draft = importDraft;
-            const rows = draft.groups[draft.target];
+            if (!draft) return;
+            const target = draft.target, rows = draft.groups[target];
             draft.showIssues = false;
-            draft.plan = rows && planSubtitleImport(draft.entries,rows,draft.language,draft.confirmed,diag);
-            for (const entry of draft.plan || []) {
-                const outcome = entry.state === 'ready' ? subtitleVerificationMessage(entry.verification) : entry.reason;
-                diag('导入检测', entry.label + (entry.row ? ' → ' + entry.row.path : '') + ' · ' + outcome);
+            draft.plan = null;
+            if (!rows) return;
+            const verify = () => {
+                check();
+                if (draft !== importDraft || draft.target !== target || draft.scan !== scan || draft.drive !== drive
+                    || draft.language !== settings().language || checkedScope === null)
+                    throw Object.assign(new Error('导入目标或检查范围已变化，请重新选择'),{stop:true});
+            };
+            status('正在按导入目标逐份检查字幕…');
+            try {
+                const plan = await planSubtitleImport(draft.entries,rows,draft.language,draft.confirmed,diag,verify);
+                verify();
+                draft.plan = plan;
+                for (const entry of plan) {
+                    const outcome = entry.state === 'ready' ? subtitleVerificationMessage(entry.verification) : entry.reason;
+                    diag('导入检测', entry.label + (entry.row ? ' → ' + entry.row.path : '') + ' · ' + outcome);
+                }
+                status('字幕正文检查结束，请核对导入预览。');
+            } catch (error) {
+                status('导入检测结束 · ' + error.message);
+                diag('导入检测结束',error.message);
             }
-        };
+        }, true);
         const picker = ui.get('subtitleImportFiles');
         const openPicker = () => {
             if (busy) return;
@@ -822,7 +855,7 @@
                 Object.assign(draft,{scan,drive,groups});
                 importDraft = null;
                 meter(0,0);
-                status('正在读取本地字幕…');
+                status('正在读取本地字幕文件和压缩包目录…');
                 try {
                     const entries = await readSubtitleImport(files,check,batchLog);
                     check();
@@ -832,7 +865,7 @@
                     importDraft = {...draft,entries,target:'',confirmed:new Set(),showIssues:false,plan:null};
                     for (const entry of entries) if (entry.error) diag('导入读取失败',entry.label + ' · ' + entry.error);
                     results.scrollTop = 0;
-                    status('请选择导入目标并核对预览。');
+                    status('请选择导入目标，压缩包只提取匹配项并逐份检查。');
                 } catch (error) {
                     status('导入检测结束 · ' + error.message);
                     diag('导入检测结束',error.message);
@@ -865,7 +898,10 @@
                     if (!inventory.includes(row) || covered(row) || row.writeBlocked) throw new Error('目标状态已变，请重新检查目录');
                     status('正在导入 · ' + row.node.name);
                     diag('导入开始',label + ' → ' + row.path);
-                    await enqueueByKey(writes,JSON.stringify([row.node.parentId,name.toLowerCase()]),() => savePanelSubtitle(draft.drive,row,entry,phase => {
+                    const bytes = await subtitleImportBytes(entry,verify);
+                    verify();
+                    if (subtitleMd5(bytes) !== entry.digest) throw new Error('字幕内容与导入预览不一致，请重新选择本地文件');
+                    await enqueueByKey(writes,JSON.stringify([row.node.parentId,name.toLowerCase()]),() => savePanelSubtitle(draft.drive,row,{...entry,bytes},phase => {
                         status(phase + ' · ' + row.node.name);
                         diag('导入网盘',row.node.name + ' · ' + phase);
                     },verify));
@@ -892,7 +928,7 @@
                 meter(done + failed + pending,targets.length);
                 if (flow) flow.requestRender(); else render();
                 return outcome;
-              },verify,8,'同目录同名写入串行，上传、读回和回执按顺序');
+              },verify,4,'按需提取字幕，最多 4 份正文驻留；同目录同名写入串行，上传、读回和回执按顺序');
             } catch (error) { interrupted = error.message; }
             const summary = '已处理 ' + (done + failed + pending) + '/' + targets.length + ' · 已导入 ' + done
                 + ' · 失败 ' + failed + ' · 待对账 ' + pending + (interrupted ? ' · ' + interrupted : '');
@@ -1061,16 +1097,22 @@
                 const names = context.selected.slice(0, 3).map(item => item.name).filter(Boolean);
                 const selection = names.length ? '（' + names.join('、') + (context.selected.length > names.length ? '等' : '') + '）' : '';
                 const rows = snapshot ? inventory : subtitleInventory(collected,context.path);
+                const excluded = collected.videos.filter(mediaSkipBonusVideo);
+                for (const node of excluded) diag('附加视频跳过',node.path + ' · 文件名匹配附加内容规则');
+                const emptyMessage = collected.videos.length
+                    ? '读取到 ' + collected.videos.length + ' 个视频，' + excluded.length + ' 个按附加内容规则跳过，详见日志'
+                    : '选中范围内没有读取到视频文件';
                 total = rows.length;
                 for (const row of rows) { row.checkState = 'waiting'; row.history = context.history; }
                 inventory = rows;
                 batch.scope = '本次范围：/' + (context.path || '') + ' · 选中 ' + context.selected.length + ' 项' + selection + ' · 视频 ' + rows.length;
                 batch.running = true;
                 if (rows.length) meter(0, rows.length);
-                status(rows.length ? '正在检查目录字幕…' : '选中范围没有正片视频。');
+                status(rows.length ? '正在检查目录字幕…' : emptyMessage);
                 render();
                 const language = settings().language;
-                diag('目录扫描', '视频 ' + rows.length + '，已关联字幕 ' + rows.filter(row => row.subtitles.length).length + ' 组');
+                diag('目录扫描', '读取视频 ' + collected.videos.length + '，参与检查 ' + rows.length + '，附加内容跳过 ' + excluded.length
+                    + '，已关联字幕 ' + rows.filter(row => row.subtitles.length).length + ' 组');
                 const fatal = error => error.stop || error.phase === 'drive-auth' || [401,403].includes(error.status);
                 await batchStage(rows,'目录字幕检查（视频）',batchLog,async (row,verify,_index,observe) => {
                     verify();
@@ -1129,7 +1171,7 @@
                 checkedScope = batch.scope;
                 const unconfirmed = rows.filter(row => subtitleCoverageState(row) === 'unconfirmed').length;
                 const message = rows.length ? '已检查 ' + done + '/' + total + ' · 有字幕 ' + rows.filter(covered).length
-                    + (unconfirmed ? ' · 检查未确认 ' + unconfirmed : '') : '选中范围没有正片视频';
+                    + (unconfirmed ? ' · 检查未确认 ' + unconfirmed : '') : emptyMessage;
                 status(message); diag('字幕检查',message + ' · 耗时 ' + ((Date.now() - started) / 1000).toFixed(2) + ' 秒');
             } catch (error) {
                 if (scan !== batch) return false;

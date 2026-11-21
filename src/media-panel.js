@@ -683,7 +683,7 @@
                 const groups = new Map();
                 await batchStage(rows,'复用整理记录与核对季集（视频）',log,async (row,verify) => {
                     const saved = mediaRecords.get(row.node);
-                    if (saved && !mediaBonusName(row.node.name)) {
+                    if (saved && !mediaSkipBonusVideo(row.node)) {
                         try {
                             Object.assign(row, {query:saved.query, sourceYear:saved.sourceYear, season:saved.season, episode:saved.episode, endEpisode:saved.endEpisode, aiAssisted:saved.aiAssisted});
                             await choose(row, saved.match); await validateEpisode(row);
@@ -703,7 +703,11 @@
                 },checkStopped,8,'已保存记录优先，同一作品与季集读同一份 TMDB 结果');
                 for (const row of rows) {
                     if (row.reusedRecord) continue;
-                    if (mediaBonusName(row.node.name)) { row.include = false; row.error = '非正片附加视频，未参与匹配；可在清理文件中检查非正片'; continue; }
+                    if (mediaSkipBonusVideo(row.node)) {
+                        row.include = false; row.error = '文件名匹配附加内容规则，未参与作品识别';
+                        log('识别跳过：' + row.node.path + '；' + row.error);
+                        continue;
+                    }
                     if (!groups.has(row.group)) groups.set(row.group, []); groups.get(row.group).push(row);
                 }
                 let matched = 0;

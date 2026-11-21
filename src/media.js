@@ -132,6 +132,7 @@
     }
     // A special episode is still part of the programme; only explicit bonus labels count.
     const mediaBonusName = name => /花絮|幕后|幕後|预告|預告|制作特辑|製作特輯|拍摄特辑|拍攝特輯|(?:^|[^a-z0-9])(?:extras?|featurettes?|trailers?|teasers?|bloopers?|outtakes?|sample|behind[ ._-]+the[ ._-]+scenes|special[ ._-]+features)(?=$|[^a-z0-9])/i.test(mediaStem(name));
+    const mediaSkipBonusVideo = node => !node.explicitlySelected && mediaBonusName(node.name);
     /** Identifies special episodes using the related series and its season zero titles. */
     async function resolveMediaSpecials(rows,client,parentPath = '',check = () => {},log) {
         const key = titleKey;
@@ -163,7 +164,7 @@
             // A confirmed per-file AI identity must not be replaced by folder-based special inference.
             if (row.detail && !row.error && (row.aiAssisted || row.type === 'movie' || row.season === 0)) return 'skipped';
             const parsed = parseMediaName(row.node.name);
-            if (parsed.episode != null || mediaBonusName(row.node.name)) return 'skipped';
+            if (parsed.episode != null || mediaSkipBonusVideo(row.node)) return 'skipped';
             const scope = scopes(row).reverse().find(s => contexts.has(s.id));
             const explicit = marked.test(mediaStem(row.node.name));
             const original = key(mediaStem(row.node.name));
@@ -276,7 +277,7 @@
                 return (await children(node.id)).map(child => ({node: child, parentId: node.id, folders: childFolders, ancestors: childAncestors}));
             }
             verify();
-            nodes.push({order,node:{...node,parentId,folders,path,ancestors}});
+            nodes.push({order,node:{...node,parentId,folders,path,ancestors,explicitlySelected:ancestors.length === 0}});
         }, check, log, '选区扫描（目录/文件，分页按服务顺序）');
         nodes.sort((a,b) => compareTreeOrder(a.order,b.order));
         return {nodes:nodes.map(entry => entry.node),children};
@@ -1277,7 +1278,7 @@
     function mediaWorkCounts(rows) {
         const groups = new Map();
         for (const row of rows) {
-            if (mediaBonusName(row.node.name)) continue;
+            if (mediaSkipBonusVideo(row.node)) continue;
             const key = JSON.stringify([row.node.parentId, row.aiType || row.type || '', titleKey(row.query) || row.node.id]);
             if (!groups.has(key)) groups.set(key, []);
             groups.get(key).push(row);

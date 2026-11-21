@@ -472,7 +472,7 @@
                 const entry = transfer({url,allowHttp:source === '迅雷'},verify,source)
                     .then(async bytes => ({bytes,index:await subtitleReadArchive(bytes,ext,verify)}))
                     .catch(error => { archiveCache.delete(url); throw error; });
-                archiveCache.set(url,entry); evict(archiveCache,3); // Each RAR retains at most SUBTITLE_BATCH_LIMIT of extracted subtitles.
+                archiveCache.set(url,entry); evict(archiveCache,3); // Retain compressed bytes and headers, extracting selected subtitles on demand.
             }
             const data = await archiveCache.get(url); check(); verify(); return data;
         };
@@ -740,14 +740,12 @@
     const SUBTITLE_BATCH_LIMIT = 64 * 1024 * 1024;
     const subtitleRarQueue = new Map();
     const isSubtitleArchive = ext => ext === 'zip' || ext === 'rar';
-    async function subtitleReadArchive(bytes, ext, check = () => {}, strict = false, reserve = () => {}) {
+    async function subtitleReadArchive(bytes, ext, check = () => {}, strict = false, selectedPaths) {
         check();
         if (bytes.length > SUBTITLE_LIMIT) throw new Error('压缩包超过 16 MiB');
         const rar = ext === 'rar' || [0x52,0x61,0x72,0x21,0x1a,0x07].every((byte,index) => bytes[index] === byte);
         if (!rar) {
-            const index = subtitleArchiveIndex(bytes,check,strict);
-            reserve(index);
-            return index;
+            return subtitleArchiveIndex(bytes,check,strict);
         }
         return enqueueByKey(subtitleRarQueue,'rar',() => new Promise((resolve,reject) => {
             let worker, url, timer, settled = false;
@@ -777,8 +775,8 @@
                         check();
                         if (event.data.type === 'error') throw new Error(event.data.error);
                         if (event.data.type === 'headers') {
-                            reserve(event.data.index);
-                            worker.postMessage({type:'extract'});
+                            if (!selectedPaths) finish(null,event.data.index);
+                            else worker.postMessage({type:'extract',paths:selectedPaths});
                         } else if (event.data.type === 'complete') finish(null,event.data.index);
                     } catch (error) { finish(error); }
                 };
@@ -799,7 +797,6 @@
         const count = view.getUint16(end+10,true), size = view.getUint32(end+12,true), start = view.getUint32(end+16,true);
         if (view.getUint16(end+4,true) || view.getUint16(end+6,true) || count !== view.getUint16(end+8,true) || count > 2000 || start + size !== end) throw invalid();
         const files = [], paths = new Map(), ranges = [];
-        let expanded = 0;
         let offset = start;
         for (let i = 0; i < count; i++) {
             check();
@@ -836,11 +833,6 @@
             }
             offset = next;
             if (!['srt','ass','ssa','vtt'].includes(ext) || path.startsWith('__MACOSX/') || name.startsWith('._')) continue;
-            if (length > SUBTITLE_LIMIT) throw new Error('ZIP 字幕「' + name + '」超过 16 MiB');
-            expanded += length;
-            if (expanded > SUBTITLE_BATCH_LIMIT) throw new Error('ZIP 字幕累计解压大小超过 64 MiB');
-            if (length > compressed * 200) throw new Error('ZIP 字幕压缩比超过 200:1');
-            if (files.length >= 200) throw new Error('ZIP 字幕条目超过 200 项');
             if (flags & 1 || ![0,8].includes(method) || !strict && !length || compressed > SUBTITLE_LIMIT) continue;
             files.push({name,path,ext,method,crc,compressed,length,local,flags});
         }
@@ -860,6 +852,7 @@
         if (parsed.tv && (parsed.season == null || parsed.episode == null || parsed.endEpisode && parsed.endEpisode !== parsed.episode)) return [];
         const files = [];
         for (const file of index.files) {
+            if (!file.length || file.length > SUBTITLE_LIMIT) continue;
             const {name} = file;
             let identityName = name;
             if (parsed.tv) {
@@ -898,7 +891,14 @@
     }
     async function subtitleArchiveExtract(bytes, index, file, check) {
         check();
-        if (index.format === 'rar') return {name:file.name,ext:file.ext,bytes:file.bytes};
+        if (file.length > SUBTITLE_LIMIT) throw new Error('字幕「' + file.name + '」超过 16 MiB');
+        if (index.format === 'rar') {
+            const extracted = await subtitleReadArchive(bytes,'rar',check,false,[file.originalPath]);
+            check();
+            const selected = extracted.files.find(entry => entry.originalPath === file.originalPath);
+            if (!selected || selected.length !== file.length) throw new Error('RAR 所选字幕与目录记录不符');
+            return {name:selected.name,ext:selected.ext,bytes:selected.bytes};
+        }
         const invalid = () => new Error('ZIP 格式不支持或数据不完整');
         const view = new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
         const dataStart = subtitleArchiveDataOffset(view,file,index.start,invalid);
