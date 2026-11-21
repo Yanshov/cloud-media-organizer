@@ -435,6 +435,8 @@
                     const byYear = row.sourceYear ? regular.filter(s => (s.air_date || '').startsWith(row.sourceYear)) : [];
                     if (byYear.length === 1) row.season = byYear[0].season_number;
                     else if (row.sourceYear && regular.length === 1) row.season = regular[0].season_number;
+                    else if (regular.length === 1 && row.explicitEpisode > 0 && row.explicitEpisode <= regular[0].episode_count
+                        && !row.standalone && !/特别篇|特別篇|剧场版|劇場版|特典|番外|\b(?:special|sp|ova|oad|movie)\b/i.test([row.node.name,...(row.node.folders || [])].join(' '))) row.season = regular[0].season_number;
                 }
                 if (row.type === 'tv' && row.season != null) {
                     const season = await mediaSeasonEpisodes(client, row.detail.id, row.season);

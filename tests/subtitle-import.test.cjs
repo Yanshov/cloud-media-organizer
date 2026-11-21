@@ -41,6 +41,17 @@ function matching() {
     const plan = (entries,rows,confirmed=new Set()) => api.planSubtitleImport(entries,rows,lang,confirmed,()=>{});
     const movies = collect([video('film','电影.2000.mkv')]);
     const ass = '[Events]\nFormat: Start, End, Text\nDialogue: 0:00:01.00,0:20:03.00,合成中文字幕';
+    const episodeNumbers = Array.from({length:51},(_,index) => String(index + 1).padStart(2,'0'));
+    const agito = collect(episodeNumbers.map(number => video(number,'[DBD-Raws][假面骑士Agito][' + number + '][1080P][BDRip].mkv')));
+    for (const row of agito) {
+        Object.assign(row.parsed,{tv:true,season:1,aliases:['假面骑士亚极陀']});
+        row.media = {detail:{seasons:[{season_number:1,episode_count:51}]}};
+    }
+    const pack = [...episodeNumbers.map(number => '假面骑士亚极陀 - ' + number + '.ass'),'假面骑士亚极陀 剧场版 - G4计划（导演剪辑版）.ass']
+        .map(name => ({...entry(name,ass),archiveName:'[假面骑士亚极陀][TV_01-51][BD][Sub].zip'}));
+    const checkedPack = plan(pack,agito);
+    assert.deepEqual(Array.from(checkedPack.filter(item => item.state === 'ready'),item => item.row.node.id),episodeNumbers);
+    assert.equal(checkedPack.at(-1).state,'unmatched');
     const vtt = 'WEBVTT\n\n00:01.000 --> 20:03.000\n合成中文字幕';
     for (const [ext,text] of [['srt',srt],['ass',ass],['ssa',ass],['vtt',vtt]]) {
         const [checked] = plan([entry('电影.2000.'+ext,text)],movies);

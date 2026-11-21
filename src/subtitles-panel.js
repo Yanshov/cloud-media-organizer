@@ -59,7 +59,7 @@
                 if (archive) for (const entry of archive.files) {
                     verify();
                     const subtitle = await subtitleArchiveExtract(bytes,archive,entry,verify);
-                    loaded.push({...subtitle, label:name + ' / ' + entry.path});
+                    loaded.push({...subtitle, archiveName:name, label:name + ' / ' + entry.path});
                 }
                 else loaded.push({name,label:name,ext,bytes});
                 entries[index] = loaded;
@@ -72,7 +72,7 @@
         },check,8,'单 ZIP 顺序解压，输入和解压字节使用整批共用上限');
         return entries.flat();
     }
-    function matchSubtitleImport(name, rows) {
+    function matchSubtitleImport(name, rows, archiveName = '') {
         const stem = mediaStem(name).normalize('NFKC');
         const marks = [...stem.matchAll(/(?:^|[^\dA-Z])S(\d{1,2})[ ._-]*E(\d{1,3})(?!\d)/gi)];
         const parsed = parseMediaName(name);
@@ -80,8 +80,19 @@
             || /E\d+(?:[ ._-]*[-~][ ._-]*(?:E)?|\s*E)\d+/i.test(stem)) return {reason:'暂不支持合并多集字幕'};
         let targets = rows;
         if (rows[0].parsed.tv) {
-            if (!marks.length) return {reason:'需要明确的季集标记，例如 S01E02'};
-            const [,season,episode] = marks[0];
+            let marker = marks[0];
+            if (!marker && archiveName) {
+                const range = /\bTV[ _.-]*(\d{1,3})\s*[-~]\s*(\d{1,3})(?!\d)/i.exec(archiveName);
+                const numbered = /^(.+?)\s+-\s+(\d{1,3})$/.exec(stem);
+                const seasons = rows[0].media?.detail?.seasons?.filter(item => item.season_number > 0);
+                if (range && numbered && seasons?.length === 1 && Number(range[1]) === 1
+                    && Number(range[2]) === seasons[0].episode_count && Number(numbered[2]) >= 1 && Number(numbered[2]) <= Number(range[2])
+                    && subtitleWorkIdentity(rows[0].parsed,[],numbered[1]).titleMatched) {
+                    marker = ['',seasons[0].season_number,numbered[2]];
+                }
+            }
+            if (!marker) return {reason:'需要明确的季集标记，例如 S01E02'};
+            const [,season,episode] = marker;
             targets = rows.filter(row => row.parsed.season === Number(season) && row.parsed.episode === Number(episode));
             if (targets.length !== 1) return {reason:targets.length ? '同一集有多个目标版本' : '季集与所选目标不符'};
             if (targets[0].parsed.endEpisode && targets[0].parsed.endEpisode !== targets[0].parsed.episode)
@@ -103,7 +114,7 @@
         if (subtitleEditions.some((marked,index) => marked && !videoEditions[index])
             || subtitleRelease && videoRelease && subtitleRelease !== videoRelease)
             return {row,reason:'字幕标注的剪辑版本与目标不一致或未确认'};
-        const identity = subtitleWorkIdentity(row.parsed,[],name);
+        const identity = subtitleWorkIdentity(row.parsed,[],archiveName && row.parsed.tv && !marks.length ? stem.replace(/\s+-\s+\d{1,3}$/,'') : name);
         if (identity.hardMismatch) return {row,reason:identity.matchReason};
         if (identity.titleMatched || mediaSubtitleSuffix(row.node.name,name) !== null) return {row};
         const title = (marks.length ? stem.slice(0,marks[0].index) : stem).trim();
@@ -119,7 +130,7 @@
         const counts = new Map();
         const planned = entries.map(entry => {
             if (entry.error) return {...entry,state:'invalid',reason:entry.error};
-            const match = matchSubtitleImport(entry.name,rows), {row} = match;
+            const match = matchSubtitleImport(entry.name,rows,entry.archiveName), {row} = match;
             if (!match.reason) counts.set(row,(counts.get(row) || 0) + 1);
             try {
                 const {text, ...verification} = subtitleValidateContent(match.reason ? {node:{name:entry.label}} : row,entry.bytes,entry.ext,language,log);
@@ -715,6 +726,13 @@
                     const actionRows = rows.filter(row => !row.organized && !row.organizePending && !covered(row) && subtitleCoverageState(row) === 'missing');
                     const knownSeason = !season || first.parsed.season != null && actionRows.every(row => row.parsed.episode != null);
                     const fill = eligibleFill(rows);
+                    if (season && actionRows.length && (!knownSeason || actionRows.some(row => row.cardSearched) && !fill.length)) {
+                        const link = document.createElement('a');
+                        link.textContent = '按片名找整季字幕包 ↗';
+                        link.href = 'https://assrt.net/sub/?searchword=' + encodeURIComponent(first.media?.detail?.name || first.parsed.query);
+                        link.target = '_blank'; link.rel = 'noopener noreferrer';
+                        box.append(link);
+                    }
                     if (actionRows.length && knownSeason) {
                         if (season && !fill.length && actionRows.some(row => row.cardSearched)) {
                             const note = document.createElement('p');
