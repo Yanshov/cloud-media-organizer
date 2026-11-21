@@ -324,26 +324,28 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 .export-options{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin:12px 0}.export-options input{width:auto}.export-options button{font-size:14px;padding:7px 12px}.credential-head{display:flex;justify-content:space-between;align-items:center;gap:12px}.credential-head a{font-size:15px;flex-shrink:0}
 .source-result{margin:12px 0;padding:12px;border:1px solid var(--border);border-radius:8px}.source-result button{margin:8px 8px 0 0;font-size:16px}
 #workspaceSettings{grid-template-rows:minmax(0,1fr);overflow:auto;scrollbar-width:none;overscroll-behavior:contain}
-.settings-main{display:flex;flex-direction:column;min-width:0;min-height:0;padding:25px var(--surface-pad) 12px;background:var(--surface)}
+.settings-main{display:flex;flex-direction:column;min-width:0;min-height:0;padding:25px var(--surface-pad);background:var(--surface)}
 .settings-heading{display:flex;flex:none;align-items:center;justify-content:space-between;gap:14px;margin-bottom:18px;padding-bottom:18px;border-bottom:1px solid var(--border)}.settings-heading h3{margin:0;font-size:clamp(32px,3.6cqw,52px);line-height:1.2;letter-spacing:-.04em}
 .settings-appearance{display:flex;align-items:center;gap:12px;margin-left:auto}.settings-appearance label{display:flex;align-items:center;gap:6px;margin:0;font-size:15px;white-space:nowrap}.settings-appearance select{width:auto}#workspaceSettings .settings-appearance select{margin:0}
 .settings-column{min-width:0}.settings-column:empty{display:none}
-#settingsBasics{display:grid;flex:none;gap:8px;margin-bottom:12px}#settingsBasics:empty{display:none}
-#settingsBasics #mediaSettings{display:flex;align-items:end;gap:12px;flex-wrap:wrap}
+#settingsBasics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));flex:none;gap:16px;margin-bottom:16px}#settingsBasics:empty{display:none}
+#settingsBasics>.sync-item{display:flex;flex-direction:column;min-width:0;min-height:116px;padding:14px 16px;border:1px solid var(--border);border-radius:12px;background:var(--surface)}
+#settingsBasics .sync-item h3{display:flex;align-items:center;gap:8px;flex:none;margin:0 0 10px;font-size:18px}
+#settingsBasics .sync-item>section{display:flex;flex:1;flex-direction:column;min-width:0;gap:8px}
+#settingsBasics #mediaSettings{align-items:stretch;gap:8px}
 #settingsBasics #mediaSettings>label{flex:1;min-width:180px;margin:0}
 #settingsBasics #mediaSettings>label{display:flex;align-items:center;gap:12px}
 #settingsBasics .credential-head{flex:none}
 #settingsBasics #tmdbKey{margin:0}
-#settingsBasics #mediaSettings .panel-actions{margin:0}
+#settingsBasics #mediaSettings .panel-actions{margin-top:auto}
 #settingsModels{display:grid;flex:1 0 245px;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:minmax(0,1fr);gap:16px}
 #settingsModels:has(>:only-child){grid-template-columns:minmax(0,1fr)}#settingsModels:empty{display:none}
 #workspaceSettings .sync-item{margin:0;padding:0;border:0;background:transparent;min-inline-size:0}#workspaceSettings h3>svg{width:18px;height:18px;flex:none;color:var(--accent)}
 #workspaceSettings .sync-item h3{display:flex;align-items:center;gap:8px;margin:0 0 8px;font-size:18px}
-#settingsBasics .sync-item{border-top:1px solid var(--border);padding-top:8px}#settingsBasics .sync-item h3{display:none}
-#settingsBasics .sync-item:has(#cacheSettings) h3{display:flex;margin-bottom:4px}
-#settingsBasics #cacheSettings{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
-#settingsBasics #cacheSettings>p{flex:1;min-width:min(100%,320px);margin:0}
-#settingsBasics #cacheSettings .panel-actions{align-items:center;margin:0}
+#settingsBasics .sync-item:has(#cacheSettings) h3{margin-bottom:8px}
+#settingsBasics #cacheSettings{justify-content:space-between;gap:10px;flex-wrap:wrap}
+#settingsBasics #cacheSettings>p{flex:1;min-width:180px;margin:0}
+#settingsBasics #cacheSettings .panel-actions{align-items:center;margin-top:auto}
 #settingsModels>.sync-item{display:flex;flex-direction:column;min-height:0;padding:18px 20px 12px;border:1px solid var(--border);border-radius:12px;background:var(--surface)}
 #settingsModels .sync-item:has(#mediaAISettings){background:var(--panel)}
 #settingsModels .sync-item h3{flex:none;margin-bottom:12px;font-size:20px}
@@ -359,15 +361,16 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 #toggle{display:grid;place-items:center;width:50px;height:50px;padding:0;border-radius:12px;background:var(--button);color:var(--button-text);box-shadow:0 5px 20px #0003}#toggle:hover:not(:disabled){background:var(--button-hover)}#toggle svg{width:24px;height:24px;pointer-events:none}#toggle[aria-expanded=true]{visibility:hidden}
 @container(max-width:1050px){
     .workspace-navigation{padding:12px 8px}
-    .tool-surface,.settings-main{padding-top:14px}
+    .tool-surface{padding-top:14px}.settings-main{padding-block:14px}
     .settings-heading{padding-bottom:10px;margin-bottom:10px}.settings-heading h3{font-size:28px}
     #settingsModels{gap:10px}#settingsModels .sync-item{padding:10px}#settingsModels .sync-item>section{gap:2px}
     .settings-appearance label{font-size:14px}
 }
-@container(max-height:660px){.settings-main{padding-bottom:8px}#workspaceSettings .sync-item label{margin:2px 0}#workspaceSettings .sync-item input:not([type=checkbox]),#workspaceSettings .sync-item select{min-height:34px;padding-block:4px}#settingsBasics{margin-bottom:8px}}
+@container(max-height:660px){#workspaceSettings .sync-item label{margin:2px 0}#workspaceSettings .sync-item input:not([type=checkbox]),#workspaceSettings .sync-item select{min-height:34px;padding-block:4px}#settingsBasics{margin-bottom:10px}}
 @container(max-width:790px){
     .workspace-body{--surface-pad:12px}.workspace-navigation{width:134px}
     .settings-heading,.settings-appearance{flex-wrap:wrap}
+    #settingsBasics{grid-template-columns:minmax(0,1fr);gap:10px;margin-bottom:10px}
     #settingsModels{grid-template-columns:minmax(0,1fr);grid-template-rows:auto;align-content:start;flex-basis:auto;flex-grow:0}
     #settingsModels .sync-item>section{overflow:visible}
     .tool-list-heading{flex-wrap:wrap;gap:5px}#subtitleFilters{margin-left:auto}
