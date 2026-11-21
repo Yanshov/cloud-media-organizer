@@ -119,8 +119,8 @@ async function guangyaExisting(){
 function startup(){
  const boot=fs.readFileSync(path.join(root,'src/bootstrap.js'),'utf8');
  for(const [hostname,expected] of [['www.guangyapan.com',['hooks','ready']],['www.123pan.com',['hooks','ready']],['pan.baidu.com',['ready']]]){
-  const calls=[],callbacks=[];const ctx=vm.createContext({location:{hostname},installHooks:()=>calls.push('hooks'),ready:fn=>{calls.push('ready');callbacks.push(fn)},is123Host:h=>h.includes('123pan'),initGuangya:()=>calls.push('json'),initExporter:()=> 'panel',initManifestImporter:()=>calls.push('json'),initMergedMedia:()=>calls.push('merged'),initSubtitleSync:()=>calls.push('subtitleSync')});
-  vm.runInContext(boot,ctx);assert.deepEqual(calls,expected);callbacks.forEach(fn=>fn());assert.ok(calls.includes('json'));if(hostname!=='pan.baidu.com'){assert.equal(calls.filter(call=>call==='merged').length,1);assert.equal(calls.at(-1),'subtitleSync')}
+  const calls=[],callbacks=[];const ctx=vm.createContext({location:{hostname},installHooks:()=>calls.push('hooks'),ready:fn=>{calls.push('ready');callbacks.push(fn)},is123Host:h=>h.includes('123pan'),initGuangya:()=>calls.push('json'),initExporter:()=> 'panel',initManifestImporter:()=>calls.push('json'),initMergedMedia:()=>calls.push('merged')});
+  vm.runInContext(boot,ctx);assert.deepEqual(calls,expected);callbacks.forEach(fn=>fn());assert.deepEqual(calls.slice(expected.length),hostname==='pan.baidu.com'?['json']:['json','merged']);
  }
  for(const navigator of [
   {userAgentData:{mobile:true}}, {userAgent:'Mozilla/5.0 (Linux; Android 15)'}, {userAgent:'Mozilla/5.0 (iPhone)'},
@@ -131,7 +131,7 @@ function startup(){
  assert.doesNotMatch(script,/@container(max-width:760px)/,'Mobile layout is removed');
  const names=[...script.matchAll(/^    (?:async )?function (\w+)\(/gm)].map(m=>m[1]);assert.equal(new Set(names).size,names.length,'No duplicate function declarations');
  assert.ok(script.includes('id="subtitleViewChoice" value="choice"'));assert.ok(script.includes('// @version      '+version));
- assert.match(script,/subtitleSyncTab:'captions'/,'Subtitle sync tab keeps its workspace icon');
+ assert.doesNotMatch(script,/字幕校对|subtitleSyncTab|initSubtitleSync|suggestSubtitleSync/,'The installable script must omit subtitle alignment');
  assert.match(script,/id="settingsBasics"/,'Window and appearance share the compact basic settings column');
  assert.equal((script.match(/<summary>导入清单<\/summary>/g)||[]).length,2,'Both import implementations expose one combined entry');
  assert.match(script,/<input id="syncExisting" type="checkbox">/,'Replacing old copies is opt-in');

@@ -17,6 +17,13 @@ function languageAndLinking(){
   const scan=await ctx.collectMediaSelection([video],drive);assert.equal(scan.linked.get('v').length,1);assert.equal(reads,1,'Sibling listing reused within one scan');
  }
  for(const suffix of ['2','.2001','.S01E02','.unknown'])assert.equal(ctx.mediaSubtitleSuffix(video.name,'电影.2000'+suffix+'.srt'),null);
+ const original={id:'original',name:'电影.2000.zh.srt'};
+ const legacy={id:'legacy',name:'different-basename.zh.synced.srt'};
+ const historicalLink={videoId:'v',language:'zh',variant:'sync'};
+ const history={load:()=>new Map(),get:node=>node===legacy?historicalLink:null,associated:(_record,node)=>node===video};
+ const linked=ctx.mediaSubtitleLinks([video,original,legacy],'p',history).linked.get('v');
+ assert.deepEqual(Array.from(linked,sub=>sub.suffix),['.zh','.zh.synced'],'Previously saved copies keep a distinct suffix during organization');
+ assert.equal(ctx.mediaSubtitleSuffix(video.name,'电影.2000.zh.synced.srt'),'.zh.synced');
  let nodes=[video],reads=0;const drive={parentId:'p',children:async()=>{reads++;return nodes}};
  await ctx.collectMediaSelection([video],drive);nodes=[video,{id:'s',name:'电影.2000.zh-cn.srt'}];
  const scan=await ctx.collectMediaSelection([video],drive);assert.equal(scan.linked.get('v').length,1);assert.equal(reads,2,'Every new scan reads fresh data');

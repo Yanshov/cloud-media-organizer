@@ -231,7 +231,6 @@
         const flow = {controls:[], registryReady:false};
         initSubtitles(provider,flow);
         initMediaOrganizer(provider,flow);
-        return flow;
     }
     function initSubtitles(provider = '123', flow) {
         const ui = makePanel(provider + (flow ? ' 影视整理' : ' 字幕'), (flow ? mediaOrganizerMarkup() : '') + `
@@ -1672,28 +1671,6 @@
                     row.media.include = false;
                 }
                 flow.closeWork();
-            };
-            flow.syncVideos = current => sameCheckedSelection(current)
-                ? inventory.filter(row => row.media?.detail && !row.media.error && !row.organized && !row.organizePending).map(row => row.node)
-                : null;
-            flow.syncChanged = (id,files,pending = false) => {
-                flow.invalidate(pending ? '校对副本待核对' : '字幕文件已变化');
-                if (subtitleContext) drive = subtitleDrive(subtitleContext);
-                const row = byId.get(String(id));
-                if (!row) return;
-                row.writeBlocked = pending;
-                if (files.length) {
-                    for (const file of files) {
-                        if (!row.subtitles.some(sub => String(sub.id) === String(file.id))) row.subtitles.push(file);
-                        row.siblingNames?.add(file.name.toLowerCase());
-                    }
-                    if (!row.embedded?.chinese) {
-                        row.complete = false;
-                        row.coverageUnconfirmed = true;
-                        row.searchMessage = '新增校对副本，请重新检测字幕覆盖';
-                    }
-                }
-                flow.requestRender();
             };
             flow.requireScope = async () => {
                 if (!flow.registryReady) throw new Error('请先识别并检查当前选区');

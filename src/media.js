@@ -234,11 +234,11 @@
                 const ids = new Set(videoIds.map(String));
                 return JSON.stringify([...load()].filter(([,record]) => ids.has(record.videoId)));
             },
-            link(row,sub,language,variant) {
+            link(row,sub,language) {
                 if (sub.id == null || row.node.id == null) return;
                 const entries = load(), id = String(sub.id);
                 save(entries,id,{file:snapshot(sub,row.node.parentId),original:sub.name,
-                    videoId:String(row.node.id),video:snapshot(row.node,row.node.parentId),language,variant});
+                    videoId:String(row.node.id),video:snapshot(row.node,row.node.parentId),language});
             },
             organized(before,after) {
                 const entries = load(), id = String(before.id);
@@ -267,10 +267,13 @@
             if (candidates.length !== 1) { unmatched.push(sub); continue; }
             const video = candidates[0];
             const inferred = mediaSubtitleSuffix(video.name,sub.name);
-            const suffix = saved?.variant === 'sync' ? (saved.language && saved.language !== 'und' ? '.' + saved.language : '') + '.synced'
-                : inferred || (saved?.language ? '.' + saved.language : '');
+            const languageSuffix = saved?.language ? '.' + saved.language : '';
+            // An older .synced subtitle may have been saved with a different video basename.
+            const legacySuffix = saved && /\.synced$/i.test(mediaStem(sub.name))
+                ? (saved.language === 'und' ? '' : languageSuffix) + '.synced' : '';
+            const suffix = inferred || legacySuffix || languageSuffix;
             if (!linked.has(String(video.id))) linked.set(String(video.id),[]);
-            linked.get(String(video.id)).push({...sub,parentId,suffix,language:saved?.language,variant:saved?.variant});
+            linked.get(String(video.id)).push({...sub,parentId,suffix,language:saved?.language});
         }
         return {linked,unmatched};
     }
