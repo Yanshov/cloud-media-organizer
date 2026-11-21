@@ -236,6 +236,45 @@ async function onlineSeasonSearch() {
     assert.equal(calls.length,2);
 }
 
+async function assrtPartialSeasonSearch() {
+    const detailCalls = [], searchTerms = [], messages = [];
+    const file = (number, title = 'Better.Call.Saul', season = '06') => ({
+        f:title+'.S'+season+'E'+number+'.1080p.chs.ass',url:'https://file0.assrt.net/'+title+'/'+season+'/'+number
+    });
+    const files = new Map([
+        [1,[file('04'),file('06'),file('07','Better.Call.Saul','05')]],
+        [2,[file('05'),file('07','Another.Show')]],
+        [3,[file('07'),{...file('07'),url:'https://file0.assrt.net/alternate'}]]
+    ]);
+    const {api,collect} = fixture(async (url,options) => {
+        const params = new URLSearchParams(options.body);
+        if (url.endsWith('/search')) {
+            const query = params.get('q');
+            searchTerms.push(query);
+            const ids = query === '风骚律师 S06' ? [1,1] : query === 'Better Call Saul S06' ? [2,3] : [1,2,3];
+            return {status:0,sub:{subs:ids.map(id => ({id}))}};
+        }
+        const id = Number(params.get('id'));
+        detailCalls.push(id);
+        return {status:0,sub:{subs:[{id,lang:{desc:'简'},filename:'Better.Call.Saul.S06.Part'+id+'.zip',filelist:files.get(id)}]}};
+    });
+    const numbers = ['04','05','06','07'];
+    const rows = collect(numbers.map(n => video(n,'风骚律师.2015.S06E'+n+'.1080p.mkv')));
+    for (const row of rows) row.parsed.aliases = ['Better Call Saul'];
+    const service = api.createSubtitleService({log:(_event,message) => messages.push(message)});
+    const config = {assrtKey:'example',language:lang};
+    await service.prepareSeason(rows,config);
+    assert.deepEqual(searchTerms.slice(0,2),['风骚律师 S06','Better Call Saul S06']);
+    assert.deepEqual(detailCalls,[1,2,3],'Overlapping searches do not repeat detail requests');
+    for (const row of rows) {
+        await api.searchSubtitleSources(row,config,service);
+        const number = row.node.id;
+        assert.equal(row.selectedCandidate?.url,number === '07' ? undefined : file(number).url);
+    }
+    assert.ok(messages.some(message => message.includes('保留 3/4 集已匹配字幕')));
+    console.log('PASS ASSRT partial coverage: season queries, safe matches across packages, deduplication and ambiguous episode rejection');
+}
+
 async function upload() {
     for (const scenario of ['new-subtitle','moved','collision','ok','lost']) {
         const {api,state,memory,collect} = fixture();
@@ -287,4 +326,4 @@ async function upload() {
     console.log('PASS import upload: production recheck, no overwrite, content readback and receipt recovery');
 }
 
-(async()=>{matching(); await upload(); await organizeAfterUpload(); await recoverLeftoverSubtitle();})().catch(error=>{console.error(error);process.exitCode=1;});
+(async()=>{matching(); await upload(); await organizeAfterUpload(); await assrtPartialSeasonSearch(); await recoverLeftoverSubtitle();})().catch(error=>{console.error(error);process.exitCode=1;});

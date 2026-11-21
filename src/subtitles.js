@@ -353,11 +353,22 @@
             return Array.isArray(result.sub?.subs) ? result.sub.subs : [];
         });
         const prepareAssrt = async (rows,config,verify) => {
-            const visited = new Set();
-            for (const title of subtitleSearchNames(rows[0].parsed)) {
-                const hits = await assrtRequest('search',{q:title,cnt:8},config,verify);
+            const visited = new Set(), partial = new Map(), maxDetails = 8;
+            const parsed = rows[0].parsed, names = subtitleSearchNames(parsed);
+            const season = ' S' + String(parsed.season).padStart(2,'0');
+            const searches = [
+                ...names.slice(0,2).map(name => ({query:name + season,limit:2})),
+                ...names.map(query => ({query,limit:maxDetails}))
+            ];
+            for (const {query,limit} of searches) {
+                if (visited.size >= maxDetails) break;
+                const hits = await assrtRequest('search',{q:query,cnt:8},config,verify);
+                log('射手网查询', query + ' · 返回 ' + hits.length + ' 条资源');
+                let checked = 0;
                 for (const hit of hits) {
-                    if (!Number.isSafeInteger(hit.id) || visited.has(hit.id) || visited.size >= 8) continue;
+                    if (checked >= limit || visited.size >= maxDetails) break;
+                    if (!Number.isSafeInteger(hit?.id) || visited.has(hit.id)) continue;
+                    checked++;
                     visited.add(hit.id);
                     const [pack] = await assrtRequest('detail',{id:hit.id},config,verify);
                     if (String(pack?.id) !== String(hit.id) || !Array.isArray(pack.filelist)) continue;
@@ -377,13 +388,20 @@
                         if (found.has(match.row)) { found.set(match.row,null); continue; }
                         found.set(match.row,{source:'射手网',name,...info,url:url.href,ext:name.split('.').pop().toLowerCase(),titleMatched:true,release:pack.filename});
                     }
-                    if (!rows.every(target => found.get(target))) continue;
-                    for (const [target,candidate] of found) assrtEpisodes.set(target,[candidate]);
-                    log('射手网整季包',pack.filename + ' · 已对应 ' + rows.length + ' 集');
-                    return;
+                    const matched = [...found].filter(([,candidate]) => candidate);
+                    if (!matched.length) continue;
+                    log('射手网包内匹配', pack.filename + ' · 匹配 ' + matched.length + '/' + rows.length + ' 集');
+                    if (matched.length === rows.length) {
+                        for (const [target,candidate] of matched) assrtEpisodes.set(target,[candidate]);
+                        log('射手网整季包',pack.filename + ' · 已对应 ' + rows.length + ' 集');
+                        return;
+                    }
+                    for (const [target,candidate] of matched) if (!partial.has(target)) partial.set(target,candidate);
                 }
             }
-            log('射手网整季包',rows[0].parsed.query + ' · 未找到完整覆盖的字幕包');
+            for (const [target,candidate] of partial) assrtEpisodes.set(target,[candidate]);
+            log('射手网整季包',parsed.query + ' · 保留 ' + partial.size + '/' + rows.length + ' 集已匹配字幕'
+                + (partial.size < rows.length ? '，缺集由其他来源补查' : '，来自多个字幕包'));
         };
         const archiveWork = paced(0,async (work,verify) => { check(); verify(); return work(); });
         const transfer = (result,verify) => {

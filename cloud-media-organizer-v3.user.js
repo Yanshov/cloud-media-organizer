@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v3.0（重构版）
 // @namespace    local.cloud-media-organizer
-// @version      3.0.11
+// @version      3.0.12
 // @description  面向百度网盘、123 云盘和光鸭网盘的浏览器脚本，支持跨盘 JSON 清单、影视整理与字幕补齐。
 // @match        https://pan.baidu.com/*
 // @match        https://yun.baidu.com/*
@@ -40,7 +40,7 @@
     if (typeof navigator !== 'undefined' && (navigator.userAgentData?.mobile || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
         navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) return;
 
-    const VERSION = '3.0.11';
+    const VERSION = '3.0.12';
     let jsonTaskStopped = false;
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
@@ -5157,11 +5157,22 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             return Array.isArray(result.sub?.subs) ? result.sub.subs : [];
         });
         const prepareAssrt = async (rows,config,verify) => {
-            const visited = new Set();
-            for (const title of subtitleSearchNames(rows[0].parsed)) {
-                const hits = await assrtRequest('search',{q:title,cnt:8},config,verify);
+            const visited = new Set(), partial = new Map(), maxDetails = 8;
+            const parsed = rows[0].parsed, names = subtitleSearchNames(parsed);
+            const season = ' S' + String(parsed.season).padStart(2,'0');
+            const searches = [
+                ...names.slice(0,2).map(name => ({query:name + season,limit:2})),
+                ...names.map(query => ({query,limit:maxDetails}))
+            ];
+            for (const {query,limit} of searches) {
+                if (visited.size >= maxDetails) break;
+                const hits = await assrtRequest('search',{q:query,cnt:8},config,verify);
+                log('射手网查询', query + ' · 返回 ' + hits.length + ' 条资源');
+                let checked = 0;
                 for (const hit of hits) {
-                    if (!Number.isSafeInteger(hit.id) || visited.has(hit.id) || visited.size >= 8) continue;
+                    if (checked >= limit || visited.size >= maxDetails) break;
+                    if (!Number.isSafeInteger(hit?.id) || visited.has(hit.id)) continue;
+                    checked++;
                     visited.add(hit.id);
                     const [pack] = await assrtRequest('detail',{id:hit.id},config,verify);
                     if (String(pack?.id) !== String(hit.id) || !Array.isArray(pack.filelist)) continue;
@@ -5181,13 +5192,20 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                         if (found.has(match.row)) { found.set(match.row,null); continue; }
                         found.set(match.row,{source:'射手网',name,...info,url:url.href,ext:name.split('.').pop().toLowerCase(),titleMatched:true,release:pack.filename});
                     }
-                    if (!rows.every(target => found.get(target))) continue;
-                    for (const [target,candidate] of found) assrtEpisodes.set(target,[candidate]);
-                    log('射手网整季包',pack.filename + ' · 已对应 ' + rows.length + ' 集');
-                    return;
+                    const matched = [...found].filter(([,candidate]) => candidate);
+                    if (!matched.length) continue;
+                    log('射手网包内匹配', pack.filename + ' · 匹配 ' + matched.length + '/' + rows.length + ' 集');
+                    if (matched.length === rows.length) {
+                        for (const [target,candidate] of matched) assrtEpisodes.set(target,[candidate]);
+                        log('射手网整季包',pack.filename + ' · 已对应 ' + rows.length + ' 集');
+                        return;
+                    }
+                    for (const [target,candidate] of matched) if (!partial.has(target)) partial.set(target,candidate);
                 }
             }
-            log('射手网整季包',rows[0].parsed.query + ' · 未找到完整覆盖的字幕包');
+            for (const [target,candidate] of partial) assrtEpisodes.set(target,[candidate]);
+            log('射手网整季包',parsed.query + ' · 保留 ' + partial.size + '/' + rows.length + ' 集已匹配字幕'
+                + (partial.size < rows.length ? '，缺集由其他来源补查' : '，来自多个字幕包'));
         };
         const archiveWork = paced(0,async (work,verify) => { check(); verify(); return work(); });
         const transfer = (result,verify) => {
@@ -8116,8 +8134,12 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     const destinationKeys = new Set(rows.filter(row => staged.has(row)).map(row =>
                         JSON.stringify([row.node.parentId,staged.get(row).name.toLowerCase()])));
                     let preflightError = '';
-                    if (staged.size !== rows.length || destinationKeys.size !== rows.length)
-                        preflightError = '整季字幕下载、正文或文件名核对不完整，请导入字幕。';
+                    if (staged.size !== rows.length) {
+                        const missing = subtitleEpisodeRange(rows.filter(row => !staged.has(row)));
+                        preflightError = '整季校验通过 ' + staged.size + '/' + rows.length + ' 集'
+                            + (missing ? '，第 ' + missing + '未通过' : '') + '，本次未上传。';
+                    } else if (destinationKeys.size !== rows.length)
+                        preflightError = '整季字幕存在目标文件名冲突，本次未上传。';
                     else {
                         await requireCheckedSelection();
                         const children = cachedDriveChildren(subtitleContext.source,new Map(),check);

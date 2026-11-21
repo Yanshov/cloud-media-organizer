@@ -1417,8 +1417,12 @@
                     const destinationKeys = new Set(rows.filter(row => staged.has(row)).map(row =>
                         JSON.stringify([row.node.parentId,staged.get(row).name.toLowerCase()])));
                     let preflightError = '';
-                    if (staged.size !== rows.length || destinationKeys.size !== rows.length)
-                        preflightError = '整季字幕下载、正文或文件名核对不完整，请导入字幕。';
+                    if (staged.size !== rows.length) {
+                        const missing = subtitleEpisodeRange(rows.filter(row => !staged.has(row)));
+                        preflightError = '整季校验通过 ' + staged.size + '/' + rows.length + ' 集'
+                            + (missing ? '，第 ' + missing + '未通过' : '') + '，本次未上传。';
+                    } else if (destinationKeys.size !== rows.length)
+                        preflightError = '整季字幕存在目标文件名冲突，本次未上传。';
                     else {
                         await requireCheckedSelection();
                         const children = cachedDriveChildren(subtitleContext.source,new Map(),check);
