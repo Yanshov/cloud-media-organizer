@@ -98,6 +98,12 @@
             .replace(/^\s*(?:剧场版|劇場版)\s*[:：._ -]*/u,'')
             .replace(/[\s:：._-]*(?:剧场版|劇場版)\s*$/u,'').trim();
     }
+    const subtitleTitleKey = value => titleKey(String(value || '').replace(/[ː∶]/g, ':'));
+    function subtitleReleaseChapter(parsed) {
+        if (!parsed.tv || !parsed.workResolved || !(parsed.seasons || []).some(season => season.season_number > 0 && season.season_number === parsed.season)) return '';
+        const release = parsed.videoReleaseTitle || '';
+        return release && ![parsed.query,...(parsed.aliases || [])].some(title => subtitleTitleKey(title) === subtitleTitleKey(release)) ? release : '';
+    }
     function subtitleWorkIdentity(parsed, fields, name) {
         const titleNumbers = String(parsed.query || '').match(/(?:19|20)\d{2}/g) || [];
         const years = value => [...String(value).normalize('NFKC').matchAll(/(?:^|[^\p{L}\p{N}])((?:19|20)\d{2})(?=$|[^\p{L}\p{N}])/gu)].map(m => m[1]).filter(y => Number(y) <= new Date().getFullYear() + 1 && (!titleNumbers.includes(y) || y === String(parsed.year)));
@@ -123,7 +129,7 @@
             text = text.replace(/(?:^|[. _-])(?:SE?\d{1,2}(?:[ ._-]*E[ ._-]*|[ ._-]+(?:EP?[ ._-]*)?)\d{1,3}|\d{1,2}x\d{1,3}|Season[ ._-]*\d{1,2}[ ._-]+\d{1,3})[\s\S]*$/i, '');
             if (parsed.tv && !isTitle) text = text.replace(/(?:\s+-\s*|[ ._-]+(?:EP?|Episode)[ ._-]*)\d{1,3}(?:v\d+)?[ ._-]*$/i,'');
             if (parsed.tv) text = text.replace(/(?:[. _-]*(?:S\d{1,2}|Season[. _-]*\d{1,2}|第[零〇一二两三四五六七八九十百\d]+季))[. _-]*$/i, '');
-            return titleKey(parsed.tv ? text : mediaTheatricalQuery(text));
+            return subtitleTitleKey(parsed.tv ? text : mediaTheatricalQuery(text));
         };
         const target = clean(subtitleQueryTitle(parsed.query, parsed.year), true);
         const fileYears = years(name), packYears = [...new Set(fields.flatMap(years))];
@@ -137,7 +143,7 @@
             const text = String(value || '').normalize('NFKC');
             return [text, text.replace(/^(.*?\D)\d+\s*:\s*(\S.*)$/, '$1:$2')].map(value => clean(value, true)).filter(Boolean);
         };
-        const aliases = new Set([target, ...[subtitleQueryTitle(parsed.query, parsed.year), ...(parsed.aliases || [])].flatMap(variants)]);
+        const aliases = new Set([target, ...[subtitleQueryTitle(parsed.query, parsed.year), ...(parsed.aliases || []), subtitleReleaseChapter(parsed)].flatMap(variants)]);
         let packMatched = false;
         const splitMixed = part => {
             const mixed = part.normalize('NFKC').replace(/^(?:【[^】]*(?:字幕组|字幕社|工作室)[^】]*】|\[[^\]]*(?:字幕组|字幕社|工作室)\])[. _-]*/i, '').trim().match(/^([\p{Script=Han}\p{N}\p{P}\s]+?)[.\s]+([a-z].*)$/iu);
@@ -549,7 +555,9 @@
                 const withRelease = !config.seasonSearch && (/\b(?:BluRay|BDRip|WEB[ ._-]?(?:DL|Rip)|REMUX|HDTV|x26[45]|extended|theatrical)\b/i.test(original)
                     || parsed.tv && /\b(?:2160p|1080p|720p)\b/i.test(original));
                 const plainQueries = names.map(name => name + suffix);
-                const queries = (withRelease ? [...new Set([original.replace(/\.[^.]+$/,''),...plainQueries])] : plainQueries).slice(0,3);
+                const chapter = subtitleReleaseChapter(parsed);
+                const chapterQuery = chapter && chapter + (config.seasonSearch ? '' : ' ' + String(parsed.episode).padStart(2,'0'));
+                const queries = [...new Set([chapterQuery,withRelease && original.replace(/\.[^.]+$/,''),...plainQueries].filter(Boolean))].slice(0,3);
                 const filter = (items, {parsed:target,node}) => {
                     const candidates = [], seen = new Set(), excluded = {年份:0,季集:0,语言:0,内容:0,无关:0,待确认上限:0,格式:0,重复:0}, rejectionSamples = [];
                     const sampleRejection = (name, reason) => { if (rejectionSamples.length < 8) rejectionSamples.push(`${name}（${reason}）`); };
@@ -1031,29 +1039,28 @@
         else if (title.includes('[')) title = named.query;
         title = title.replace(/(?:[ ._-]*(?:S\d{1,2}|Season[ ._-]*\d{1,2}|第\s*[零〇一二两三四五六七八九十\d]+\s*季))[ ._-]*$/i,'')
             .replace(/^[ ._\[\]-]+|[ ._\[\]-]+$/g,'').trim();
-        const aliases = new Set([parsed.query,...(parsed.aliases || [])].filter(Boolean).map(titleKey));
+        const aliases = new Set([parsed.query,...(parsed.aliases || [])].filter(Boolean).map(subtitleTitleKey));
         const seasons = (parsed.seasons || []).filter(item => item.season_number > 0);
         if (season == null && episode != null && parsed.workResolved && title) {
-            const releaseTitle = titleKey(parsed.videoReleaseTitle);
-            const subtitleTitle = titleKey(title);
-            if (releaseTitle && releaseTitle === subtitleTitle && !aliases.has(releaseTitle)
-                && seasons.some(item => item.season_number === parsed.season)) season = parsed.season;
+            const releaseTitle = subtitleTitleKey(subtitleReleaseChapter(parsed));
+            const subtitleTitle = subtitleTitleKey(title);
+            if (releaseTitle && releaseTitle === subtitleTitle) season = parsed.season;
             const suffix = title.match(/^(.*?)[ ._-]*(\d{1,2}|VIII|VII|VI|IV|IX|III|II|V|X|I)$/i);
             const roman = {I:1,II:2,III:3,IV:4,V:5,VI:6,VII:7,VIII:8,IX:9,X:10};
             const number = suffix && (/^\d+$/.test(suffix[2]) ? Number(suffix[2]) : roman[suffix[2].toUpperCase()]);
-            if (season == null && !aliases.has(titleKey(title)) && suffix && aliases.has(titleKey(suffix[1]))
+            if (season == null && !aliases.has(subtitleTitleKey(title)) && suffix && aliases.has(subtitleTitleKey(suffix[1]))
                 && seasons.some(item => item.season_number === number)) {
                 season = number;
                 title = suffix[1].trim();
             } else if (season == null) {
                 const matches = seasons.filter(item => {
-                    const label = titleKey(item.name);
+                    const label = subtitleTitleKey(item.name);
                     if (!label || /^(?:season\d+|第[零〇一二两三四五六七八九十\d]+季)$/i.test(label)) return false;
-                    return aliases.has(titleKey(title)) ? seasons.length === 1
-                        : [...aliases].some(alias => titleKey(title) === alias + label);
+                    return aliases.has(subtitleTitleKey(title)) ? seasons.length === 1
+                        : [...aliases].some(alias => subtitleTitleKey(title) === alias + label);
                 });
                 if (matches.length === 1) season = matches[0].season_number;
-                if (season == null && seasons.length === 1 && aliases.has(titleKey(title))) season = seasons[0].season_number;
+                if (season == null && seasons.length === 1 && aliases.has(subtitleTitleKey(title))) season = seasons[0].season_number;
             }
         }
         const episodeAt = marker ? marker.index + marker[0].lastIndexOf(marker[2])
