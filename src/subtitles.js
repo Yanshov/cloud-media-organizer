@@ -104,6 +104,30 @@
         const release = parsed.videoReleaseTitle || '';
         return release && ![parsed.query,...(parsed.aliases || [])].some(title => subtitleTitleKey(title) === subtitleTitleKey(release)) ? release : '';
     }
+    /** Recovers one chapter supported by different, already covered episodes of the same season. */
+    function subtitleSeasonRelease(rows) {
+        const chapters = new Map();
+        for (const row of rows) {
+            const {parsed,verification} = row;
+            const name = verification?.projectVideoName;
+            if (!row.complete || !parsed.workResolved || !name || verification.work?.status === 'mismatch') continue;
+            const title = subtitleQueryTitle(subtitleEpisodeName(name,parsed).title,parsed.year);
+            const target = {...parsed,videoReleaseTitle:title};
+            if (!subtitleReleaseChapter(target) || !exactSubtitleEpisode(name,target)) continue;
+            const match = subtitleCandidateFilter({...parsed,videoReleaseTitle:undefined},[],name);
+            if (match.excluded || match.hardMismatch || !match.titleMatched && !match.related) continue;
+            const key = subtitleTitleKey(title);
+            if (!chapters.has(key)) chapters.set(key,{title,episodes:new Set()});
+            chapters.get(key).episodes.add(parsed.episode);
+        }
+        if (chapters.size !== 1) return null;
+        const [key,chapter] = [...chapters][0];
+        if (chapter.episodes.size < 2 || rows.some(row => {
+            const original = subtitleReleaseChapter(row.parsed);
+            return original && subtitleTitleKey(original) !== key;
+        })) return null;
+        return {title:chapter.title,count:chapter.episodes.size};
+    }
     function subtitleWorkIdentity(parsed, fields, name) {
         const titleNumbers = String(parsed.query || '').match(/(?:19|20)\d{2}/g) || [];
         const years = value => [...String(value).normalize('NFKC').matchAll(/(?:^|[^\p{L}\p{N}])((?:19|20)\d{2})(?=$|[^\p{L}\p{N}])/gu)].map(m => m[1]).filter(y => Number(y) <= new Date().getFullYear() + 1 && (!titleNumbers.includes(y) || y === String(parsed.year)));
@@ -552,7 +576,7 @@
             async prepareSeason(rows,config,verify = () => {}) {
                 const row = rows.find(row => row.parsed.episode != null && (!row.parsed.endEpisode || row.parsed.endEpisode === row.parsed.episode)), parsed = row?.parsed;
                 if (!parsed?.tv || parsed.season == null || !parsed.query) return;
-                const key = JSON.stringify([parsed.tmdbId || '',parsed.query,parsed.year,parsed.season,subtitleSearchNames(parsed),config.language,
+                const key = JSON.stringify([parsed.tmdbId || '',parsed.query,parsed.year,parsed.season,subtitleReleaseChapter(parsed),subtitleSearchNames(parsed),config.language,
                     config.thunder,config.assrtKey,rows.map(target => target.node.id || target.parsed.episode)]);
                 if (!seasonPreparations.has(key)) {
                     const task = (async () => {
@@ -593,7 +617,8 @@
                 if (!title) throw subtitleSourceError('缺少可搜索的作品名');
                 if (parsed.tv && (parsed.season == null || parsed.episode == null)) throw subtitleSourceError('缺少明确季集，未按片名搜索');
                 if (parsed.endEpisode && parsed.endEpisode !== parsed.episode) throw subtitleSourceError('合并多集视频需单独选字幕');
-                const seasonKey = parsed.tv ? JSON.stringify(['thunder-season',titleKey(title),parsed.year || '',parsed.tmdbId || '',parsed.season]) : '';
+                const chapter = subtitleReleaseChapter(parsed);
+                const seasonKey = parsed.tv ? JSON.stringify(['thunder-season',titleKey(title),parsed.year || '',parsed.tmdbId || '',parsed.season,chapter]) : '';
                 let items, attempts;
                 const suffix = parsed.tv ? ' S' + String(parsed.season).padStart(2,'0') + (config.seasonSearch ? '' : 'E' + String(parsed.episode).padStart(2,'0')) : '';
                 const names = subtitleSearchNames(parsed);
@@ -601,7 +626,6 @@
                 const withRelease = !config.seasonSearch && (/\b(?:BluRay|BDRip|WEB[ ._-]?(?:DL|Rip)|REMUX|HDTV|x26[45]|extended|theatrical)\b/i.test(original)
                     || parsed.tv && /\b(?:2160p|1080p|720p)\b/i.test(original));
                 const plainQueries = names.map(name => name + suffix);
-                const chapter = subtitleReleaseChapter(parsed);
                 const chapterQuery = chapter && chapter + (config.seasonSearch ? '' : ' ' + String(parsed.episode).padStart(2,'0'));
                 const chapterEpisodeQuery = chapter && !config.seasonSearch
                     && chapter + ' S' + parsed.season + 'E' + String(parsed.episode).padStart(2,'0');
@@ -1076,7 +1100,8 @@
         const dialogue = timeline.dialogue.join('\n');
         if (language !== 'en' && !/[\u3400-\u9fff]/.test(dialogue)) throw new Error('字幕正文未检测到中文，未上传');
         if (language === 'en' && !/[a-z]{2}/i.test(dialogue)) throw new Error('字幕正文未检测到英文，未上传');
-        return {text, encoding:description, ...timing, work:{status:'unconfirmed', reason:'正文格式和语言通过，作品归属未确认'}};
+        return {text, encoding:description, ...timing, projectVideoName:/^(?:ass|ssa)$/.test(ext) ? subtitleProjectVideo(text) : '',
+            work:{status:'unconfirmed', reason:'正文格式和语言通过，作品归属未确认'}};
     }
     function subtitleVerificationMessage(result) {
         return `格式/语言通过；${({file:'对白范围与视频文件时长相符', unknown:'无时长参考', reference:'TMDB 仅作作品时长参考', 'reference-difference':'与 TMDB 作品时长参考有差异'})[result.evidence] || '时长证据待确认'}；${result.work?.status === 'supported' ? 'AI 支持作品归属（非实证）' : '作品归属未确认'}；未核对音画同步`;

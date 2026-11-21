@@ -854,6 +854,33 @@
             try {
                 drive.assertReady?.();
                 diag('并发策略','视频任务上限 8，AI 请求上限 2；同季命名判断合并，优先使用整季缓存');
+                const releaseGroups = subtitleSearchGroups(inventory).filter(group => group[0].parsed.tv
+                    && searchedGroups.has(group[0].groupKey)
+                    && group.some(row => subtitleCoverageState(row) === 'missing' && !subtitleReleaseChapter(row.parsed)));
+                const oldClues = releaseGroups.flat().filter(row => row.complete && row.parsed.workResolved
+                    && /\.(?:ass|ssa)$/i.test(row.verifiedSubtitle?.name || '') && row.verification
+                    && row.verification.projectVideoName === undefined);
+                if (oldClues.length) await batchStage(oldClues,'同季字幕搜索线索（已有字幕）',batchLog,async (row,verify,_index,observe) => {
+                    const sub = row.verifiedSubtitle;
+                    try {
+                        const bytes = await drive.read(sub,message => diag('线索读取重试',message),verify);
+                        verify();
+                        const result = subtitleValidateContent(row,bytes,sub.name.split('.').pop().toLowerCase(),config.language);
+                        row.verification = {...row.verification,projectVideoName:result.projectVideoName};
+                        drive.verified?.remember(sub,bytes,config.language,row.verification.encoding,row,row.verification);
+                    } catch (error) {
+                        observe(error); verify();
+                        if (error.stop || error.phase === 'drive-auth' || [401,403].includes(error.status)) throw error;
+                        diag('同季线索读取失败',sub.name + ' · ' + error.message);
+                        return 'failed';
+                    }
+                },check,8,'仅补读旧核验记录缺少的 ASS/SSA 视频名线索，结果随正文核验缓存保存');
+                for (const group of releaseGroups) {
+                    const chapter = subtitleSeasonRelease(group);
+                    if (!chapter) continue;
+                    for (const row of group) if (!subtitleReleaseChapter(row.parsed)) row.parsed.videoReleaseTitle = chapter.title;
+                    diag('同季搜索线索',`${group[0].parsed.query} · S${String(group[0].parsed.season).padStart(2,'0')} · ${chapter.count} 集已有字幕支持篇章名：${chapter.title}`);
+                }
                 const seasons = subtitleSearchGroups(rows).filter(group => group[0]?.parsed.tv);
                 await batchStage(seasons,'整季字幕准备（季）',batchLog,async (group,verify) => {
                     status('查找整季字幕：' + group[0].parsed.query);
@@ -1456,12 +1483,14 @@
                 const runtime = media.type === 'tv'
                     ? media.seasonEpisodes?.find(ep => ep.episode_number === media.episode)?.runtime
                     : media.detail.runtime;
+                const originalName = row.node.originalName || row.node.name;
+                const releaseTitle = media.type === 'tv' ? subtitleEpisodeName(originalName,{workResolved:false}).title : '';
                 Object.assign(parsed,{query:media.title || media.query,year:media.year,tv:media.type === 'tv',
                     season:media.season ?? null,episode:media.episode ?? null,endEpisode:media.endEpisode ?? null,
                     tmdbId:media.match.split(':')[1],aliases:media.detail.workAliases || [],
                     seasons:media.type === 'tv' ? media.detail.seasons : undefined,
                     runtimeSeconds:runtime > 0 ? runtime * 60 : undefined,workResolved:true,
-                    videoReleaseTitle:parseMediaName(row.node.originalName || row.node.name).query});
+                    videoReleaseTitle:subtitleQueryTitle(releaseTitle,media.year) || parseMediaName(originalName).query});
             } else {
                 Object.assign(parsed,parseMediaName(row.node.name,[...flow.context.path.split('/').filter(Boolean),...row.node.folders]));
                 Object.assign(parsed,{tmdbId:undefined,aliases:[],seasons:undefined,runtimeSeconds:undefined,workResolved:false,videoReleaseTitle:undefined});

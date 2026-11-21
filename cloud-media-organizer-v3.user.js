@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v3.0（重构版）
 // @namespace    local.cloud-media-organizer
-// @version      3.0.31
+// @version      3.0.32
 // @description  面向百度网盘、123 云盘和光鸭网盘的浏览器脚本，支持跨盘 JSON 清单、影视整理与字幕补齐。
 // @match        https://pan.baidu.com/*
 // @match        https://yun.baidu.com/*
@@ -197,7 +197,7 @@ SOFTWARE.
     if (typeof navigator !== 'undefined' && (navigator.userAgentData?.mobile || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
         navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) return;
 
-    const VERSION = '3.0.31';
+    const VERSION = '3.0.32';
     let jsonTaskStopped = false;
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
@@ -3034,7 +3034,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 const entries = load(), id = String(before.id);
                 const previous = this.get(before,before.parentId,entries);
                 if (previous || MEDIA_VIDEO.test(before.name))
-                    entries.set(id,{...previous,original:previous?.original || before.name,file:snapshot(after,after.parentId)});
+                    entries.set(id,{...previous,original:previous?.original || before.originalName || before.name,file:snapshot(after,after.parentId)});
                 for (const [subId,record] of entries)
                     if (record.videoId === id && matches(record.video,before,before.parentId))
                         entries.set(subId,{...record,video:snapshot(after,after.parentId)});
@@ -3127,7 +3127,8 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             namesByParent.set(parentId,new Set(entries.map(node => node.name.toLowerCase())));
             for (const video of videosByParent.get(parentId) || []) {
                 const record = history?.get(video,parentId,records);
-                if (record?.original) video.originalName = record.original;
+                const originalName = record?.original || mediaRecords.get(video)?.originalName;
+                if (originalName) video.originalName = originalName;
             }
         }
         const linkEntries = entries => {
@@ -3528,7 +3529,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             let historyError;
             const rememberCurrent = () => {
                 const before = {...original};
-                Object.assign(original,{name:current.name,parentId});
+                Object.assign(original,{name:current.name,parentId,originalName:original.originalName || before.name});
                 try { history?.organized(before,original); }
                 catch (error) { historyError = error; }
             };
@@ -3967,7 +3968,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             const id = identity(row.node);
             entries.delete(id);
             const runtime = row.type === 'movie' ? row.detail.runtime : row.seasonEpisodes?.find(ep => ep.episode_number === row.episode)?.runtime;
-            entries.set(id, {fingerprint:fingerprint(row.node), query:row.title, aliases:[...new Set([row.detail.title,row.detail.original_title,row.detail.name,row.detail.original_name,...(row.detail.workAliases || [])].filter(Boolean))], year:row.year, sourceYear:row.sourceYear, type:row.type, match:row.match, season:row.season, episode:row.episode, endEpisode:row.endEpisode, runtimeSeconds:Number(runtime) > 0 ? Number(runtime) * 60 : undefined, aiAssisted:row.aiAssisted});
+            entries.set(id, {fingerprint:fingerprint(row.node), originalName:row.node.originalName || row.node.name, query:row.title, aliases:[...new Set([row.detail.title,row.detail.original_title,row.detail.name,row.detail.original_name,...(row.detail.workAliases || [])].filter(Boolean))], year:row.year, sourceYear:row.sourceYear, type:row.type, match:row.match, season:row.season, episode:row.episode, endEpisode:row.endEpisode, runtimeSeconds:Number(runtime) > 0 ? Number(runtime) * 60 : undefined, aiAssisted:row.aiAssisted});
         };
         const save = () => {
             evict(entries, 3000);
@@ -5111,6 +5112,30 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         const release = parsed.videoReleaseTitle || '';
         return release && ![parsed.query,...(parsed.aliases || [])].some(title => subtitleTitleKey(title) === subtitleTitleKey(release)) ? release : '';
     }
+    /** Recovers one chapter supported by different, already covered episodes of the same season. */
+    function subtitleSeasonRelease(rows) {
+        const chapters = new Map();
+        for (const row of rows) {
+            const {parsed,verification} = row;
+            const name = verification?.projectVideoName;
+            if (!row.complete || !parsed.workResolved || !name || verification.work?.status === 'mismatch') continue;
+            const title = subtitleQueryTitle(subtitleEpisodeName(name,parsed).title,parsed.year);
+            const target = {...parsed,videoReleaseTitle:title};
+            if (!subtitleReleaseChapter(target) || !exactSubtitleEpisode(name,target)) continue;
+            const match = subtitleCandidateFilter({...parsed,videoReleaseTitle:undefined},[],name);
+            if (match.excluded || match.hardMismatch || !match.titleMatched && !match.related) continue;
+            const key = subtitleTitleKey(title);
+            if (!chapters.has(key)) chapters.set(key,{title,episodes:new Set()});
+            chapters.get(key).episodes.add(parsed.episode);
+        }
+        if (chapters.size !== 1) return null;
+        const [key,chapter] = [...chapters][0];
+        if (chapter.episodes.size < 2 || rows.some(row => {
+            const original = subtitleReleaseChapter(row.parsed);
+            return original && subtitleTitleKey(original) !== key;
+        })) return null;
+        return {title:chapter.title,count:chapter.episodes.size};
+    }
     function subtitleWorkIdentity(parsed, fields, name) {
         const titleNumbers = String(parsed.query || '').match(/(?:19|20)\d{2}/g) || [];
         const years = value => [...String(value).normalize('NFKC').matchAll(/(?:^|[^\p{L}\p{N}])((?:19|20)\d{2})(?=$|[^\p{L}\p{N}])/gu)].map(m => m[1]).filter(y => Number(y) <= new Date().getFullYear() + 1 && (!titleNumbers.includes(y) || y === String(parsed.year)));
@@ -5559,7 +5584,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             async prepareSeason(rows,config,verify = () => {}) {
                 const row = rows.find(row => row.parsed.episode != null && (!row.parsed.endEpisode || row.parsed.endEpisode === row.parsed.episode)), parsed = row?.parsed;
                 if (!parsed?.tv || parsed.season == null || !parsed.query) return;
-                const key = JSON.stringify([parsed.tmdbId || '',parsed.query,parsed.year,parsed.season,subtitleSearchNames(parsed),config.language,
+                const key = JSON.stringify([parsed.tmdbId || '',parsed.query,parsed.year,parsed.season,subtitleReleaseChapter(parsed),subtitleSearchNames(parsed),config.language,
                     config.thunder,config.assrtKey,rows.map(target => target.node.id || target.parsed.episode)]);
                 if (!seasonPreparations.has(key)) {
                     const task = (async () => {
@@ -5600,7 +5625,8 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 if (!title) throw subtitleSourceError('缺少可搜索的作品名');
                 if (parsed.tv && (parsed.season == null || parsed.episode == null)) throw subtitleSourceError('缺少明确季集，未按片名搜索');
                 if (parsed.endEpisode && parsed.endEpisode !== parsed.episode) throw subtitleSourceError('合并多集视频需单独选字幕');
-                const seasonKey = parsed.tv ? JSON.stringify(['thunder-season',titleKey(title),parsed.year || '',parsed.tmdbId || '',parsed.season]) : '';
+                const chapter = subtitleReleaseChapter(parsed);
+                const seasonKey = parsed.tv ? JSON.stringify(['thunder-season',titleKey(title),parsed.year || '',parsed.tmdbId || '',parsed.season,chapter]) : '';
                 let items, attempts;
                 const suffix = parsed.tv ? ' S' + String(parsed.season).padStart(2,'0') + (config.seasonSearch ? '' : 'E' + String(parsed.episode).padStart(2,'0')) : '';
                 const names = subtitleSearchNames(parsed);
@@ -5608,7 +5634,6 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 const withRelease = !config.seasonSearch && (/\b(?:BluRay|BDRip|WEB[ ._-]?(?:DL|Rip)|REMUX|HDTV|x26[45]|extended|theatrical)\b/i.test(original)
                     || parsed.tv && /\b(?:2160p|1080p|720p)\b/i.test(original));
                 const plainQueries = names.map(name => name + suffix);
-                const chapter = subtitleReleaseChapter(parsed);
                 const chapterQuery = chapter && chapter + (config.seasonSearch ? '' : ' ' + String(parsed.episode).padStart(2,'0'));
                 const chapterEpisodeQuery = chapter && !config.seasonSearch
                     && chapter + ' S' + parsed.season + 'E' + String(parsed.episode).padStart(2,'0');
@@ -6083,7 +6108,8 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         const dialogue = timeline.dialogue.join('\n');
         if (language !== 'en' && !/[\u3400-\u9fff]/.test(dialogue)) throw new Error('字幕正文未检测到中文，未上传');
         if (language === 'en' && !/[a-z]{2}/i.test(dialogue)) throw new Error('字幕正文未检测到英文，未上传');
-        return {text, encoding:description, ...timing, work:{status:'unconfirmed', reason:'正文格式和语言通过，作品归属未确认'}};
+        return {text, encoding:description, ...timing, projectVideoName:/^(?:ass|ssa)$/.test(ext) ? subtitleProjectVideo(text) : '',
+            work:{status:'unconfirmed', reason:'正文格式和语言通过，作品归属未确认'}};
     }
     function subtitleVerificationMessage(result) {
         return `格式/语言通过；${({file:'对白范围与视频文件时长相符', unknown:'无时长参考', reference:'TMDB 仅作作品时长参考', 'reference-difference':'与 TMDB 作品时长参考有差异'})[result.evidence] || '时长证据待确认'}；${result.work?.status === 'supported' ? 'AI 支持作品归属（非实证）' : '作品归属未确认'}；未核对音画同步`;
@@ -7904,6 +7930,33 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             try {
                 drive.assertReady?.();
                 diag('并发策略','视频任务上限 8，AI 请求上限 2；同季命名判断合并，优先使用整季缓存');
+                const releaseGroups = subtitleSearchGroups(inventory).filter(group => group[0].parsed.tv
+                    && searchedGroups.has(group[0].groupKey)
+                    && group.some(row => subtitleCoverageState(row) === 'missing' && !subtitleReleaseChapter(row.parsed)));
+                const oldClues = releaseGroups.flat().filter(row => row.complete && row.parsed.workResolved
+                    && /\.(?:ass|ssa)$/i.test(row.verifiedSubtitle?.name || '') && row.verification
+                    && row.verification.projectVideoName === undefined);
+                if (oldClues.length) await batchStage(oldClues,'同季字幕搜索线索（已有字幕）',batchLog,async (row,verify,_index,observe) => {
+                    const sub = row.verifiedSubtitle;
+                    try {
+                        const bytes = await drive.read(sub,message => diag('线索读取重试',message),verify);
+                        verify();
+                        const result = subtitleValidateContent(row,bytes,sub.name.split('.').pop().toLowerCase(),config.language);
+                        row.verification = {...row.verification,projectVideoName:result.projectVideoName};
+                        drive.verified?.remember(sub,bytes,config.language,row.verification.encoding,row,row.verification);
+                    } catch (error) {
+                        observe(error); verify();
+                        if (error.stop || error.phase === 'drive-auth' || [401,403].includes(error.status)) throw error;
+                        diag('同季线索读取失败',sub.name + ' · ' + error.message);
+                        return 'failed';
+                    }
+                },check,8,'仅补读旧核验记录缺少的 ASS/SSA 视频名线索，结果随正文核验缓存保存');
+                for (const group of releaseGroups) {
+                    const chapter = subtitleSeasonRelease(group);
+                    if (!chapter) continue;
+                    for (const row of group) if (!subtitleReleaseChapter(row.parsed)) row.parsed.videoReleaseTitle = chapter.title;
+                    diag('同季搜索线索',`${group[0].parsed.query} · S${String(group[0].parsed.season).padStart(2,'0')} · ${chapter.count} 集已有字幕支持篇章名：${chapter.title}`);
+                }
                 const seasons = subtitleSearchGroups(rows).filter(group => group[0]?.parsed.tv);
                 await batchStage(seasons,'整季字幕准备（季）',batchLog,async (group,verify) => {
                     status('查找整季字幕：' + group[0].parsed.query);
@@ -8506,12 +8559,14 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 const runtime = media.type === 'tv'
                     ? media.seasonEpisodes?.find(ep => ep.episode_number === media.episode)?.runtime
                     : media.detail.runtime;
+                const originalName = row.node.originalName || row.node.name;
+                const releaseTitle = media.type === 'tv' ? subtitleEpisodeName(originalName,{workResolved:false}).title : '';
                 Object.assign(parsed,{query:media.title || media.query,year:media.year,tv:media.type === 'tv',
                     season:media.season ?? null,episode:media.episode ?? null,endEpisode:media.endEpisode ?? null,
                     tmdbId:media.match.split(':')[1],aliases:media.detail.workAliases || [],
                     seasons:media.type === 'tv' ? media.detail.seasons : undefined,
                     runtimeSeconds:runtime > 0 ? runtime * 60 : undefined,workResolved:true,
-                    videoReleaseTitle:parseMediaName(row.node.originalName || row.node.name).query});
+                    videoReleaseTitle:subtitleQueryTitle(releaseTitle,media.year) || parseMediaName(originalName).query});
             } else {
                 Object.assign(parsed,parseMediaName(row.node.name,[...flow.context.path.split('/').filter(Boolean),...row.node.folders]));
                 Object.assign(parsed,{tmdbId:undefined,aliases:[],seasons:undefined,runtimeSeconds:undefined,workResolved:false,videoReleaseTitle:undefined});
