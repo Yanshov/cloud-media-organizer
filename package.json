@@ -8,7 +8,6 @@
   },
   "scripts": {
     "build": "node scripts/build.cjs",
-    "check": "node scripts/build.cjs --check",
-    "test": "node scripts/test.cjs"
+    "check": "node scripts/build.cjs --check"
   }
 }

@@ -28,13 +28,10 @@
 
 字幕检查能识别可用的外挂字幕和 MKV 内嵌中文轨。作品卡上的「复查已有字幕」只检查该作品，检查结果不验证播放同步。启用可选 AI 后，文件名、目录名或少量字幕对白可发送给所选服务处理。
 
-## 构建和测试
+## 构建
 
 使用 Node.js 20 或以上。源码在 `src/`，构建产物为 `cloud-media-organizer-v3.user.js`。
 
 ```sh
 node scripts/build.cjs
-node scripts/test.cjs
 ```
-
-测试使用模拟接口和合成字幕样例，不会写入真实网盘。
