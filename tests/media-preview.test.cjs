@@ -115,14 +115,21 @@ function fixture() {
     assert.deepEqual(Array.from(resolution.ctx.batch, item => item.destination), [
         '电影/Movie.2000/Movie.2000.2160p.mkv', '电影/Movie.2000/Movie.2000.2160p.zh-cn.srt'
     ]);
+    Object.assign(resolution.ctx.rows[0], {title:'美国众神', year:'2017', type:'tv', category:'剧集', season:3, episode:8});
+    resolution.ctx.rows[0].node.name = 'American.Gods.S03E08.1080p.mkv';
+    await resolution.ctx.generate();
+    assert.deepEqual(Array.from(resolution.ctx.batch, item => item.destination), [
+        '剧集/美国众神.2017.1080p/Season 03/美国众神.2017.S03E08.1080p.mkv',
+        '剧集/美国众神.2017.1080p/Season 03/美国众神.2017.S03E08.1080p.zh-cn.srt'
+    ]);
     for (const [input,expected] of [
         ['Series.S01E02E03.1080P.mkv','Series.2024.S01E02E03.1080p.mkv'],
         ['Series.S01E02E03.720p.1080p.mkv','Series.2024.S01E02E03.mkv'],
         ['Series.S01E02E03.2048kbps.mkv','Series.2024.S01E02E03.mkv']
     ]) {
         const row = {node:{name:input},title:'Series',year:'2024',type:'tv',category:'剧集',season:1,episode:2,endEpisode:3};
-        const seasonFolder = expected.includes('.1080p.') ? 'Season 01.1080p' : 'Season 01';
-        assert.equal(resolution.ctx.mediaPath(row),'剧集/Series.2024/' + seasonFolder + '/' + expected);
+        const resolutionSuffix = expected.includes('.1080p.') ? '.1080p' : '';
+        assert.equal(resolution.ctx.mediaPath(row),'剧集/Series.2024' + resolutionSuffix + '/Season 01/' + expected);
     }
 
 

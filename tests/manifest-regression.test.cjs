@@ -237,6 +237,9 @@ async function sharedHelpers(){
  assert.equal(await resolve({name:'Love.Death.and.Robots.2019.S01E99.mkv'}),null);
  assert.equal(searches.length,1,'The same series shares recognition across episodes and subtitles');
  assert.deepEqual(lookups,['/tv/1','/tv/1/season/1']);
+ const workFolder = {directory:true,name:'Love, Death & Robots.2019.1080p'};
+ assert.equal(await resolve(workFolder),workFolder.name,'Naming cleanup accepts the resolution in the series folder');
+ assert.equal(ctx.mediaStandardNode(workFolder),true);
  await assert.rejects(resolve({name:'Love.Death.and.Robots.2020.mkv'}),/无法唯一确认/);
  const ambiguous=ctx.mediaCanonicalResolver({search:async()=>[detail,{...detail,id:2}].map(item=>({...item,media_type:'tv'}))});
  await assert.rejects(ambiguous({name:'Love.Death.and.Robots.2019.mkv'}),/无法唯一确认/);

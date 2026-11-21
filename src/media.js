@@ -190,7 +190,9 @@
         if (!['电影', '剧集', '纪录片', '综艺', '动漫'].includes(category)) throw new Error('请选择分类');
         const stem = title + '.' + year;
         const resolution = mediaResolution(row.node.name);
-        let filename = stem, folders = [category, stem];
+        const resolutionSuffix = resolution ? '.' + resolution : '';
+        const folders = [category, row.type === 'tv' ? stem + resolutionSuffix : stem];
+        let filename = stem;
         if (row.type === 'tv') {
             if (!Number.isInteger(row.season) || row.season < 0 || row.season > 99 || !Number.isInteger(row.episode) || row.episode < 1 || row.episode > 999) throw new Error('剧集需要明确的季号和集号');
             const season = String(row.season).padStart(2, '0'), episode = String(row.episode).padStart(2, '0');
@@ -199,10 +201,10 @@
                 if (!Number.isInteger(row.endEpisode) || row.endEpisode < row.episode || row.endEpisode > 999) throw new Error('多集文件的结束集号无效');
                 filename += 'E' + String(row.endEpisode).padStart(2, '0');
             }
-            folders.push('Season ' + season + (resolution ? '.' + resolution : ''));
+            folders.push('Season ' + season);
         }
         if (categoryRoot === category) folders.shift();
-        if (resolution) filename += '.' + resolution;
+        filename += resolutionSuffix;
         filename += row.node.name.slice(row.node.name.lastIndexOf('.'));
         if ([...folders, filename].some(name => name.length >= 256 || /[\\\/:*?"<>|\x00-\x1f]/.test(name))) throw new Error('目标名称过长或含 123 不允许的字符，请修改标准片名');
         return folders.join('/') + '/' + filename;
@@ -727,7 +729,7 @@
         return { prepare, validate, execute, executionKeys, recycleEmptySeasonSources };
     }
 
-    const mediaStandardFolder = name => (/^.+\.(?:19|20)\d{2}$/.test(name) || mediaStandardSeasonFolder(name) || !!mediaExistingCategory([name])) && mediaClean(name) === name;
+    const mediaStandardFolder = name => (/^.+\.(?:19|20)\d{2}(?:\.\d{3,4}[pi])?$/.test(name) || mediaStandardSeasonFolder(name) || !!mediaExistingCategory([name])) && mediaClean(name) === name;
     const MEDIA_CANONICAL_STEM = new RegExp(String.raw`^(.+\.(?:19|20)\d{2}(?:\.S\d{2}E\d{2,3}(?:E\d{2,3})?)?(?:\.${MEDIA_RESOLUTION_TAG})?)(?=\.|$)`);
     function mediaStandardNode(node) {
         if (node.directory) return mediaStandardFolder(node.name);
@@ -772,7 +774,10 @@
             })());
             const {id,type,detail,title,year} = await works.get(cacheKey);
             check();
-            if (node.directory) return mediaClean(title) + '.' + year;
+            if (node.directory) {
+                const resolution = type === 'tv' ? mediaResolution(nameToParse) : '';
+                return mediaClean(title) + '.' + year + (resolution ? '.' + resolution : '');
+            }
             if (type === 'tv') {
                 const {season,episode,endEpisode} = parsed;
                 if (season == null || episode == null) return null;

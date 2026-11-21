@@ -347,12 +347,26 @@ async function folders() {
     direct.source.parentId = direct.season.id;
     direct.source.breadcrumbs = [direct.folder,direct.season];
     direct.item.node.ancestors = [];
-    direct.item.destination = '电影/新片名.2000/Season 01.1080p/new.1080p.mkv';
+    direct.item.destination = '电影/新片名.2000.1080p/Season 01/new.1080p.mkv';
     direct.nodes.splice(direct.nodes.indexOf(direct.attachment),1);
     await direct.writer.prepare([direct.item]);
     await direct.writer.validate();
     await direct.writer.execute(direct.item);
     assert.equal(await direct.writer.recycleEmptySeasonSources(()=>{},()=>{}),2,'Directly selected episodes leave neither the empty source season nor the empty work folder');
+    const existingSeries = treeFixture(false,true);
+    existingSeries.nodes.push({id:'cat',parentId:'0',name:'电影',directory:true});
+    Object.assign(existingSeries.folder,{parentId:'cat',name:'新片名.2000'});
+    existingSeries.season.name = 'Season 01.1080p';
+    existingSeries.video.name = existingSeries.item.node.name = 'new.1080p.mkv';
+    existingSeries.item.destination = direct.item.destination;
+    await existingSeries.writer.prepare([existingSeries.item]);
+    await existingSeries.writer.validate();
+    await existingSeries.writer.execute(existingSeries.item);
+    assert.equal(existingSeries.folder.name,'新片名.2000.1080p');
+    assert.equal(existingSeries.season.name,'Season 01');
+    assert.equal(existingSeries.video.parentId,existingSeries.season.id);
+    assert.equal(existingSeries.attachment.parentId,existingSeries.season.id);
+    assert.equal(existingSeries.mutations.length,2,'Renaming the work and season folders preserves all contents and file IDs');
     for(const keepAttachment of [false,true]){
         const f=treeFixture(false,true);
         f.folder.depth=0; f.season.depth=1;

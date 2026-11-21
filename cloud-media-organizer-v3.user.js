@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v3.0（重构版）
 // @namespace    local.cloud-media-organizer
-// @version      3.0.6
+// @version      3.0.7
 // @description  面向百度网盘、123 云盘和光鸭网盘的浏览器脚本，支持跨盘 JSON 清单、影视整理与字幕补齐。
 // @match        https://pan.baidu.com/*
 // @match        https://yun.baidu.com/*
@@ -40,7 +40,7 @@
     if (typeof navigator !== 'undefined' && (navigator.userAgentData?.mobile || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
         navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) return;
 
-    const VERSION = '3.0.6';
+    const VERSION = '3.0.7';
     let jsonTaskStopped = false;
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
@@ -2773,7 +2773,9 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         if (!['电影', '剧集', '纪录片', '综艺', '动漫'].includes(category)) throw new Error('请选择分类');
         const stem = title + '.' + year;
         const resolution = mediaResolution(row.node.name);
-        let filename = stem, folders = [category, stem];
+        const resolutionSuffix = resolution ? '.' + resolution : '';
+        const folders = [category, row.type === 'tv' ? stem + resolutionSuffix : stem];
+        let filename = stem;
         if (row.type === 'tv') {
             if (!Number.isInteger(row.season) || row.season < 0 || row.season > 99 || !Number.isInteger(row.episode) || row.episode < 1 || row.episode > 999) throw new Error('剧集需要明确的季号和集号');
             const season = String(row.season).padStart(2, '0'), episode = String(row.episode).padStart(2, '0');
@@ -2782,10 +2784,10 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 if (!Number.isInteger(row.endEpisode) || row.endEpisode < row.episode || row.endEpisode > 999) throw new Error('多集文件的结束集号无效');
                 filename += 'E' + String(row.endEpisode).padStart(2, '0');
             }
-            folders.push('Season ' + season + (resolution ? '.' + resolution : ''));
+            folders.push('Season ' + season);
         }
         if (categoryRoot === category) folders.shift();
-        if (resolution) filename += '.' + resolution;
+        filename += resolutionSuffix;
         filename += row.node.name.slice(row.node.name.lastIndexOf('.'));
         if ([...folders, filename].some(name => name.length >= 256 || /[\\\/:*?"<>|\x00-\x1f]/.test(name))) throw new Error('目标名称过长或含 123 不允许的字符，请修改标准片名');
         return folders.join('/') + '/' + filename;
@@ -3310,7 +3312,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         return { prepare, validate, execute, executionKeys, recycleEmptySeasonSources };
     }
 
-    const mediaStandardFolder = name => (/^.+\.(?:19|20)\d{2}$/.test(name) || mediaStandardSeasonFolder(name) || !!mediaExistingCategory([name])) && mediaClean(name) === name;
+    const mediaStandardFolder = name => (/^.+\.(?:19|20)\d{2}(?:\.\d{3,4}[pi])?$/.test(name) || mediaStandardSeasonFolder(name) || !!mediaExistingCategory([name])) && mediaClean(name) === name;
     const MEDIA_CANONICAL_STEM = new RegExp(String.raw`^(.+\.(?:19|20)\d{2}(?:\.S\d{2}E\d{2,3}(?:E\d{2,3})?)?(?:\.${MEDIA_RESOLUTION_TAG})?)(?=\.|$)`);
     function mediaStandardNode(node) {
         if (node.directory) return mediaStandardFolder(node.name);
@@ -3355,7 +3357,10 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             })());
             const {id,type,detail,title,year} = await works.get(cacheKey);
             check();
-            if (node.directory) return mediaClean(title) + '.' + year;
+            if (node.directory) {
+                const resolution = type === 'tv' ? mediaResolution(nameToParse) : '';
+                return mediaClean(title) + '.' + year + (resolution ? '.' + resolution : '');
+            }
             if (type === 'tv') {
                 const {season,episode,endEpisode} = parsed;
                 if (season == null || episode == null) return null;
