@@ -199,7 +199,9 @@ async function collectTree(roots, source, progress = () => {}, parentPath = '', 
         },
         check,
         log,
-        '清单扫描与导出（目录/文件，分页按服务顺序）'
+        source.exportFile
+            ? '清单项目读取（含目录和仅 MD5 项目）'
+            : '清单扫描与导出（目录/文件，分页按服务顺序）'
     );
     if (lastPath !== reportedPath) report(lastPath);
     entries.sort((a, b) => compareTreeOrder(a.order, b.order));
@@ -335,8 +337,15 @@ function readBaiduDownloadRange(url, size, start, end, check) {
                                     // Some download servers return an HTML error page.
                                 }
                             }
+                            const signatureRejected = response.status === 403 && Number(code) === 31362;
                             const suffix = code == null ? '' : '，百度错误码 ' + code;
-                            throw new Error('百度拒绝读取原文件（HTTP ' + response.status + suffix + '）');
+                            const reason = signatureRejected ? '百度拒绝下载签名' : '百度拒绝读取原文件';
+                            throw Object.assign(
+                                new Error(reason + '（HTTP ' + response.status + suffix + '）'),
+                                {
+                                    signatureRejected,
+                                }
+                            );
                         }
                         const range = /^content-range:[ \t]*([^\r\n]+)/im
                             .exec(response.responseHeaders || '')?.[1]
@@ -451,11 +460,13 @@ function baiduSource(token, { readFlashHashes = false, hashProgress, log = () =>
     };
     if (hashProgress) {
         const queue = new Map();
+        let downloadBlocked = false;
         source.exportFile = (node, path, check) =>
             enqueueByKey(queue, 'baidu-download', async () => {
                 check();
                 let fallback = node;
                 try {
+                    if (downloadBlocked) return hasFileMetadata(node) ? node : await source.metadata(node);
                     if (!node.id || node.size == null) throw new Error('缺少原文件编号或大小');
                     const data = await get(
                         '/api/filemetas',
@@ -498,6 +509,10 @@ function baiduSource(token, { readFlashHashes = false, hashProgress, log = () =>
                 } catch (error) {
                     check();
                     log(path + ' · 未能补齐哈希 · ' + error.message);
+                    if (error.signatureRejected) {
+                        downloadBlocked = true;
+                        log('百度拒绝了本批的下载签名，后续文件仅导出可用的元数据。');
+                    }
                     return fallback;
                 }
             });
@@ -874,7 +889,10 @@ function initExporter(provider) {
             if (forGuangya) {
                 const total = result.files + result.skipped.length;
                 const status = `光鸭清单 · 含 GCID ${hashed}/${total} 个文件 · 仅 MD5 ${result.files - hashed} 个 · 未导出 ${result.skipped.length} 个`;
-                ui.get('progress').textContent = status;
+                ui.get('progress').textContent =
+                    hashed < total
+                        ? status + '。可用百度客户端下载原文件，再到光鸭用本地文件夹生成清单。'
+                        : status;
                 appendLog(ui, status);
             }
             ui.get('status').textContent =

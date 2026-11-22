@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v3.0（重构版）
 // @namespace    local.cloud-media-organizer
-// @version      3.0.45
+// @version      3.0.46
 // @description  面向百度网盘、123 云盘和光鸭网盘的浏览器脚本，支持跨盘 JSON 清单、影视整理与字幕补齐。
 // @match        https://pan.baidu.com/*
 // @match        https://yun.baidu.com/*
@@ -198,7 +198,7 @@ SOFTWARE.
             (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))
     )
         return;
-    const VERSION = '3.0.45';
+    const VERSION = '3.0.46';
     let jsonTaskStopped = false;
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
@@ -1969,7 +1969,9 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             },
             check,
             log,
-            '清单扫描与导出（目录/文件，分页按服务顺序）'
+            source.exportFile
+                ? '清单项目读取（含目录和仅 MD5 项目）'
+                : '清单扫描与导出（目录/文件，分页按服务顺序）'
         );
         if (lastPath !== reportedPath) report(lastPath);
         entries.sort((a, b) => compareTreeOrder(a.order, b.order));
@@ -2107,9 +2109,14 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                                         );
                                     } catch {}
                                 }
+                                const signatureRejected = response.status === 403 && Number(code) === 31362;
                                 const suffix = code == null ? '' : '，百度错误码 ' + code;
-                                throw new Error(
-                                    '百度拒绝读取原文件（HTTP ' + response.status + suffix + '）'
+                                const reason = signatureRejected ? '百度拒绝下载签名' : '百度拒绝读取原文件';
+                                throw Object.assign(
+                                    new Error(reason + '（HTTP ' + response.status + suffix + '）'),
+                                    {
+                                        signatureRejected,
+                                    }
                                 );
                             }
                             const range = /^content-range:[ \t]*([^\r\n]+)/im
@@ -2226,11 +2233,14 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         };
         if (hashProgress) {
             const queue = /* @__PURE__ */ new Map();
+            let downloadBlocked = false;
             source.exportFile = (node, path, check) =>
                 enqueueByKey(queue, 'baidu-download', async () => {
                     check();
                     let fallback = node;
                     try {
+                        if (downloadBlocked)
+                            return hasFileMetadata(node) ? node : await source.metadata(node);
                         if (!node.id || node.size == null) throw new Error('缺少原文件编号或大小');
                         const data = await get(
                             '/api/filemetas',
@@ -2273,6 +2283,10 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     } catch (error) {
                         check();
                         log(path + ' · 未能补齐哈希 · ' + error.message);
+                        if (error.signatureRejected) {
+                            downloadBlocked = true;
+                            log('百度拒绝了本批的下载签名，后续文件仅导出可用的元数据。');
+                        }
                         return fallback;
                     }
                 });
@@ -2648,7 +2662,10 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 if (forGuangya) {
                     const total = result.files + result.skipped.length;
                     const status = `光鸭清单 · 含 GCID ${hashed}/${total} 个文件 · 仅 MD5 ${result.files - hashed} 个 · 未导出 ${result.skipped.length} 个`;
-                    ui.get('progress').textContent = status;
+                    ui.get('progress').textContent =
+                        hashed < total
+                            ? status + '。可用百度客户端下载原文件，再到光鸭用本地文件夹生成清单。'
+                            : status;
                     appendLog(ui, status);
                 }
                 ui.get('status').textContent =
