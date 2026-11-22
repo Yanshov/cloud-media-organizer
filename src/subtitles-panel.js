@@ -2877,7 +2877,7 @@ function initSubtitles(provider, flow) {
                 workResolved: false,
                 videoReleaseTitle: undefined,
             });
-            if (media.detail && media.type === 'tv') {
+            if (media.detail && media.type === 'tv' && !media.seasonPending) {
                 parsed.tv = true;
                 parsed.season = media.season ?? null;
                 parsed.episode = media.episode ?? null;

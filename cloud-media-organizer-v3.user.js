@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v3.0（重构版）
 // @namespace    local.cloud-media-organizer
-// @version      3.0.40
+// @version      3.0.41
 // @description  面向百度网盘、123 云盘和光鸭网盘的浏览器脚本，支持跨盘 JSON 清单、影视整理与字幕补齐。
 // @match        https://pan.baidu.com/*
 // @match        https://yun.baidu.com/*
@@ -198,7 +198,7 @@ SOFTWARE.
             (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))
     )
         return;
-    const VERSION = '3.0.40';
+    const VERSION = '3.0.41';
     let jsonTaskStopped = false;
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
@@ -7117,7 +7117,10 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                             item.seasonEpisodes = [];
                             item.seasonYear = '';
                             await validateEpisode(item, { matchTitleIfNumberInvalid: true });
-                            return item.error ? 'failed' : void 0;
+                            if (item.error) {
+                                log('改季待确认：' + item.node.name + ' · ' + item.error);
+                                return 'failed';
+                            }
                         },
                         checkStopped,
                         8,
@@ -7338,8 +7341,6 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     : '资料库没有' + seasonLabel(item.season) + '。请选择可用的季。';
             }
             if (item.episode == null) return '请按标题选择这一集。';
-            if (!item.seasonEpisodes.some((episode) => episode.episode_number === item.episode))
-                return seasonLabel(item.season) + '没有第 ' + item.episode + ' 集。请核对季和集。';
             return item.error || '请核对季和集。';
         };
         const correctionDetails = (box, id, label) => {
@@ -7623,7 +7624,12 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     for (let n = row.episode; n <= (row.endEpisode ?? row.episode); n++)
                         if (!numbers.has(n))
                             throw new Error(
-                                (row.detail.source || 'TMDB') + ' 没有对应季集，请确认季号和集号'
+                                (row.detail.source || 'TMDB') +
+                                    ' 的' +
+                                    seasonLabel(row.season) +
+                                    '没有第 ' +
+                                    n +
+                                    ' 集。文件原集号已保留，请按内容核对。'
                             );
                     row.seasonPending = false;
                 }
@@ -7808,6 +7814,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     }
                 }
                 if (!exact.length && !lookupError && reference.tv && !reference.standalone) {
+                    const regionalTitle = query.match(/^(.+)\s+(UK|US|AU|CA|NZ)$/i);
                     const parts = query.split(/\s*[:：·｜|]\s*|\s+[-–—]\s+|\s+/u).filter(Boolean);
                     for (let length = parts.length - 1; length > 0; length--) {
                         const shorter = parts.slice(0, length).join(' ').trim();
@@ -7824,7 +7831,29 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                                     ])
                                 ).values(),
                             ];
-                            exact = await reliable(fallback, false, shorter);
+                            const country =
+                                regionalTitle && key(regionalTitle[1]) === key(shorter)
+                                    ? regionalTitle[2].toUpperCase().replace(/^UK$/, 'GB')
+                                    : '';
+                            const matches = await reliable(fallback, false, shorter);
+                            exact = matches;
+                            if (country) {
+                                const regionalMatches = matches.filter((candidate) =>
+                                    candidate.origin_country?.includes(country)
+                                );
+                                exact = regionalMatches.length
+                                    ? regionalMatches
+                                    : matches.filter((candidate) => !candidate.origin_country?.length);
+                                log(
+                                    '作品地区核对：' +
+                                        query +
+                                        ' · ' +
+                                        country +
+                                        ' · ' +
+                                        regionalMatches.length +
+                                        ' 个同名候选'
+                                );
+                            }
                             if (exact.length) break;
                         } catch (error) {
                             if (error.stop) throw error;
@@ -7849,12 +7878,23 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                                   (lookupError ? '；' + lookupError : '');
                     return;
                 }
+                const match = exact[0].media_type + ':' + exact[0].id;
                 for (const row of group) {
                     verify();
-                    await choose(row, exact[0].media_type + ':' + exact[0].id);
+                    await choose(row, match);
                     verify();
                     await validateEpisode(row);
                 }
+                log(
+                    '作品已匹配：' +
+                        query +
+                        ' → ' +
+                        reference.title +
+                        '（' +
+                        reference.year +
+                        '） · TMDB ' +
+                        match
+                );
             } catch (error) {
                 if (error.stop) throw error;
                 verify();
@@ -8143,9 +8183,15 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                         );
                         await matchGroup(group, group[0].query, false, null, verify);
                         await resolveUnmatched(group, verify);
+                        const pending = group.filter((row) => !readyRow(row));
+                        for (const files of groupBatch(pending, (row) => row.error)) {
+                            const reason = files[0].error || '作品资料待确认';
+                            const others = files.length > 1 ? ' 等 ' + files.length + ' 个文件' : '';
+                            log('识别待确认：' + files[0].node.name + others + ' · ' + reason);
+                        }
                         meter('匹配作品', ++matched, groups.size);
                         flow.requestRender();
-                        return group.every((row) => !readyRow(row)) ? 'failed' : void 0;
+                        return pending.length === group.length ? 'failed' : void 0;
                     },
                     checkStopped,
                     8,
@@ -15913,7 +15959,7 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                     workResolved: false,
                     videoReleaseTitle: void 0,
                 });
-                if (media.detail && media.type === 'tv') {
+                if (media.detail && media.type === 'tv' && !media.seasonPending) {
                     parsed.tv = true;
                     parsed.season = media.season ?? null;
                     parsed.episode = media.episode ?? null;
