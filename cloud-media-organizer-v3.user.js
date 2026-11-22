@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v3.0（重构版）
 // @namespace    local.cloud-media-organizer
-// @version      3.0.44
+// @version      3.0.45
 // @description  面向百度网盘、123 云盘和光鸭网盘的浏览器脚本，支持跨盘 JSON 清单、影视整理与字幕补齐。
 // @match        https://pan.baidu.com/*
 // @match        https://yun.baidu.com/*
@@ -198,7 +198,7 @@ SOFTWARE.
             (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))
     )
         return;
-    const VERSION = '3.0.44';
+    const VERSION = '3.0.45';
     let jsonTaskStopped = false;
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
@@ -2075,7 +2075,11 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 request = GM_xmlhttpRequest({
                     url,
                     method: 'GET',
-                    headers: { Range: `bytes=${start}-${end - 1}`, Referer: 'https://pan.baidu.com/' },
+                    headers: {
+                        Range: `bytes=${start}-${end - 1}`,
+                        Referer: 'https://pan.baidu.com/',
+                        'User-Agent': 'pan.baidu.com',
+                    },
                     responseType: 'arraybuffer',
                     timeout: 12e4,
                     onabort: () => fail(new Error('百度原文件读取已取消')),
@@ -2093,6 +2097,21 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                         try {
                             check();
                             baiduDownloadUrl(response.finalUrl || url);
+                            if (response.status < 200 || response.status >= 300) {
+                                let code;
+                                if (response.response?.byteLength <= 8192) {
+                                    try {
+                                        const body = JSON.parse(new TextDecoder().decode(response.response));
+                                        code = [body.errno, body.error_code, body.code].find((value) =>
+                                            /^-?\d{1,9}$/.test(String(value))
+                                        );
+                                    } catch {}
+                                }
+                                const suffix = code == null ? '' : '，百度错误码 ' + code;
+                                throw new Error(
+                                    '百度拒绝读取原文件（HTTP ' + response.status + suffix + '）'
+                                );
+                            }
                             const range = /^content-range:[ \t]*([^\r\n]+)/im
                                 .exec(response.responseHeaders || '')?.[1]
                                 .trim();
@@ -2115,7 +2134,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         });
     }
     function baiduSource(token, { readFlashHashes = false, hashProgress, log = () => {} } = {}) {
-        const get = paced(180, async (endpoint, params) => {
+        const get = paced(180, async (endpoint, params, options = {}) => {
             const query = new URLSearchParams({
                 ...params,
                 channel: 'chunlei',
@@ -2125,6 +2144,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             });
             const data = await requestJson(`${location.origin}${endpoint}?${query}`, {
                 credentials: 'include',
+                ...options,
             });
             if (nonNegativeInteger(data.errno) !== 0)
                 throw new Error(`百度接口错误：${data.errno ?? '未知'}`);
@@ -2212,11 +2232,11 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     let fallback = node;
                     try {
                         if (!node.id || node.size == null) throw new Error('缺少原文件编号或大小');
-                        const data = await get('/api/filemetas', {
-                            fsids: '[' + node.id + ']',
-                            dlink: '1',
-                            detail: '1',
-                        });
+                        const data = await get(
+                            '/api/filemetas',
+                            { target: JSON.stringify([node.key]), dlink: '1', detail: '1', clienttype: '0' },
+                            { referrer: location.origin + '/disk/main' }
+                        );
                         check();
                         const raw = Array.isArray(data.info) && data.info.length === 1 ? data.info[0] : null;
                         const detail = raw && baiduNode(raw);
@@ -2625,11 +2645,12 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 if (!result.entries.length) throw new Error('没有可导出的文件信息');
                 const summary = exportManifestJson(ui, provider, result);
                 const hashed = result.entries.filter((entry) => entry.gcid).length;
-                if (forGuangya)
-                    ui.get('progress').textContent =
-                        hashed === result.files && !result.skipped.length
-                            ? `哈希处理完成 · ${hashed} 个文件含 GCID`
-                            : `含 GCID ${hashed}/${result.files} · 跳过 ${result.skipped.length} 项 · 原因见日志`;
+                if (forGuangya) {
+                    const total = result.files + result.skipped.length;
+                    const status = `光鸭清单 · 含 GCID ${hashed}/${total} 个文件 · 仅 MD5 ${result.files - hashed} 个 · 未导出 ${result.skipped.length} 个`;
+                    ui.get('progress').textContent = status;
+                    appendLog(ui, status);
+                }
                 ui.get('status').textContent =
                     `完成（${scope}）：${summary}。` +
                     (!ui.get('json').value ? '没有可导出的内容。' : '请下载 JSON，到目标盘导入。') +
