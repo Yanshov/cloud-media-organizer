@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v3.0（重构版）
 // @namespace    local.cloud-media-organizer
-// @version      3.0.42
+// @version      3.0.43
 // @description  面向百度网盘、123 云盘和光鸭网盘的浏览器脚本，支持跨盘 JSON 清单、影视整理与字幕补齐。
 // @match        https://pan.baidu.com/*
 // @match        https://yun.baidu.com/*
@@ -198,7 +198,7 @@ SOFTWARE.
             (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))
     )
         return;
-    const VERSION = '3.0.42';
+    const VERSION = '3.0.43';
     let jsonTaskStopped = false;
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
@@ -465,6 +465,85 @@ SOFTWARE.
         const number = Number(value);
         return Number.isSafeInteger(number) && number >= 0 ? number : null;
     }
+    function createMd5() {
+        const shifts = [7, 12, 17, 22, 5, 9, 14, 20, 4, 11, 16, 23, 6, 10, 15, 21];
+        const constants = Array.from(
+            { length: 64 },
+            (_, i) => Math.floor(Math.abs(Math.sin(i + 1)) * 4294967296) | 0
+        );
+        let a0 = 1732584193,
+            b0 = 4023233417,
+            c0 = 2562383102,
+            d0 = 271733878;
+        const tail = new Uint8Array(64);
+        const tailView = new DataView(tail.buffer);
+        let length = 0;
+        let remaining = 0;
+        const block = (view, offset) => {
+            let a = a0,
+                b = b0,
+                c = c0,
+                d = d0;
+            for (let i = 0; i < 64; i++) {
+                let f, g;
+                if (i < 16) {
+                    f = (b & c) | (~b & d);
+                    g = i;
+                } else if (i < 32) {
+                    f = (d & b) | (~d & c);
+                    g = (5 * i + 1) % 16;
+                } else if (i < 48) {
+                    f = b ^ c ^ d;
+                    g = (3 * i + 5) % 16;
+                } else {
+                    f = c ^ (b | ~d);
+                    g = (7 * i) % 16;
+                }
+                const v = (a + f + constants[i] + view.getUint32(offset + g * 4, true)) | 0;
+                const shift = shifts[(i >>> 4) * 4 + (i % 4)];
+                a = d;
+                d = c;
+                c = b;
+                b = (b + ((v << shift) | (v >>> (32 - shift)))) | 0;
+            }
+            a0 = (a0 + a) | 0;
+            b0 = (b0 + b) | 0;
+            c0 = (c0 + c) | 0;
+            d0 = (d0 + d) | 0;
+        };
+        const update = (bytes) => {
+            length += bytes.length;
+            let offset = 0;
+            if (remaining) {
+                offset = Math.min(64 - remaining, bytes.length);
+                tail.set(bytes.subarray(0, offset), remaining);
+                remaining += offset;
+                if (remaining < 64) return;
+                block(tailView, 0);
+            }
+            const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+            for (; offset + 64 <= bytes.length; offset += 64) block(view, offset);
+            remaining = bytes.length - offset;
+            tail.set(bytes.subarray(offset), 0);
+        };
+        const digest = () => {
+            const final = new Uint8Array(remaining < 56 ? 64 : 128);
+            final.set(tail.subarray(0, remaining));
+            final[remaining] = 128;
+            const view = new DataView(final.buffer);
+            view.setUint32(final.length - 8, (length % 536870912) * 8, true);
+            view.setUint32(final.length - 4, Math.floor(length / 536870912), true);
+            for (let offset = 0; offset < final.length; offset += 64) block(view, offset);
+            return [a0, b0, c0, d0]
+                .map((n) =>
+                    [0, 8, 16, 24]
+                        .map((shift) => ((n >>> shift) & 255).toString(16).padStart(2, '0'))
+                        .join('')
+                )
+                .join('');
+        };
+        return { update, digest };
+    }
     function hasFileMetadata(file) {
         return (
             file &&
@@ -538,10 +617,13 @@ SOFTWARE.
                 if (size == null) throw new Error(prefix + '文件大小必须是非负安全整数');
                 item = { name, path, type: 'file', md5: rawMd5.trim().toLowerCase(), size };
                 if (f.gcid != null || f.cid != null) {
-                    for (const key of ['gcid', 'cid']) {
-                        if (typeof f[key] !== 'string' || !/^[0-9a-f]{40}$/i.test(f[key].trim()))
-                            throw new Error(prefix + 'GCID 和 CID 必须同时提供，且均为 40 位十六进制字符串');
-                        item[key] = f[key].trim().toUpperCase();
+                    if (typeof f.gcid !== 'string' || !/^[0-9a-f]{40}$/i.test(f.gcid.trim()))
+                        throw new Error(prefix + 'GCID 必须是 40 位十六进制字符串');
+                    item.gcid = f.gcid.trim().toUpperCase();
+                    if (f.cid != null) {
+                        if (typeof f.cid !== 'string' || !/^[0-9a-f]{40}$/i.test(f.cid.trim()))
+                            throw new Error(prefix + 'CID 必须是 40 位十六进制字符串');
+                        item.cid = f.cid.trim().toUpperCase();
                     }
                 }
             }
@@ -617,7 +699,8 @@ SOFTWARE.
     async function importFile(file, targetId, post, wait = sleep) {
         const parentId = targetId === '0' ? '' : targetId;
         const res = { md5: file.md5, fileSize: file.size };
-        if (file.gcid && file.cid) Object.assign(res, { gcid: file.gcid, cid: file.cid });
+        if (file.gcid) res.gcid = file.gcid;
+        if (file.cid) res.cid = file.cid;
         let first;
         try {
             first = await post(API.create, { capacity: 30, res, name: file.name, parentId });
@@ -643,14 +726,16 @@ SOFTWARE.
                 message: '创建接口没有返回有效 taskId，结果无法确认；请先刷新目录核对',
             };
         if (code === 0) {
-            if (!file.gcid || !file.cid)
+            if (!file.gcid)
                 return {
                     status: 'miss',
-                    message: `MD5 未直接命中秒传；缺少 GCID/CID，需真实文件内容继续上传。任务 ID：${taskId}`,
+                    message: `MD5 未直接命中，清单缺少 GCID。可从本地原文件生成清单再试。任务 ID：${taskId}`,
                 };
             let second;
             try {
-                second = await post(API.check, { taskId, gcid: file.gcid, cid: file.cid });
+                const hashes = { taskId, gcid: file.gcid };
+                if (file.cid) hashes.cid = file.cid;
+                second = await post(API.check, hashes);
             } catch (error) {
                 return {
                     status: 'pending',
@@ -660,7 +745,7 @@ SOFTWARE.
             }
             if (guangyaCode(second) !== 0) throw apiError('秒传检查', second);
             if (second.data?.canFlashUpload === false)
-                return { status: 'miss', message: 'GCID/CID 秒传未命中，需要真实文件上传' };
+                return { status: 'miss', message: 'GCID 秒传未命中，需要上传原文件' };
             if (second.data?.canFlashUpload !== true)
                 return { status: 'pending', message: '秒传接口未返回明确结果，请先核对目录' };
             taskId = taskIdOf(second.data) || taskId;
@@ -1572,6 +1657,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             'json',
             'manifest',
             'jsonFile',
+            'manifestLocalFiles',
             'historyFile',
             'generate',
             'exportManifest',
@@ -1579,6 +1665,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             'start',
             'chooseManifest',
             'chooseJsonFile',
+            'hashManifestFolder',
             'copyJson',
             'save',
             'saveJson',
@@ -1747,7 +1834,8 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 file.type === 'directory'
                     ? { path, type: 'directory' }
                     : { path, md5: file.md5, size: file.size };
-            if (file.gcid && file.cid) Object.assign(entry, { gcid: file.gcid, cid: file.cid });
+            if (file.gcid) entry.gcid = file.gcid;
+            if (file.cid) entry.cid = file.cid;
             Object.defineProperty(next, path, {
                 value: JSON.stringify(entry),
                 enumerable: true,
@@ -1859,16 +1947,11 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     if (!hasFileMetadata(file)) skipped.push({ order, path });
                     else {
                         const entry = { path, md5: file.md5.toLowerCase(), size: file.size };
-                        if (
-                            typeof file.gcid === 'string' &&
-                            typeof file.cid === 'string' &&
-                            /^[a-f0-9]{40}$/i.test(file.gcid) &&
-                            /^[a-f0-9]{40}$/i.test(file.cid)
-                        )
-                            Object.assign(entry, {
-                                gcid: file.gcid.toUpperCase(),
-                                cid: file.cid.toUpperCase(),
-                            });
+                        if (typeof file.gcid === 'string' && /^[a-f0-9]{40}$/i.test(file.gcid)) {
+                            entry.gcid = file.gcid.toUpperCase();
+                            if (typeof file.cid === 'string' && /^[a-f0-9]{40}$/i.test(file.cid))
+                                entry.cid = file.cid.toUpperCase();
+                        }
                         entries.push({ order, entry });
                         files++;
                     }
@@ -1948,9 +2031,11 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             md5: decodeMd5(file.md5),
             size: nonNegativeInteger(file.size),
             id: decimalId(file.fs_id),
+            gcid: file.gcid,
+            cid: file.cid,
         };
     }
-    function baiduSource(token) {
+    function baiduSource(token, { readFlashHashes = false, log = () => {} } = {}) {
         const get = paced(180, async (endpoint, params) => {
             const query = new URLSearchParams({
                 ...params,
@@ -1988,7 +2073,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 });
             },
             async children(node) {
-                return readPages(
+                const nodes = await readPages(
                     async (pageNumber) => {
                         const data = await get('/api/list', {
                             dir: node.key,
@@ -2004,6 +2089,34 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     },
                     (file) => file.key
                 );
+                if (!readFlashHashes) return nodes;
+                const missing = nodes.filter((file) => !file.directory && file.id && !file.gcid);
+                for (let index = 0; index < missing.length; index += 100) {
+                    checkJsonTask();
+                    const batch = missing.slice(index, index + 100);
+                    try {
+                        const details = await source.selected(batch.map((file) => file.id));
+                        checkJsonTask();
+                        const byId = new Map(details.map((file) => [file.id, file]));
+                        for (const file of batch) {
+                            const detail = byId.get(file.id);
+                            if (
+                                detail?.gcid &&
+                                detail.key === file.key &&
+                                detail.size === file.size &&
+                                detail.md5 === file.md5
+                            ) {
+                                file.gcid = detail.gcid;
+                                file.cid = detail.cid;
+                            }
+                        }
+                    } catch (error) {
+                        checkJsonTask();
+                        log('百度文件详情读取失败，保留已取得的清单数据：' + error.message);
+                        break;
+                    }
+                }
+                return nodes;
             },
             async metadata(node) {
                 if (!node.id) return null;
@@ -2341,7 +2454,10 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     parentPath = '';
                 if (provider === '百度') {
                     const path = selected.some((item) => !item.id) ? currentBaiduPath() : null;
-                    source = baiduSource(await getBdstoken());
+                    source = baiduSource(await getBdstoken(), {
+                        readFlashHashes: true,
+                        log: (message) => appendLog(ui, message),
+                    });
                     if (selected.some((item) => !item.id)) {
                         roots = await source.children({ key: path, directory: true });
                         roots = matchSelected(roots, selected);
@@ -2371,6 +2487,13 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 ui.get('status').textContent =
                     `完成（${scope}）：${summary}。` +
                     (!ui.get('json').value ? '没有可导出的内容。' : '请下载 JSON，到目标盘导入。') +
+                    (provider === '百度' && result.files
+                        ? ' 含 GCID 的文件 ' +
+                          result.entries.filter((entry) => entry.gcid).length +
+                          '/' +
+                          result.files +
+                          ' 个。'
+                        : '') +
                     (result.skipped.length
                         ? ` 缺少有效 MD5/大小，已跳过 ${result.skipped.length} 项：${result.skipped.slice(0, 5).join('、')}`
                         : '');
@@ -3436,21 +3559,19 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         if (!destination) {
             if (old && !original) throw new Error('新版和记录中的旧文件均未找到，保留待核对记录');
             let input = file;
-            if (original && (!file.gcid || !file.cid)) {
+            if (original && !file.gcid) {
                 let metadata = original;
-                if (
-                    !/^[a-f0-9]{40}$/i.test(metadata.gcid || '') ||
-                    !/^[a-f0-9]{40}$/i.test(metadata.cid || '')
-                )
-                    metadata = await source.metadata(original);
+                if (!/^[a-f0-9]{40}$/i.test(metadata.gcid || '')) metadata = await source.metadata(original);
                 if (
                     !hasFileMetadata(metadata) ||
                     metadata.md5.toLowerCase() !== file.md5 ||
                     metadata.size !== file.size
                 )
                     throw new Error('旧文件详情无法核对，未提交新版');
-                if (/^[a-f0-9]{40}$/i.test(metadata.gcid || '') && /^[a-f0-9]{40}$/i.test(metadata.cid || ''))
-                    input = { ...file, gcid: metadata.gcid.toUpperCase(), cid: metadata.cid.toUpperCase() };
+                if (/^[a-f0-9]{40}$/i.test(metadata.gcid || '')) {
+                    input = { ...file, gcid: metadata.gcid.toUpperCase() };
+                    if (/^[a-f0-9]{40}$/i.test(metadata.cid || '')) input.cid = metadata.cid.toUpperCase();
+                }
             }
             progress('导入中：' + file.path);
             check();
@@ -3919,6 +4040,47 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         log(`目录检查：读取 ${reads} 次，复用已有项 ${reused} 次；新提交前仍读取最新目录`);
         return counts;
     }
+    async function guangyaLocalFileHashes(file, progress, check) {
+        const sampleSize = 20480;
+        const sha1 = (buffer) => crypto.subtle.digest('SHA-1', buffer);
+        const hex = (buffer) =>
+            Array.from(new Uint8Array(buffer), (byte) => byte.toString(16).padStart(2, '0'))
+                .join('')
+                .toUpperCase();
+        let blockSize = 262144;
+        while (file.size > 512 * blockSize && blockSize < 2097152) blockSize *= 2;
+        const digests = new Uint8Array(Math.ceil(file.size / blockSize) * 20);
+        const md5 = createMd5();
+        for (let offset = 0; offset < file.size; offset += blockSize) {
+            check();
+            const length = Math.min(blockSize, file.size - offset);
+            const bytes = new Uint8Array(await file.slice(offset, offset + length).arrayBuffer());
+            check();
+            if (bytes.length !== length) throw new Error('本地文件读取不完整');
+            md5.update(bytes);
+            const digest = await sha1(bytes);
+            check();
+            digests.set(new Uint8Array(digest), (offset / blockSize) * 20);
+            progress(offset + length);
+        }
+        const gcid = hex(await sha1(digests));
+        check();
+        const samples =
+            file.size < sampleSize * 3
+                ? file
+                : new Blob([
+                      file.slice(0, sampleSize),
+                      file.slice(Math.floor(file.size / 3), Math.floor(file.size / 3) + sampleSize),
+                      file.slice(file.size - sampleSize),
+                  ]);
+        const sampleBytes = await samples.arrayBuffer();
+        check();
+        if (sampleBytes.byteLength !== Math.min(file.size, sampleSize * 3))
+            throw new Error('本地文件抽样读取不完整');
+        const cid = hex(await sha1(sampleBytes));
+        check();
+        return { md5: md5.digest(), gcid, cid };
+    }
     function initGuangya() {
         const ui = makePanel(
             `光鸭跨盘 JSON ${VERSION}`,
@@ -3926,8 +4088,9 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             <p id="status"></p><p id="target"></p><p id="progress"></p>
             <textarea id="json" placeholder="导出的 JSON 会显示在这里；也可粘贴待导入 JSON"></textarea>
             <input id="jsonFile" type="file" accept=".json,application/json" hidden>
+            <input id="manifestLocalFiles" type="file" webkitdirectory multiple hidden>
             <div id="syncPreview" class="sync-preview" hidden><h4>导入预览</h4><p id="syncDestination"></p><p id="syncSummary"></p><div id="syncList"></div><div class="sync-actions"><button id="confirmSync">确认执行</button><button id="cancelSync">取消</button></div></div>
-            <div class="panel-actions"><button id="exportManifest">导出 JSON</button><details class="manifest-import" id="manifestImport"><summary>导入清单</summary><div class="manifest-import-actions"><label><input id="syncExisting" type="checkbox">替换旧版（核验新版后清理旧版）</label><button id="start">导入粘贴内容</button><button id="chooseJsonFile">选择文件并导入</button></div></details></div>
+            <div class="panel-actions"><button id="exportManifest">导出 JSON</button><details class="manifest-import" id="manifestImport"><summary>导入清单</summary><div class="manifest-import-actions"><label><input id="syncExisting" type="checkbox">替换旧版（核验新版后清理旧版）</label><button id="start">导入粘贴内容</button><button id="chooseJsonFile">选择文件并导入</button><button id="hashManifestFolder">用本地文件夹生成清单</button></div></details></div>
             <div class="panel-actions" style="padding-top:0;border-top:0;margin-top:0"><button id="saveJson">下载 JSON</button><button id="copyJson">复制 JSON</button></div>
             <div id="log"></div>`
         );
@@ -3955,6 +4118,46 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         }
         ui.onActivate(refreshStatus);
         const log = (message) => appendLog(ui, message);
+        const localFiles = ui.get('manifestLocalFiles');
+        ui.get('hashManifestFolder').onclick = () => localFiles.click();
+        localFiles.onchange = async () => {
+            const files = Array.from(localFiles.files || []);
+            localFiles.value = '';
+            if (!files.length) return;
+            ui.get('manifestImport').open = false;
+            ui.busy(true);
+            for (const control of controls) control.disabled = true;
+            ui.get('log').textContent = '';
+            const progress = ui.get('progress');
+            try {
+                const entries = [];
+                for (const [index, file] of files.entries()) {
+                    checkJsonTask();
+                    const path = relativeParts(file.webkitRelativePath || file.name).join('/');
+                    let lastUpdate = 0;
+                    const hashes = await guangyaLocalFileHashes(
+                        file,
+                        (processed) => {
+                            if (Date.now() - lastUpdate < 150 && processed < file.size) return;
+                            lastUpdate = Date.now();
+                            const percent = Math.floor((processed / file.size) * 100);
+                            progress.textContent = `计算哈希 ${index + 1}/${files.length} · ${percent}% · ${path}`;
+                        },
+                        checkJsonTask
+                    );
+                    entries.push({ path, size: file.size, ...hashes });
+                }
+                const manifest = normalizeFiles(entries);
+                ui.get('json').value = JSON.stringify(manifest, null, 2);
+                progress.textContent = `已生成 ${manifest.length} 个文件的清单。打开目标目录，再点「导入粘贴内容」。`;
+            } catch (error) {
+                progress.textContent = '未生成本地清单：' + error.message;
+                log(progress.textContent);
+            } finally {
+                for (const control of controls) control.disabled = false;
+                ui.busy(false);
+            }
+        };
         ui.get('exportManifest').onclick = async () => {
             ui.busy(true);
             controls.forEach((control) => {
@@ -8696,58 +8899,9 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
         );
     }
     function subtitleMd5(bytes) {
-        const length = bytes.length,
-            padded = new Uint8Array((((length + 8) >>> 6) + 1) * 64);
-        padded.set(bytes);
-        padded[length] = 128;
-        const view = new DataView(padded.buffer);
-        view.setUint32(padded.length - 8, length * 8, true);
-        const shifts = [7, 12, 17, 22, 5, 9, 14, 20, 4, 11, 16, 23, 6, 10, 15, 21];
-        const constants = Array.from(
-            { length: 64 },
-            (_, i) => Math.floor(Math.abs(Math.sin(i + 1)) * 4294967296) | 0
-        );
-        let a0 = 1732584193,
-            b0 = 4023233417,
-            c0 = 2562383102,
-            d0 = 271733878;
-        for (let offset = 0; offset < padded.length; offset += 64) {
-            let a = a0,
-                b = b0,
-                c = c0,
-                d = d0;
-            for (let i = 0; i < 64; i++) {
-                let f, g;
-                if (i < 16) {
-                    f = (b & c) | (~b & d);
-                    g = i;
-                } else if (i < 32) {
-                    f = (d & b) | (~d & c);
-                    g = (5 * i + 1) % 16;
-                } else if (i < 48) {
-                    f = b ^ c ^ d;
-                    g = (3 * i + 5) % 16;
-                } else {
-                    f = c ^ (b | ~d);
-                    g = (7 * i) % 16;
-                }
-                const v = (a + f + constants[i] + view.getUint32(offset + g * 4, true)) | 0;
-                const shift = shifts[(i >>> 4) * 4 + (i % 4)];
-                a = d;
-                d = c;
-                c = b;
-                b = (b + ((v << shift) | (v >>> (32 - shift)))) | 0;
-            }
-            a0 = (a0 + a) | 0;
-            b0 = (b0 + b) | 0;
-            c0 = (c0 + c) | 0;
-            d0 = (d0 + d) | 0;
-        }
-        return [a0, b0, c0, d0]
-            .map((n) =>
-                [0, 8, 16, 24].map((shift) => ((n >>> shift) & 255).toString(16).padStart(2, '0')).join('')
-            )
-            .join('');
+        const hash = createMd5();
+        hash.update(bytes);
+        return hash.digest();
     }
     function subtitleDownloadUrl(value, { allowHttp = false, base } = {}) {
         let url;

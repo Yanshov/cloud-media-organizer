@@ -67,7 +67,8 @@ function importExportHistory(provider, files) {
             file.type === 'directory'
                 ? { path, type: 'directory' }
                 : { path, md5: file.md5, size: file.size };
-        if (file.gcid && file.cid) Object.assign(entry, { gcid: file.gcid, cid: file.cid });
+        if (file.gcid) entry.gcid = file.gcid;
+        if (file.cid) entry.cid = file.cid;
         Object.defineProperty(next, path, {
             value: JSON.stringify(entry),
             enumerable: true,
@@ -178,13 +179,11 @@ async function collectTree(roots, source, progress = () => {}, parentPath = '', 
                 if (!hasFileMetadata(file)) skipped.push({ order, path });
                 else {
                     const entry = { path, md5: file.md5.toLowerCase(), size: file.size };
-                    if (
-                        typeof file.gcid === 'string' &&
-                        typeof file.cid === 'string' &&
-                        /^[a-f0-9]{40}$/i.test(file.gcid) &&
-                        /^[a-f0-9]{40}$/i.test(file.cid)
-                    )
-                        Object.assign(entry, { gcid: file.gcid.toUpperCase(), cid: file.cid.toUpperCase() });
+                    if (typeof file.gcid === 'string' && /^[a-f0-9]{40}$/i.test(file.gcid)) {
+                        entry.gcid = file.gcid.toUpperCase();
+                        if (typeof file.cid === 'string' && /^[a-f0-9]{40}$/i.test(file.cid))
+                            entry.cid = file.cid.toUpperCase();
+                    }
                     entries.push({ order, entry });
                     files++;
                 }
@@ -263,9 +262,11 @@ function baiduNode(file) {
         md5: decodeMd5(file.md5),
         size: nonNegativeInteger(file.size),
         id: decimalId(file.fs_id),
+        gcid: file.gcid,
+        cid: file.cid,
     };
 }
-function baiduSource(token) {
+function baiduSource(token, { readFlashHashes = false, log = () => {} } = {}) {
     const get = paced(180, async (endpoint, params) => {
         const query = new URLSearchParams({
             ...params,
@@ -300,7 +301,7 @@ function baiduSource(token) {
             });
         },
         async children(node) {
-            return readPages(
+            const nodes = await readPages(
                 async (pageNumber) => {
                     const data = await get('/api/list', {
                         dir: node.key,
@@ -316,6 +317,34 @@ function baiduSource(token) {
                 },
                 (file) => file.key
             );
+            if (!readFlashHashes) return nodes;
+            const missing = nodes.filter((file) => !file.directory && file.id && !file.gcid);
+            for (let index = 0; index < missing.length; index += 100) {
+                checkJsonTask();
+                const batch = missing.slice(index, index + 100);
+                try {
+                    const details = await source.selected(batch.map((file) => file.id));
+                    checkJsonTask();
+                    const byId = new Map(details.map((file) => [file.id, file]));
+                    for (const file of batch) {
+                        const detail = byId.get(file.id);
+                        if (
+                            detail?.gcid &&
+                            detail.key === file.key &&
+                            detail.size === file.size &&
+                            detail.md5 === file.md5
+                        ) {
+                            file.gcid = detail.gcid;
+                            file.cid = detail.cid;
+                        }
+                    }
+                } catch (error) {
+                    checkJsonTask();
+                    log('百度文件详情读取失败，保留已取得的清单数据：' + error.message);
+                    break;
+                }
+            }
+            return nodes;
         },
         async metadata(node) {
             if (!node.id) return null;
@@ -655,7 +684,10 @@ function initExporter(provider) {
                 parentPath = '';
             if (provider === '百度') {
                 const path = selected.some((item) => !item.id) ? currentBaiduPath() : null;
-                source = baiduSource(await getBdstoken());
+                source = baiduSource(await getBdstoken(), {
+                    readFlashHashes: true,
+                    log: (message) => appendLog(ui, message),
+                });
                 if (selected.some((item) => !item.id)) {
                     roots = await source.children({ key: path, directory: true });
                     roots = matchSelected(roots, selected);
@@ -685,6 +717,13 @@ function initExporter(provider) {
             ui.get('status').textContent =
                 `完成（${scope}）：${summary}。` +
                 (!ui.get('json').value ? '没有可导出的内容。' : '请下载 JSON，到目标盘导入。') +
+                (provider === '百度' && result.files
+                    ? ' 含 GCID 的文件 ' +
+                      result.entries.filter((entry) => entry.gcid).length +
+                      '/' +
+                      result.files +
+                      ' 个。'
+                    : '') +
                 (result.skipped.length
                     ? ` 缺少有效 MD5/大小，已跳过 ${result.skipped.length} 项：${result.skipped.slice(0, 5).join('、')}`
                     : '');

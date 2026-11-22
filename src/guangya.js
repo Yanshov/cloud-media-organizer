@@ -575,18 +575,19 @@ async function replaceGuangyaFile(
     if (!destination) {
         if (old && !original) throw new Error('新版和记录中的旧文件均未找到，保留待核对记录');
         let input = file;
-        if (original && (!file.gcid || !file.cid)) {
+        if (original && !file.gcid) {
             let metadata = original;
-            if (!/^[a-f0-9]{40}$/i.test(metadata.gcid || '') || !/^[a-f0-9]{40}$/i.test(metadata.cid || ''))
-                metadata = await source.metadata(original);
+            if (!/^[a-f0-9]{40}$/i.test(metadata.gcid || '')) metadata = await source.metadata(original);
             if (
                 !hasFileMetadata(metadata) ||
                 metadata.md5.toLowerCase() !== file.md5 ||
                 metadata.size !== file.size
             )
                 throw new Error('旧文件详情无法核对，未提交新版');
-            if (/^[a-f0-9]{40}$/i.test(metadata.gcid || '') && /^[a-f0-9]{40}$/i.test(metadata.cid || ''))
-                input = { ...file, gcid: metadata.gcid.toUpperCase(), cid: metadata.cid.toUpperCase() };
+            if (/^[a-f0-9]{40}$/i.test(metadata.gcid || '')) {
+                input = { ...file, gcid: metadata.gcid.toUpperCase() };
+                if (/^[a-f0-9]{40}$/i.test(metadata.cid || '')) input.cid = metadata.cid.toUpperCase();
+            }
         }
         progress('导入中：' + file.path);
         check();
@@ -1040,6 +1041,48 @@ async function runGuangyaImportFiles(files, targetId, post, ensureDirectory, exi
     log(`目录检查：读取 ${reads} 次，复用已有项 ${reused} 次；新提交前仍读取最新目录`);
     return counts;
 }
+async function guangyaLocalFileHashes(file, progress, check) {
+    const sampleSize = 0x5000;
+    const sha1 = (buffer) => crypto.subtle.digest('SHA-1', buffer);
+    const hex = (buffer) =>
+        Array.from(new Uint8Array(buffer), (byte) => byte.toString(16).padStart(2, '0'))
+            .join('')
+            .toUpperCase();
+    // GCID hashes each block with SHA-1 and hashes the concatenated raw digests.
+    let blockSize = 0x40000;
+    while (file.size > 512 * blockSize && blockSize < 0x200000) blockSize *= 2;
+    const digests = new Uint8Array(Math.ceil(file.size / blockSize) * 20);
+    const md5 = createMd5();
+    for (let offset = 0; offset < file.size; offset += blockSize) {
+        check();
+        const length = Math.min(blockSize, file.size - offset);
+        const bytes = new Uint8Array(await file.slice(offset, offset + length).arrayBuffer());
+        check();
+        if (bytes.length !== length) throw new Error('本地文件读取不完整');
+        md5.update(bytes);
+        const digest = await sha1(bytes);
+        check();
+        digests.set(new Uint8Array(digest), (offset / blockSize) * 20);
+        progress(offset + length);
+    }
+    const gcid = hex(await sha1(digests));
+    check();
+    const samples =
+        file.size < sampleSize * 3
+            ? file
+            : new Blob([
+                  file.slice(0, sampleSize),
+                  file.slice(Math.floor(file.size / 3), Math.floor(file.size / 3) + sampleSize),
+                  file.slice(file.size - sampleSize),
+              ]);
+    const sampleBytes = await samples.arrayBuffer();
+    check();
+    if (sampleBytes.byteLength !== Math.min(file.size, sampleSize * 3))
+        throw new Error('本地文件抽样读取不完整');
+    const cid = hex(await sha1(sampleBytes));
+    check();
+    return { md5: md5.digest(), gcid, cid };
+}
 function initGuangya() {
     const ui = makePanel(
         `光鸭跨盘 JSON ${VERSION}`,
@@ -1047,8 +1090,9 @@ function initGuangya() {
             <p id="status"></p><p id="target"></p><p id="progress"></p>
             <textarea id="json" placeholder="导出的 JSON 会显示在这里；也可粘贴待导入 JSON"></textarea>
             <input id="jsonFile" type="file" accept=".json,application/json" hidden>
+            <input id="manifestLocalFiles" type="file" webkitdirectory multiple hidden>
             <div id="syncPreview" class="sync-preview" hidden><h4>导入预览</h4><p id="syncDestination"></p><p id="syncSummary"></p><div id="syncList"></div><div class="sync-actions"><button id="confirmSync">确认执行</button><button id="cancelSync">取消</button></div></div>
-            <div class="panel-actions"><button id="exportManifest">导出 JSON</button><details class="manifest-import" id="manifestImport"><summary>导入清单</summary><div class="manifest-import-actions"><label><input id="syncExisting" type="checkbox">替换旧版（核验新版后清理旧版）</label><button id="start">导入粘贴内容</button><button id="chooseJsonFile">选择文件并导入</button></div></details></div>
+            <div class="panel-actions"><button id="exportManifest">导出 JSON</button><details class="manifest-import" id="manifestImport"><summary>导入清单</summary><div class="manifest-import-actions"><label><input id="syncExisting" type="checkbox">替换旧版（核验新版后清理旧版）</label><button id="start">导入粘贴内容</button><button id="chooseJsonFile">选择文件并导入</button><button id="hashManifestFolder">用本地文件夹生成清单</button></div></details></div>
             <div class="panel-actions" style="padding-top:0;border-top:0;margin-top:0"><button id="saveJson">下载 JSON</button><button id="copyJson">复制 JSON</button></div>
             <div id="log"></div>`
     );
@@ -1076,6 +1120,46 @@ function initGuangya() {
     }
     ui.onActivate(refreshStatus);
     const log = (message) => appendLog(ui, message);
+    const localFiles = ui.get('manifestLocalFiles');
+    ui.get('hashManifestFolder').onclick = () => localFiles.click();
+    localFiles.onchange = async () => {
+        const files = Array.from(localFiles.files || []);
+        localFiles.value = '';
+        if (!files.length) return;
+        ui.get('manifestImport').open = false;
+        ui.busy(true);
+        for (const control of controls) control.disabled = true;
+        ui.get('log').textContent = '';
+        const progress = ui.get('progress');
+        try {
+            const entries = [];
+            for (const [index, file] of files.entries()) {
+                checkJsonTask();
+                const path = relativeParts(file.webkitRelativePath || file.name).join('/');
+                let lastUpdate = 0;
+                const hashes = await guangyaLocalFileHashes(
+                    file,
+                    (processed) => {
+                        if (Date.now() - lastUpdate < 150 && processed < file.size) return;
+                        lastUpdate = Date.now();
+                        const percent = Math.floor((processed / file.size) * 100);
+                        progress.textContent = `计算哈希 ${index + 1}/${files.length} · ${percent}% · ${path}`;
+                    },
+                    checkJsonTask
+                );
+                entries.push({ path, size: file.size, ...hashes });
+            }
+            const manifest = normalizeFiles(entries);
+            ui.get('json').value = JSON.stringify(manifest, null, 2);
+            progress.textContent = `已生成 ${manifest.length} 个文件的清单。打开目标目录，再点「导入粘贴内容」。`;
+        } catch (error) {
+            progress.textContent = '未生成本地清单：' + error.message;
+            log(progress.textContent);
+        } finally {
+            for (const control of controls) control.disabled = false;
+            ui.busy(false);
+        }
+    };
     ui.get('exportManifest').onclick = async () => {
         ui.busy(true);
         controls.forEach((control) => {

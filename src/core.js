@@ -6,7 +6,7 @@ if (
 )
     return;
 
-const VERSION = '3.0.42';
+const VERSION = '3.0.43';
 let jsonTaskStopped = false;
 const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
 const nativeFetch = page.fetch.bind(page);
@@ -277,6 +277,85 @@ function nonNegativeInteger(value) {
     const number = Number(value);
     return Number.isSafeInteger(number) && number >= 0 ? number : null;
 }
+function createMd5() {
+    const shifts = [7, 12, 17, 22, 5, 9, 14, 20, 4, 11, 16, 23, 6, 10, 15, 21];
+    const constants = Array.from(
+        { length: 64 },
+        (_, i) => Math.floor(Math.abs(Math.sin(i + 1)) * 4294967296) | 0
+    );
+    let a0 = 0x67452301,
+        b0 = 0xefcdab89,
+        c0 = 0x98badcfe,
+        d0 = 0x10325476;
+    const tail = new Uint8Array(64);
+    const tailView = new DataView(tail.buffer);
+    let length = 0;
+    let remaining = 0;
+    const block = (view, offset) => {
+        let a = a0,
+            b = b0,
+            c = c0,
+            d = d0;
+        for (let i = 0; i < 64; i++) {
+            let f, g;
+            if (i < 16) {
+                f = (b & c) | (~b & d);
+                g = i;
+            } else if (i < 32) {
+                f = (d & b) | (~d & c);
+                g = (5 * i + 1) % 16;
+            } else if (i < 48) {
+                f = b ^ c ^ d;
+                g = (3 * i + 5) % 16;
+            } else {
+                f = c ^ (b | ~d);
+                g = (7 * i) % 16;
+            }
+            const v = (a + f + constants[i] + view.getUint32(offset + g * 4, true)) | 0;
+            const shift = shifts[(i >>> 4) * 4 + (i % 4)];
+            a = d;
+            d = c;
+            c = b;
+            b = (b + ((v << shift) | (v >>> (32 - shift)))) | 0;
+        }
+        a0 = (a0 + a) | 0;
+        b0 = (b0 + b) | 0;
+        c0 = (c0 + c) | 0;
+        d0 = (d0 + d) | 0;
+    };
+    const update = (bytes) => {
+        length += bytes.length;
+        let offset = 0;
+        if (remaining) {
+            offset = Math.min(64 - remaining, bytes.length);
+            tail.set(bytes.subarray(0, offset), remaining);
+            remaining += offset;
+            if (remaining < 64) return;
+            block(tailView, 0);
+        }
+        const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        for (; offset + 64 <= bytes.length; offset += 64) block(view, offset);
+        remaining = bytes.length - offset;
+        tail.set(bytes.subarray(offset), 0);
+    };
+    // Finalize once, adding the 64-bit length required for multi-gigabyte files.
+    const digest = () => {
+        const final = new Uint8Array(remaining < 56 ? 64 : 128);
+        final.set(tail.subarray(0, remaining));
+        final[remaining] = 128;
+        const view = new DataView(final.buffer);
+        view.setUint32(final.length - 8, (length % 0x20000000) * 8, true);
+        view.setUint32(final.length - 4, Math.floor(length / 0x20000000), true);
+        for (let offset = 0; offset < final.length; offset += 64) block(view, offset);
+        return [a0, b0, c0, d0]
+            .map((n) =>
+                [0, 8, 16, 24].map((shift) => ((n >>> shift) & 255).toString(16).padStart(2, '0')).join('')
+            )
+            .join('');
+    };
+    return { update, digest };
+}
+
 function hasFileMetadata(file) {
     return (
         file &&
@@ -348,10 +427,13 @@ function normalizeFiles(parsed) {
             if (size == null) throw new Error(prefix + '文件大小必须是非负安全整数');
             item = { name, path, type: 'file', md5: rawMd5.trim().toLowerCase(), size };
             if (f.gcid != null || f.cid != null) {
-                for (const key of ['gcid', 'cid']) {
-                    if (typeof f[key] !== 'string' || !/^[0-9a-f]{40}$/i.test(f[key].trim()))
-                        throw new Error(prefix + 'GCID 和 CID 必须同时提供，且均为 40 位十六进制字符串');
-                    item[key] = f[key].trim().toUpperCase();
+                if (typeof f.gcid !== 'string' || !/^[0-9a-f]{40}$/i.test(f.gcid.trim()))
+                    throw new Error(prefix + 'GCID 必须是 40 位十六进制字符串');
+                item.gcid = f.gcid.trim().toUpperCase();
+                if (f.cid != null) {
+                    if (typeof f.cid !== 'string' || !/^[0-9a-f]{40}$/i.test(f.cid.trim()))
+                        throw new Error(prefix + 'CID 必须是 40 位十六进制字符串');
+                    item.cid = f.cid.trim().toUpperCase();
                 }
             }
         }
@@ -427,7 +509,8 @@ function confirmedFile(data, file, parentId) {
 async function importFile(file, targetId, post, wait = sleep) {
     const parentId = targetId === '0' ? '' : targetId;
     const res = { md5: file.md5, fileSize: file.size };
-    if (file.gcid && file.cid) Object.assign(res, { gcid: file.gcid, cid: file.cid });
+    if (file.gcid) res.gcid = file.gcid;
+    if (file.cid) res.cid = file.cid;
     let first;
     try {
         first = await post(API.create, { capacity: 30, res, name: file.name, parentId });
@@ -447,14 +530,16 @@ async function importFile(file, targetId, post, wait = sleep) {
     if (!taskId)
         return { status: 'pending', message: '创建接口没有返回有效 taskId，结果无法确认；请先刷新目录核对' };
     if (code === 0) {
-        if (!file.gcid || !file.cid)
+        if (!file.gcid)
             return {
                 status: 'miss',
-                message: `MD5 未直接命中秒传；缺少 GCID/CID，需真实文件内容继续上传。任务 ID：${taskId}`,
+                message: `MD5 未直接命中，清单缺少 GCID。可从本地原文件生成清单再试。任务 ID：${taskId}`,
             };
         let second;
         try {
-            second = await post(API.check, { taskId, gcid: file.gcid, cid: file.cid });
+            const hashes = { taskId, gcid: file.gcid };
+            if (file.cid) hashes.cid = file.cid;
+            second = await post(API.check, hashes);
         } catch (error) {
             return {
                 status: 'pending',
@@ -464,7 +549,7 @@ async function importFile(file, targetId, post, wait = sleep) {
         }
         if (guangyaCode(second) !== 0) throw apiError('秒传检查', second);
         if (second.data?.canFlashUpload === false)
-            return { status: 'miss', message: 'GCID/CID 秒传未命中，需要真实文件上传' };
+            return { status: 'miss', message: 'GCID 秒传未命中，需要上传原文件' };
         if (second.data?.canFlashUpload !== true)
             return { status: 'pending', message: '秒传接口未返回明确结果，请先核对目录' };
         taskId = taskIdOf(second.data) || taskId;

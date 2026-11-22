@@ -53,58 +53,9 @@ function subtitleRemoteJson(url, options = {}) {
     );
 }
 function subtitleMd5(bytes) {
-    const length = bytes.length,
-        padded = new Uint8Array((((length + 8) >>> 6) + 1) * 64);
-    padded.set(bytes);
-    padded[length] = 128;
-    const view = new DataView(padded.buffer);
-    view.setUint32(padded.length - 8, length * 8, true);
-    const shifts = [7, 12, 17, 22, 5, 9, 14, 20, 4, 11, 16, 23, 6, 10, 15, 21];
-    const constants = Array.from(
-        { length: 64 },
-        (_, i) => Math.floor(Math.abs(Math.sin(i + 1)) * 4294967296) | 0
-    );
-    let a0 = 0x67452301,
-        b0 = 0xefcdab89,
-        c0 = 0x98badcfe,
-        d0 = 0x10325476;
-    for (let offset = 0; offset < padded.length; offset += 64) {
-        let a = a0,
-            b = b0,
-            c = c0,
-            d = d0;
-        for (let i = 0; i < 64; i++) {
-            let f, g;
-            if (i < 16) {
-                f = (b & c) | (~b & d);
-                g = i;
-            } else if (i < 32) {
-                f = (d & b) | (~d & c);
-                g = (5 * i + 1) % 16;
-            } else if (i < 48) {
-                f = b ^ c ^ d;
-                g = (3 * i + 5) % 16;
-            } else {
-                f = c ^ (b | ~d);
-                g = (7 * i) % 16;
-            }
-            const v = (a + f + constants[i] + view.getUint32(offset + g * 4, true)) | 0;
-            const shift = shifts[(i >>> 4) * 4 + (i % 4)];
-            a = d;
-            d = c;
-            c = b;
-            b = (b + ((v << shift) | (v >>> (32 - shift)))) | 0;
-        }
-        a0 = (a0 + a) | 0;
-        b0 = (b0 + b) | 0;
-        c0 = (c0 + c) | 0;
-        d0 = (d0 + d) | 0;
-    }
-    return [a0, b0, c0, d0]
-        .map((n) =>
-            [0, 8, 16, 24].map((shift) => ((n >>> shift) & 255).toString(16).padStart(2, '0')).join('')
-        )
-        .join('');
+    const hash = createMd5();
+    hash.update(bytes);
+    return hash.digest();
 }
 function subtitleDownloadUrl(value, { allowHttp = false, base } = {}) {
     let url;
