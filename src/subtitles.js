@@ -1921,7 +1921,21 @@
             }
             return /^[a-f0-9]{32}$/i.test(hash || '') ? hash.toLowerCase() === md5 : subtitleMd5(await read(node, progress, check)) === md5;
         };
-        const list = row => driveCall(() => source.children({id:row.node.parentId}));
+        const list = async (row, progress, check) => {
+            for (let attempt = 0; ; attempt++) {
+                check();
+                try {
+                    const nodes = await driveCall(() => source.children({id:row.node.parentId}));
+                    check();
+                    return nodes;
+                } catch (error) {
+                    check();
+                    if (!error.directoryChanged || attempt >= 2) throw error;
+                    progress('目录分页不一致，重新读取 ' + (attempt + 1) + '/2');
+                    await wait(500 * (attempt + 1));
+                }
+            }
+        };
         const validateVideo = (row, nodes) => {
             const found = nodes.find(node => node.id === row.node.id);
             if (!found || found.directory || found.name !== row.node.name || found.size !== row.node.size || row.node.md5 && found.md5 && row.node.md5.toLowerCase() !== found.md5.toLowerCase()) throw new Error('视频已移动、改名或内容变化，请重新查找字幕');
@@ -1931,7 +1945,7 @@
             if (!pending.length) return recovered;
             try {
                 check(); progress('检查此前已提交的字幕');
-                const nodes = await list(row); check(); validateVideo(row, nodes);
+                const nodes = await list(row,progress,check); validateVideo(row, nodes);
                 for (const [key, record] of pending) {
                     check();
                     const matches = nodes.filter(node => node.name === record.name);
@@ -1985,7 +1999,8 @@
                     if (!beforeWrite && found && await sameContent(found, bytes, subtitleMd5(bytes), progress, check)) return found;
                     throw Object.assign(new Error('此前上传已核验，请重新检查目录后确认字幕状态；本次不再上传其他版本'), {pendingUpload:true});
                 }
-                const md5 = subtitleMd5(bytes), nodes = await list(row); check(); validateVideo(row, nodes);
+                const md5 = subtitleMd5(bytes), nodes = await list(row,progress,check);
+                validateVideo(row, nodes);
                 beforeWrite?.(nodes);
                 const existing = nodes.filter(node => node.name === name);
                 if (existing.length) {
@@ -2038,7 +2053,7 @@
                     for (let attempt = 0; attempt < 12; attempt++) {
                         check();
                         let fresh;
-                        try { fresh = await list(row); listFailures = 0; }
+                        try { fresh = await list(row,progress,check); listFailures = 0; }
                         catch (error) {
                             check();
                             if (!retryable(error) || ++listFailures > 2 || attempt === 11) throw error;

@@ -799,7 +799,7 @@
                     const bytes = await subtitleImportBytes(entry,verify);
                     verify();
                     if (subtitleMd5(bytes) !== entry.digest) throw new Error('字幕内容与导入预览不一致，请重新选择本地文件');
-                    await enqueueByKey(writes,JSON.stringify([row.node.parentId,name.toLowerCase()]),() => savePanelSubtitle(draft.drive,row,{...entry,bytes},phase => {
+                    await enqueueByKey(writes,String(row.node.parentId || '0'),() => savePanelSubtitle(draft.drive,row,{...entry,bytes},phase => {
                         status(phase + ' · ' + row.node.name);
                         diag('导入网盘',row.node.name + ' · ' + phase);
                     },verify));
@@ -826,7 +826,7 @@
                 meter(done + failed + pending,targets.length);
                 flow.requestRender();
                 return outcome;
-              },verify,4,'按需提取字幕，最多 4 份正文驻留；同目录同名写入串行，上传、读回和回执按顺序');
+              },verify,4,'按需提取字幕，最多 4 份正文驻留；同目录依次核对、上传和读回');
             } catch (error) { interrupted = error.message; }
             const summary = '已处理 ' + (done + failed + pending) + '/' + targets.length + ' · 已导入 ' + done
                 + ' · 失败 ' + failed + ' · 待对账 ' + pending + (interrupted ? ' · ' + interrupted : '');
@@ -1237,7 +1237,7 @@
                 const writes = new Map();
                 const save = async (row,payload,verify) => {
                     const {name,verification} = payload;
-                    await enqueueByKey(writes,JSON.stringify([row.node.parentId,name.toLowerCase()]),() =>
+                    await enqueueByKey(writes,String(row.node.parentId || '0'),() =>
                         savePanelSubtitle(drive,row,payload,phase => {
                             status(phase + '：' + row.node.name);
                             diag('网盘写入',row.node.name + ' · ' + phase);
@@ -1334,7 +1334,7 @@
                     meter((mergedSeason ? staged.size : done) + failed,rows.length);
                     flow.requestRender();
                     return outcome;
-                },check,8,'单视频依优先级回退，同目录同名写入串行，网盘与来源沿用原节流');
+                },check,8,'单视频依优先级回退，同目录依次核对、上传和读回，网盘与来源沿用原节流');
                 if (mergedSeason) {
                     const destinationKeys = new Set(rows.filter(row => staged.has(row)).map(row =>
                         JSON.stringify([row.node.parentId,staged.get(row).name.toLowerCase()])));

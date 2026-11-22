@@ -129,26 +129,27 @@
     async function readPages(load, keyOf) {
         const items = [], seen = new Set();
         let expectedTotal = null;
+        const inconsistent = message => Object.assign(new Error(message), {directoryChanged:true});
         for (let pageNumber = 1; pageNumber <= 10000; pageNumber++) {
             const result = await load(pageNumber, items.length);
             if (!result || !Array.isArray(result.items)) throw new Error('目录列表格式不正确');
             if (result.total != null) {
-                if (expectedTotal != null && result.total !== expectedTotal) throw new Error('读取期间目录项目数发生变化，请重试');
+                if (expectedTotal != null && result.total !== expectedTotal) throw inconsistent('读取期间目录项目数发生变化，请重试');
                 expectedTotal = result.total;
             }
             let added = 0;
             for (const item of result.items) {
                 const key = keyOf(item);
                 if (!key) throw new Error('目录列表缺少 ID');
-                if (seen.has(key)) throw new Error('目录分页没有进展或包含重复项目，请重新读取，避免漏文件');
+                if (seen.has(key)) throw inconsistent('目录分页没有进展或包含重复项目，请重新读取，避免漏文件');
                 seen.add(key); items.push(item); added++;
             }
             if (!result.more) {
-                if (expectedTotal != null && items.length !== expectedTotal) throw new Error(`目录项目数不一致：应有 ${expectedTotal}，实际读到 ${items.length}；请重新读取`);
+                if (expectedTotal != null && items.length !== expectedTotal) throw inconsistent(`目录项目数不一致：应有 ${expectedTotal}，实际读到 ${items.length}；请重新读取`);
                 return items;
             }
-            if (expectedTotal != null && items.length >= expectedTotal) throw new Error('目录分页与总数不一致，请重新读取');
-            if (!added) throw new Error('目录分页没有进展，已停止，避免漏文件');
+            if (expectedTotal != null && items.length >= expectedTotal) throw inconsistent('目录分页与总数不一致，请重新读取');
+            if (!added) throw inconsistent('目录分页没有进展，已停止，避免漏文件');
         }
         throw new Error('目录分页超过上限，请分批读取');
     }
