@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v3.0（重构版）
 // @namespace    local.cloud-media-organizer
-// @version      3.0.41
+// @version      3.0.42
 // @description  面向百度网盘、123 云盘和光鸭网盘的浏览器脚本，支持跨盘 JSON 清单、影视整理与字幕补齐。
 // @match        https://pan.baidu.com/*
 // @match        https://yun.baidu.com/*
@@ -198,7 +198,7 @@ SOFTWARE.
             (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))
     )
         return;
-    const VERSION = '3.0.41';
+    const VERSION = '3.0.42';
     let jsonTaskStopped = false;
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
@@ -11088,7 +11088,19 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
         };
     }
     function subtitleVerificationMessage(result) {
-        return `格式/语言通过；${{ file: '对白范围与视频文件时长相符', unknown: '无时长参考', reference: 'TMDB 仅作作品时长参考', 'reference-difference': '与 TMDB 作品时长参考有差异' }[result.evidence] || '时长证据待确认'}；${result.work?.status === 'supported' ? 'AI 支持作品归属（非实证）' : '作品归属未确认'}；未核对音画同步`;
+        const timing =
+            {
+                file: '对白范围与视频文件时长相符',
+                unknown: '无时长参考',
+                reference: 'TMDB 仅作作品时长参考',
+                'reference-difference': '与 TMDB 作品时长参考有差异',
+            }[result.evidence] || '时长证据待确认';
+        const identity =
+            {
+                manual: '已手动配对',
+                supported: 'AI 支持作品归属（非实证）',
+            }[result.work?.status] || '作品归属未确认';
+        return `格式/语言通过；${timing}；${identity}；未核对音画同步`;
     }
     function subtitleEpisodeName(name, parsed) {
         const stem = String(name || '')
@@ -13073,7 +13085,7 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
         check();
         return extracted.bytes;
     }
-    function matchSubtitleImport(name, rows, archiveName = '', { manual = false } = {}) {
+    function matchSubtitleImport(name, rows, archiveName = '', { manual = false, target = null } = {}) {
         const stem = mediaStem(name).normalize('NFKC');
         const marks = [...stem.matchAll(/(?:^|[^\dA-Z])S(\d{1,2})[ ._-]*E(\d{1,3})(?!\d)/gi)];
         const parsed = parseMediaName(name);
@@ -13083,6 +13095,13 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
             /E\d+(?:[ ._-]*[-~][ ._-]*(?:E)?|\s*E)\d+/i.test(stem)
         )
             return { reason: '暂不支持合并多集字幕' };
+        if (target) {
+            const { episode, endEpisode } = target.parsed;
+            if (endEpisode != null && endEpisode !== episode)
+                return { row: target, reason: '暂不支持导入到合并多集视频' };
+            return { row: target };
+        }
+        if (!rows.length) return { reason: '本组季集待确认，请指定对应的视频' };
         let targets = rows;
         const matchName =
             manual && rows[0].parsed.tv
@@ -13190,11 +13209,17 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
         );
     }
     function subtitleImportGroups(inventory) {
-        const eligible = inventory.filter(subtitleTargetHasEpisode);
-        return groupBatch(eligible, (row) => (row.parsed.tv ? row.groupKey : row));
+        const eligible = inventory.filter((row) => !row.checkState || row.checkState === 'done');
+        return groupBatch(eligible, (row) => {
+            if (!row.parsed.tv) return row;
+            if (row.media?.detail && row.media.match && row.media.type === 'tv')
+                return JSON.stringify([row.media.match, row.parsed.season]);
+            return row.groupKey;
+        });
     }
-    async function planSubtitleImport(entries, rows, language, confirmed, log, check) {
+    async function planSubtitleImport({ entries, language, confirmed, assignments }, rows, log, check) {
         const planned = [];
+        const autoTargets = rows.filter(subtitleTargetHasEpisode);
         let inspected = 0;
         for (const entry of entries) {
             check();
@@ -13202,10 +13227,14 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                 planned.push({ ...entry, state: 'invalid', reason: entry.error });
                 continue;
             }
-            const match = matchSubtitleImport(entry.name, rows, entry.archiveName, { manual: true }),
+            const target = assignments.get(entry);
+            const match = matchSubtitleImport(entry.name, autoTargets, entry.archiveName, {
+                    manual: true,
+                    target,
+                }),
                 { row, releaseWarning } = match;
             if (match.reason) {
-                planned.push({ ...entry, row, state: 'unmatched', reason: match.reason });
+                planned.push({ ...entry, row, target, state: 'unmatched', reason: match.reason });
                 continue;
             }
             if (subtitleCovered(row)) {
@@ -13233,6 +13262,7 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                     language,
                     log
                 );
+                if (target) verification.work = { status: 'manual', reason: '用户已指定目标视频' };
                 if (match.needsIdentity && !confirmed.has(entry)) {
                     planned.push({
                         ...entry,
@@ -13260,6 +13290,7 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                 planned.push({
                     ...entry,
                     row,
+                    target,
                     verification,
                     digest: subtitleMd5(bytes),
                     state: 'ready',
@@ -13270,7 +13301,7 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
             } catch (error) {
                 check();
                 if (error.stop) throw error;
-                planned.push({ ...entry, row, state: 'invalid', reason: error.message });
+                planned.push({ ...entry, row, target, state: 'invalid', reason: error.message });
             }
         }
         for (const matches of groupBatch(
@@ -13283,8 +13314,10 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
             )) {
                 if (copies.length < 2) continue;
                 const preference = (entry) => subtitlePreference(entry, language);
-                const best2 = Math.max(...copies.map(preference));
-                const preferred2 = copies.filter((entry) => preference(entry) === best2);
+                const assigned2 = copies.filter((entry) => entry.target);
+                const options = assigned2.length ? assigned2 : copies;
+                const best2 = Math.max(...options.map(preference));
+                const preferred2 = options.filter((entry) => preference(entry) === best2);
                 const original =
                     preferred2.find((entry) => !/ - (?:副本|copy)$/i.test(mediaStem(entry.name))) ||
                     preferred2[0];
@@ -13296,6 +13329,16 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
             }
             const group = matches.filter((entry) => entry.state !== 'skip');
             if (group.length < 2) continue;
+            const assigned = group.filter((entry) => entry.target);
+            if (assigned.length === 1) {
+                for (const entry of group)
+                    if (entry !== assigned[0]) {
+                        entry.state = 'skip';
+                        entry.needsIdentity = false;
+                        entry.reason = '已采用手动指定的字幕';
+                    }
+                continue;
+            }
             const preferences = group.map((entry) =>
                 subtitlePreference(
                     { name: entry.name || entry.label, language: entry.language || '' },
@@ -13304,7 +13347,12 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
             );
             const best = Math.max(...preferences);
             const preferred = group.filter((entry, index) => preferences[index] === best);
-            if (best > 0 && preferred.length === 1 && group.every((entry) => entry.state === 'ready')) {
+            if (
+                !assigned.length &&
+                best > 0 &&
+                preferred.length === 1 &&
+                group.every((entry) => entry.state === 'ready')
+            ) {
                 for (const entry of group)
                     if (entry !== preferred[0]) {
                         entry.state = 'skip';
@@ -13314,7 +13362,7 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                 for (const entry of group) {
                     entry.state = 'unmatched';
                     entry.needsIdentity = false;
-                    entry.reason = '同一目标匹配到多份字幕，请仅重新选择其中一份';
+                    entry.reason = '同一视频有多份字幕，请更换目标或仅选择其中一份';
                 }
         }
         return planned;
@@ -13757,16 +13805,21 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
             for (const [index, rows] of draft.groups.entries()) {
                 const first = rows[0],
                     folder = first.path.slice(0, first.path.lastIndexOf('/'));
-                const season = first.parsed.tv
-                    ? ' · 第 ' + first.parsed.season + ' 季 · ' + rows.length + ' 项'
-                    : '';
+                const number = first.parsed.season;
+                const season =
+                    number == null ? '季号待确认' : number === 0 ? '特别篇' : '第 ' + number + ' 季';
                 option(
                     String(index),
-                    (first.parsed.tv ? first.parsed.query : first.node.name) +
-                        season +
+                    (first.parsed.tv
+                        ? (first.media?.title || first.parsed.query || first.node.name) +
+                          ' · ' +
+                          season +
+                          ' · ' +
+                          rows.length +
+                          ' 项'
+                        : first.node.name) +
                         ' · ' +
-                        folder +
-                        (first.parsed.tv ? ' · ' + first.node.name : '')
+                        folder
                 );
             }
             target.value = draft.target;
@@ -13775,6 +13828,9 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                 if (busy) return;
                 draft.target = target.value;
                 draft.confirmed.clear();
+                draft.assignments.clear();
+                draft.assigning = null;
+                draft.showIssues = false;
                 reviewImport();
                 render();
             };
@@ -13821,7 +13877,9 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                     const detail = document.createElement('p');
                     const timing =
                         entry.state === 'ready'
-                            ? '正文可用 · 归属已核对 · ' +
+                            ? '正文可用 · ' +
+                              (entry.target ? '已手动配对' : '归属已核对') +
+                              ' · ' +
                               (entry.verification.evidence === 'file'
                                   ? '对白范围已按视频文件时长检查，未核对播放同步'
                                   : '时间轴未验证' +
@@ -13839,12 +13897,59 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                                 : '')
                     );
                     box.append(detail);
+                    const original = draft.entries[index];
                     if (entry.needsIdentity)
                         addButton(box, '确认文件归属', 'import-identity-' + index, () => {
-                            draft.confirmed.add(draft.entries[index]);
+                            draft.confirmed.add(original);
                             reviewImport();
                             render();
                         });
+                    if (entry.state === 'unmatched' || entry.state === 'ready' || entry.target) {
+                        if (draft.assigning !== original) {
+                            addButton(
+                                box,
+                                entry.target ? '更换目标视频' : '指定视频',
+                                'import-assign-' + index,
+                                () => {
+                                    draft.assigning = original;
+                                    render();
+                                    host.querySelector(
+                                        '[data-subtitle-focus="import-video-' + index + '"]'
+                                    )?.focus();
+                                }
+                            );
+                            continue;
+                        }
+                        const select = document.createElement('select');
+                        select.setAttribute('aria-label', '指定视频给 ' + entry.name);
+                        trackFocus(select, 'import-video-' + index);
+                        select.disabled = busy;
+                        select.add(new Option('选择视频文件', '', true, true));
+                        select.options[0].disabled = true;
+                        const rows = draft.groups[draft.target];
+                        for (const [videoIndex, row] of rows.entries()) {
+                            if (subtitleCovered(row) || row.writeBlocked) continue;
+                            const { episode, endEpisode } = row.parsed;
+                            if (endEpisode != null && endEpisode !== episode) continue;
+                            const video = new Option(row.node.name, String(videoIndex));
+                            video.title = row.path;
+                            select.add(video);
+                        }
+                        if (entry.target) {
+                            select.add(new Option('恢复自动匹配', 'auto'));
+                            select.value = String(rows.indexOf(entry.target));
+                        }
+                        select.onchange = () => {
+                            if (busy) return;
+                            if (select.value === 'auto') draft.assignments.delete(original);
+                            else draft.assignments.set(original, rows[Number(select.value)]);
+                            draft.confirmed.delete(original);
+                            draft.assigning = null;
+                            reviewImport();
+                            render();
+                        };
+                        box.append(select);
+                    }
                 }
             } else
                 for (const entry of draft.entries.filter((entry2) => entry2.error)) {
@@ -14334,7 +14439,6 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                 if (!draft) return;
                 const target = draft.target,
                     rows = draft.groups[target];
-                draft.showIssues = false;
                 draft.plan = null;
                 if (!rows) return;
                 const verify = () => {
@@ -14353,16 +14457,12 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                 };
                 status('正在按导入目标逐份检查字幕…');
                 try {
-                    const plan = await planSubtitleImport(
-                        draft.entries,
-                        rows,
-                        draft.language,
-                        draft.confirmed,
-                        diag,
-                        verify
-                    );
+                    const plan = await planSubtitleImport(draft, rows, diag, verify);
                     verify();
                     draft.plan = plan;
+                    draft.showIssues =
+                        (draft.showIssues || !plan.some((entry) => entry.state === 'ready')) &&
+                        plan.some((entry) => entry.state === 'unmatched' || entry.state === 'invalid');
                     for (const entry of plan) {
                         const outcome =
                             entry.state === 'ready'
@@ -14430,13 +14530,15 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                         entries,
                         target: '',
                         confirmed: /* @__PURE__ */ new Set(),
+                        assignments: /* @__PURE__ */ new Map(),
+                        assigning: null,
                         showIssues: false,
                         plan: null,
                     };
                     for (const entry of entries)
                         if (entry.error) diag('导入读取失败', entry.label + ' · ' + entry.error);
                     results.scrollTop = 0;
-                    status('请选择导入目标，压缩包只提取匹配项并逐份检查。');
+                    status('请选择导入目标。待匹配的字幕可手动指定视频。');
                 } catch (error) {
                     status('导入检测结束 · ' + error.message);
                     diag('导入检测结束', error.message);
@@ -14535,7 +14637,7 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                                     throw error;
                                 }
                             }
-                            if (!outcome) await resolveSubtitleWork(row, verify2);
+                            if (!outcome && !entry.target) await resolveSubtitleWork(row, verify2);
                             meter(done + failed + pending, targets.length);
                             flow.requestRender();
                             return outcome;

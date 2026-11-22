@@ -77,7 +77,7 @@ async function subtitleImportBytes(entry, check) {
     check();
     return extracted.bytes;
 }
-function matchSubtitleImport(name, rows, archiveName = '', { manual = false } = {}) {
+function matchSubtitleImport(name, rows, archiveName = '', { manual = false, target = null } = {}) {
     const stem = mediaStem(name).normalize('NFKC');
     const marks = [...stem.matchAll(/(?:^|[^\dA-Z])S(\d{1,2})[ ._-]*E(\d{1,3})(?!\d)/gi)];
     const parsed = parseMediaName(name);
@@ -87,6 +87,13 @@ function matchSubtitleImport(name, rows, archiveName = '', { manual = false } = 
         /E\d+(?:[ ._-]*[-~][ ._-]*(?:E)?|\s*E)\d+/i.test(stem)
     )
         return { reason: '暂不支持合并多集字幕' };
+    if (target) {
+        const { episode, endEpisode } = target.parsed;
+        if (endEpisode != null && endEpisode !== episode)
+            return { row: target, reason: '暂不支持导入到合并多集视频' };
+        return { row: target };
+    }
+    if (!rows.length) return { reason: '本组季集待确认，请指定对应的视频' };
     let targets = rows;
     // A bracketed release medium may precede the bracketed series title.
     const matchName =
@@ -188,11 +195,17 @@ function subtitleTargetHasEpisode(row) {
     );
 }
 function subtitleImportGroups(inventory) {
-    const eligible = inventory.filter(subtitleTargetHasEpisode);
-    return groupBatch(eligible, (row) => (row.parsed.tv ? row.groupKey : row));
+    const eligible = inventory.filter((row) => !row.checkState || row.checkState === 'done');
+    return groupBatch(eligible, (row) => {
+        if (!row.parsed.tv) return row;
+        if (row.media?.detail && row.media.match && row.media.type === 'tv')
+            return JSON.stringify([row.media.match, row.parsed.season]);
+        return row.groupKey;
+    });
 }
-async function planSubtitleImport(entries, rows, language, confirmed, log, check) {
+async function planSubtitleImport({ entries, language, confirmed, assignments }, rows, log, check) {
     const planned = [];
+    const autoTargets = rows.filter(subtitleTargetHasEpisode);
     let inspected = 0;
     for (const entry of entries) {
         check();
@@ -200,10 +213,14 @@ async function planSubtitleImport(entries, rows, language, confirmed, log, check
             planned.push({ ...entry, state: 'invalid', reason: entry.error });
             continue;
         }
-        const match = matchSubtitleImport(entry.name, rows, entry.archiveName, { manual: true }),
+        const target = assignments.get(entry);
+        const match = matchSubtitleImport(entry.name, autoTargets, entry.archiveName, {
+                manual: true,
+                target,
+            }),
             { row, releaseWarning } = match;
         if (match.reason) {
-            planned.push({ ...entry, row, state: 'unmatched', reason: match.reason });
+            planned.push({ ...entry, row, target, state: 'unmatched', reason: match.reason });
             continue;
         }
         if (subtitleCovered(row)) {
@@ -220,6 +237,7 @@ async function planSubtitleImport(entries, rows, language, confirmed, log, check
             const bytes = await subtitleImportBytes(entry, check);
             check();
             const { text, ...verification } = subtitleValidateContent(row, bytes, entry.ext, language, log);
+            if (target) verification.work = { status: 'manual', reason: '用户已指定目标视频' };
             if (match.needsIdentity && !confirmed.has(entry)) {
                 planned.push({
                     ...entry,
@@ -242,6 +260,7 @@ async function planSubtitleImport(entries, rows, language, confirmed, log, check
             planned.push({
                 ...entry,
                 row,
+                target,
                 verification,
                 digest: subtitleMd5(bytes),
                 state: 'ready',
@@ -252,7 +271,7 @@ async function planSubtitleImport(entries, rows, language, confirmed, log, check
         } catch (error) {
             check();
             if (error.stop) throw error;
-            planned.push({ ...entry, row, state: 'invalid', reason: error.message });
+            planned.push({ ...entry, row, target, state: 'invalid', reason: error.message });
         }
     }
     for (const matches of groupBatch(
@@ -265,8 +284,10 @@ async function planSubtitleImport(entries, rows, language, confirmed, log, check
         )) {
             if (copies.length < 2) continue;
             const preference = (entry) => subtitlePreference(entry, language);
-            const best = Math.max(...copies.map(preference));
-            const preferred = copies.filter((entry) => preference(entry) === best);
+            const assigned = copies.filter((entry) => entry.target);
+            const options = assigned.length ? assigned : copies;
+            const best = Math.max(...options.map(preference));
+            const preferred = options.filter((entry) => preference(entry) === best);
             const original =
                 preferred.find((entry) => !/ - (?:副本|copy)$/i.test(mediaStem(entry.name))) || preferred[0];
             for (const entry of copies)
@@ -277,12 +298,27 @@ async function planSubtitleImport(entries, rows, language, confirmed, log, check
         }
         const group = matches.filter((entry) => entry.state !== 'skip');
         if (group.length < 2) continue;
+        const assigned = group.filter((entry) => entry.target);
+        if (assigned.length === 1) {
+            for (const entry of group)
+                if (entry !== assigned[0]) {
+                    entry.state = 'skip';
+                    entry.needsIdentity = false;
+                    entry.reason = '已采用手动指定的字幕';
+                }
+            continue;
+        }
         const preferences = group.map((entry) =>
             subtitlePreference({ name: entry.name || entry.label, language: entry.language || '' }, language)
         );
         const best = Math.max(...preferences);
         const preferred = group.filter((entry, index) => preferences[index] === best);
-        if (best > 0 && preferred.length === 1 && group.every((entry) => entry.state === 'ready')) {
+        if (
+            !assigned.length &&
+            best > 0 &&
+            preferred.length === 1 &&
+            group.every((entry) => entry.state === 'ready')
+        ) {
             for (const entry of group)
                 if (entry !== preferred[0]) {
                     entry.state = 'skip';
@@ -292,7 +328,7 @@ async function planSubtitleImport(entries, rows, language, confirmed, log, check
             for (const entry of group) {
                 entry.state = 'unmatched';
                 entry.needsIdentity = false;
-                entry.reason = '同一目标匹配到多份字幕，请仅重新选择其中一份';
+                entry.reason = '同一视频有多份字幕，请更换目标或仅选择其中一份';
             }
     }
     return planned;
@@ -729,16 +765,20 @@ function initSubtitles(provider, flow) {
         for (const [index, rows] of draft.groups.entries()) {
             const first = rows[0],
                 folder = first.path.slice(0, first.path.lastIndexOf('/'));
-            const season = first.parsed.tv
-                ? ' · 第 ' + first.parsed.season + ' 季 · ' + rows.length + ' 项'
-                : '';
+            const number = first.parsed.season;
+            const season = number == null ? '季号待确认' : number === 0 ? '特别篇' : '第 ' + number + ' 季';
             option(
                 String(index),
-                (first.parsed.tv ? first.parsed.query : first.node.name) +
-                    season +
+                (first.parsed.tv
+                    ? (first.media?.title || first.parsed.query || first.node.name) +
+                      ' · ' +
+                      season +
+                      ' · ' +
+                      rows.length +
+                      ' 项'
+                    : first.node.name) +
                     ' · ' +
-                    folder +
-                    (first.parsed.tv ? ' · ' + first.node.name : '')
+                    folder
             );
         }
         target.value = draft.target;
@@ -747,6 +787,9 @@ function initSubtitles(provider, flow) {
             if (busy) return;
             draft.target = target.value;
             draft.confirmed.clear();
+            draft.assignments.clear();
+            draft.assigning = null;
+            draft.showIssues = false;
             reviewImport();
             render();
         };
@@ -793,7 +836,9 @@ function initSubtitles(provider, flow) {
                 const detail = document.createElement('p');
                 const timing =
                     entry.state === 'ready'
-                        ? '正文可用 · 归属已核对 · ' +
+                        ? '正文可用 · ' +
+                          (entry.target ? '已手动配对' : '归属已核对') +
+                          ' · ' +
                           (entry.verification.evidence === 'file'
                               ? '对白范围已按视频文件时长检查，未核对播放同步'
                               : '时间轴未验证' +
@@ -809,12 +854,59 @@ function initSubtitles(provider, flow) {
                         (entry.state === 'ready' && entry.releaseWarning ? ' · ' + entry.releaseWarning : '')
                 );
                 box.append(detail);
+                const original = draft.entries[index];
                 if (entry.needsIdentity)
                     addButton(box, '确认文件归属', 'import-identity-' + index, () => {
-                        draft.confirmed.add(draft.entries[index]);
+                        draft.confirmed.add(original);
                         reviewImport();
                         render();
                     });
+                if (entry.state === 'unmatched' || entry.state === 'ready' || entry.target) {
+                    if (draft.assigning !== original) {
+                        addButton(
+                            box,
+                            entry.target ? '更换目标视频' : '指定视频',
+                            'import-assign-' + index,
+                            () => {
+                                draft.assigning = original;
+                                render();
+                                host.querySelector(
+                                    '[data-subtitle-focus="import-video-' + index + '"]'
+                                )?.focus();
+                            }
+                        );
+                        continue;
+                    }
+                    const select = document.createElement('select');
+                    select.setAttribute('aria-label', '指定视频给 ' + entry.name);
+                    trackFocus(select, 'import-video-' + index);
+                    select.disabled = busy;
+                    select.add(new Option('选择视频文件', '', true, true));
+                    select.options[0].disabled = true;
+                    const rows = draft.groups[draft.target];
+                    for (const [videoIndex, row] of rows.entries()) {
+                        if (subtitleCovered(row) || row.writeBlocked) continue;
+                        const { episode, endEpisode } = row.parsed;
+                        if (endEpisode != null && endEpisode !== episode) continue;
+                        const video = new Option(row.node.name, String(videoIndex));
+                        video.title = row.path;
+                        select.add(video);
+                    }
+                    if (entry.target) {
+                        select.add(new Option('恢复自动匹配', 'auto'));
+                        select.value = String(rows.indexOf(entry.target));
+                    }
+                    select.onchange = () => {
+                        if (busy) return;
+                        if (select.value === 'auto') draft.assignments.delete(original);
+                        else draft.assignments.set(original, rows[Number(select.value)]);
+                        draft.confirmed.delete(original);
+                        draft.assigning = null;
+                        reviewImport();
+                        render();
+                    };
+                    box.append(select);
+                }
             }
         } else
             for (const entry of draft.entries.filter((entry) => entry.error)) {
@@ -1293,7 +1385,6 @@ function initSubtitles(provider, flow) {
             if (!draft) return;
             const target = draft.target,
                 rows = draft.groups[target];
-            draft.showIssues = false;
             draft.plan = null;
             if (!rows) return;
             const verify = () => {
@@ -1310,16 +1401,12 @@ function initSubtitles(provider, flow) {
             };
             status('正在按导入目标逐份检查字幕…');
             try {
-                const plan = await planSubtitleImport(
-                    draft.entries,
-                    rows,
-                    draft.language,
-                    draft.confirmed,
-                    diag,
-                    verify
-                );
+                const plan = await planSubtitleImport(draft, rows, diag, verify);
                 verify();
                 draft.plan = plan;
+                draft.showIssues =
+                    (draft.showIssues || !plan.some((entry) => entry.state === 'ready')) &&
+                    plan.some((entry) => entry.state === 'unmatched' || entry.state === 'invalid');
                 for (const entry of plan) {
                     const outcome =
                         entry.state === 'ready'
@@ -1387,13 +1474,15 @@ function initSubtitles(provider, flow) {
                     entries,
                     target: '',
                     confirmed: new Set(),
+                    assignments: new Map(),
+                    assigning: null,
                     showIssues: false,
                     plan: null,
                 };
                 for (const entry of entries)
                     if (entry.error) diag('导入读取失败', entry.label + ' · ' + entry.error);
                 results.scrollTop = 0;
-                status('请选择导入目标，压缩包只提取匹配项并逐份检查。');
+                status('请选择导入目标。待匹配的字幕可手动指定视频。');
             } catch (error) {
                 status('导入检测结束 · ' + error.message);
                 diag('导入检测结束', error.message);
@@ -1491,7 +1580,7 @@ function initSubtitles(provider, flow) {
                                 throw error;
                             }
                         }
-                        if (!outcome) await resolveSubtitleWork(row, verify);
+                        if (!outcome && !entry.target) await resolveSubtitleWork(row, verify);
                         meter(done + failed + pending, targets.length);
                         flow.requestRender();
                         return outcome;

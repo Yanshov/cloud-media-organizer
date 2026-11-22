@@ -2406,7 +2406,19 @@ function subtitleValidateContent(row, bytes, ext, language, log = () => {}) {
     };
 }
 function subtitleVerificationMessage(result) {
-    return `格式/语言通过；${{ file: '对白范围与视频文件时长相符', unknown: '无时长参考', reference: 'TMDB 仅作作品时长参考', 'reference-difference': '与 TMDB 作品时长参考有差异' }[result.evidence] || '时长证据待确认'}；${result.work?.status === 'supported' ? 'AI 支持作品归属（非实证）' : '作品归属未确认'}；未核对音画同步`;
+    const timing =
+        {
+            file: '对白范围与视频文件时长相符',
+            unknown: '无时长参考',
+            reference: 'TMDB 仅作作品时长参考',
+            'reference-difference': '与 TMDB 作品时长参考有差异',
+        }[result.evidence] || '时长证据待确认';
+    const identity =
+        {
+            manual: '已手动配对',
+            supported: 'AI 支持作品归属（非实证）',
+        }[result.work?.status] || '作品归属未确认';
+    return `格式/语言通过；${timing}；${identity}；未核对音画同步`;
 }
 function subtitleEpisodeName(name, parsed) {
     const stem = String(name || '')

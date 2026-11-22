@@ -6,7 +6,7 @@ if (
 )
     return;
 
-const VERSION = '3.0.41';
+const VERSION = '3.0.42';
 let jsonTaskStopped = false;
 const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
 const nativeFetch = page.fetch.bind(page);
