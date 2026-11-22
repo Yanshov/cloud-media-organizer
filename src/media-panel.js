@@ -196,7 +196,8 @@
         const field = (box, label, value, change, type = 'text') => {
             const wrapper = document.createElement('label'), input = document.createElement('input'); wrapper.textContent = label; input.type = type; input.value = value ?? ''; wrapper.appendChild(input); box.appendChild(wrapper);
             input.oninput = () => { change(input.value); invalidate(); flow.syncWorks(rows,false); };
-            input.onchange = () => label.startsWith('搜索片名') ? undefined : refreshWorks(); return input;
+            input.onchange = refreshWorks;
+            return input;
         };
         const key = titleKey;
         const readyRow = row => {
@@ -208,19 +209,20 @@
             for (const row of targets) row.include = false;
             invalidate(); render(); progress('已跳过 ' + targets.length + ' 个视频，未修改网盘文件'); await refreshWorks();
         };
+        const seasonLabel = season => season === 0 ? '特别篇' : '第 ' + season + ' 季';
         const seasonPicker = (box, row, targets = [row]) => {
             const wholeGroup = targets.length > 1;
             const label = document.createElement('label'), select = document.createElement('select');
-            label.textContent = wholeGroup ? '整组选季（' + targets.length + ' 个文件）' : '选择季（仅此文件）';
+            label.textContent = wholeGroup ? '整组选季（' + targets.length + ' 个文件）' : '季';
             select.setAttribute('data-media-season', wholeGroup ? 'group' : 'file');
             const seasons = [...(row.detail?.seasons || [])].sort((a, b) => a.season_number - b.season_number);
             const available = seasons.some(season => season.season_number === row.season);
             const blank = document.createElement('option'); blank.value = '';
-            blank.textContent = row.season != null && !available ? '原季号 ' + row.season + ' 无可用资料，请重新选择' : '请选择季';
+            blank.textContent = '选择季';
             select.appendChild(blank);
             for (const season of seasons) {
                 const option = document.createElement('option'); option.value = String(season.season_number);
-                option.textContent = (season.season_number === 0 ? '特别篇' : '第 ' + season.season_number + ' 季')
+                option.textContent = seasonLabel(season.season_number)
                     + (season.air_date ? ' · ' + season.air_date.slice(0, 4) : '')
                     + (season.episode_count != null ? ' · ' + season.episode_count + ' 集' : '');
                 select.appendChild(option);
@@ -243,25 +245,27 @@
                         return item.error ? 'failed' : undefined;
                     },checkStopped,8,'复用同一季资料，TMDB 保持节流');
                     const ready = targets.filter(readyRow).length;
-                    const seasonLabel = season === 0 ? '特别篇' : '第 ' + season + ' 季';
-                    progress('已选择' + seasonLabel + ' · ' + ready + '/' + targets.length + ' 个文件通过季集核对'
+                    progress('已选择' + seasonLabel(season) + ' · ' + ready + '/' + targets.length + ' 个文件通过季集核对'
                         + (ready < targets.length ? ' · 其余文件待确认' : ''));
                 });
             };
         };
         const episodePicker = (box, row) => {
             const label = document.createElement('label'), select = document.createElement('select');
-            label.textContent = '选择集（集号 · 标题）'; select.setAttribute('data-media-episode', 'file');
-            const blank = document.createElement('option'); blank.value = ''; blank.textContent = row.season == null ? '请先选择季' : '未自动对应，请选择这一集'; select.appendChild(blank);
-            for (const episode of row.seasonEpisodes || []) {
+            label.textContent = '集'; select.setAttribute('data-media-episode', 'file');
+            const episodes = row.seasonEpisodes || [];
+            const selected = episodes.some(ep => ep.episode_number === row.episode);
+            const blank = document.createElement('option'); blank.value = '';
+            blank.textContent = !episodes.length ? '先选择可用的季' : '按标题选择集';
+            select.appendChild(blank);
+            for (const episode of episodes) {
                 const option = document.createElement('option'); option.value = String(episode.episode_number);
                 option.textContent = 'E' + String(episode.episode_number).padStart(2, '0') + (episode.name ? ' · ' + episode.name : '') + (episode.air_date ? ' · ' + episode.air_date : '');
                 select.appendChild(option);
             }
-            if (row.episode != null && !(row.seasonEpisodes || []).some(ep => ep.episode_number === row.episode)) {
-                const option = document.createElement('option'); option.value = String(row.episode); option.textContent = '原集号 ' + row.episode + '（本季未找到）'; select.appendChild(option);
-            }
-            select.value = String(row.episode ?? ''); if (row.season == null) select.setAttribute('data-media-disabled',''); label.appendChild(select); box.appendChild(label);
+            select.value = selected ? String(row.episode) : '';
+            if (!episodes.length) select.setAttribute('data-media-disabled','');
+            label.appendChild(select); box.appendChild(label);
             select.onchange = () => {
                 if (!select.value) return;
                 const episode = Number(select.value);
@@ -277,17 +281,17 @@
         };
         const candidatePicker = (box, row, wholeGroup = false) => {
             const preference = mediaCandidatePreference(row);
-            const note = document.createElement('p');
-            note.textContent = preference.reason + (row.workVideoCount ? ` · 同作品 ${row.workVideoCount} 个正片视频（本次读取）` : '');
-            box.appendChild(note);
-            const select = document.createElement('select'); box.appendChild(select);
+            const label = document.createElement('label'), select = document.createElement('select');
+            label.textContent = wholeGroup ? '整组作品' : '匹配作品';
+            label.append(select); box.append(label);
+            if (preference.conflict) box.append(textElement('p',preference.reason,'media-note'));
             const toggle = document.createElement('button'); toggle.type = 'button';
             let showAll = false;
             const update = () => {
                 const selected = select.value || row.match || '';
                 select.textContent = '';
                 const blank = document.createElement('option'); blank.value = '';
-                blank.textContent = wholeGroup ? '待确认；选择作品应用到同组' : '请选择候选作品'; select.appendChild(blank);
+                blank.textContent = '选择作品'; select.appendChild(blank);
                 const visible = row.candidates.filter(candidate => showAll || !preference.type || candidate.media_type === preference.type || candidate.media_type + ':' + candidate.id === row.match);
                 for (const candidate of visible) {
                     const option = document.createElement('option'); option.value = candidate.media_type + ':' + candidate.id;
@@ -295,8 +299,8 @@
                     select.appendChild(option);
                 }
                 select.value = selected;
-                toggle.textContent = showAll ? '只看符合判断的候选' : '查看全部候选';
-                if (!visible.length) blank.textContent = '暂无符合类型的候选，可查看全部候选';
+                toggle.textContent = showAll ? '仅显示匹配类型' : '查看其他类型';
+                if (!visible.length) blank.textContent = '当前没有候选作品';
             };
             toggle.hidden = !preference.type || !row.candidates.some(candidate => candidate.media_type !== preference.type);
             toggle.onclick = () => { showAll = !showAll; update(); };
@@ -318,101 +322,105 @@
             box.append(button);
             return button;
         };
-        const resetQuery = (row, value) => {
-            Object.assign(row,{query:value,detail:null,match:'',aiType:'',aiAssisted:false,error:'搜索片名已修改，请重新匹配'});
-        };
-        const renderFileDetail = (box, item, hasGroupSeason) => {
-            box.append(textElement('p','原位置：' + (item.node.originalPath || item.node.path),'media-file-path'));
-            if (item.error) box.append(textElement('p',item.error));
-            if (!item.include) return;
-            if (item.detail) {
-                const season = item.type === 'tv' && item.season != null ? ' · ' + (item.season ? '第 ' + item.season + ' 季' : '特别篇') : '';
-                box.append(textElement('p','已匹配：' + item.title + '（' + item.year + '）' + season));
-                if (item.type === 'tv') {
-                    if (!hasGroupSeason) seasonPicker(box,item);
-                    episodePicker(box,item);
-                }
-            }
-            const edits = document.createElement('details');
-            edits.append(textElement('summary','修改此文件的作品或命名'));
-            if (hasGroupSeason) seasonPicker(edits,item);
-            field(edits,'搜索片名（仅本文件）',item.query,value => resetQuery(item,value));
-            action(edits,'查询候选作品',() => editRows(async () => {
-                try { item.candidates = await client.search(item.query); }
-                catch (error) { progress('查询失败：' + error.message); }
-            }));
-            const select = candidatePicker(edits,item);
-            select.onchange = () => {
-                if (!select.value) return;
+        const renderWorkSearch = (box, item, group = [item]) => {
+            const wholeGroup = group.length > 1;
+            const search = textElement('div','','media-correction-search');
+            const label = textElement('label','搜索片名');
+            const input = document.createElement('input');
+            input.value = item.query || '';
+            label.append(input);
+            search.append(label);
+            const submit = () => {
+                const query = input.value.trim();
+                if (!query) { input.focus(); return; }
+                if (!client) { progress('请先在设置中填写 TMDB 密钥。'); return; }
                 return editRows(async () => {
-                    try { await choose(item,select.value); await validateEpisode(item); }
-                    catch (error) { item.error = error.message; }
+                    if (wholeGroup) {
+                        await matchGroup(group,query);
+                        const matched = group.filter(readyRow).length;
+                        progress('整组匹配完成 · ' + matched + '/' + group.length + ' 个文件已确认');
+                        return;
+                    }
+                    try {
+                        item.candidates = await client.search(query);
+                        item.query = query;
+                        if (!item.detail) item.error = item.candidates.length ? '请从下方选择作品。' : '没有找到作品，请检查搜索片名。';
+                        progress(item.candidates.length ? '找到 ' + item.candidates.length + ' 个候选作品' : '没有找到作品，请检查搜索片名。');
+                    } catch (error) { progress('查询失败：' + error.message); }
                 });
             };
-            field(edits,'标准片名（仅本文件）',item.title,value => { item.title = value; });
-            field(edits,'年份（仅本文件）',item.year,value => { item.year = value; });
-            box.append(edits);
-            const actions = document.createElement('div');
-            actions.className = 'panel-actions';
-            action(actions,'检查此文件',() => editRows(async () => {
-                await validateEpisode(item);
-                progress(readyRow(item) ? '此文件已就绪，正在更新预览。' : item.error || '此文件仍需处理。');
-            }));
-            action(actions,'跳过此文件',() => skipRows([item]));
-            box.append(actions);
+            input.onkeydown = event => {
+                if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); submit(); }
+            };
+            action(search,wholeGroup ? '查找整组作品' : '查找作品',submit);
+            box.append(search);
+            const select = candidatePicker(box,item,wholeGroup);
+            select.onchange = () => {
+                const match = select.value;
+                if (!match) return;
+                return editRows(async () => {
+                    if (wholeGroup) {
+                        try {
+                            await batchStage(group,'核对手选作品与季集（视频）',log,async (row,verify) => {
+                                await choose(row,match);
+                                verify();
+                                await validateEpisode(row);
+                                return row.error ? 'failed' : undefined;
+                            },checkStopped,8,'TMDB 详情和季集复用请求');
+                        } catch (error) { progress('读取作品失败：' + error.message); }
+                    } else {
+                        try { await choose(item,match); await validateEpisode(item); }
+                        catch (error) { item.error = error.message; }
+                    }
+                });
+            };
         };
-        const renderDetail = (group, title) => {
+        const correctionMessage = item => {
+            if (!item.include) return '此文件已跳过。';
+            if (readyRow(item)) return '作品信息已确认。';
+            if (!item.detail || item.type !== 'tv' || !item.seasonPending) return item.error || '请选择匹配的作品。';
+            if (item.season == null) return '先选择季，脚本会核对这集。';
+            if (!item.seasonEpisodes?.length) {
+                return item.detail.seasons?.some(season => season.season_number === item.season)
+                    ? seasonLabel(item.season) + '的分集资料暂时无法读取。可以重新读取或改选其他季。'
+                    : '资料库没有' + seasonLabel(item.season) + '。请选择可用的季。';
+            }
+            if (item.episode == null) return '请按标题选择这一集。';
+            if (!item.seasonEpisodes.some(episode => episode.episode_number === item.episode))
+                return seasonLabel(item.season) + '没有第 ' + item.episode + ' 集。请核对季和集。';
+            return item.error || '请核对季和集。';
+        };
+        const correctionDetails = (box, id, label) => {
+            const section = document.createElement('details');
+            section.dataset.mediaSection = id;
+            section.open = detail.expanded.has(id);
+            section.append(textElement('summary',label));
+            const body = textElement('div','','media-correction-options');
+            section.append(body);
+            box.append(section);
+            return body;
+        };
+        const renderDetail = group => {
             const box = document.createElement('section');
             box.className = 'sync-item media-detail';
-            const back = action(box,'返回结果',() => {
+            const header = textElement('header','','media-correction-header');
+            header.append(textElement('h5',group.length > 1 ? '修正一组文件' : '修正此文件'));
+            const back = action(header,'返回结果',() => {
                 const {scrollTop} = detail;
                 detail = null;
                 flow.closeWork();
                 results.scrollTop = scrollTop;
             });
             back.id = 'mediaBack';
-            box.append(textElement('h5',title));
+            box.append(header);
             const included = group.filter(row => row.include);
             const pending = included.filter(row => !readyRow(row));
             const reference = pending[0] || included[0];
             const item = group.includes(detail.file) ? detail.file : reference || group[0];
             detail.file = item;
-            const seasonReference = (item.include && item.type === 'tv' && item.detail ? item : null)
-                || included.find(row => row.type === 'tv' && row.detail);
-            const seasonTargets = seasonReference ? included.filter(row => row.type === 'tv' && row.detail && row.match === seasonReference.match) : [];
-            if (seasonTargets.length > 1) seasonPicker(box,seasonReference,seasonTargets);
-            if (reference && included.length > 1) {
-                const controls = document.createElement('details');
-                controls.open = !!pending.length;
-                controls.append(textElement('summary','调整整组匹配'));
-                field(controls,'搜索片名（整组）',reference.query,value => included.forEach(row => resetQuery(row,value)));
-                action(controls,'重新匹配整组',() => editRows(async () => {
-                    await matchGroup(included,reference.query);
-                    progress('已重新匹配整组。');
-                }));
-                const select = candidatePicker(controls,reference,true);
-                select.onchange = () => {
-                    if (!select.value) return;
-                    return editRows(async () => {
-                        try {
-                            await batchStage(included,'核对手选作品与季集（视频）',log,async (row,verify) => {
-                                await choose(row,select.value);
-                                verify();
-                                await validateEpisode(row);
-                                return row.error ? 'failed' : undefined;
-                            },checkStopped,8,'TMDB 详情和季集复用请求');
-                        } catch (error) { progress('读取作品失败：' + error.message); }
-                    });
-                };
-                if (reference.detail) {
-                    field(controls,'标准片名（整组）',reference.title,value => included.forEach(row => { row.title = value; }));
-                    field(controls,'年份（整组，剧集用首播年份）',reference.year,value => included.forEach(row => { row.year = value; }));
-                }
-                action(controls,'跳过本组',() => skipRows(included));
-                box.append(controls);
-            }
+            const context = textElement('div','','media-correction-context');
             if (group.length > 1) {
-                const label = textElement('label','选择文件');
+                const label = textElement('label','当前文件');
                 const select = document.createElement('select');
                 select.id = 'mediaDetailFile';
                 for (const [index,row] of group.entries()) {
@@ -427,16 +435,73 @@
                     host.querySelector('#mediaDetailFile')?.focus({preventScroll:true});
                 };
                 label.append(select);
-                box.append(label);
+                context.append(label);
+            } else context.append(textElement('p',item.node.name,'media-correction-file'));
+            if (item.detail) context.append(textElement('p','匹配作品　' + item.title + (item.year ? '（' + item.year + '）' : ''),'media-note'));
+            const message = textElement('p',correctionMessage(item),'media-correction-status');
+            message.setAttribute('role','status');
+            context.append(message);
+            box.append(context);
+
+            if (item.include) {
+                const primary = textElement('div','','media-correction-options');
+                if (!item.detail) renderWorkSearch(primary,item);
+                else if (item.type === 'tv') {
+                    const seasonTargets = included.filter(row => row.type === 'tv' && row.detail && row.match === item.match);
+                    const selectors = textElement('div','','media-correction-fields');
+                    seasonPicker(selectors,item);
+                    episodePicker(selectors,item);
+                    primary.append(selectors);
+                    if (item.seasonPending && item.season != null && !item.seasonEpisodes?.length
+                        && item.detail.seasons?.some(season => season.season_number === item.season))
+                        action(primary,'重新读取分集',() => editRows(() => validateEpisode(item)));
+                    if (seasonTargets.length > 1) {
+                        const batchSeason = textElement('div','','media-correction-batch');
+                        seasonPicker(batchSeason,item,seasonTargets);
+                        primary.append(batchSeason);
+                    }
+                }
+                if (primary.childElementCount) box.append(primary);
+                const edits = correctionDetails(box,'file','更多设置');
+                edits.append(textElement('p','原位置　' + (item.node.originalPath || item.node.path),'media-file-path media-note'));
+                if (item.error && item.error !== message.textContent) edits.append(textElement('p',item.error,'media-note'));
+                if (item.detail) renderWorkSearch(edits,item);
+                const naming = textElement('div','','media-correction-fields');
+                field(naming,'标准片名',item.title,value => { item.title = value; });
+                field(naming,'首播或上映年份',item.year,value => { item.year = value; });
+                edits.append(naming);
+                action(edits,'重新核对文件',() => editRows(async () => {
+                    await validateEpisode(item);
+                    progress(correctionMessage(item));
+                }));
             }
-            renderFileDetail(box,item,seasonTargets.length > 1 && seasonTargets.includes(item));
+            if (reference && included.length > 1) {
+                const controls = correctionDetails(box,'group','整组作品与命名');
+                renderWorkSearch(controls,reference,included);
+                if (reference.detail) {
+                    const naming = textElement('div','','media-correction-fields');
+                    field(naming,'整组标准片名',reference.title,value => included.forEach(row => { row.title = value; }));
+                    field(naming,'整组首播年份',reference.year,value => included.forEach(row => { row.year = value; }));
+                    controls.append(naming);
+                }
+                action(controls,'跳过本组',() => skipRows(included));
+            }
+            if (item.include) {
+                const footer = textElement('div','','media-correction-footer');
+                action(footer,'跳过此文件',() => skipRows([item]));
+                box.append(footer);
+            }
             host.append(box);
         };
         const render = () => {
             if (!detail) return;
-            host.textContent = '';
+            for (const section of host.querySelectorAll('details[data-media-section]')) {
+                if (section.open) detail.expanded.add(section.dataset.mediaSection);
+                else detail.expanded.delete(section.dataset.mediaSection);
+            }
+            host.replaceChildren();
             const {group} = detail;
-            renderDetail(group,group[0].title || group[0].query);
+            renderDetail(group);
             updateRowControls();
         };
         async function choose(row, match) {
@@ -928,7 +993,8 @@
         ui.get('mediaAllowMissing').onchange = () => flow.invalidate('整理选项已更改');
         flow.invalidateMedia = invalidate;
         flow.openWork = group => {
-            detail = {file:group[0],scrollTop:results.scrollTop,group};
+            host.replaceChildren();
+            detail = {file:group[0],scrollTop:results.scrollTop,group,expanded:new Set()};
             flow.showWork();
             results.scrollTop = 0;
             render();
