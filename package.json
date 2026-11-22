@@ -1,6 +1,6 @@
 {
   "name": "cloud-media-organizer",
-  "version": "3.0.39",
+  "version": "3.0.40",
   "private": true,
   "description": "Browser userscript for cloud file manifests, media organization, and subtitles",
   "engines": {
@@ -8,9 +8,21 @@
   },
   "scripts": {
     "build": "node scripts/build.cjs",
-    "check": "node scripts/build.cjs --check"
+    "check": "node scripts/build.cjs --check",
+    "format": "prettier --write \"src/*.js\" \"scripts/*.cjs\"",
+    "format:check": "prettier --check \"src/*.js\" \"scripts/*.cjs\" \"cloud-media-organizer-v3.user.js\""
   },
   "devDependencies": {
-    "esbuild": "0.28.2"
+    "esbuild": "0.28.2",
+    "prettier": "3.10.1"
+  },
+  "prettier": {
+    "tabWidth": 4,
+    "singleQuote": true,
+    "semi": true,
+    "printWidth": 110,
+    "trailingComma": "es5",
+    "endOfLine": "lf",
+    "embeddedLanguageFormatting": "off"
   }
 }

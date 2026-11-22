@@ -1,24 +1,32 @@
-    const workspaceIcons = {
-        'film': '<rect width="18" height="18" x="3" y="3" rx="2" /><path d="M7 3v18" /><path d="M3 7.5h4" /><path d="M3 12h18" /><path d="M3 16.5h4" /><path d="M17 3v18" /><path d="M17 7.5h4" /><path d="M17 16.5h4" />',
-        'settings': '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" /><circle cx="12" cy="12" r="3" />',
-        'upload': '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" x2="12" y1="3" y2="15" />',
-        'download': '<path d="M12 15V3" /><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m7 10 5 5 5-5" />',
-        'scan-search': '<path d="M3 7V5a2 2 0 0 1 2-2h2" /><path d="M17 3h2a2 2 0 0 1 2 2v2" /><path d="M21 17v2a2 2 0 0 1-2 2h-2" /><path d="M7 21H5a2 2 0 0 1-2-2v-2" /><circle cx="12" cy="12" r="3" /><path d="m16 16-1.9-1.9" />',
-        'search': '<circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />',
-        'plus': '<path d="M5 12h14" /><path d="M12 5v14" />',
-        'trash-2': '<path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /><line x1="10" x2="10" y1="11" y2="17" /><line x1="14" x2="14" y1="11" y2="17" />',
-        'x': '<path d="M18 6 6 18" /><path d="m6 6 12 12" />',
-        'pin': '<path d="M12 17v5" /><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" />',
-        'pin-off': '<path d="M12 17v5" /><path d="M15 9.34V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H7.89" /><path d="m2 2 20 20" /><path d="M9 9v1.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h11" />',
-        'key-round': '<path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z" /><circle cx="16.5" cy="7.5" r=".5" fill="currentColor" />',
-        'languages': '<path d="m5 8 6 6" /><path d="m4 14 6-6 2-3" /><path d="M2 5h12" /><path d="M7 2h1" /><path d="m22 22-5-10-5 10" /><path d="M14 18h6" />',
-        'cloud': '<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />',
-        'files': '<path d="M15 2h-4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8" /><path d="M16.706 2.706A2.4 2.4 0 0 0 15 2v5a1 1 0 0 0 1 1h5a2.4 2.4 0 0 0-.706-1.706z" /><path d="M5 7a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h8a2 2 0 0 0 1.732-1" />',
-        'arrow-left': '<path d="m12 19-7-7 7-7" /><path d="M19 12H5" />',
-        'cpu': '<path d="M12 20v2" /><path d="M12 2v2" /><path d="M17 20v2" /><path d="M17 2v2" /><path d="M2 12h2" /><path d="M2 17h2" /><path d="M2 7h2" /><path d="M20 12h2" /><path d="M20 17h2" /><path d="M20 7h2" /><path d="M7 20v2" /><path d="M7 2v2" /><rect x="4" y="4" width="16" height="16" rx="2" /><rect x="8" y="8" width="8" height="8" rx="1" />',
-        'folder-open': '<path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2" />'
-    };
-    /*
+const workspaceIcons = {
+    film: '<rect width="18" height="18" x="3" y="3" rx="2" /><path d="M7 3v18" /><path d="M3 7.5h4" /><path d="M3 12h18" /><path d="M3 16.5h4" /><path d="M17 3v18" /><path d="M17 7.5h4" /><path d="M17 16.5h4" />',
+    settings:
+        '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" /><circle cx="12" cy="12" r="3" />',
+    upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" x2="12" y1="3" y2="15" />',
+    download:
+        '<path d="M12 15V3" /><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m7 10 5 5 5-5" />',
+    'scan-search':
+        '<path d="M3 7V5a2 2 0 0 1 2-2h2" /><path d="M17 3h2a2 2 0 0 1 2 2v2" /><path d="M21 17v2a2 2 0 0 1-2 2h-2" /><path d="M7 21H5a2 2 0 0 1-2-2v-2" /><circle cx="12" cy="12" r="3" /><path d="m16 16-1.9-1.9" />',
+    search: '<circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />',
+    plus: '<path d="M5 12h14" /><path d="M12 5v14" />',
+    'trash-2':
+        '<path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /><line x1="10" x2="10" y1="11" y2="17" /><line x1="14" x2="14" y1="11" y2="17" />',
+    x: '<path d="M18 6 6 18" /><path d="m6 6 12 12" />',
+    pin: '<path d="M12 17v5" /><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" />',
+    'pin-off':
+        '<path d="M12 17v5" /><path d="M15 9.34V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H7.89" /><path d="m2 2 20 20" /><path d="M9 9v1.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h11" />',
+    'key-round':
+        '<path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z" /><circle cx="16.5" cy="7.5" r=".5" fill="currentColor" />',
+    languages:
+        '<path d="m5 8 6 6" /><path d="m4 14 6-6 2-3" /><path d="M2 5h12" /><path d="M7 2h1" /><path d="m22 22-5-10-5 10" /><path d="M14 18h6" />',
+    cloud: '<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />',
+    files: '<path d="M15 2h-4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8" /><path d="M16.706 2.706A2.4 2.4 0 0 0 15 2v5a1 1 0 0 0 1 1h5a2.4 2.4 0 0 0-.706-1.706z" /><path d="M5 7a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h8a2 2 0 0 0 1.732-1" />',
+    'arrow-left': '<path d="m12 19-7-7 7-7" /><path d="M19 12H5" />',
+    cpu: '<path d="M12 20v2" /><path d="M12 2v2" /><path d="M17 20v2" /><path d="M17 2v2" /><path d="M2 12h2" /><path d="M2 17h2" /><path d="M2 7h2" /><path d="M20 12h2" /><path d="M20 17h2" /><path d="M20 7h2" /><path d="M7 20v2" /><path d="M7 2v2" /><rect x="4" y="4" width="16" height="16" rx="2" /><rect x="8" y="8" width="8" height="8" rx="1" />',
+    'folder-open':
+        '<path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2" />',
+};
+/*
     ISC License
 
     Copyright (c) 2026 Lucide Icons and Contributors
@@ -61,140 +69,212 @@
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
     SOFTWARE.
     */
-    function workspaceIcon(name, className = '') {
-        const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        for (const [key, value] of Object.entries({viewBox:'0 0 24 24',fill:'none',stroke:'currentColor','stroke-width':'1.75','stroke-linecap':'round','stroke-linejoin':'round','aria-hidden':'true'})) icon.setAttribute(key, value);
-        if (className) icon.setAttribute('class', className);
-        icon.innerHTML = workspaceIcons[name];
-        return icon;
+function workspaceIcon(name, className = '') {
+    const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    for (const [key, value] of Object.entries({
+        viewBox: '0 0 24 24',
+        fill: 'none',
+        stroke: 'currentColor',
+        'stroke-width': '1.75',
+        'stroke-linecap': 'round',
+        'stroke-linejoin': 'round',
+        'aria-hidden': 'true',
+    }))
+        icon.setAttribute(key, value);
+    if (className) icon.setAttribute('class', className);
+    icon.innerHTML = workspaceIcons[name];
+    return icon;
+}
+function saveJsonFile(value, filename, report) {
+    try {
+        normalizeFiles(JSON.parse(value));
+    } catch (_) {
+        report('保存失败：文本框不是有效的跨盘 JSON 清单，请先导出文件清单');
+        return;
     }
-    function saveJsonFile(value, filename, report) {
-        try { normalizeFiles(JSON.parse(value)); }
-        catch (_) { report('保存失败：文本框不是有效的跨盘 JSON 清单，请先导出文件清单'); return; }
-        const url = URL.createObjectURL(new Blob([value], { type: 'application/json;charset=utf-8' }));
-        report('正在保存 JSON 清单…');
-        if (typeof GM_download === 'function') {
-            try { GM_download({
-                url, name: filename, saveAs: true,
-                onload: () => { URL.revokeObjectURL(url); report(`已保存：${filename}`); },
-                onerror: error => { URL.revokeObjectURL(url); report(`保存失败：${error?.error || error?.message || '浏览器拒绝下载'}`); },
-                onabort: () => { URL.revokeObjectURL(url); report('已取消保存'); }
-            }); } catch (error) { URL.revokeObjectURL(url); report('保存失败：' + error.message); }
-            return;
+    const url = URL.createObjectURL(new Blob([value], { type: 'application/json;charset=utf-8' }));
+    report('正在保存 JSON 清单…');
+    if (typeof GM_download === 'function') {
+        try {
+            GM_download({
+                url,
+                name: filename,
+                saveAs: true,
+                onload: () => {
+                    URL.revokeObjectURL(url);
+                    report(`已保存：${filename}`);
+                },
+                onerror: (error) => {
+                    URL.revokeObjectURL(url);
+                    report(`保存失败：${error?.error || error?.message || '浏览器拒绝下载'}`);
+                },
+                onabort: () => {
+                    URL.revokeObjectURL(url);
+                    report('已取消保存');
+                },
+            });
+        } catch (error) {
+            URL.revokeObjectURL(url);
+            report('保存失败：' + error.message);
         }
-        const link = document.createElement('a');
-        link.href = url; link.download = filename; link.style.display = 'none';
-        document.body.appendChild(link); link.click(); link.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 60000);
-        report(`已触发下载：${filename}；请检查浏览器下载列表`);
+        return;
     }
-    // Keep existing controls and handlers; only arrange their presentation.
-    function arrangeToolPane(pane, id) {
-        const create = (tag, className, text) => {
-            const node = document.createElement(tag); node.className = className;
-            if (text) node.textContent = text;
-            return node;
-        };
-        const take = (parent, selector) => { const node = pane.querySelector(selector); if (node) parent.append(node); };
-        const intro = create('div', 'tool-intro');
-        take(intro, 'h3');
-        const description = pane.querySelector(':scope > p:not([id]), #scope');
-        if (description) { description.id ||= id + 'Instructions'; pane.setAttribute('aria-describedby', description.id); intro.append(description); }
-        if (id === 'json') {
-            const source = intro.querySelector('h3').textContent.replace(/\s*跨盘\s*JSON.*$/, '').trim();
-            intro.querySelector('h3').textContent = '跨盘文件清单';
-            if (!description) intro.append(create('p', '', '导出当前网盘的文件清单，或导入清单恢复文件。'));
-            const context = create('span', 'tool-context', source); intro.querySelector('h3').append(context);
-        } else {
-            const title = intro.querySelector('h3'), source = title.textContent.replace(/\s+(?:字幕|影视整理).*$/, '').trim();
-            title.textContent = '影视整理'; title.append(create('span', 'tool-context', source));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    report(`已触发下载：${filename}；请检查浏览器下载列表`);
+}
+// Keep existing controls and handlers; only arrange their presentation.
+function arrangeToolPane(pane, id) {
+    const create = (tag, className, text) => {
+        const node = document.createElement(tag);
+        node.className = className;
+        if (text) node.textContent = text;
+        return node;
+    };
+    const take = (parent, selector) => {
+        const node = pane.querySelector(selector);
+        if (node) parent.append(node);
+    };
+    const intro = create('div', 'tool-intro');
+    take(intro, 'h3');
+    const description = pane.querySelector(':scope > p:not([id]), #scope');
+    if (description) {
+        description.id ||= id + 'Instructions';
+        pane.setAttribute('aria-describedby', description.id);
+        intro.append(description);
+    }
+    if (id === 'json') {
+        const source = intro
+            .querySelector('h3')
+            .textContent.replace(/\s*跨盘\s*JSON.*$/, '')
+            .trim();
+        intro.querySelector('h3').textContent = '跨盘文件清单';
+        if (!description) intro.append(create('p', '', '导出当前网盘的文件清单，或导入清单恢复文件。'));
+        const context = create('span', 'tool-context', source);
+        intro.querySelector('h3').append(context);
+    } else {
+        const title = intro.querySelector('h3'),
+            source = title.textContent.replace(/\s+(?:字幕|影视整理).*$/, '').trim();
+        title.textContent = '影视整理';
+        title.append(create('span', 'tool-context', source));
+    }
+    const commands = create('div', 'tool-commandbar');
+    const firstAction = pane.querySelector(':scope > .panel-actions');
+    const merged = id === 'subtitle' && pane.querySelector('#previewMedia');
+    if (firstAction) commands.append(firstAction);
+    if (merged) {
+        const actions = pane.querySelector('#stopSubtitles').parentElement;
+        firstAction.append(...actions.children);
+        actions.remove();
+        pane.classList.add('merged-media');
+    }
+    if (id === 'json') take(commands, '#stopJson');
+    const commandIcons = {
+        generate: 'download',
+        exportManifest: 'download',
+        scanMedia: 'scan-search',
+        openMediaCleanup: 'trash-2',
+        readSubtitles: 'search',
+        fillSubtitles: 'plus',
+        reviewSubtitleDeletes: 'trash-2',
+        importSubtitles: 'upload',
+    };
+    for (const [name, glyph] of Object.entries(commandIcons))
+        commands.querySelector('#' + name)?.prepend(workspaceIcon(glyph, 'command-icon'));
+    commands.querySelector('.manifest-import > summary')?.prepend(workspaceIcon('upload', 'command-icon'));
+    const layout = create('div', 'tool-layout');
+    const main = create('div', 'tool-main');
+    const status = create('section', 'tool-status-text');
+    const statusIds =
+        id === 'subtitle'
+            ? ['subtitleScope', 'subtitleProgress', 'subtitleMeter']
+            : ['status', 'target', 'progress'];
+    for (const name of statusIds) take(status, '#' + name);
+    const heading = create('div', 'tool-list-heading');
+    const headingTitle = create('h4', '', id === 'subtitle' ? '字幕检查结果' : 'JSON 文件清单');
+    heading.append(headingTitle);
+    if (id === 'subtitle') {
+        headingTitle.id = 'subtitleResultsTitle';
+        if (merged) headingTitle.textContent = '作品与字幕';
+        take(heading, '#subtitleFilters');
+    }
+    main.append(heading);
+    if (id === 'json') {
+        take(main, '#syncPreview');
+        take(main, '#json');
+        const editor = main.querySelector('#json');
+        editor?.setAttribute('aria-label', 'JSON 文件清单');
+        if (editor) {
+            const surface = create('div', 'json-editor');
+            editor.before(surface);
+            surface.append(editor);
+            const empty = create('div', 'json-editor-empty');
+            empty.setAttribute('aria-hidden', 'true');
+            empty.append(workspaceIcon('folder-open'));
+            empty.append(
+                create('strong', '', '从一份文件清单开始'),
+                create('p', '', '点击上方导出，或在这里粘贴 JSON 清单'),
+                create('span', '', '清单仅包含文件信息，不包含视频内容')
+            );
+            surface.append(empty);
         }
-        const commands = create('div', 'tool-commandbar');
-        const firstAction = pane.querySelector(':scope > .panel-actions');
-        const merged = id === 'subtitle' && pane.querySelector('#previewMedia');
-        if (firstAction) commands.append(firstAction);
+        const fileActions = create('div', 'editor-actions');
+        for (const selector of ['#save', '#saveJson', '#copyJson']) take(fileActions, selector);
+        for (const button of fileActions.children)
+            button.prepend(workspaceIcon(button.id === 'copyJson' ? 'files' : 'download', 'command-icon'));
+        if (fileActions.children.length) heading.append(fileActions);
+    } else if (id === 'subtitle') {
+        take(main, '#subtitleSummary');
+        take(main, '#subtitleResults');
         if (merged) {
-            const actions = pane.querySelector('#stopSubtitles').parentElement;
-            firstAction.append(...actions.children);
-            actions.remove();
-            pane.classList.add('merged-media');
+            take(heading, '#allowWithoutSubtitles');
+            const results = main.querySelector('#subtitleResults');
+            const preview = create('details', 'sync-preview');
+            preview.id = 'mediaPreviewPanel';
+            preview.append(create('summary', '', '查看整理预览'));
+            take(preview, '#mediaPreview');
+            results.prepend(preview);
+            results.prepend(pane.querySelector('#mediaCleanup'));
+            take(results, '#mediaRows');
+            results.querySelector('#mediaRows').hidden = true;
         }
-        if (id === 'json') take(commands, '#stopJson');
-        const commandIcons = {generate:'download',exportManifest:'download',scanMedia:'scan-search',openMediaCleanup:'trash-2',readSubtitles:'search',fillSubtitles:'plus',reviewSubtitleDeletes:'trash-2',importSubtitles:'upload'};
-        for (const [name, glyph] of Object.entries(commandIcons)) commands.querySelector('#' + name)?.prepend(workspaceIcon(glyph, 'command-icon'));
-        commands.querySelector('.manifest-import > summary')?.prepend(workspaceIcon('upload', 'command-icon'));
-        const layout = create('div', 'tool-layout');
-        const main = create('div', 'tool-main');
-        const status = create('section', 'tool-status-text');
-        const statusIds = id === 'subtitle' ? ['subtitleScope','subtitleProgress','subtitleMeter']
-            : ['status','target','progress'];
-        for (const name of statusIds) take(status, '#' + name);
-        const heading = create('div', 'tool-list-heading');
-        const headingTitle = create('h4', '', id === 'subtitle' ? '字幕检查结果' : 'JSON 文件清单');
-        heading.append(headingTitle);
-        if (id === 'subtitle') {
-            headingTitle.id = 'subtitleResultsTitle';
-            if (merged) headingTitle.textContent = '作品与字幕';
-            take(heading, '#subtitleFilters');
-        }
-        main.append(heading);
-        if (id === 'json') {
-            take(main, '#syncPreview'); take(main, '#json');
-            const editor = main.querySelector('#json');
-            editor?.setAttribute('aria-label', 'JSON 文件清单');
-            if (editor) {
-                const surface = create('div', 'json-editor'); editor.before(surface); surface.append(editor);
-                const empty = create('div', 'json-editor-empty'); empty.setAttribute('aria-hidden', 'true');
-                empty.append(workspaceIcon('folder-open'));
-                empty.append(create('strong', '', '从一份文件清单开始'), create('p', '', '点击上方导出，或在这里粘贴 JSON 清单'), create('span', '', '清单仅包含文件信息，不包含视频内容'));
-                surface.append(empty);
-            }
-            const fileActions = create('div', 'editor-actions');
-            for (const selector of ['#save','#saveJson','#copyJson']) take(fileActions, selector);
-            for (const button of fileActions.children) button.prepend(workspaceIcon(button.id === 'copyJson' ? 'files' : 'download', 'command-icon'));
-            if (fileActions.children.length) heading.append(fileActions);
-        } else if (id === 'subtitle') {
-            take(main, '#subtitleSummary');
-            take(main, '#subtitleResults');
-            if (merged) {
-                take(heading,'#allowWithoutSubtitles');
-                const results = main.querySelector('#subtitleResults');
-                const preview = create('details','sync-preview');
-                preview.id = 'mediaPreviewPanel';
-                preview.append(create('summary','','查看整理预览'));
-                take(preview,'#mediaPreview');
-                results.prepend(preview);
-                results.prepend(pane.querySelector('#mediaCleanup'));
-                take(results,'#mediaRows');
-                results.querySelector('#mediaRows').hidden = true;
-            }
-        }
-        const utilities = create('div', 'tool-utilities');
-        const auxiliary = id === 'json' ? create('section', 'tool-import-options') : utilities;
-        if (id !== 'subtitle') {
-            for (const node of [...pane.querySelectorAll(':scope > .panel-actions, :scope > .export-options')]) auxiliary.append(node);
-            if (id === 'json') commands.append(auxiliary);
-        }
-        for (const node of [...pane.children]) {
-            if (node.id.endsWith('Settings') || (node.tagName === 'INPUT' && node.hidden)) continue;
-            node.classList.add('tool-card'); utilities.append(node);
-        }
-        const footer = create('footer', 'tool-statusbar'); footer.append(status, utilities);
-        const surface = create('div', 'tool-surface');
-        layout.append(main);
-        surface.append(intro, commands, layout, footer);
-        pane.append(surface);
     }
-    let toolWorkspace = null;
-    function makePanel(title, html, id = 'json') {
-        if (!toolWorkspace) {
-            const host = document.createElement('div');
-            host.id = 'cloud-media-organizer-tools';
-            host.style.cssText = 'position:fixed;right:24px;bottom:24px;z-index:2147483647';
-            // 面板交互不冒泡给网盘，避免点击按钮时清掉网页的勾选。
-            for (const event of ['pointerdown', 'mousedown', 'click']) host.addEventListener(event, event => event.stopPropagation());
-            const root = host.attachShadow({ mode: 'closed' });
-            root.innerHTML = `<style>
+    const utilities = create('div', 'tool-utilities');
+    const auxiliary = id === 'json' ? create('section', 'tool-import-options') : utilities;
+    if (id !== 'subtitle') {
+        for (const node of [...pane.querySelectorAll(':scope > .panel-actions, :scope > .export-options')])
+            auxiliary.append(node);
+        if (id === 'json') commands.append(auxiliary);
+    }
+    for (const node of [...pane.children]) {
+        if (node.id.endsWith('Settings') || (node.tagName === 'INPUT' && node.hidden)) continue;
+        node.classList.add('tool-card');
+        utilities.append(node);
+    }
+    const footer = create('footer', 'tool-statusbar');
+    footer.append(status, utilities);
+    const surface = create('div', 'tool-surface');
+    layout.append(main);
+    surface.append(intro, commands, layout, footer);
+    pane.append(surface);
+}
+let toolWorkspace = null;
+function makePanel(title, html, id = 'json') {
+    if (!toolWorkspace) {
+        const host = document.createElement('div');
+        host.id = 'cloud-media-organizer-tools';
+        host.style.cssText = 'position:fixed;right:24px;bottom:24px;z-index:2147483647';
+        // 面板交互不冒泡给网盘，避免点击按钮时清掉网页的勾选。
+        for (const event of ['pointerdown', 'mousedown', 'click'])
+            host.addEventListener(event, (event) => event.stopPropagation());
+        const root = host.attachShadow({ mode: 'closed' });
+        root.innerHTML = `<style>
 *{box-sizing:border-box}
 :host{font:16px/1.65 "Microsoft YaHei UI","Microsoft YaHei","Segoe UI",sans-serif;color:var(--text);color-scheme:var(--scheme)}
 ::selection{background:var(--accent);color:var(--button-text)}
@@ -409,295 +489,485 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         <label class="theme-row">窗口尺寸<select id="workspaceSize" aria-label="窗口尺寸"><option value="960x600">960 × 600</option><option value="1280x800" selected>1280 × 800（默认）</option><option value="1440x900">1440 × 900</option><option value="1600x1000">1600 × 1000</option></select></label>
         <label class="theme-row">外观<select id="theme"><option value="auto">跟随页面</option><option value="light">浅色</option><option value="dark">深色</option></select></label></div>
         <div class="workspace-body"><section id="workspaceSettings" class="tool-pane" hidden><div class="settings-main"><div class="settings-heading"><h3>设置</h3><div id="settingsAppearance" class="settings-appearance"></div><button id="backToTools">返回工具</button></div><div class="settings-column" id="settingsBasics"></div><div class="settings-column" id="settingsModels"></div></div></section></div></div></div>`;
-            const overlay = root.querySelector('.workspace-overlay'), dialog = root.querySelector('.box'), toggle = root.querySelector('#toggle');
-            const frame = document.createElement('div'); frame.className = 'workspace-frame';
-            const navigation = root.querySelector('.workspace-toolbar'); navigation.className = 'workspace-navigation';
-            const appearance = root.querySelector('#settingsAppearance');
-            const navBrand = document.createElement('div');
-            navBrand.className = 'nav-brand';
-            navBrand.append(root.querySelector('.workspace-brand-mark'), document.createTextNode('云盘工具'));
-            root.querySelector('#workspaceTitle').textContent = '工作区';
-            navigation.prepend(navBrand);
-            for (const label of [...navigation.querySelectorAll('.theme-row')]) appearance.append(label);
-            const navFooter = document.createElement('div'); navFooter.className = 'nav-footer'; navFooter.append(root.querySelector('#settingsWorkspace'));
-            const version = document.createElement('small'); version.textContent = typeof VERSION === 'string' ? 'v' + VERSION : ''; navFooter.append(version); navigation.append(navFooter);
-            const icons = {jsonTab:'files',subtitleTab:'film',settingsWorkspace:'settings',closeWorkspace:'x',backToTools:'arrow-left'};
-            for (const [name, glyph] of Object.entries(icons)) root.querySelector('#' + name).prepend(workspaceIcon(glyph, name === 'backToTools' ? 'command-icon' : ''));
-            root.querySelector('.workspace-brand-mark').append(workspaceIcon('cloud'));
-            toggle.append(workspaceIcon('cloud'));
-            const location = root.querySelector('#workspaceLocation');
-            root.querySelector('.workspace-tabs').setAttribute('aria-orientation', 'vertical');
-            frame.append(navigation, root.querySelector('.workspace-body')); dialog.append(frame);
-            const tabs = new Map();
-            let active = null, returnFocus = null;
-            const layoutKey = 'cross-drive-window-layout';
-            const saved = GM_getValue(layoutKey, {});
-            const sizes = new Map([['960x600',[960,600]],['1280x800',[1280,800]],['1440x900',[1440,900]],['1600x1000',[1600,1000]]]);
-            let windowSize = sizes.has(saved?.size) ? saved.size : '1280x800';
-            let position = Number.isFinite(saved?.left) && Number.isFinite(saved?.top) ? { left: saved.left, top: saved.top } : null;
-            let pinned = saved?.pinned === true, drag = null;
-            const header = root.querySelector('.workspace-header'), pin = root.querySelector('#pinWorkspace');
-            const place = point => {
-                const width = page.innerWidth, height = page.innerHeight;
-                // Size presets describe screenshot/device pixels, including OS scaling and browser zoom.
-                const ratio = Number.isFinite(page.devicePixelRatio) && page.devicePixelRatio > 0 ? page.devicePixelRatio : 1;
-                const margin = 24 / ratio;
-                const [baseWidth,baseHeight] = sizes.get(windowSize);
-                const scale = Math.max(0,Math.min(1,(width - margin * 2) * ratio / baseWidth,(height - margin * 2) * ratio / baseHeight));
-                dialog.style.transformOrigin = 'top left'; dialog.style.transform = `scale(${1 / ratio})`;
-                dialog.style.maxWidth = dialog.style.maxHeight = 'none';
-                dialog.style.width = Math.max(1,Math.round(baseWidth * scale)) + 'px';
-                dialog.style.height = Math.max(1,Math.round(baseHeight * scale)) + 'px';
-                const rect = dialog.getBoundingClientRect();
-                const left = Math.max(margin, Math.min(point?.left ?? Math.round((width - rect.width) / 2), width - rect.width - margin));
-                const top = Math.max(margin, Math.min(point?.top ?? Math.round((height - rect.height) / 2), height - rect.height - margin));
-                dialog.style.left = left + 'px'; dialog.style.top = top + 'px';
-                sizeSelect.title = `窗口外框：${Math.round(rect.width * ratio)} × ${Math.round(rect.height * ratio)} 像素（不含阴影）${scale < 1 ? '；可用空间不足，已缩小' : ''}`;
-                return { left, top };
-            };
-            const saveLayout = () => {
-                GM_setValue(layoutKey, { ...position, pinned, size:windowSize });
-            };
-            const sizeSelect = root.querySelector('#workspaceSize');
-            sizeSelect.value = windowSize;
-            sizeSelect.onchange = () => {
-                if (!sizes.has(sizeSelect.value)) { sizeSelect.value = windowSize; return; }
-                windowSize = sizeSelect.value;
-                if (!pinned) position = null;
-                place(position); saveLayout();
-            };
-            const renderPin = () => {
-                pin.replaceChildren(workspaceIcon(pinned ? 'pin-off' : 'pin'));
-                pin.setAttribute('aria-label', pinned ? '解除固定' : '固定位置');
-                pin.setAttribute('aria-pressed', String(pinned));
-                pin.title = pinned ? '解除后可以拖动窗口' : '锁定窗口位置';
-                header.classList.toggle('pinned', pinned);
-                root.querySelector('#windowHint').textContent = pinned ? '位置已固定 · 可同时操作网页' : '拖动标题栏移动 · 可同时操作网页';
-            };
-            pin.onclick = () => { pinned = !pinned; position = place(position); saveLayout(); renderPin(); };
-            header.onpointerdown = event => {
-                if (pinned || event.button !== 0 || event.target.closest('button')) return;
-                event.preventDefault();
-                const rect = dialog.getBoundingClientRect();
-                drag = { id: event.pointerId, x: event.clientX, y: event.clientY, left: rect.left, top: rect.top };
-                header.setPointerCapture(event.pointerId); header.classList.add('dragging');
-            };
-            header.onpointermove = event => {
-                if (!drag || event.pointerId !== drag.id) return;
-                position = place({ left: drag.left + event.clientX - drag.x, top: drag.top + event.clientY - drag.y });
-            };
-            const finishDrag = event => {
-                if (!drag || event.pointerId !== drag.id) return;
-                drag = null; header.classList.remove('dragging'); saveLayout();
-                if (header.hasPointerCapture(event.pointerId)) header.releasePointerCapture(event.pointerId);
-            };
-            header.onpointerup = finishDrag; header.onpointercancel = finishDrag; header.onlostpointercapture = finishDrag;
-            page.addEventListener('resize', () => { if (!overlay.hidden) place(position); });
+        const overlay = root.querySelector('.workspace-overlay'),
+            dialog = root.querySelector('.box'),
+            toggle = root.querySelector('#toggle');
+        const frame = document.createElement('div');
+        frame.className = 'workspace-frame';
+        const navigation = root.querySelector('.workspace-toolbar');
+        navigation.className = 'workspace-navigation';
+        const appearance = root.querySelector('#settingsAppearance');
+        const navBrand = document.createElement('div');
+        navBrand.className = 'nav-brand';
+        navBrand.append(root.querySelector('.workspace-brand-mark'), document.createTextNode('云盘工具'));
+        root.querySelector('#workspaceTitle').textContent = '工作区';
+        navigation.prepend(navBrand);
+        for (const label of [...navigation.querySelectorAll('.theme-row')]) appearance.append(label);
+        const navFooter = document.createElement('div');
+        navFooter.className = 'nav-footer';
+        navFooter.append(root.querySelector('#settingsWorkspace'));
+        const version = document.createElement('small');
+        version.textContent = typeof VERSION === 'string' ? 'v' + VERSION : '';
+        navFooter.append(version);
+        navigation.append(navFooter);
+        const icons = {
+            jsonTab: 'files',
+            subtitleTab: 'film',
+            settingsWorkspace: 'settings',
+            closeWorkspace: 'x',
+            backToTools: 'arrow-left',
+        };
+        for (const [name, glyph] of Object.entries(icons))
+            root.querySelector('#' + name).prepend(
+                workspaceIcon(glyph, name === 'backToTools' ? 'command-icon' : '')
+            );
+        root.querySelector('.workspace-brand-mark').append(workspaceIcon('cloud'));
+        toggle.append(workspaceIcon('cloud'));
+        const location = root.querySelector('#workspaceLocation');
+        root.querySelector('.workspace-tabs').setAttribute('aria-orientation', 'vertical');
+        frame.append(navigation, root.querySelector('.workspace-body'));
+        dialog.append(frame);
+        const tabs = new Map();
+        let active = null,
+            returnFocus = null;
+        const layoutKey = 'cross-drive-window-layout';
+        const saved = GM_getValue(layoutKey, {});
+        const sizes = new Map([
+            ['960x600', [960, 600]],
+            ['1280x800', [1280, 800]],
+            ['1440x900', [1440, 900]],
+            ['1600x1000', [1600, 1000]],
+        ]);
+        let windowSize = sizes.has(saved?.size) ? saved.size : '1280x800';
+        let position =
+            Number.isFinite(saved?.left) && Number.isFinite(saved?.top)
+                ? { left: saved.left, top: saved.top }
+                : null;
+        let pinned = saved?.pinned === true,
+            drag = null;
+        const header = root.querySelector('.workspace-header'),
+            pin = root.querySelector('#pinWorkspace');
+        const place = (point) => {
+            const width = page.innerWidth,
+                height = page.innerHeight;
+            // Size presets describe screenshot/device pixels, including OS scaling and browser zoom.
+            const ratio =
+                Number.isFinite(page.devicePixelRatio) && page.devicePixelRatio > 0
+                    ? page.devicePixelRatio
+                    : 1;
+            const margin = 24 / ratio;
+            const [baseWidth, baseHeight] = sizes.get(windowSize);
+            const scale = Math.max(
+                0,
+                Math.min(
+                    1,
+                    ((width - margin * 2) * ratio) / baseWidth,
+                    ((height - margin * 2) * ratio) / baseHeight
+                )
+            );
+            dialog.style.transformOrigin = 'top left';
+            dialog.style.transform = `scale(${1 / ratio})`;
+            dialog.style.maxWidth = dialog.style.maxHeight = 'none';
+            dialog.style.width = Math.max(1, Math.round(baseWidth * scale)) + 'px';
+            dialog.style.height = Math.max(1, Math.round(baseHeight * scale)) + 'px';
+            const rect = dialog.getBoundingClientRect();
+            const left = Math.max(
+                margin,
+                Math.min(point?.left ?? Math.round((width - rect.width) / 2), width - rect.width - margin)
+            );
+            const top = Math.max(
+                margin,
+                Math.min(point?.top ?? Math.round((height - rect.height) / 2), height - rect.height - margin)
+            );
+            dialog.style.left = left + 'px';
+            dialog.style.top = top + 'px';
+            sizeSelect.title = `窗口外框：${Math.round(rect.width * ratio)} × ${Math.round(rect.height * ratio)} 像素（不含阴影）${scale < 1 ? '；可用空间不足，已缩小' : ''}`;
+            return { left, top };
+        };
+        const saveLayout = () => {
+            GM_setValue(layoutKey, { ...position, pinned, size: windowSize });
+        };
+        const sizeSelect = root.querySelector('#workspaceSize');
+        sizeSelect.value = windowSize;
+        sizeSelect.onchange = () => {
+            if (!sizes.has(sizeSelect.value)) {
+                sizeSelect.value = windowSize;
+                return;
+            }
+            windowSize = sizeSelect.value;
+            if (!pinned) position = null;
+            place(position);
+            saveLayout();
+        };
+        const renderPin = () => {
+            pin.replaceChildren(workspaceIcon(pinned ? 'pin-off' : 'pin'));
+            pin.setAttribute('aria-label', pinned ? '解除固定' : '固定位置');
+            pin.setAttribute('aria-pressed', String(pinned));
+            pin.title = pinned ? '解除后可以拖动窗口' : '锁定窗口位置';
+            header.classList.toggle('pinned', pinned);
+            root.querySelector('#windowHint').textContent = pinned
+                ? '位置已固定 · 可同时操作网页'
+                : '拖动标题栏移动 · 可同时操作网页';
+        };
+        pin.onclick = () => {
+            pinned = !pinned;
+            position = place(position);
+            saveLayout();
             renderPin();
-            const activate = (id, focus = false) => {
-                if (!tabs.has(id)) return;
-                active = id;
-                location.textContent = tabs.get(id).button.textContent;
-                root.querySelector('#workspaceSettings').hidden = true;
-                root.querySelector('#settingsWorkspace').setAttribute('aria-pressed', 'false');
-                for (const [name, entry] of tabs) {
-                    const selected = name === id;
-                    entry.pane.hidden = !selected;
-                    entry.button.setAttribute('aria-selected', String(selected));
-                    entry.button.tabIndex = selected ? 0 : -1;
-                }
-                tabs.get(id).onActivate?.();
-                if (focus) tabs.get(id).button.focus();
+        };
+        header.onpointerdown = (event) => {
+            if (pinned || event.button !== 0 || event.target.closest('button')) return;
+            event.preventDefault();
+            const rect = dialog.getBoundingClientRect();
+            drag = {
+                id: event.pointerId,
+                x: event.clientX,
+                y: event.clientY,
+                left: rect.left,
+                top: rect.top,
             };
-            const close = () => {
-                overlay.hidden = true; toggle.setAttribute('aria-expanded', 'false');
-                const target = returnFocus?.isConnected && returnFocus !== host ? returnFocus : toggle;
-                target.focus();
-            };
-            toggle.onclick = () => {
-                if (!overlay.hidden) { close(); return; }
-                returnFocus = document.activeElement;
-                activate(active); overlay.hidden = false; place(position); toggle.setAttribute('aria-expanded', 'true');
-                dialog.focus();
-            };
-            root.querySelector('#closeWorkspace').onclick = close;
-            root.addEventListener('keydown', event => {
-                if (!overlay.hidden && event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); }
+            header.setPointerCapture(event.pointerId);
+            header.classList.add('dragging');
+        };
+        header.onpointermove = (event) => {
+            if (!drag || event.pointerId !== drag.id) return;
+            position = place({
+                left: drag.left + event.clientX - drag.x,
+                top: drag.top + event.clientY - drag.y,
             });
-            for (const button of root.querySelectorAll('[role=tab]')) button.onkeydown = event => {
-                if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
+        };
+        const finishDrag = (event) => {
+            if (!drag || event.pointerId !== drag.id) return;
+            drag = null;
+            header.classList.remove('dragging');
+            saveLayout();
+            if (header.hasPointerCapture(event.pointerId)) header.releasePointerCapture(event.pointerId);
+        };
+        header.onpointerup = finishDrag;
+        header.onpointercancel = finishDrag;
+        header.onlostpointercapture = finishDrag;
+        page.addEventListener('resize', () => {
+            if (!overlay.hidden) place(position);
+        });
+        renderPin();
+        const activate = (id, focus = false) => {
+            if (!tabs.has(id)) return;
+            active = id;
+            location.textContent = tabs.get(id).button.textContent;
+            root.querySelector('#workspaceSettings').hidden = true;
+            root.querySelector('#settingsWorkspace').setAttribute('aria-pressed', 'false');
+            for (const [name, entry] of tabs) {
+                const selected = name === id;
+                entry.pane.hidden = !selected;
+                entry.button.setAttribute('aria-selected', String(selected));
+                entry.button.tabIndex = selected ? 0 : -1;
+            }
+            tabs.get(id).onActivate?.();
+            if (focus) tabs.get(id).button.focus();
+        };
+        const close = () => {
+            overlay.hidden = true;
+            toggle.setAttribute('aria-expanded', 'false');
+            const target = returnFocus?.isConnected && returnFocus !== host ? returnFocus : toggle;
+            target.focus();
+        };
+        toggle.onclick = () => {
+            if (!overlay.hidden) {
+                close();
+                return;
+            }
+            returnFocus = document.activeElement;
+            activate(active);
+            overlay.hidden = false;
+            place(position);
+            toggle.setAttribute('aria-expanded', 'true');
+            dialog.focus();
+        };
+        root.querySelector('#closeWorkspace').onclick = close;
+        root.addEventListener('keydown', (event) => {
+            if (!overlay.hidden && event.key === 'Escape') {
                 event.preventDefault();
-                const available = [...root.querySelectorAll('[role=tab]')].map(button => button.id.slice(0,-3)).filter(id => tabs.has(id)), index = available.indexOf(active);
-                const next = event.key === 'Home' ? 0 : event.key === 'End' ? available.length - 1 : (index + (['ArrowRight','ArrowDown'].includes(event.key) ? 1 : -1) + available.length) % available.length;
+                event.stopPropagation();
+                close();
+            }
+        });
+        for (const button of root.querySelectorAll('[role=tab]'))
+            button.onkeydown = (event) => {
+                if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key))
+                    return;
+                event.preventDefault();
+                const available = [...root.querySelectorAll('[role=tab]')]
+                        .map((button) => button.id.slice(0, -3))
+                        .filter((id) => tabs.has(id)),
+                    index = available.indexOf(active);
+                const next =
+                    event.key === 'Home'
+                        ? 0
+                        : event.key === 'End'
+                          ? available.length - 1
+                          : (index +
+                                (['ArrowRight', 'ArrowDown'].includes(event.key) ? 1 : -1) +
+                                available.length) %
+                            available.length;
                 activate(available[next], true);
             };
-            document.body.appendChild(host);
-            bindPanelTheme(host, root);
-            const openSettings = name => {
-                location.textContent = '设置';
-                for (const entry of tabs.values()) { entry.pane.hidden = true; entry.button.setAttribute('aria-selected', 'false'); }
-                root.querySelector('#workspaceSettings').hidden = false;
-                root.querySelector('#settingsWorkspace').setAttribute('aria-pressed', 'true');
-                const detail = name && root.querySelector('#' + name);
-                if (detail) { if (detail.tagName === 'DETAILS') detail.open = true; detail.scrollIntoView?.({block:'nearest'}); }
-            };
-            root.querySelector('#settingsWorkspace').onclick = () => openSettings();
-            root.querySelector('#backToTools').onclick = () => activate(active);
-            toolWorkspace = { root, tabs, activate, openSettings, owner:null };
-        }
-        const { root, tabs, activate } = toolWorkspace;
-        if (tabs.has(id)) return tabs.get(id).ui;
-        const pane = document.createElement('section');
-        pane.id = id + 'Pane'; pane.className = 'tool-pane'; pane.setAttribute('role', 'tabpanel'); pane.setAttribute('aria-labelledby', id + 'Tab'); pane.tabIndex = 0; pane.hidden = true;
-        pane.innerHTML = `<h3></h3>${id !== 'json' ? '' : `<details id="exportHistory"><summary title="复用导出记录，加快读取与续传">导出记录</summary><div class="export-options"><label><input id="incremental" type="checkbox" checked>复用旧记录，加快读取</label></div><p id="historySummary" style="padding:8px;border:1px solid var(--border);border-radius:4px"></p><div class="export-options"><button id="importHistory">导入旧清单</button><button id="resetHistory">重置导出记录</button><input id="historyFile" type="file" accept=".json,application/json" hidden></div></details>`}${html}`;
-        pane.querySelector('h3').textContent = title;
-        let stopJson;
-        if (id === 'json') {
-            stopJson = document.createElement('button'); stopJson.id = 'stopJson'; stopJson.textContent = '停止当前任务'; stopJson.hidden = true;
-            stopJson.onclick = () => {
-                jsonTaskStopped = true; stopJson.disabled = true;
-                const cancel = pane.querySelector('#cancelSync');
-                if (cancel && !pane.querySelector('#syncPreview').hidden) cancel.click();
-                const progress = pane.querySelector('#progress');
-                if (progress) progress.textContent = '等待当前请求结束，停止后续操作；已提交项目请刷新目录核对。';
-            };
-            pane.appendChild(stopJson);
-        }
-        const log = pane.querySelector('#log');
-        if (log) {
-            const detail = document.createElement('details'), summary = document.createElement('summary');
-            const copy = document.createElement('button');
-            summary.textContent = '详细日志';
-            copy.type = 'button';
-            copy.textContent = '复制日志';
-            copy.onclick = async () => {
-                const output = [...log.children].map(line => line.textContent).join('\n');
-                try { await navigator.clipboard.writeText(output); copy.textContent = '已复制'; }
-                catch { copy.textContent = '复制失败'; }
-            };
-            log.before(detail);
-            detail.append(summary,copy,log);
-        }
-        arrangeToolPane(pane, id);
-        root.querySelector('.workspace-body').appendChild(pane);
-        const button = root.querySelector('#' + id + 'Tab'), elements = new Map();
-        button.disabled = false; button.removeAttribute('title'); button.onclick = () => activate(id);
-        const entry = { pane, button, onActivate: null, settings:[] };
-        const ui = { get: name => {
-            if (!elements.has(name)) elements.set(name, pane.querySelector('#' + name) || entry.settings.map(section => section.querySelector('#' + name)).find(Boolean) || (['toggle', 'theme'].includes(name) ? root.querySelector('#' + name) : null));
-            return elements.get(name);
-        }, onActivate: callback => { entry.onActivate = callback; },
-            moveSettings: (ids, headingTitle = title, destination = '#settingsBasics') => {
-                const section = document.createElement('fieldset'); section.className = 'sync-item'; section.style.minWidth = '0';
-                const heading = document.createElement('h3'); heading.textContent = headingTitle; const glyph = {mediaSettings:'key-round',mediaAISettings:'cpu',subtitleSettings:'languages'}[ids[0]];
-                if (glyph) heading.prepend(workspaceIcon(glyph));
-                section.appendChild(heading);
-                for (const name of ids) section.appendChild(ui.get(name));
-                entry.settings.push(section);
-                root.querySelector(destination).appendChild(section);
-            },
-            openSettings: name => toolWorkspace.openSettings(name),
-            busy: value => {
-                if (value) {
-                    if (toolWorkspace.owner && toolWorkspace.owner !== id) throw new Error('另一个任务正在运行，请等待完成或先停止');
-                    toolWorkspace.owner = id;
-                } else if (toolWorkspace.owner === id) toolWorkspace.owner = null;
-                if (id === 'json') { jsonTaskStopped = false; stopJson.hidden = !value; stopJson.disabled = !value; }
-                for (const [name, tab] of tabs) {
-                    const blocked = !!toolWorkspace.owner && name !== toolWorkspace.owner;
-                    tab.button.disabled = blocked;
-                    for (const section of tab.settings) section.disabled = blocked;
-                }
-                root.querySelector('#settingsWorkspace').disabled = !!toolWorkspace.owner;
-                root.querySelector('#backToTools').disabled = !!toolWorkspace.owner;
+        document.body.appendChild(host);
+        bindPanelTheme(host, root);
+        const openSettings = (name) => {
+            location.textContent = '设置';
+            for (const entry of tabs.values()) {
+                entry.pane.hidden = true;
+                entry.button.setAttribute('aria-selected', 'false');
+            }
+            root.querySelector('#workspaceSettings').hidden = false;
+            root.querySelector('#settingsWorkspace').setAttribute('aria-pressed', 'true');
+            const detail = name && root.querySelector('#' + name);
+            if (detail) {
+                if (detail.tagName === 'DETAILS') detail.open = true;
+                detail.scrollIntoView?.({ block: 'nearest' });
             }
         };
-        tabs.set(id, entry);
-        if (tabs.size === 1) activate(id);
-        return ui;
+        root.querySelector('#settingsWorkspace').onclick = () => openSettings();
+        root.querySelector('#backToTools').onclick = () => activate(active);
+        toolWorkspace = { root, tabs, activate, openSettings, owner: null };
     }
-    function createPanelTask(ui, updateControls) {
-        let active = false;
-        return async (work, stoppable = false) => {
-            if (active) return;
-            ui.busy(true);
-            active = true;
+    const { root, tabs, activate } = toolWorkspace;
+    if (tabs.has(id)) return tabs.get(id).ui;
+    const pane = document.createElement('section');
+    pane.id = id + 'Pane';
+    pane.className = 'tool-pane';
+    pane.setAttribute('role', 'tabpanel');
+    pane.setAttribute('aria-labelledby', id + 'Tab');
+    pane.tabIndex = 0;
+    pane.hidden = true;
+    pane.innerHTML = `<h3></h3>${id !== 'json' ? '' : `<details id="exportHistory"><summary title="复用导出记录，加快读取与续传">导出记录</summary><div class="export-options"><label><input id="incremental" type="checkbox" checked>复用旧记录，加快读取</label></div><p id="historySummary" style="padding:8px;border:1px solid var(--border);border-radius:4px"></p><div class="export-options"><button id="importHistory">导入旧清单</button><button id="resetHistory">重置导出记录</button><input id="historyFile" type="file" accept=".json,application/json" hidden></div></details>`}${html}`;
+    pane.querySelector('h3').textContent = title;
+    let stopJson;
+    if (id === 'json') {
+        stopJson = document.createElement('button');
+        stopJson.id = 'stopJson';
+        stopJson.textContent = '停止当前任务';
+        stopJson.hidden = true;
+        stopJson.onclick = () => {
+            jsonTaskStopped = true;
+            stopJson.disabled = true;
+            const cancel = pane.querySelector('#cancelSync');
+            if (cancel && !pane.querySelector('#syncPreview').hidden) cancel.click();
+            const progress = pane.querySelector('#progress');
+            if (progress) progress.textContent = '等待当前请求结束，停止后续操作；已提交项目请刷新目录核对。';
+        };
+        pane.appendChild(stopJson);
+    }
+    const log = pane.querySelector('#log');
+    if (log) {
+        const detail = document.createElement('details'),
+            summary = document.createElement('summary');
+        const copy = document.createElement('button');
+        summary.textContent = '详细日志';
+        copy.type = 'button';
+        copy.textContent = '复制日志';
+        copy.onclick = async () => {
+            const output = [...log.children].map((line) => line.textContent).join('\n');
             try {
-                updateControls(true, stoppable);
-                return await work();
-            } finally {
-                try { updateControls(false); }
-                finally { active = false; ui.busy(false); }
+                await navigator.clipboard.writeText(output);
+                copy.textContent = '已复制';
+            } catch {
+                copy.textContent = '复制失败';
             }
         };
+        log.before(detail);
+        detail.append(summary, copy, log);
     }
-    function panelControls(ui) {
-        return ['json', 'manifest', 'jsonFile', 'historyFile', 'generate', 'exportManifest', 'transfer', 'start', 'chooseManifest', 'chooseJsonFile', 'copyJson', 'save', 'saveJson', 'incremental', 'resetHistory', 'importHistory', 'syncExisting'].map(ui.get).filter(Boolean);
-    }
-    function appendLog(ui, message) {
-        const line = document.createElement('div');
-        line.textContent = message;
-        const box = ui.get('log');
-        box.appendChild(line);
-        if (box.childElementCount > 600) {
-            const oldest = [...box.children].find(entry => !entry.textContent.includes(' · 上限 '));
-            (oldest || box.firstElementChild).remove();
-        }
-        box.scrollTop = box.scrollHeight;
-    }
-    async function copyManifest(ui) {
-        const area = ui.get('json');
-        if (!area.value) { ui.get('status').textContent = '没有 JSON 可复制，请先导出或载入清单'; return; }
+    arrangeToolPane(pane, id);
+    root.querySelector('.workspace-body').appendChild(pane);
+    const button = root.querySelector('#' + id + 'Tab'),
+        elements = new Map();
+    button.disabled = false;
+    button.removeAttribute('title');
+    button.onclick = () => activate(id);
+    const entry = { pane, button, onActivate: null, settings: [] };
+    const ui = {
+        get: (name) => {
+            if (!elements.has(name))
+                elements.set(
+                    name,
+                    pane.querySelector('#' + name) ||
+                        entry.settings.map((section) => section.querySelector('#' + name)).find(Boolean) ||
+                        (['toggle', 'theme'].includes(name) ? root.querySelector('#' + name) : null)
+                );
+            return elements.get(name);
+        },
+        onActivate: (callback) => {
+            entry.onActivate = callback;
+        },
+        moveSettings: (ids, headingTitle = title, destination = '#settingsBasics') => {
+            const section = document.createElement('fieldset');
+            section.className = 'sync-item';
+            section.style.minWidth = '0';
+            const heading = document.createElement('h3');
+            heading.textContent = headingTitle;
+            const glyph = {
+                mediaSettings: 'key-round',
+                mediaAISettings: 'cpu',
+                subtitleSettings: 'languages',
+            }[ids[0]];
+            if (glyph) heading.prepend(workspaceIcon(glyph));
+            section.appendChild(heading);
+            for (const name of ids) section.appendChild(ui.get(name));
+            entry.settings.push(section);
+            root.querySelector(destination).appendChild(section);
+        },
+        openSettings: (name) => toolWorkspace.openSettings(name),
+        busy: (value) => {
+            if (value) {
+                if (toolWorkspace.owner && toolWorkspace.owner !== id)
+                    throw new Error('另一个任务正在运行，请等待完成或先停止');
+                toolWorkspace.owner = id;
+            } else if (toolWorkspace.owner === id) toolWorkspace.owner = null;
+            if (id === 'json') {
+                jsonTaskStopped = false;
+                stopJson.hidden = !value;
+                stopJson.disabled = !value;
+            }
+            for (const [name, tab] of tabs) {
+                const blocked = !!toolWorkspace.owner && name !== toolWorkspace.owner;
+                tab.button.disabled = blocked;
+                for (const section of tab.settings) section.disabled = blocked;
+            }
+            root.querySelector('#settingsWorkspace').disabled = !!toolWorkspace.owner;
+            root.querySelector('#backToTools').disabled = !!toolWorkspace.owner;
+        },
+    };
+    tabs.set(id, entry);
+    if (tabs.size === 1) activate(id);
+    return ui;
+}
+function createPanelTask(ui, updateControls) {
+    let active = false;
+    return async (work, stoppable = false) => {
+        if (active) return;
+        ui.busy(true);
+        active = true;
         try {
-            await navigator.clipboard.writeText(area.value);
-            ui.get('status').textContent = 'JSON 已复制';
-        } catch (_) {
-            area.focus(); area.select();
-            ui.get('status').textContent = document.execCommand('copy') ? 'JSON 已复制' : '自动复制失败，请按 Ctrl+C';
+            updateControls(true, stoppable);
+            return await work();
+        } finally {
+            try {
+                updateControls(false);
+            } finally {
+                active = false;
+                ui.busy(false);
+            }
         }
+    };
+}
+function panelControls(ui) {
+    return [
+        'json',
+        'manifest',
+        'jsonFile',
+        'historyFile',
+        'generate',
+        'exportManifest',
+        'transfer',
+        'start',
+        'chooseManifest',
+        'chooseJsonFile',
+        'copyJson',
+        'save',
+        'saveJson',
+        'incremental',
+        'resetHistory',
+        'importHistory',
+        'syncExisting',
+    ]
+        .map(ui.get)
+        .filter(Boolean);
+}
+function appendLog(ui, message) {
+    const line = document.createElement('div');
+    line.textContent = message;
+    const box = ui.get('log');
+    box.appendChild(line);
+    if (box.childElementCount > 600) {
+        const oldest = [...box.children].find((entry) => !entry.textContent.includes(' · 上限 '));
+        (oldest || box.firstElementChild).remove();
     }
-    function bindPanelTheme(host, root) {
-        const select = root.querySelector('#theme');
-        select.value = GM_getValue('cross-drive-theme', 'auto');
-        const baseStyle = host.style.cssText;
-        const media = page.matchMedia?.('(prefers-color-scheme: dark)');
-        let queued = false;
-        const schedule = () => {
-            if (queued) return;
-            queued = true;
-            setTimeout(() => { queued = false; update(); }, 0);
-        };
-        const observer = typeof MutationObserver === 'function' ? new MutationObserver(schedule) : null;
-        function update() {
-            let dark = select.value === 'dark';
-            observer?.disconnect();
-            if (select.value === 'auto') {
-                dark = media?.matches || false;
-                let sample = document.elementFromPoint?.(Math.round(page.innerWidth / 2), Math.round(page.innerHeight / 2));
-                if (!sample || sample === host) sample = document.body;
-                const ancestors = [];
-                for (let element = sample; element; element = element.parentElement) ancestors.push(element);
-                for (const element of ancestors) observer?.observe(element, { attributes: true, attributeFilter: ['class', 'style', 'data-theme', 'data-color-mode', 'color-scheme'] });
-                if (typeof page.getComputedStyle === 'function') {
-                    for (const element of ancestors) {
-                        const color = page.getComputedStyle(element).backgroundColor;
-                        const rgb = color.match(/^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:\s*[,/]\s*([\d.]+))?\s*\)$/);
-                        if (!rgb || (rgb[4] !== undefined && Number(rgb[4]) < .9)) continue;
-                        dark = .2126 * Number(rgb[1]) + .7152 * Number(rgb[2]) + .0722 * Number(rgb[3]) < 128;
-                        break;
-                    }
+    box.scrollTop = box.scrollHeight;
+}
+async function copyManifest(ui) {
+    const area = ui.get('json');
+    if (!area.value) {
+        ui.get('status').textContent = '没有 JSON 可复制，请先导出或载入清单';
+        return;
+    }
+    try {
+        await navigator.clipboard.writeText(area.value);
+        ui.get('status').textContent = 'JSON 已复制';
+    } catch (_) {
+        area.focus();
+        area.select();
+        ui.get('status').textContent = document.execCommand('copy')
+            ? 'JSON 已复制'
+            : '自动复制失败，请按 Ctrl+C';
+    }
+}
+function bindPanelTheme(host, root) {
+    const select = root.querySelector('#theme');
+    select.value = GM_getValue('cross-drive-theme', 'auto');
+    const baseStyle = host.style.cssText;
+    const media = page.matchMedia?.('(prefers-color-scheme: dark)');
+    let queued = false;
+    const schedule = () => {
+        if (queued) return;
+        queued = true;
+        setTimeout(() => {
+            queued = false;
+            update();
+        }, 0);
+    };
+    const observer = typeof MutationObserver === 'function' ? new MutationObserver(schedule) : null;
+    function update() {
+        let dark = select.value === 'dark';
+        observer?.disconnect();
+        if (select.value === 'auto') {
+            dark = media?.matches || false;
+            let sample = document.elementFromPoint?.(
+                Math.round(page.innerWidth / 2),
+                Math.round(page.innerHeight / 2)
+            );
+            if (!sample || sample === host) sample = document.body;
+            const ancestors = [];
+            for (let element = sample; element; element = element.parentElement) ancestors.push(element);
+            for (const element of ancestors)
+                observer?.observe(element, {
+                    attributes: true,
+                    attributeFilter: ['class', 'style', 'data-theme', 'data-color-mode', 'color-scheme'],
+                });
+            if (typeof page.getComputedStyle === 'function') {
+                for (const element of ancestors) {
+                    const color = page.getComputedStyle(element).backgroundColor;
+                    const rgb = color.match(
+                        /^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:\s*[,/]\s*([\d.]+))?\s*\)$/
+                    );
+                    if (!rgb || (rgb[4] !== undefined && Number(rgb[4]) < 0.9)) continue;
+                    dark = 0.2126 * Number(rgb[1]) + 0.7152 * Number(rgb[2]) + 0.0722 * Number(rgb[3]) < 128;
+                    break;
                 }
             }
-            host.style.cssText = baseStyle + (dark
+        }
+        host.style.cssText =
+            baseStyle +
+            (dark
                 ? ';--scheme:dark;--panel:#202020;--surface:#181818;--rail:#242424;--text:#f5f5f5;--muted:#b7b7b7;--field:#151515;--border:#3b3b3b;--edge:#646464;--accent:#e8e8e8;--tint:#343434;--hover:#2e2e2e;--button:#efefef;--button-text:#171717;--button-hover:#d4d4d4;--danger:#fff'
                 : ';--scheme:light;--panel:#fafafa;--surface:#fff;--rail:#eee;--text:#171717;--muted:#515151;--field:#fff;--border:#dedede;--edge:#adadad;--accent:#161616;--tint:#ebebeb;--hover:#eee;--button:#171717;--button-text:#fff;--button-hover:#373737;--danger:#111');
-        }
-        select.onchange = () => {
-            GM_setValue('cross-drive-theme', select.value);
-            update();
-        };
-        media?.addEventListener('change', schedule);
-        page.addEventListener('popstate', schedule);
-        page.addEventListener('hashchange', schedule);
-        update();
     }
+    select.onchange = () => {
+        GM_setValue('cross-drive-theme', select.value);
+        update();
+    };
+    media?.addEventListener('change', schedule);
+    page.addEventListener('popstate', schedule);
+    page.addEventListener('hashchange', schedule);
+    update();
+}
