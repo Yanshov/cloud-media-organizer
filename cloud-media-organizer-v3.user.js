@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v3.0（重构版）
 // @namespace    local.cloud-media-organizer
-// @version      3.0.36
+// @version      3.0.37
 // @description  面向百度网盘、123 云盘和光鸭网盘的浏览器脚本，支持跨盘 JSON 清单、影视整理与字幕补齐。
 // @match        https://pan.baidu.com/*
 // @match        https://yun.baidu.com/*
@@ -3793,14 +3793,14 @@ tMessage(
 ,180)})}};
 `].join("");if(typeof navigator<"u"&&(navigator.userAgentData?.mobile||/Android|iPhone|iPad|iPod|Mobile/i.
 test(navigator.userAgent)||navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1))return;
-const Xt="3.0.36";let Qn=!1;const Be=typeof unsafeWindow>"u"?window:unsafeWindow,Nr=Be.fetch.
-bind(Be),Xe={token:"",parent:"",token123:"",parent123:null,base123:"",loginUuid123:""},mt={
+const Yt="3.0.37";let Qn=!1;const Be=typeof unsafeWindow>"u"?window:unsafeWindow,Nr=Be.fetch.
+bind(Be),Ye={token:"",parent:"",token123:"",parent123:null,base123:"",loginUuid123:""},gt={
 create:"/userres/v2/get_res_center_token",check:"/userres/v1/check_can_flash_upload",info:"\
 /userres/v1/file/get_info_by_task_id",list:"/userres/v1/file/get_file_list",mkdir:"/userre\
 s/v1/file/create_dir",remove:"/userres/v1/file/delete_file",task:"/userres/v1/get_task_sta\
 tus"};let Lt=()=>{};const et=e=>new Promise(t=>setTimeout(t,e));function ct(e,t){let n=0,a=Promise.
 resolve();return(...i)=>{const s=a.then(async()=>{const r=e-(Date.now()-n);return r>0&&await et(
-r),n=Date.now(),t(...i)});return a=s.catch(()=>{}),s}}function Rt(e,t){for(;e.size>t;)e.delete(
+r),n=Date.now(),t(...i)});return a=s.catch(()=>{}),s}}function Mt(e,t){for(;e.size>t;)e.delete(
 e.keys().next().value)}async function Tr(e,t,n,a=()=>{}){let i=0,s;const r=()=>{if(s)throw s.
 error;a()},o=async()=>{try{for(;i<e.length;){r();const l=i++;await n(e[l],r,l)}}catch(l){s??
 (s={error:l})}};await Promise.all(Array.from({length:Math.min(t,e.length)},o)),r()}function jr(e,t,n,a=""){
@@ -3808,16 +3808,16 @@ const i=Date.now();let s=0,r=0,o=0,l=0,d=0,c=0,f=0,m=0;const u=new WeakSet,p=w=>
 "object"){if(u.has(w))return;u.add(w)}([408,504].includes(w.status)||/超时|timed? ?out|timeout/i.
 test(w.message||w))&&f++,([429,509].includes(w.status)||/限流|请求过频|HTTP (?:429|509)|返回码 (?:429|509)/i.
 test(w.message||w))&&m++}};return{run(w,y,I){return s+=w.length,Tr(w,n,async(A,M,b)=>{r++,
-o=Math.max(o,r);try{const N=await y(A,M,b,p);N==="skipped"?c++:N==="failed"?d++:l++}catch(N){
-throw p(N),d++,N}finally{r--}},I)},report(){t?.(e+" · 总量 "+s+" · 上限 "+n+" · 峰值 "+
+o=Math.max(o,r);try{const T=await y(A,M,b,p);T==="skipped"?c++:T==="failed"?d++:l++}catch(T){
+throw p(T),d++,T}finally{r--}},I)},report(){t?.(e+" · 总量 "+s+" · 上限 "+n+" · 峰值 "+
 o+" · 耗时 "+((Date.now()-i)/1e3).toFixed(2)+" 秒 · 成功 "+l+" · 失败 "+d+" · 跳过\
  "+c+" · 未派发 "+(s-l-d-c)+" · 超时 "+f+" · 限流 "+m+(a?" · "+a:""))}}}async function We(e,t,n,a,i=()=>{},s=8,r=""){
-const o=jr(t,n,s,r);try{await o.run(e,a,i)}finally{o.report()}}function St(e,t){const n=new Map;
+const o=jr(t,n,s,r);try{await o.run(e,a,i)}finally{o.report()}}function xt(e,t){const n=new Map;
 for(const a of e){const i=t(a);n.has(i)||n.set(i,[]),n.get(i).push(a)}return[...n.values()]}
 function La(e,t){const n=[],a=new Map,i=s=>{for(;s.parent;)s.parent.parent&&(s.parent=s.parent.
 parent),s=s.parent;return s};for(const s of e){const r={item:s,parent:null};n.push(r);for(const o of t(
-s))if(a.has(o)){const l=i(a.get(o)),d=i(r);l!==d&&(l.parent=d)}else a.set(o,r)}return St(n,
-i).map(s=>s.map(r=>r.item))}function Yt(e,t,n){const i=(e.get(t)||Promise.resolve()).then(
+s))if(a.has(o)){const l=i(a.get(o)),d=i(r);l!==d&&(l.parent=d)}else a.set(o,r)}return xt(n,
+i).map(s=>s.map(r=>r.item))}function Xt(e,t,n){const i=(e.get(t)||Promise.resolve()).then(
 n),s=i.catch(()=>{});return e.set(t,s),s.then(()=>{e.get(t)===s&&e.delete(t)}),i}async function Sn(e,t,n,a,i,s="\
 目录遍历（目录/文件）"){a();let r=e.map((d,c)=>({node:d,order:[c]}));const o=new Set,
 l=jr(s,i,8);try{for(;r.length;){const d=r.filter(({node:f})=>{const m=t(f);return o.has(m)?
@@ -3826,11 +3826,11 @@ u(),c[p]=(w||[]).map((y,I)=>({node:y,order:[...m,I]}))},a),r=c.flat()}}finally{l
 function kn(e,t){for(let n=0;n<Math.min(e.length,t.length);n++)if(e[n]!==t[n])return e[n]-
 t[n];return e.length-t.length}function Wt(e,t=new Map,n){return async a=>{if(n?.(),!t.has(
 a)){const s=Promise.resolve().then(()=>(n?.(),e.children({id:a})));t.set(a,s),s.catch(()=>{
-t.get(a)===s&&t.delete(a)})}const i=await t.get(a);return n?.(),i}}function Ye(e){return String(
+t.get(a)===s&&t.delete(a)})}const i=await t.get(a);return n?.(),i}}function Ge(e){return String(
 e||"").normalize("NFD").replace(/(\p{Script=Latin})\p{M}+/gu,"$1").normalize("NFKC").toLowerCase().
 replace(/(\p{Script=Latin})[. _-]*&[. _-]*(?=\p{Script=Latin})/gu,"$1 and ").replace(/[\p{P}\p{Z}\s]/gu,
 "")}function Pr(e){return{"Content-Type":"application/json;charset=utf-8",Authorization:"B\
-earer "+e,dt:"4"}}function _n(e,t,n){return Ct("https://api.guangyapan.com"+t,{method:"POS\
+earer "+e,dt:"4"}}function _n(e,t,n){return Et("https://api.guangyapan.com"+t,{method:"POS\
 T",headers:Pr(e),body:JSON.stringify(n)})}function ot(e){if(typeof e!="number"&&typeof e!=
 "string"||String(e).trim()==="")return null;const t=Number(e);return Number.isSafeInteger(
 t)&&t>=0?t:null}function ut(e){return e&&typeof e.md5=="string"&&/^[a-f0-9]{32}$/i.test(e.
@@ -3844,14 +3844,14 @@ e,{once:!0}):e()}function Wa(e){const t=typeof e=="string"?e.trim().toLowerCase(
 test(t))return t;if(t.length!==32)return"";const n=t.charCodeAt(9)-103;if(n<0||n>15)return"";
 const a=t.split("");if(a[9]=n.toString(16),!/^[0-9a-f]{32}$/.test(a.join("")))return"";const i=a.
 map((s,r)=>(parseInt(s,16)^r&15).toString(16));return i.slice(8,16).join("")+i.slice(0,8).
-join("")+i.slice(24).join("")+i.slice(16,24).join("")}function Ke(e){if(typeof e!="string")
+join("")+i.slice(24).join("")+i.slice(16,24).join("")}function He(e){if(typeof e!="string")
 throw new Error("缺少相对路径");const t=e.replace(/\\/g,"/").split("/");if(t.some(n=>!n.
 trim()||n==="."||n===".."||/[\x00-\x1f]/.test(n)))throw new Error("路径包含空名称、控制字符或 . / ..");
 return t}function Cn(e){const t=Array.isArray(e)?e:e&&e.files;if(!Array.isArray(t)||!t.length)
 throw new Error("JSON 必须是非空文件数组，或包含 files 数组的对象");const n=new Map,
 a=[];for(let i=0;i<t.length;i++){const s=t[i],r=`第 ${i+1} 项：`;if(!s||typeof s!="obje\
 ct"||Array.isArray(s))throw new Error(r+"不是文件对象");const o=s.path??s.name;if(typeof o!=
-"string")throw new Error(r+"缺少文件名");let l;try{l=Ke(o)}catch(u){throw new Error(r+
+"string")throw new Error(r+"缺少文件名");let l;try{l=He(o)}catch(u){throw new Error(r+
 u.message)}const d=l.at(-1),c=l.join("/");let f={name:d,path:c,type:"directory"};if(s.type!==
 "directory"){if(s.type!=null&&s.type!=="file")throw new Error(r+"未知项目类型");const u=s.
 md5??s.etag;if(typeof u!="string"||!/^[0-9a-f]{32}$/i.test(u.trim()))throw new Error(r+"MD\
@@ -3863,11 +3863,11 @@ f[w]=s[w].trim().toUpperCase()}}const m=n.get(c);if(m){if(m==="directory"&&f.typ
 tory")continue;throw new Error("JSON 包含重复或类型冲突的路径："+c)}n.set(c,f.
 type),a.push(f)}for(const i of a){const s=i.path.split("/");for(let r=1;r<s.length;r++){const o=s.
 slice(0,r).join("/");if(n.get(o)==="file")throw new Error("文件不能作为父目录："+
-o)}}return a}function kt(e){const t=e?.code;return(typeof t=="number"||typeof t=="string"&&
-/^-?\d+$/.test(t))&&Number.isSafeInteger(Number(t))?Number(t):null}function Et(e){return e&&
-typeof e=="object"&&!Array.isArray(e)&&e.code===void 0?0:kt(e)}function at(e,t){const n=kt(
+o)}}return a}function St(e){const t=e?.code;return(typeof t=="number"||typeof t=="string"&&
+/^-?\d+$/.test(t))&&Number.isSafeInteger(Number(t))?Number(t):null}function kt(e){return e&&
+typeof e=="object"&&!Array.isArray(e)&&e.code===void 0?0:St(e)}function at(e,t){const n=St(
 t),a=[t?.msg,t?.message,t?.errorMsg,t?.error_description].find(r=>typeof r=="string"&&r.trim());
-let i=a?a.trim():"接口未提供错误说明";for(const r of[Xe.token,Xe.token123])r&&(i=
+let i=a?a.trim():"接口未提供错误说明";for(const r of[Ye.token,Ye.token123])r&&(i=
 i.split(r).join("[凭证已隐藏]"));i=i.replace(/Bearer\s+\S+/gi,"Bearer [已隐藏]").slice(
 0,600);const s=new Error(`${e}返回码 ${n??"缺失"}：${i}`);return s.stop=[110,117,118,
 401,403].includes(n),s}function Bt(e){const t=e?.taskId??e?.task_id;return typeof t=="stri\
@@ -3878,28 +3878,28 @@ size)return null;if(a.parentId!=null){if(typeof a.parentId=="number"&&!Number.is
 a.parentId))return null;const s=String(a.parentId);if((s==="0"?"":s)!==n)return null}return typeof a.
 md5=="string"&&/^[a-f0-9]{32}$/i.test(a.md5)&&a.md5.toLowerCase()!==t.md5?null:a}async function zr(e,t,n,a=et){
 const i=t==="0"?"":t,s={md5:e.md5,fileSize:e.size};e.gcid&&e.cid&&Object.assign(s,{gcid:e.
-gcid,cid:e.cid});let r;try{r=await n(mt.create,{capacity:30,res:s,name:e.name,parentId:i})}catch(c){
+gcid,cid:e.cid});let r;try{r=await n(gt.create,{capacity:30,res:s,name:e.name,parentId:i})}catch(c){
 return{status:"pending",message:"创建请求异常，结果未确认："+c.message+"；先刷新目\
-录核对，避免重复提交",stop:c.stop}}const o=Et(r);if(o!==0&&o!==156)throw at("创建任\
+录核对，避免重复提交",stop:c.stop}}const o=kt(r);if(o!==0&&o!==156)throw at("创建任\
 务",r);const l=Or(r.data,e,i);if(l)return{status:"saved",message:`已确认生成文件：${l.
 fileName}；文件 ID：${l.fileId}`};let d=Bt(r.data);if(!d)return{status:"pending",message:"\
 创建接口没有返回有效 taskId，结果无法确认；请先刷新目录核对"};if(o===
 0){if(!e.gcid||!e.cid)return{status:"miss",message:`MD5 未直接命中秒传；缺少 GCID/CID，需真实文件内容继续上传。任务\
- ID：${d}`};let c;try{c=await n(mt.check,{taskId:d,gcid:e.gcid,cid:e.cid})}catch(f){return{
+ ID：${d}`};let c;try{c=await n(gt.check,{taskId:d,gcid:e.gcid,cid:e.cid})}catch(f){return{
 status:"pending",message:"秒传检查请求异常，结果未确认："+f.message,stop:f.
-stop}}if(Et(c)!==0)throw at("秒传检查",c);if(c.data?.canFlashUpload===!1)return{status:"\
+stop}}if(kt(c)!==0)throw at("秒传检查",c);if(c.data?.canFlashUpload===!1)return{status:"\
 miss",message:"GCID/CID 秒传未命中，需要真实文件上传"};if(c.data?.canFlashUpload!==
 !0)return{status:"pending",message:"秒传接口未返回明确结果，请先核对目录"};
-d=Bt(c.data)||d}for(let c=0;c<8;c++){c&&await a(1e3);let f;try{f=await n(mt.info,{taskId:d})}catch(u){
+d=Bt(c.data)||d}for(let c=0;c<8;c++){c&&await a(1e3);let f;try{f=await n(gt.info,{taskId:d})}catch(u){
 return{status:"pending",message:`接口已报告秒传命中，但查询文件失败：${u.
-message}；任务 ID：${d}`,stop:u.stop}}const m=Et(f);if(m===0){const u=Or(f.data,e,i);return u?
+message}；任务 ID：${d}`,stop:u.stop}}const m=kt(f);if(m===0){const u=Or(f.data,e,i);return u?
 {status:"saved",message:`已确认生成文件：${u.fileName}；文件 ID：${u.fileId}`}:
 {status:"pending",message:`任务返回的文件信息不完整或与输入不符，待人工核对；任务 ID：${d}`}}
 if(m!==147){const u=at("查询任务文件",f);return{status:"pending",message:u.message+`\
 ；任务 ID：${d}`,stop:u.stop}}}return{status:"pending",message:`接口已报告秒传命中，8 次查询仍在处理；请稍\
 后刷新目录核对。任务 ID：${d}`}}function pt(){if(Qn)throw Object.assign(new Error(
 "已停止后续请求；已提交的操作请刷新目录核对"),{stop:!0,cancelled:!0})}
-async function Ct(e,t={}){pt();const n=new AbortController,a=setTimeout(()=>n.abort(),3e4);
+async function Et(e,t={}){pt();const n=new AbortController,a=setTimeout(()=>n.abort(),3e4);
 try{const i=await Nr(e,{...t,signal:n.signal});if(!i.ok){const s=new Error(`HTTP ${i.status}`);
 throw s.status=i.status,s.stop=i.status===401||i.status===403,s}return await i.json()}catch(i){
 throw i.name==="AbortError"?new Error("请求超时（30 秒）"):i}finally{clearTimeout(a)}}
@@ -3954,21 +3954,21 @@ application/json;charset=utf-8"}));if(n("正在保存 JSON 清单…"),typeof GM
 URL.revokeObjectURL(a),n("保存失败："+s.message)}return}const i=document.createElement(
 "a");i.href=a,i.download=t,i.style.display="none",document.body.appendChild(i),i.click(),i.
 remove(),setTimeout(()=>URL.revokeObjectURL(a),6e4),n(`已触发下载：${t}；请检查浏览器下载列表`)}
-function Ha(e,t){const n=(b,N,k)=>{const q=document.createElement(b);return q.className=N,
-k&&(q.textContent=k),q},a=(b,N)=>{const k=e.querySelector(N);k&&b.append(k)},i=n("div","to\
+function Ha(e,t){const n=(b,T,k)=>{const F=document.createElement(b);return F.className=T,
+k&&(F.textContent=k),F},a=(b,T)=>{const k=e.querySelector(T);k&&b.append(k)},i=n("div","to\
 ol-intro");a(i,"h3");const s=e.querySelector(":scope > p:not([id]), #scope");if(s&&(s.id||
 (s.id=t+"Instructions"),e.setAttribute("aria-describedby",s.id),i.append(s)),t==="json"){const b=i.
 querySelector("h3").textContent.replace(/\s*跨盘\s*JSON.*$/,"").trim();i.querySelector("\
 h3").textContent="跨盘文件清单",s||i.append(n("p","","导出当前网盘的文件清单，或导入清单恢复文件。"));
-const N=n("span","tool-context",b);i.querySelector("h3").append(N)}else{const b=i.querySelector(
-"h3"),N=b.textContent.replace(/\s+(?:字幕|影视整理).*$/,"").trim();b.textContent="影视\
-整理",b.append(n("span","tool-context",N))}const r=n("div","tool-commandbar"),o=e.querySelector(
+const T=n("span","tool-context",b);i.querySelector("h3").append(T)}else{const b=i.querySelector(
+"h3"),T=b.textContent.replace(/\s+(?:字幕|影视整理).*$/,"").trim();b.textContent="影视\
+整理",b.append(n("span","tool-context",T))}const r=n("div","tool-commandbar"),o=e.querySelector(
 ":scope > .panel-actions"),l=t==="subtitle"&&e.querySelector("#previewMedia");if(o&&r.append(
 o),l){const b=e.querySelector("#stopSubtitles").parentElement;o.append(...b.children),b.remove(),
 e.classList.add("merged-media")}t==="json"&&a(r,"#stopJson");const d={generate:"download",
 exportManifest:"download",scanMedia:"scan-search",openMediaCleanup:"trash-2",readSubtitles:"\
 search",fillSubtitles:"plus",reviewSubtitleDeletes:"trash-2",importSubtitles:"upload"};for(const[
-b,N]of Object.entries(d))r.querySelector("#"+b)?.prepend(Ft(N,"command-icon"));r.querySelector(
+b,T]of Object.entries(d))r.querySelector("#"+b)?.prepend(Ft(T,"command-icon"));r.querySelector(
 ".manifest-import > summary")?.prepend(Ft("upload","command-icon"));const c=n("div","tool-\
 layout"),f=n("div","tool-main"),m=n("section","tool-status-text"),u=t==="subtitle"?["subti\
 tleScope","subtitleProgress","subtitleMeter"]:["status","target","progress"];for(const b of u)
@@ -3976,16 +3976,16 @@ a(m,"#"+b);const p=n("div","tool-list-heading"),w=n("h4","",t==="subtitle"?"字�
 "JSON 文件清单");if(p.append(w),t==="subtitle"&&(w.id="subtitleResultsTitle",l&&(w.textContent=
 "作品与字幕"),a(p,"#subtitleFilters")),f.append(p),t==="json"){a(f,"#syncPreview"),a(
 f,"#json");const b=f.querySelector("#json");if(b?.setAttribute("aria-label","JSON 文件清单"),
-b){const k=n("div","json-editor");b.before(k),k.append(b);const q=n("div","json-editor-emp\
-ty");q.setAttribute("aria-hidden","true"),q.append(Ft("folder-open")),q.append(n("strong",
+b){const k=n("div","json-editor");b.before(k),k.append(b);const F=n("div","json-editor-emp\
+ty");F.setAttribute("aria-hidden","true"),F.append(Ft("folder-open")),F.append(n("strong",
 "","从一份文件清单开始"),n("p","","点击上方导出，或在这里粘贴 JSON 清单"),
-n("span","","清单仅包含文件信息，不包含视频内容")),k.append(q)}const N=n(
-"div","editor-actions");for(const k of["#save","#saveJson","#copyJson"])a(N,k);for(const k of N.
-children)k.prepend(Ft(k.id==="copyJson"?"files":"download","command-icon"));N.children.length&&
-p.append(N)}else if(t==="subtitle"&&(a(f,"#subtitleSummary"),a(f,"#subtitleResults"),l)){a(
-p,"#allowWithoutSubtitles");const b=f.querySelector("#subtitleResults"),N=n("details","syn\
-c-preview");N.id="mediaPreviewPanel",N.append(n("summary","","查看整理预览")),a(N,"#\
-mediaPreview"),b.prepend(N),b.prepend(e.querySelector("#mediaCleanup")),a(b,"#mediaRows"),
+n("span","","清单仅包含文件信息，不包含视频内容")),k.append(F)}const T=n(
+"div","editor-actions");for(const k of["#save","#saveJson","#copyJson"])a(T,k);for(const k of T.
+children)k.prepend(Ft(k.id==="copyJson"?"files":"download","command-icon"));T.children.length&&
+p.append(T)}else if(t==="subtitle"&&(a(f,"#subtitleSummary"),a(f,"#subtitleResults"),l)){a(
+p,"#allowWithoutSubtitles");const b=f.querySelector("#subtitleResults"),T=n("details","syn\
+c-preview");T.id="mediaPreviewPanel",T.append(n("summary","","查看整理预览")),a(T,"#\
+mediaPreview"),b.prepend(T),b.prepend(e.querySelector("#mediaCleanup")),a(b,"#mediaRows"),
 b.querySelector("#mediaRows").hidden=!0}const y=n("div","tool-utilities"),I=t==="json"?n("\
 section","tool-import-options"):y;if(t!=="subtitle"){for(const b of[...e.querySelectorAll(
 ":scope > .panel-actions, :scope > .export-options")])I.append(b);t==="json"&&r.append(I)}
@@ -3993,8 +3993,8 @@ for(const b of[...e.children])b.id.endsWith("Settings")||b.tagName==="INPUT"&&b.
 classList.add("tool-card"),y.append(b));const A=n("footer","tool-statusbar");A.append(m,y);
 const M=n("div","tool-surface");c.append(f),M.append(i,r,c,A),e.append(M)}let ft=null;function er(e,t,n="\
 json"){if(!ft){const u=document.createElement("div");u.id="cloud-media-organizer-tools",u.
-style.cssText="position:fixed;right:24px;bottom:24px;z-index:2147483647";for(const ie of["\
-pointerdown","mousedown","click"])u.addEventListener(ie,ce=>ce.stopPropagation());const p=u.
+style.cssText="position:fixed;right:24px;bottom:24px;z-index:2147483647";for(const ae of["\
+pointerdown","mousedown","click"])u.addEventListener(ae,ge=>ge.stopPropagation());const p=u.
 attachShadow({mode:"closed"});p.innerHTML=`<style>
 *{box-sizing:border-box}
 :host{font:16px/1.65 "Microsoft YaHei UI","Microsoft YaHei","Segoe UI",sans-serif;color:va\
@@ -4381,64 +4381,64 @@ iv class="settings-column" id="settingsBasics"></div><div class="settings-column
 ingsModels"></div></div></section></div></div></div>`;const w=p.querySelector(".workspace-\
 overlay"),y=p.querySelector(".box"),I=p.querySelector("#toggle"),A=document.createElement(
 "div");A.className="workspace-frame";const M=p.querySelector(".workspace-toolbar");M.className=
-"workspace-navigation";const b=p.querySelector("#settingsAppearance"),N=document.createElement(
-"div");N.className="nav-brand",N.append(p.querySelector(".workspace-brand-mark"),document.
+"workspace-navigation";const b=p.querySelector("#settingsAppearance"),T=document.createElement(
+"div");T.className="nav-brand",T.append(p.querySelector(".workspace-brand-mark"),document.
 createTextNode("云盘工具")),p.querySelector("#workspaceTitle").textContent="工作区",
-M.prepend(N);for(const ie of[...M.querySelectorAll(".theme-row")])b.append(ie);const k=document.
+M.prepend(T);for(const ae of[...M.querySelectorAll(".theme-row")])b.append(ae);const k=document.
 createElement("div");k.className="nav-footer",k.append(p.querySelector("#settingsWorkspace"));
-const q=document.createElement("small");q.textContent=typeof Xt=="string"?"v"+Xt:"",k.append(
-q),M.append(k);const U={jsonTab:"files",subtitleTab:"film",settingsWorkspace:"settings",closeWorkspace:"\
-x",backToTools:"arrow-left"};for(const[ie,ce]of Object.entries(U))p.querySelector("#"+ie).
-prepend(Ft(ce,ie==="backToTools"?"command-icon":""));p.querySelector(".workspace-brand-mar\
-k").append(Ft("cloud")),I.append(Ft("cloud"));const C=p.querySelector("#workspaceLocation");
+const F=document.createElement("small");F.textContent=typeof Yt=="string"?"v"+Yt:"",k.append(
+F),M.append(k);const D={jsonTab:"files",subtitleTab:"film",settingsWorkspace:"settings",closeWorkspace:"\
+x",backToTools:"arrow-left"};for(const[ae,ge]of Object.entries(D))p.querySelector("#"+ae).
+prepend(Ft(ge,ae==="backToTools"?"command-icon":""));p.querySelector(".workspace-brand-mar\
+k").append(Ft("cloud")),I.append(Ft("cloud"));const E=p.querySelector("#workspaceLocation");
 p.querySelector(".workspace-tabs").setAttribute("aria-orientation","vertical"),A.append(M,
-p.querySelector(".workspace-body")),y.append(A);const O=new Map;let j=null,T=null;const h="\
-cross-drive-window-layout",x=GM_getValue(h,{}),v=new Map([["960x600",[960,600]],["1280x800",
-[1280,800]],["1440x900",[1440,900]],["1600x1000",[1600,1e3]]]);let R=v.has(x?.size)?x.size:
-"1280x800",z=Number.isFinite(x?.left)&&Number.isFinite(x?.top)?{left:x.left,top:x.top}:null,
-L=x?.pinned===!0,H=null;const X=p.querySelector(".workspace-header"),Se=p.querySelector("#\
-pinWorkspace"),de=ie=>{const ce=Be.innerWidth,He=Be.innerHeight,Oe=Number.isFinite(Be.devicePixelRatio)&&
-Be.devicePixelRatio>0?Be.devicePixelRatio:1,xe=24/Oe,[Ne,je]=v.get(R),Pe=Math.max(0,Math.min(
-1,(ce-xe*2)*Oe/Ne,(He-xe*2)*Oe/je));y.style.transformOrigin="top left",y.style.transform=`\
-scale(${1/Oe})`,y.style.maxWidth=y.style.maxHeight="none",y.style.width=Math.max(1,Math.round(
-Ne*Pe))+"px",y.style.height=Math.max(1,Math.round(je*Pe))+"px";const ye=y.getBoundingClientRect(),
-Re=Math.max(xe,Math.min(ie?.left??Math.round((ce-ye.width)/2),ce-ye.width-xe)),ze=Math.max(
-xe,Math.min(ie?.top??Math.round((He-ye.height)/2),He-ye.height-xe));return y.style.left=Re+
-"px",y.style.top=ze+"px",J.title=`窗口外框：${Math.round(ye.width*Oe)} × ${Math.round(
-ye.height*Oe)} 像素（不含阴影）${Pe<1?"；可用空间不足，已缩小":""}`,{left:Re,
-top:ze}},be=()=>{GM_setValue(h,{...z,pinned:L,size:R})},J=p.querySelector("#workspaceSize");
-J.value=R,J.onchange=()=>{if(!v.has(J.value)){J.value=R;return}R=J.value,L||(z=null),de(z),
-be()};const le=()=>{Se.replaceChildren(Ft(L?"pin-off":"pin")),Se.setAttribute("aria-label",
-L?"解除固定":"固定位置"),Se.setAttribute("aria-pressed",String(L)),Se.title=L?"解除后\
-可以拖动窗口":"锁定窗口位置",X.classList.toggle("pinned",L),p.querySelector("#\
-windowHint").textContent=L?"位置已固定 · 可同时操作网页":"拖动标题栏移动 · 可同时操作网页"};
-Se.onclick=()=>{L=!L,z=de(z),be(),le()},X.onpointerdown=ie=>{if(L||ie.button!==0||ie.target.
-closest("button"))return;ie.preventDefault();const ce=y.getBoundingClientRect();H={id:ie.pointerId,
-x:ie.clientX,y:ie.clientY,left:ce.left,top:ce.top},X.setPointerCapture(ie.pointerId),X.classList.
-add("dragging")},X.onpointermove=ie=>{!H||ie.pointerId!==H.id||(z=de({left:H.left+ie.clientX-
-H.x,top:H.top+ie.clientY-H.y}))};const se=ie=>{!H||ie.pointerId!==H.id||(H=null,X.classList.
-remove("dragging"),be(),X.hasPointerCapture(ie.pointerId)&&X.releasePointerCapture(ie.pointerId))};
-X.onpointerup=se,X.onpointercancel=se,X.onlostpointercapture=se,Be.addEventListener("resiz\
-e",()=>{w.hidden||de(z)}),le();const ue=(ie,ce=!1)=>{if(O.has(ie)){j=ie,C.textContent=O.get(
-ie).button.textContent,p.querySelector("#workspaceSettings").hidden=!0,p.querySelector("#s\
-ettingsWorkspace").setAttribute("aria-pressed","false");for(const[He,Oe]of O){const xe=He===
-ie;Oe.pane.hidden=!xe,Oe.button.setAttribute("aria-selected",String(xe)),Oe.button.tabIndex=
-xe?0:-1}O.get(ie).onActivate?.(),ce&&O.get(ie).button.focus()}},he=()=>{w.hidden=!0,I.setAttribute(
-"aria-expanded","false"),(T?.isConnected&&T!==u?T:I).focus()};I.onclick=()=>{if(!w.hidden){
-he();return}T=document.activeElement,ue(j),w.hidden=!1,de(z),I.setAttribute("aria-expanded",
-"true"),y.focus()},p.querySelector("#closeWorkspace").onclick=he,p.addEventListener("keydo\
-wn",ie=>{!w.hidden&&ie.key==="Escape"&&(ie.preventDefault(),ie.stopPropagation(),he())});for(const ie of p.
-querySelectorAll("[role=tab]"))ie.onkeydown=ce=>{if(!["ArrowLeft","ArrowRight","ArrowUp","\
-ArrowDown","Home","End"].includes(ce.key))return;ce.preventDefault();const He=[...p.querySelectorAll(
-"[role=tab]")].map(Ne=>Ne.id.slice(0,-3)).filter(Ne=>O.has(Ne)),Oe=He.indexOf(j),xe=ce.key===
-"Home"?0:ce.key==="End"?He.length-1:(Oe+(["ArrowRight","ArrowDown"].includes(ce.key)?1:-1)+
-He.length)%He.length;ue(He[xe],!0)};document.body.appendChild(u),Ja(u,p);const oe=ie=>{C.textContent=
-"设置";for(const He of O.values())He.pane.hidden=!0,He.button.setAttribute("aria-selecte\
+p.querySelector(".workspace-body")),y.append(A);const O=new Map;let P=null,j=null;const h="\
+cross-drive-window-layout",S=GM_getValue(h,{}),v=new Map([["960x600",[960,600]],["1280x800",
+[1280,800]],["1440x900",[1440,900]],["1600x1000",[1600,1e3]]]);let R=v.has(S?.size)?S.size:
+"1280x800",z=Number.isFinite(S?.left)&&Number.isFinite(S?.top)?{left:S.left,top:S.top}:null,
+U=S?.pinned===!0,K=null;const Y=p.querySelector(".workspace-header"),ke=p.querySelector("#\
+pinWorkspace"),de=ae=>{const ge=Be.innerWidth,ze=Be.innerHeight,De=Number.isFinite(Be.devicePixelRatio)&&
+Be.devicePixelRatio>0?Be.devicePixelRatio:1,Ce=24/De,[Pe,Oe]=v.get(R),Ne=Math.max(0,Math.min(
+1,(ge-Ce*2)*De/Pe,(ze-Ce*2)*De/Oe));y.style.transformOrigin="top left",y.style.transform=`\
+scale(${1/De})`,y.style.maxWidth=y.style.maxHeight="none",y.style.width=Math.max(1,Math.round(
+Pe*Ne))+"px",y.style.height=Math.max(1,Math.round(Oe*Ne))+"px";const be=y.getBoundingClientRect(),
+Re=Math.max(Ce,Math.min(ae?.left??Math.round((ge-be.width)/2),ge-be.width-Ce)),Le=Math.max(
+Ce,Math.min(ae?.top??Math.round((ze-be.height)/2),ze-be.height-Ce));return y.style.left=Re+
+"px",y.style.top=Le+"px",Q.title=`窗口外框：${Math.round(be.width*De)} × ${Math.round(
+be.height*De)} 像素（不含阴影）${Ne<1?"；可用空间不足，已缩小":""}`,{left:Re,
+top:Le}},ue=()=>{GM_setValue(h,{...z,pinned:U,size:R})},Q=p.querySelector("#workspaceSize");
+Q.value=R,Q.onchange=()=>{if(!v.has(Q.value)){Q.value=R;return}R=Q.value,U||(z=null),de(z),
+ue()};const ce=()=>{ke.replaceChildren(Ft(U?"pin-off":"pin")),ke.setAttribute("aria-label",
+U?"解除固定":"固定位置"),ke.setAttribute("aria-pressed",String(U)),ke.title=U?"解除后\
+可以拖动窗口":"锁定窗口位置",Y.classList.toggle("pinned",U),p.querySelector("#\
+windowHint").textContent=U?"位置已固定 · 可同时操作网页":"拖动标题栏移动 · 可同时操作网页"};
+ke.onclick=()=>{U=!U,z=de(z),ue(),ce()},Y.onpointerdown=ae=>{if(U||ae.button!==0||ae.target.
+closest("button"))return;ae.preventDefault();const ge=y.getBoundingClientRect();K={id:ae.pointerId,
+x:ae.clientX,y:ae.clientY,left:ge.left,top:ge.top},Y.setPointerCapture(ae.pointerId),Y.classList.
+add("dragging")},Y.onpointermove=ae=>{!K||ae.pointerId!==K.id||(z=de({left:K.left+ae.clientX-
+K.x,top:K.top+ae.clientY-K.y}))};const oe=ae=>{!K||ae.pointerId!==K.id||(K=null,Y.classList.
+remove("dragging"),ue(),Y.hasPointerCapture(ae.pointerId)&&Y.releasePointerCapture(ae.pointerId))};
+Y.onpointerup=oe,Y.onpointercancel=oe,Y.onlostpointercapture=oe,Be.addEventListener("resiz\
+e",()=>{w.hidden||de(z)}),ce();const pe=(ae,ge=!1)=>{if(O.has(ae)){P=ae,E.textContent=O.get(
+ae).button.textContent,p.querySelector("#workspaceSettings").hidden=!0,p.querySelector("#s\
+ettingsWorkspace").setAttribute("aria-pressed","false");for(const[ze,De]of O){const Ce=ze===
+ae;De.pane.hidden=!Ce,De.button.setAttribute("aria-selected",String(Ce)),De.button.tabIndex=
+Ce?0:-1}O.get(ae).onActivate?.(),ge&&O.get(ae).button.focus()}},me=()=>{w.hidden=!0,I.setAttribute(
+"aria-expanded","false"),(j?.isConnected&&j!==u?j:I).focus()};I.onclick=()=>{if(!w.hidden){
+me();return}j=document.activeElement,pe(P),w.hidden=!1,de(z),I.setAttribute("aria-expanded",
+"true"),y.focus()},p.querySelector("#closeWorkspace").onclick=me,p.addEventListener("keydo\
+wn",ae=>{!w.hidden&&ae.key==="Escape"&&(ae.preventDefault(),ae.stopPropagation(),me())});for(const ae of p.
+querySelectorAll("[role=tab]"))ae.onkeydown=ge=>{if(!["ArrowLeft","ArrowRight","ArrowUp","\
+ArrowDown","Home","End"].includes(ge.key))return;ge.preventDefault();const ze=[...p.querySelectorAll(
+"[role=tab]")].map(Pe=>Pe.id.slice(0,-3)).filter(Pe=>O.has(Pe)),De=ze.indexOf(P),Ce=ge.key===
+"Home"?0:ge.key==="End"?ze.length-1:(De+(["ArrowRight","ArrowDown"].includes(ge.key)?1:-1)+
+ze.length)%ze.length;pe(ze[Ce],!0)};document.body.appendChild(u),Ja(u,p);const le=ae=>{E.textContent=
+"设置";for(const ze of O.values())ze.pane.hidden=!0,ze.button.setAttribute("aria-selecte\
 d","false");p.querySelector("#workspaceSettings").hidden=!1,p.querySelector("#settingsWork\
-space").setAttribute("aria-pressed","true");const ce=ie&&p.querySelector("#"+ie);ce&&(ce.tagName===
-"DETAILS"&&(ce.open=!0),ce.scrollIntoView?.({block:"nearest"}))};p.querySelector("#setting\
-sWorkspace").onclick=()=>oe(),p.querySelector("#backToTools").onclick=()=>ue(j),ft={root:p,
-tabs:O,activate:ue,openSettings:oe,owner:null}}const{root:a,tabs:i,activate:s}=ft;if(i.has(
+space").setAttribute("aria-pressed","true");const ge=ae&&p.querySelector("#"+ae);ge&&(ge.tagName===
+"DETAILS"&&(ge.open=!0),ge.scrollIntoView?.({block:"nearest"}))};p.querySelector("#setting\
+sWorkspace").onclick=()=>le(),p.querySelector("#backToTools").onclick=()=>pe(P),ft={root:p,
+tabs:O,activate:pe,openSettings:le,owner:null}}const{root:a,tabs:i,activate:s}=ft;if(i.has(
 n))return i.get(n).ui;const r=document.createElement("section");r.id=n+"Pane",r.className=
 "tool-pane",r.setAttribute("role","tabpanel"),r.setAttribute("aria-labelledby",n+"Tab"),r.
 tabIndex=0,r.hidden=!0,r.innerHTML=`<h3></h3>${n!=="json"?"":'<details id="exportHistory">\
@@ -4504,7 +4504,7 @@ return"cross-drive-export-history-v1:"+e}function $t(e){const t=nr(e);return GM_
 {})}function An(e,t){const n=nr(e);GM_setValue(n,t)}function qr(e,t){on(e,t),e.get("import\
 History").onclick=()=>e.get("historyFile").click(),e.get("historyFile").onchange=async n=>{
 const a=n.target.files?.[0];if(!a)return;const i=In(e);e.busy(!0),i.forEach(s=>{s.disabled=
-!0});try{const s=Cn(JSON.parse(await a.text())),r=Xa(t,s);on(e,t),e.get("status").textContent=
+!0});try{const s=Cn(JSON.parse(await a.text())),r=Ya(t,s);on(e,t),e.get("status").textContent=
 `已合并 ${r} 项旧记录。下次自动对照更新，生成所选内容的完整 JSON。`}catch(s){
 e.get("status").textContent="导入历史失败："+s.message}finally{e.get("historyFile").
 value="",i.forEach(s=>{s.disabled=!1}),e.busy(!1)}},e.get("resetHistory").onclick=()=>{An(
@@ -4513,7 +4513,7 @@ function on(e,t,n=$t(t)){const a=Object.keys(n).length,i=rr(t);e.get("historySum
 (i?`旧清单已导入：${i.count} 项（${new Date(i.time).toLocaleString()}）。`:"")+
 (a?`已载入历史记录：${a} 项 · 刷新后仍保留`:"暂无历史记录 · 可导入以前保存的 JSON")}
 function rr(e,t){const n=nr(e)+":last-import";return arguments.length===2&&GM_setValue(n,t),
-GM_getValue(n,null)}function Xa(e,t){const n={...$t(e)};for(const a of t){const i=a.path,s=a.
+GM_getValue(n,null)}function Ya(e,t){const n={...$t(e)};for(const a of t){const i=a.path,s=a.
 type==="directory"?{path:i,type:"directory"}:{path:i,md5:a.md5,size:a.size};a.gcid&&a.cid&&
 Object.assign(s,{gcid:a.gcid,cid:a.cid}),Object.defineProperty(n,i,{value:JSON.stringify(s),
 enumerable:!0,configurable:!0,writable:!0})}return An(e,n),rr(e,{count:t.length,time:Date.
@@ -4526,20 +4526,20 @@ c.type==="directory"&&o++}const d=l.length?JSON.stringify(l,null,2):"";return An
 bdstoken,()=>Be.locals&&typeof Be.locals.get=="function"&&Be.locals.get("bdstoken"),()=>Be.
 yunData&&Be.yunData.MYBDSTOKEN];for(const a of e)try{const i=a();if(typeof i=="string"&&i)
 return i}catch{}const t=new URLSearchParams({clienttype:"0",app_id:"250528",web:"1",fields:'\
-["bdstoken"]'}),n=await Ct(`${location.origin}/api/gettemplatevariable?${t}`,{credentials:"\
+["bdstoken"]'}),n=await Et(`${location.origin}/api/gettemplatevariable?${t}`,{credentials:"\
 include"});if(ot(n.errno)===0&&typeof n.result?.bdstoken=="string"&&n.result.bdstoken)return n.
 result.bdstoken;throw new Error("没有获取到 bdstoken，请确认已登录百度网盘")}
-async function Ur(e,t,n=()=>{},a="",i=()=>{},s){const r=e.map(y=>({node:y,path:Ke(y.exportPath||
+async function Ur(e,t,n=()=>{},a="",i=()=>{},s){const r=e.map(y=>({node:y,path:He(y.exportPath||
 (a?a+"/"+y.name:y.name)).join("/")})),o=new Map,l=[],d=[];let c=0,f=0,m=0,u="",p="";const w=y=>{
 n({files:c,directories:f,skipped:d.length,path:y}),m=Date.now(),p=y};return await Sn(r,({node:y})=>{
-if(Ke(y.name).length!==1)throw new Error("云盘返回了包含路径分隔符的文件名");
+if(He(y.name).length!==1)throw new Error("云盘返回了包含路径分隔符的文件名");
 if(!y.key)throw new Error("文件列表缺少项目 ID");return y.key},async({node:y,path:I},A,M)=>{
 if(o.has(I)&&o.get(I)!==y.key)throw new Error(`不同项目导出为同一路径：${I}；请分\
 开导出`);o.set(I,y.key);let b;if(y.directory)l.push({order:M,entry:{path:I,type:"direct\
-ory"}}),f++,b=(await t.children(y)).map(N=>({node:N,path:I+"/"+N.name}));else{const N=ut(y)?
-y:await t.metadata?.(y);if(!ut(N))d.push({order:M,path:I});else{const k={path:I,md5:N.md5.
-toLowerCase(),size:N.size};typeof N.gcid=="string"&&typeof N.cid=="string"&&/^[a-f0-9]{40}$/i.
-test(N.gcid)&&/^[a-f0-9]{40}$/i.test(N.cid)&&Object.assign(k,{gcid:N.gcid.toUpperCase(),cid:N.
+ory"}}),f++,b=(await t.children(y)).map(T=>({node:T,path:I+"/"+T.name}));else{const T=ut(y)?
+y:await t.metadata?.(y);if(!ut(T))d.push({order:M,path:I});else{const k={path:I,md5:T.md5.
+toLowerCase(),size:T.size};typeof T.gcid=="string"&&typeof T.cid=="string"&&/^[a-f0-9]{40}$/i.
+test(T.gcid)&&/^[a-f0-9]{40}$/i.test(T.cid)&&Object.assign(k,{gcid:T.gcid.toUpperCase(),cid:T.
 cid.toUpperCase()}),l.push({order:M,entry:k}),c++}}return A(),u=I,Date.now()-m>=100&&w(I),
 b},i,s,"清单扫描与导出（目录/文件，分页按服务顺序）"),u!==p&&w(u),l.sort(
 (y,I)=>kn(y.order,I.order)),d.sort((y,I)=>kn(y.order,I.order)),{entries:l.map(y=>y.entry),
@@ -4558,7 +4558,7 @@ if(!e||typeof e.path!="string"||!e.path.startsWith("/")||typeof e.server_filenam
 ![0,1].includes(ot(e.isdir)))throw new Error("百度文件元数据不完整");return{key:e.
 path,name:e.server_filename,directory:Number(e.isdir)===1,md5:Wa(e.md5),size:ot(e.size),id:dt(
 e.fs_id)}}function Wr(e){const t=ct(180,async(a,i)=>{const s=new URLSearchParams({...i,channel:"\
-chunlei",web:"1",app_id:"250528",bdstoken:e}),r=await Ct(`${location.origin}${a}?${s}`,{credentials:"\
+chunlei",web:"1",app_id:"250528",bdstoken:e}),r=await Et(`${location.origin}${a}?${s}`,{credentials:"\
 include"});if(ot(r.errno)!==0)throw new Error(`百度接口错误：${r.errno??"未知"}`);
 return r}),n={async selected(a){const i=[];for(let r=0;r<a.length;r+=100){const o=await t(
 "/api/filemetas",{fsids:`[${a.slice(r,r+100).join(",")}]`,dlink:"0",detail:"1"});if(!Array.
@@ -4573,8 +4573,8 @@ const i=await n.selected([a.id]);if(i[0]?.key!==a.key)throw new Error("读取期
 return i[0]}};return n}function ln(e){const t=e.indexOf("?");return new URLSearchParams(e.
 slice(t<0?1:t+1))}function Br(){const t=ln(location.hash||"").get("path")??new URLSearchParams(
 location.search).get("path");if(t==null||!t.startsWith("/"))throw new Error("未识别到当前目录路径，请勾\
-选文件或文件夹后点“导出 JSON”");return t==="/"?t:t.replace(/\/$/,"")}const Ya=[
-"123pan.com","123pan.cn","123865.com","123684.com","123912.com"],ar=e=>Ya.some(t=>e===t||e.
+选文件或文件夹后点“导出 JSON”");return t==="/"?t:t.replace(/\/$/,"")}const Xa=[
+"123pan.com","123pan.cn","123865.com","123684.com","123912.com"],ar=e=>Xa.some(t=>e===t||e.
 endsWith("."+t)),Ga=new Set(["https://api.123278.com","https://api.123panapi.com","https:/\
 /api.123panapi.cn"]);function Rn(e){return e.protocol==="https:"&&(Ga.has(e.origin)||ar(e.
 hostname))&&/^\/(?:[ab]\/)?api\//.test(e.pathname)}function Hr(e){try{return Be.localStorage?.
@@ -4583,17 +4583,17 @@ getItem(e)??""}catch{return""}}function Kr(e){let t=Hr(e);try{t=JSON.parse(t)}ca
 test(t)?t:"")}function Zr(){const e=new URL(location.href),t=e.searchParams.get("homeFileP\
 ath")??ln(e.hash).get("homeFilePath");if(t!=null&&t.trim()){const n=t.split(",").map(a=>dt(
 a.trim()));if(n.some(a=>!a))throw new Error("网址中的 homeFilePath 不是有效目录路径，请重新打开所需文件夹");
-return n.at(-1)}if(e.pathname==="/"&&(!e.hash||t!=null))return"0";if(Xe.parent123!=null)return Xe.
+return n.at(-1)}if(e.pathname==="/"&&(!e.hash||t!=null))return"0";if(Ye.parent123!=null)return Ye.
 parent123;throw new Error("未识别到当前目录，请打开“全部文件”中的目标文件夹")}
 async function Jr(e,t){if(e.parentId==="0")return"";const n=new URL(location.href),i=((n.searchParams.
 get("homeFilePath")??ln(n.hash).get("homeFilePath"))||e.parentId).split(",").map(o=>dt(o.trim())).
 filter(o=>o!=="0");if(i.some(o=>!o)||i.at(-1)!==e.parentId)throw new Error("无法确认源目录路径，请重新打\
 开源文件夹后导出");let s="0";const r=[];for(const o of i){const l=(await e.children(
-{id:s})).find(d=>d.id===o&&d.directory);if(!l||Ke(l.name).length!==1)throw new Error("无法读取\
+{id:s})).find(d=>d.id===o&&d.directory);if(!l||He(l.name).length!==1)throw new Error("无法读取\
 完整源目录树，请从网盘根目录逐层打开源文件夹后导出");r.push(l.name),
 t?.push({id:o,name:l.name}),s=o}return r.join("/")}function cn(){const e=Kr("authorToken")||
-Xe.token123||Kr("accessToken");if(!e)throw new Error("没有读到 123 登录状态，请确认当前网页已登录后刷新；无需填写或复制 \
-Token");Xe.token123=e;let t=Xe.base123;if(!t)try{const l=Be.performance?.getEntriesByType(
+Ye.token123||Kr("accessToken");if(!e)throw new Error("没有读到 123 登录状态，请确认当前网页已登录后刷新；无需填写或复制 \
+Token");Ye.token123=e;let t=Ye.base123;if(!t)try{const l=Be.performance?.getEntriesByType(
 "resource")||[];for(let d=l.length-1;d>=0;d--){const c=new URL(l[d].name,location.href);if(Rn(
 c)&&/^\/[ab]\/api\//.test(c.pathname)){t=c.origin+c.pathname.match(/^\/[ab]\/api/)[0];break}}}catch{}
 t||(t="https://api.123278.com/b/api");const n=new URL(t+"/file/list/new");if(!Rn(n))throw new Error(
@@ -4601,22 +4601,22 @@ t||(t="https://api.123278.com/b/api");const n=new URL(t+"/file/list/new");if(!Rn
 i=ln(a.hash),s=a.searchParams.get("category")??i.get("category");if(s!=null&&s!==""&&s!=="\
 0"||a.searchParams.get("search")||i.get("search"))throw new Error("请先进入“全部文件”的实际文件夹，再导入或导出\
 ；分类、搜索和回收站页面不支持");const r={Authorization:`Bearer ${e}`,platform:"\
-web","app-version":"3"},o=Hr("LoginUuid")||Xe.loginUuid123;return o&&(r.LoginUuid=o),{token:e,
-base:t,parent:Zr(),headers:r}}function Xr(e){let t=-1;for(const n of new TextEncoder().encode(
+web","app-version":"3"},o=Hr("LoginUuid")||Ye.loginUuid123;return o&&(r.LoginUuid=o),{token:e,
+base:t,parent:Zr(),headers:r}}function Yr(e){let t=-1;for(const n of new TextEncoder().encode(
 e)){t^=n;for(let a=0;a<8;a++)t=t>>>1^(t&1?3988292384:0)}return(t^-1)>>>0}function Qa(e,t,n=Date.
 now(),a=Math.round(Math.random()*1e7)){const i=new URL(e+"/file/list/new"),s=new Date(n+8*
 36e5).toISOString().slice(0,16).replace(/\D/g,""),r=["a","d","e","f","g","h","l","m","y","\
-i"],o=String(Xr([...s].map(c=>r[Number(c)]).join(""))),l=Math.floor(n/1e3),d=Xr(`${l}|${a}\
+i"],o=String(Yr([...s].map(c=>r[Number(c)]).join(""))),l=Math.floor(n/1e3),d=Yr(`${l}|${a}\
 |${i.pathname}|web|3|${o}`);for(const[c,f]of Object.entries(t))i.searchParams.set(c,String(
 f));return i.searchParams.set(o,`${l}-${a}-${d}`),i.href}function _a(e){const t=dt(e?.FileId);
 if(!t||t==="0"||typeof e.FileName!="string"||![0,1].includes(ot(e.Type)))throw new Error("\
 123 文件元数据格式不正确");return{key:t,id:t,name:e.FileName,directory:Number(e.
 Type)===1,md5:e.Etag,s3keyFlag:e.S3KeyFlag,size:ot(e.Size)}}function ir(e=cn()){const{base:t,
-parent:n,headers:a}=e,i=ct(250,s=>Ct(s,{credentials:"omit",headers:a}));return{parentId:n,
+parent:n,headers:a}=e,i=ct(250,s=>Et(s,{credentials:"omit",headers:a}));return{parentId:n,
 async children(s){let r="0";return Mn(async(o,l)=>{const d=Qa(t,{driveId:0,limit:100,next:r,
 orderBy:"file_id",orderDirection:"desc",parentFileId:s.id,trashed:!1,SearchData:"",Page:o,
 OnlyLookAbnormalFile:0,event:"homeListFile",operateType:4,inDirectSpace:!1}),c=await i(d);
-if(![0,200].includes(kt(c)))throw at("123 目录读取",c);if(!Array.isArray(c.data?.InfoList))
+if(![0,200].includes(St(c)))throw at("123 目录读取",c);if(!Array.isArray(c.data?.InfoList))
 throw new Error("123 没有返回文件列表");const f=c.data.InfoList.map(_a);r=String(c.
 data.Next??"0");const m=ot(c.data.Total),u=r!=="-1"&&(m!=null?l+f.length<m:r!=="0"||f.length>=
 100);return{items:f,more:u,total:m}},o=>o.key)}}}function $a(){const e=document.querySelectorAll(
@@ -4625,7 +4625,7 @@ const n=Object.keys(t).find(s=>s.startsWith("__reactFiber$"));let a=n&&t[n];if(!
 let i=a;for(;i.return;)i=i.return;for(i.stateNode?.current&&i.stateNode.current!==i&&(a=a.
 alternate||a);a;){const s=a.memoizedProps,r=s?.value?.browserBridge?.homeState||s?.value?.
 homeState,o=s?.rowSelection?.selectedRowKeys??r?.selectedRowKeys;if(Array.isArray(o))return o.
-map(l=>({id:dt(l),names:[]}));a=a.return}}return null}function Yr(e){if(e==="123"){const s=$a();
+map(l=>({id:dt(l),names:[]}));a=a.return}}return null}function Xr(e){if(e==="123"){const s=$a();
 if(s!==null){if(s.some(r=>!r.id))throw new Error("选中项目缺少有效 ID，请重新选择");
 return s}}const t=e==="百度",n=new Set(document.querySelectorAll(t?'.mouse-choose-item.s\
 elected, .mouse-choose-item[aria-selected="true"], .wp-s-pan-table__body-row.selected, .wp\
@@ -4650,7 +4650,7 @@ s.name)?null:s);const i=new Map;for(const s of t){if(!s.id&&s.names.some(o=>a.ha
 o)===null))throw new Error("选中项目存在同名歧义，请切换列表视图后重试");
 const r=s.id?[n.get(s.id)].filter(Boolean):[...new Set(s.names.map(o=>a.get(o)).filter(Boolean))];
 if(r.length!==1)throw new Error("选中项目无法唯一匹配，请重新勾选后重试");
-i.set(r[0].key,r[0])}return[...i.values()]}function Qr(e){const t=er(`${e} 跨盘 JSON ${Xt}`,
+i.set(r[0].key,r[0])}return[...i.values()]}function Qr(e){const t=er(`${e} 跨盘 JSON ${Yt}`,
 `
             <p id="scope">先在网盘页面选中文件或文件夹，再导出 JSON。</p>
             <textarea id="json" placeholder="导出的 JSON 会显示在这里；导入时也可粘贴 JSON"></textarea>
@@ -4664,7 +4664,7 @@ tton id="save">下载 JSON</button></div>
             <p id="status"></p><p id="progress"></p><div id="log"></div>`);qr(t,e),t.get("\
 incremental").closest("label").hidden=!0;const n=async()=>{const a=In(t);t.busy(!0),a.forEach(
 i=>{i.disabled=!0}),t.get("json").value="",t.get("progress").textContent="",t.get("status").
-textContent="正在读取…";try{const i=Yr(e);if(!i.length)throw new Error("没有识别到选中项，请先勾\
+textContent="正在读取…";try{const i=Xr(e);if(!i.length)throw new Error("没有识别到选中项，请先勾\
 选文件或文件夹；未导出任何内容");let s,r,o="";if(e==="百度"){const f=i.some(
 m=>!m.id)?Br():null;s=Wr(await Dr()),i.some(m=>!m.id)?(r=await s.children({key:f,directory:!0}),
 r=dn(r,i)):r=await s.selected([...new Set(i.map(m=>m.id))]),r=r.map(m=>({...m,exportPath:m.
@@ -4681,76 +4681,76 @@ a.forEach(i=>{i.disabled=!1}),t.busy(!1)}};return t.get("generate").onclick=()=>
 "save").onclick=()=>{const a=t.get("json").value;if(!a){t.get("status").textContent="请先生成 \
 JSON";return}Fr(a,`${e}-跨盘清单-${Date.now()}.json`,i=>{t.get("status").textContent=i})},
 t}function sr(e,t,n){const a=Rn(e),i=a?"token123":"token",s=t.get("authorization");let r=!1;
-if(s&&/^Bearer\s+\S+/i.test(s)){const l=s.replace(/^Bearer\s+/i,"").trim();r=Xe[i]!==l,Xe[i]=
-l}if(a){const l=t.get("LoginUuid");l&&(Xe.loginUuid123=l)}const o=a?/\/(?:[ab]\/)?api\/file\/list(?:\/new)?$/.
-test(e.pathname):e.pathname===mt.list;if(o){const l=a?"parentFileId":"parentId";let d=e.searchParams.
+if(s&&/^Bearer\s+\S+/i.test(s)){const l=s.replace(/^Bearer\s+/i,"").trim();r=Ye[i]!==l,Ye[i]=
+l}if(a){const l=t.get("LoginUuid");l&&(Ye.loginUuid123=l)}const o=a?/\/(?:[ab]\/)?api\/file\/list(?:\/new)?$/.
+test(e.pathname):e.pathname===gt.list;if(o){const l=a?"parentFileId":"parentId";let d=e.searchParams.
 get(l);if(typeof n=="string"&&n.trim()){try{d=JSON.parse(n)?.[l]??d}catch{}d==null&&/application\/x-www-form-urlencoded/i.
 test(t.get("content-type")||"")&&(d=new URLSearchParams(n).get(l))}else n&&typeof n.get=="\
 function"&&(d=n.get(l)??d);const c=!a&&d===""?"0":dt(d);if(c){const f=a?"parent123":"paren\
-t";r=r||Xe[f]!==c,Xe[f]=c,a&&(Xe.base123=e.origin+e.pathname.replace(/\/file\/list(?:\/new)?$/,
+t";r=r||Ye[f]!==c,Ye[f]=c,a&&(Ye.base123=e.origin+e.pathname.replace(/\/file\/list(?:\/new)?$/,
 ""))}}return!a&&r&&Lt(),o}function _r(e,t){const n=In(t),a=s=>tr(t,s);t.get("manifest").onchange=
 s=>{const r=s.target.files?.[0];if(r)return i(r)},t.get("chooseManifest").onclick=()=>t.get(
 "manifest").click();const i=async s=>{t.get("manifestImport").open=!1,t.busy(!0),n.forEach(
 r=>{r.disabled=!0}),t.get("log").textContent="";try{s&&(t.get("json").value=await s.text(),
 t.get("status").textContent=`已载入：${s.name}，正在导入…`);const r=Cn(JSON.parse(
 t.get("json").value));t.get("progress").textContent=`准备导入 ${r.length} 项…`;const o={
-id:e==="123"?Zr():Br()},l=async(c,f)=>{const m=Ke(c.path),u=m.pop(),p=await f(c.type==="di\
+id:e==="123"?Zr():Br()},l=async(c,f)=>{const m=He(c.path),u=m.pop(),p=await f(c.type==="di\
 rectory"?c.path:m.join("/"));return{name:u,parent:p}},d=async(c,f,m)=>{let u=0,p=0;try{await We(
 r,c,a,async(w,y,I,A)=>{try{return await m(w,y)}catch(M){if(u++,A(M),a(w.path+"：单项失败；"+
 M.message),M.stop)throw M;return"failed"}finally{p++,t.get("progress").textContent="导入进度："+
 p+"/"+r.length}},pt,8,f)}catch(w){a("导入中断："+w.message)}return{failed:u,processed:p}};
-if(e==="123"){const c=cn(),{base:f,headers:m}=c,u=ct(750,(C,O)=>Ct(`${f}${C}`,{method:"POS\
+if(e==="123"){const c=cn(),{base:f,headers:m}=c,u=ct(750,(E,O)=>Et(`${f}${E}`,{method:"POS\
 T",credentials:"omit",headers:{...m,"Content-Type":"application/json"},body:JSON.stringify(
-O)})),p=ir(c),w=Wt(p,new Map,pt),y=new Map([["",o.id]]),I=C=>{const O=C.toLowerCase();return y.
-has(O)||y.set(O,(async()=>{const j=Ke(C),T=j.pop(),h=await I(j.join("/"));pt();const x=L=>{
-const H=L.filter(X=>X.name.toLowerCase()===T.toLowerCase());if(H.length>1||H.length&&(!H[0].
-directory||H[0].id==="0"||H[0].id===h))throw new Error("同名项目挡住目标目录："+
-C);return H[0]?.id},v=x(await w(h));if(v)return v;pt();const R=await u("/file/upload_reque\
-st",{driveId:0,parentFileId:h,fileName:T,type:1,size:0,duplicate:0});if(![0,200,5060].includes(
-kt(R)))throw at("123 创建目录",R);const z=dt(R.data?.FileId??R.data?.fileId);if(z&&z!==
-"0"&&z!==h)return z;for(let L=0;L<3;L++){L&&await et(350),pt();const H=x(await p.children(
-{id:h}));if(H)return H}throw new Error("目录创建结果待核对，未重复提交："+
-C)})()),y.get(O)};let A=0,M=0,b=0,N=0;const k=new Map,{failed:q,processed:U}=await d("123 \
+O)})),p=ir(c),w=Wt(p,new Map,pt),y=new Map([["",o.id]]),I=E=>{const O=E.toLowerCase();return y.
+has(O)||y.set(O,(async()=>{const P=He(E),j=P.pop(),h=await I(P.join("/"));pt();const S=U=>{
+const K=U.filter(Y=>Y.name.toLowerCase()===j.toLowerCase());if(K.length>1||K.length&&(!K[0].
+directory||K[0].id==="0"||K[0].id===h))throw new Error("同名项目挡住目标目录："+
+E);return K[0]?.id},v=S(await w(h));if(v)return v;pt();const R=await u("/file/upload_reque\
+st",{driveId:0,parentFileId:h,fileName:j,type:1,size:0,duplicate:0});if(![0,200,5060].includes(
+St(R)))throw at("123 创建目录",R);const z=dt(R.data?.FileId??R.data?.fileId);if(z&&z!==
+"0"&&z!==h)return z;for(let U=0;U<3;U++){U&&await et(350),pt();const K=S(await p.children(
+{id:h}));if(K)return K}throw new Error("目录创建结果待核对，未重复提交："+
+E)})()),y.get(O)};let A=0,M=0,b=0,T=0;const k=new Map,{failed:F,processed:D}=await d("123 \
 导入预检、转存与验证（清单项目）","123 写入沿用 750ms 节流，共享路径复用在途建目录",
-(C,O)=>Yt(k,C.path.toLowerCase(),async()=>{O();const{name:j,parent:T}=await l(C,I);if(C.type===
-"directory")return;O();const h=(await p.children({id:T})).filter(R=>R.name.toLowerCase()===
-j.toLowerCase());if(h.length>1)throw new Error("目标存在多个同名项目，无法确认："+
-C.path);const x=h[0];if(x){const R=En(x,C);return b++,a(`${C.path}：${R}`),"skipped"}O();
-const v=await u("/file/upload_request",{driveId:0,parentFileId:T,fileName:j,type:0,size:C.
-size,etag:C.md5,duplicate:0});if(kt(v)===5060){const z=(await p.children({id:T})).filter(H=>H.
-name===j);if(z.length>1)throw new Error("目标存在多个同名项目，无法确认："+
-C.path);const L=z[0];if(L){const H=En(L,C);return b++,a(`${C.path}：${H}`),"skipped"}}if(![
-0,200].includes(kt(v)))throw at("123 秒传",v);if(v.data?.Reuse===!0||v.data?.reuse===!0){
-let R=!1;for(let z=0;z<5;z++){z&&await et(500),O();const L=(await p.children({id:T})).filter(
-H=>H.name===j);if(L.length){if(L.length!==1)throw new Error("目标存在多个同名项目，无法验证："+
-C.path);if(En(L[0],C),ut(L[0])){R=!0;break}}}if(R)A++;else return N++,a(`${C.path}：接口报告复用，\
+(E,O)=>Xt(k,E.path.toLowerCase(),async()=>{O();const{name:P,parent:j}=await l(E,I);if(E.type===
+"directory")return;O();const h=(await p.children({id:j})).filter(R=>R.name.toLowerCase()===
+P.toLowerCase());if(h.length>1)throw new Error("目标存在多个同名项目，无法确认："+
+E.path);const S=h[0];if(S){const R=En(S,E);return b++,a(`${E.path}：${R}`),"skipped"}O();
+const v=await u("/file/upload_request",{driveId:0,parentFileId:j,fileName:P,type:0,size:E.
+size,etag:E.md5,duplicate:0});if(St(v)===5060){const z=(await p.children({id:j})).filter(K=>K.
+name===P);if(z.length>1)throw new Error("目标存在多个同名项目，无法确认："+
+E.path);const U=z[0];if(U){const K=En(U,E);return b++,a(`${E.path}：${K}`),"skipped"}}if(![
+0,200].includes(St(v)))throw at("123 秒传",v);if(v.data?.Reuse===!0||v.data?.reuse===!0){
+let R=!1;for(let z=0;z<5;z++){z&&await et(500),O();const U=(await p.children({id:j})).filter(
+K=>K.name===P);if(U.length){if(U.length!==1)throw new Error("目标存在多个同名项目，无法验证："+
+E.path);if(En(U[0],E),ut(U[0])){R=!0;break}}}if(R)A++;else return T++,a(`${E.path}：接口报告复用，\
 但尚未在目标目录验证到完整文件信息，结果待确认`),"failed"}else return M++,
-a(`${C.path}：哈希未命中，需文件本体，未上传`),"failed"}));t.get("status").
-textContent=U<r.length?"导入已停止":M+q+N?"导入结束，含未完成项":"导入完成",
-t.get("progress").textContent=`导入结束：已处理 ${U}/${r.length} 项；确认复用 ${A}\
-，未完成 ${M}，待确认 ${N}，同名跳过 ${b}，单项失败 ${q}，未处理 ${r.
-length-U}`}else{const c=await Dr(),f=Wr(c),m=o.id,u=async k=>{const q=await Ct(`${location.
+a(`${E.path}：哈希未命中，需文件本体，未上传`),"failed"}));t.get("status").
+textContent=D<r.length?"导入已停止":M+F+T?"导入结束，含未完成项":"导入完成",
+t.get("progress").textContent=`导入结束：已处理 ${D}/${r.length} 项；确认复用 ${A}\
+，未完成 ${M}，待确认 ${T}，同名跳过 ${b}，单项失败 ${F}，未处理 ${r.
+length-D}`}else{const c=await Dr(),f=Wr(c),m=o.id,u=async k=>{const F=await Et(`${location.
 origin}/api/create?${new URLSearchParams({channel:"chunlei",web:"1",app_id:"250528",bdstoken:c})}`,
 {method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.
-stringify(k)});if(ot(q.errno)!==0)throw new Error(`百度创建失败：${q.errno??"未知错误"}`)},
+stringify(k)});if(ot(F.errno)!==0)throw new Error(`百度创建失败：${F.errno??"未知错误"}`)},
 p=new Map([["",m]]),w=k=>f.children({key:k||"/",directory:!0}),y=k=>(p.has(k)||p.set(k,(async()=>{
-const q=Ke(k),U=q.pop(),C=await y(q.join("/"));pt();const O=(await w(C)).filter(T=>T.name===
-U);if(O.length>1||O.length&&!O[0].directory)throw new Error("同名项目挡住目录："+
-k);if(O.length)return O[0].key;const j=C.replace(/\/$/,"")+"/"+U;return pt(),await u({path:j,
-isdir:1,size:0,block_list:"[]"}),j})()),p.get(k));let I=0,A=0,M=0;const{failed:b,processed:N}=await d(
+const F=He(k),D=F.pop(),E=await y(F.join("/"));pt();const O=(await w(E)).filter(j=>j.name===
+D);if(O.length>1||O.length&&!O[0].directory)throw new Error("同名项目挡住目录："+
+k);if(O.length)return O[0].key;const P=E.replace(/\/$/,"")+"/"+D;return pt(),await u({path:P,
+isdir:1,size:0,block_list:"[]"}),P})()),p.get(k));let I=0,A=0,M=0;const{failed:b,processed:T}=await d(
 "百度导入预检与转存（清单项目）","共享路径复用在途建目录，百度分页顺序读取",
-async(k,q)=>{const{name:U,parent:C}=await l(k,y);if(k.type==="directory")return;if(q(),(await w(
-C)).some(x=>x.name===U))return M++,a(`${k.path}：目标已有同名项目，跳过`),"ski\
+async(k,F)=>{const{name:D,parent:E}=await l(k,y);if(k.type==="directory")return;if(F(),(await w(
+E)).some(S=>S.name===D))return M++,a(`${k.path}：目标已有同名项目，跳过`),"ski\
 pped";if(k.size>256*1024)return A++,a(`${k.path}：百度需要前 256 KB 分片哈希；清单不含原文件，未提交`),
-"skipped";const j=`${C.replace(/\/$/,"")}/${U}`,T=new URLSearchParams({channel:"chunlei",web:"\
-1",app_id:"250528",bdstoken:c,clienttype:"0",async:"2"});q();const h=await Ct(`${location.
-origin}/api/rapidupload?${T}`,{method:"POST",credentials:"include",headers:{"Content-Type":"\
-application/x-www-form-urlencoded;charset=UTF-8"},body:new URLSearchParams({path:j,"conten\
+"skipped";const P=`${E.replace(/\/$/,"")}/${D}`,j=new URLSearchParams({channel:"chunlei",web:"\
+1",app_id:"250528",bdstoken:c,clienttype:"0",async:"2"});F();const h=await Et(`${location.
+origin}/api/rapidupload?${j}`,{method:"POST",credentials:"include",headers:{"Content-Type":"\
+application/x-www-form-urlencoded;charset=UTF-8"},body:new URLSearchParams({path:P,"conten\
 t-md5":k.md5,"slice-md5":k.md5,"content-length":String(k.size),isdir:"0",rtype:"3"}).toString()});
 if(ot(h.errno)===0)I++,a(`${k.path}：百度秒传接口已接受`);else return A++,a(`${k.
 path}：百度未命中秒传（${h.errno??"未知错误"}），需要原文件`),"failed"});
-t.get("status").textContent=N<r.length?"导入已停止":b?"导入结束，含失败项":"\
-导入完成",t.get("progress").textContent=`导入结束：${N}/${r.length} 项；失败 ${b}\
+t.get("status").textContent=T<r.length?"导入已停止":b?"导入结束，含失败项":"\
+导入完成",t.get("progress").textContent=`导入结束：${T}/${r.length} 项；失败 ${b}\
 ，百度接口接受 ${I}，未完成 ${A}，同名跳过 ${M}；大于 256 KB 的项目需原文件分片哈希`}}catch(r){
 t.get("status").textContent="失败："+r.message,t.get("progress").textContent="导入失败："+
 r.message}finally{t.get("manifest").value="",n.forEach(r=>{r.disabled=!1}),t.busy(!1)}};t.
@@ -4766,8 +4766,8 @@ this);try{const c=t(String(l));c&&a.set(this,{target:c,headers:new Be.Headers})}
 n.setRequestHeader=function(o,l){const d=s.apply(this,arguments),c=a.get(this);if(c)try{c.
 headers.append(o,l)}catch{}return d},n.send=function(o){const l=a.get(this);if(l)try{sr(l.
 target,l.headers,o)}catch{}return r.apply(this,arguments)}}async function ea(e,t,n,a=0){const i=await e(
-mt.list,{parentId:t==="0"?"":t,page:n-1,pageSize:100,dirType:0,orderBy:0,sortType:0,fileTypes:[],
-resType:0,needPlayRecord:!1,needSubFolderStat:!0});if(Et(i)!==0)throw at("读取光鸭目录",
+gt.list,{parentId:t==="0"?"":t,page:n-1,pageSize:100,dirType:0,orderBy:0,sortType:0,fileTypes:[],
+resType:0,needPlayRecord:!1,needSubFolderStat:!0});if(kt(i)!==0)throw at("读取光鸭目录",
 i);const s=i.data===void 0?{}:i.data;if(!s||typeof s!="object"||Array.isArray(s))throw new Error(
 "光鸭目录响应格式异常，未将其视为空目录");const r=ot(s.total);if(s.list!==
 void 0&&!Array.isArray(s.list)||s.list===void 0&&(s.hasMore===!0||r>0))throw new Error(`光鸭\
@@ -4776,13 +4776,13 @@ list||[],l=typeof s.hasMore=="boolean"?s.hasMore:r!=null?a+o.length<r:o.length>=
 items:o,more:l,total:r}}function ei(e,t,n=()=>{}){const a=new Map([["",Promise.resolve(e===
 "0"?"":e)]]),i=new Map;async function s(o){return i.has(o)||i.set(o,Mn((l,d)=>ea(t,o,l,d),
 l=>dt(l.fileId)).then(l=>{const d=new Map;for(const c of l)d.set(c.fileName,d.has(c.fileName)?
-null:c);return d})),i.get(o)}async function r(o){if(a.has(o))return a.get(o);const l=Ke(o),
+null:c);return d})),i.get(o)}async function r(o){if(a.has(o))return a.get(o);const l=He(o),
 d=(async()=>{const c=await r(l.slice(0,-1).join("/")),f=l.at(-1),m=await s(c);if(m.has(f)){
 const w=m.get(f);if(!w||Number(w.resType)!==2)throw new Error("同名文件或多个同名目录，无法确定目标："+
 o);const y=dt(w.fileId);if(!y||y==="0"||y===c)throw new Error("目标目录 ID 无效："+
-o);return n("使用已有目录："+o),y}let u;try{u=await t(mt.mkdir,{parentId:c,dirName:f,
+o);return n("使用已有目录："+o),y}let u;try{u=await t(gt.mkdir,{parentId:c,dirName:f,
 failIfNameExist:!0})}catch(w){throw Object.assign(new Error("创建目录请求异常，结果待核对："+
-o+"；"+w.message+"；该目录下的后续项目将跳过"),{stop:w.stop})}if(Et(u)!==0)throw at(
+o+"；"+w.message+"；该目录下的后续项目将跳过"),{stop:w.stop})}if(kt(u)!==0)throw at(
 "创建目录 "+o,u);const p=dt(u.data?.fileId);if(!p||p==="0"||p===c)throw new Error("创建目\
 录未返回有效 ID，请刷新核对："+o);return m.set(f,{fileId:p,fileName:f,resType:2}),
 i.set(p,Promise.resolve(new Map)),n("已创建目录："+o),p})();return a.set(o,d),d}return r}
@@ -4803,52 +4803,52 @@ resType)===2,md5:s.md5,size:ot(s.fileSize),gcid:s.gcid,cid:s.cid}};return{async 
 return Mn(async(r,o)=>{const l=await ea(a,s.id,r,o);return{...l,items:l.items.map(i)}},r=>r.
 key)},async metadata(s){const r=n.get(String(s.gcid||"").toUpperCase());if(r&&r.size===s.size&&
 (!s.cid||String(s.cid).toUpperCase()===r.cid))return r;const o=await a("/userres/v1/file/g\
-et_file_detail",{fileId:s.id});if(Et(o)!==0)throw at("读取光鸭文件详情",o);const l=o.
+et_file_detail",{fileId:s.id});if(kt(o)!==0)throw at("读取光鸭文件详情",o);const l=o.
 data?.fileInfo??o.data;return{md5:l?.md5??l?.etag??"",size:ot(l?.fileSize??s.size),gcid:l?.
 gcid,cid:l?.cid}}}}function ta(e){return"cross-drive-replacement-v1:"+e.id+":"+(e.exportPath||
 "")}function na(e){const t=ta(e);return GM_getValue(t,{})}function qt(e,t){const n=ta(e);GM_setValue(
 n,t)}const Tn=e=>JSON.stringify([e.path,e.md5,e.size]);async function ni(e,t,n,a=()=>{},i=$t(
-"光鸭"),s=na(t),r=()=>{},o){const l=new Map,d=new Map,c=new Set,f=[],m=T=>T.md5.toLowerCase()+
-":"+T.size,u=new Set([""]),p=new Set,w=(T,h)=>{const x=Ke(T);for(let v=1;v<x.length;v++)u.
-add(x.slice(0,v).join("/"));h&&p.add(x.slice(0,-1).join("/"))};for(const T of e)w(T.path,T.
-type!=="directory");const y=new Set(e.filter(T=>T.type!=="directory").map(m)),I=new Map,A=new Set(
-e.filter(T=>T.type!=="directory").map(T=>T.size));for(const T of Object.values(i)){const h=JSON.
-parse(T);if(!ut(h)||!y.has(m(h)))continue;const x=t.exportPath?h.path.startsWith(t.exportPath+
-"/")?h.path.slice(t.exportPath.length+1):"":t.id==="0"?h.path:"";if(x){w(x,!0);const v=m(h);
-I.has(v)||I.set(v,[]),I.get(v).push(x)}}for(const T of e){const h=s[Tn(T)];h?.old&&w(h.old.
-path,!0);for(const x of h?.directories||[])w(x.path+"/placeholder",!0)}const M=T=>T.split(
+"光鸭"),s=na(t),r=()=>{},o){const l=new Map,d=new Map,c=new Set,f=[],m=j=>j.md5.toLowerCase()+
+":"+j.size,u=new Set([""]),p=new Set,w=(j,h)=>{const S=He(j);for(let v=1;v<S.length;v++)u.
+add(S.slice(0,v).join("/"));h&&p.add(S.slice(0,-1).join("/"))};for(const j of e)w(j.path,j.
+type!=="directory");const y=new Set(e.filter(j=>j.type!=="directory").map(m)),I=new Map,A=new Set(
+e.filter(j=>j.type!=="directory").map(j=>j.size));for(const j of Object.values(i)){const h=JSON.
+parse(j);if(!ut(h)||!y.has(m(h)))continue;const S=t.exportPath?h.path.startsWith(t.exportPath+
+"/")?h.path.slice(t.exportPath.length+1):"":t.id==="0"?h.path:"";if(S){w(S,!0);const v=m(h);
+I.has(v)||I.set(v,[]),I.get(v).push(S)}}for(const j of e){const h=s[Tn(j)];h?.old&&w(h.old.
+path,!0);for(const S of h?.directories||[])w(S.path+"/placeholder",!0)}const M=j=>j.split(
 "/").map(h=>h.normalize("NFKC").toLowerCase().replace(/[\p{P}\p{Z}\s]/gu,"")||h).join("/"),
-b=new Set([...u].map(M)),N=new Set([...p].map(M)),k={id:t.id,path:""},q=[];await Sn([k],T=>T.
-id,async(T,h)=>{const x=[];a("正在核对 JSON 对应目录："+(T.path||t.path));for(const v of await n.
-children(T)){if(h(),!v.id||v.id==="0"||Ke(v.name).length!==1||c.has(v.id))throw new Error(
-"目标目录结构异常，请刷新后重新预览");c.add(v.id);const R=T.path?T.path+"\
+b=new Set([...u].map(M)),T=new Set([...p].map(M)),k={id:t.id,path:""},F=[];await Sn([k],j=>j.
+id,async(j,h)=>{const S=[];a("正在核对 JSON 对应目录："+(j.path||t.path));for(const v of await n.
+children(j)){if(h(),!v.id||v.id==="0"||He(v.name).length!==1||c.has(v.id))throw new Error(
+"目标目录结构异常，请刷新后重新预览");c.add(v.id);const R=j.path?j.path+"\
 /"+v.name:v.name;if(l.has(R))throw new Error("目标存在多个同名项目："+R);const z={
-...v,path:R,parentId:T.id};if(l.set(R,z),z.directory){b.has(M(R))&&x.push(z);continue}N.has(
-M(T.path))&&(z.size!=null&&!A.has(z.size)||q.push(z))}return x},r,o,"光鸭替换目录预览（目录）"),
-await We(q,"光鸭替换内容预检（文件）",o,async(T,h,x,v)=>{let R;try{R=ut(T)?T:await n.
-metadata(T)}catch(L){if(v(L),h(),L.stop)throw L;return f.push(T),"failed"}if(h(),!ut(R))return f.
-push(T),"skipped";Object.assign(T,{md5:R.md5.toLowerCase(),size:R.size});const z=m(T);d.has(
-z)||d.set(z,[]),d.get(z).push(T)},r,8,"文件详情沿用光鸭节流");const U=new Set(e.
-map(T=>T.path)),C=new Map;for(const T of e)if(T.type!=="directory"){const h=m(T);C.set(h,(C.
-get(h)||0)+1)}const O=new Map;for(const T of e){const h=Ke(T.path);let x=!1;for(let z=1;z<
-h.length;z++){const L=l.get(h.slice(0,z).join("/"));if(L&&!L.directory){x=!0;break}}const v=l.
-get(T.path);let R;if(x)R={kind:"conflict",reason:"父目录位置被文件占用"};else if(T.
+...v,path:R,parentId:j.id};if(l.set(R,z),z.directory){b.has(M(R))&&S.push(z);continue}T.has(
+M(j.path))&&(z.size!=null&&!A.has(z.size)||F.push(z))}return S},r,o,"光鸭替换目录预览（目录）"),
+await We(F,"光鸭替换内容预检（文件）",o,async(j,h,S,v)=>{let R;try{R=ut(j)?j:await n.
+metadata(j)}catch(U){if(v(U),h(),U.stop)throw U;return f.push(j),"failed"}if(h(),!ut(R))return f.
+push(j),"skipped";Object.assign(j,{md5:R.md5.toLowerCase(),size:R.size});const z=m(j);d.has(
+z)||d.set(z,[]),d.get(z).push(j)},r,8,"文件详情沿用光鸭节流");const D=new Set(e.
+map(j=>j.path)),E=new Map;for(const j of e)if(j.type!=="directory"){const h=m(j);E.set(h,(E.
+get(h)||0)+1)}const O=new Map;for(const j of e){const h=He(j.path);let S=!1;for(let z=1;z<
+h.length;z++){const U=l.get(h.slice(0,z).join("/"));if(U&&!U.directory){S=!0;break}}const v=l.
+get(j.path);let R;if(S)R={kind:"conflict",reason:"父目录位置被文件占用"};else if(j.
 type==="directory")R=v&&!v.directory?{kind:"conflict",reason:"目录位置被文件占用"}:
-{kind:"directory",node:v};else if(v&&(v.directory||!ut(v)||m(v)!==m(T)))R={kind:"conflict",
+{kind:"directory",node:v};else if(v&&(v.directory||!ut(v)||m(v)!==m(j)))R={kind:"conflict",
 reason:"目标同名项目内容不同或无法验证，不覆盖"};else if(f.some(z=>z.size==
-null||z.size===T.size))R={kind:"conflict",reason:"相关目录有文件无法核对内容，旧版对应关系不确定，跳过且不删除"};else{
-const z=m(T),L=(d.get(z)||[]).filter(X=>!U.has(X.path)),H=s[Tn(T)];if(H?.old&&!L.some(X=>X.
-id===H.old.id)&&!l.has(H.old.path)&&!U.has(H.old.path)&&L.push(H.old),L.length>1||L.length&&
-C.get(z)>1)R={kind:"conflict",reason:"旧文件无法唯一对应，跳过且不删除"};else{
-const X=L[0];R={kind:v?X?"reuse-cleanup":"reuse":X?"replace":"import",node:v,old:X}}}O.set(
-T.path,R)}const j=new Set([""]);for(const T of e){const h=Ke(T.path),x=T.type==="directory"?
-h.length:h.length-1;for(let v=1;v<=x;v++)j.add(h.slice(0,v).join("/"))}for(const T of e.filter(
-h=>h.type!=="directory")){const h=O.get(T.path);if(h.kind==="conflict"||h.old)continue;const x=new Map(
-(s[Tn(T)]?.directories||[]).map(v=>[v.id,v]));for(const v of I.get(m(T))||[]){if(l.has(v))
-continue;const R=Ke(v);for(let z=1;z<R.length;z++){const L=R.slice(0,z).join("/"),H=l.get(
-L);H?.directory&&!j.has(L)&&H.id!==t.id&&x.set(H.id,H)}}h.cleanupDirectories=[...x.values()].
-filter(v=>!j.has(v.path))}return{actions:O,directories:new Map([...l].filter(([,T])=>T.directory)),
-protectedDirectories:j}}function ri(e,t,n){const a=e.get("syncPreview"),i=e.get("syncList");
+null||z.size===j.size))R={kind:"conflict",reason:"相关目录有文件无法核对内容，旧版对应关系不确定，跳过且不删除"};else{
+const z=m(j),U=(d.get(z)||[]).filter(Y=>!D.has(Y.path)),K=s[Tn(j)];if(K?.old&&!U.some(Y=>Y.
+id===K.old.id)&&!l.has(K.old.path)&&!D.has(K.old.path)&&U.push(K.old),U.length>1||U.length&&
+E.get(z)>1)R={kind:"conflict",reason:"旧文件无法唯一对应，跳过且不删除"};else{
+const Y=U[0];R={kind:v?Y?"reuse-cleanup":"reuse":Y?"replace":"import",node:v,old:Y}}}O.set(
+j.path,R)}const P=new Set([""]);for(const j of e){const h=He(j.path),S=j.type==="directory"?
+h.length:h.length-1;for(let v=1;v<=S;v++)P.add(h.slice(0,v).join("/"))}for(const j of e.filter(
+h=>h.type!=="directory")){const h=O.get(j.path);if(h.kind==="conflict"||h.old)continue;const S=new Map(
+(s[Tn(j)]?.directories||[]).map(v=>[v.id,v]));for(const v of I.get(m(j))||[]){if(l.has(v))
+continue;const R=He(v);for(let z=1;z<R.length;z++){const U=R.slice(0,z).join("/"),K=l.get(
+U);K?.directory&&!P.has(U)&&K.id!==t.id&&S.set(K.id,K)}}h.cleanupDirectories=[...S.values()].
+filter(v=>!P.has(v.path))}return{actions:O,directories:new Map([...l].filter(([,j])=>j.directory)),
+protectedDirectories:P}}function ri(e,t,n){const a=e.get("syncPreview"),i=e.get("syncList");
 i.textContent="";const s={replace:0,"reuse-cleanup":0,reuse:0,import:0,conflict:0,directory:0},
 r=n.exportPath?"/"+n.exportPath:n.id==="0"?"":n.path,o=d=>r+"/"+d,l={replace:"导入并替换",
 "reuse-cleanup":"复用新版并清理旧版",reuse:"复用已有新版",import:"仅导入",
@@ -4870,16 +4870,16 @@ reuse-cleanup"]} 项 · 复用 ${s.reuse} 项 · 仅导入 ${s.import} 项 · �
 await n.metadata(e);if(e.directory||!ut(a)||a.md5.toLowerCase()!==t.md5||a.size!==t.size)throw new Error(
 "文件 MD5 或大小不符，或无法验证："+(e.path||e.name));return{...e,...a,id:e.
 id,parentId:e.parentId,path:e.path,name:e.name,md5:a.md5.toLowerCase()}}async function jn(e,t,n){
-const a=Ke(e.path);let i=t.id;for(let s=0;s<a.length;s++){const r=(await n.children({id:i})).
+const a=He(e.path);let i=t.id;for(let s=0;s<a.length;s++){const r=(await n.children({id:i})).
 filter(l=>l.name===a[s]);if(!r.length)return null;if(r.length!==1)throw new Error("目标路径存在多\
 个同名项目："+e.path);const o={...r[0],parentId:i,path:a.slice(0,s+1).join("/")};if(s===
 a.length-1)return lr(o,e,n);if(!o.directory)throw new Error("目标父目录被文件占用："+
 o.path);i=o.id}}async function Pn(e,t,n=et,a="删除"){for(let i=0;i<30;i++){i&&await n(1e3);
-const s=await t(mt.task,{taskId:e});if(Et(s)!==0)throw at("查询"+a+"任务",s);const r=ot(
+const s=await t(gt.task,{taskId:e});if(kt(s)!==0)throw at("查询"+a+"任务",s);const r=ot(
 s.data?.status),o=s.data?.detail;if(r===3||r===2&&o?.code!=null&&Number(o.code)!==0)throw Object.
 assign(at(a+"任务",{code:o?.code||-1,msg:o?.msg||"任务失败"}),{terminal:!0});if(r===
 2)return}throw new Error(a+"任务仍未完成，结果待确认；任务 ID："+e)}async function cr(e,t,n,a,i,s=""){
-if(!s){const r=await n(mt.remove,{fileIds:[e.id]});if(Et(r)!==0)throw at("删除旧版",r);
+if(!s){const r=await n(gt.remove,{fileIds:[e.id]});if(kt(r)!==0)throw at("删除旧版",r);
 s=Bt(r.data),i(s)}s&&await Pn(s,n,a);for(let r=0;r<5;r++)if(r&&await a(500),!(await t.children(
 {id:e.parentId})).some(o=>o.id===e.id))return;throw Object.assign(new Error("删除请求已提交，但旧项目仍\
 存在；ID："+e.id),{terminal:!0})}async function ai(e,t,n,a,i,s,r,o,l,d=et,c=()=>{}){const f=Tn(
@@ -4892,17 +4892,17 @@ let M=e;if(u&&(!e.gcid||!e.cid)){let k=u;if((!/^[a-f0-9]{40}$/i.test(k.gcid||"")
 test(k.cid||""))&&(k=await i.metadata(u)),!ut(k)||k.md5.toLowerCase()!==e.md5||k.size!==e.
 size)throw new Error("旧文件详情无法核对，未提交新版");/^[a-f0-9]{40}$/i.test(
 k.gcid||"")&&/^[a-f0-9]{40}$/i.test(k.cid||"")&&(M={...e,gcid:k.gcid.toUpperCase(),cid:k.cid.
-toUpperCase()})}l("导入中："+e.path),c();const b=await r(Ke(e.path).slice(0,-1).join("\
-/"));c();const N=await zr(M,b||"0",s,d);if(N.status!=="saved")return{status:N.status,message:N.
-message+"；旧版保留",stop:N.stop};l("验证中："+e.path);for(let k=0;k<5&&!p;k++)k&&
+toUpperCase()})}l("导入中："+e.path),c();const b=await r(He(e.path).slice(0,-1).join("\
+/"));c();const T=await zr(M,b||"0",s,d);if(T.status!=="saved")return{status:T.status,message:T.
+message+"；旧版保留",stop:T.stop};l("验证中："+e.path);for(let k=0;k<5&&!p;k++)k&&
 await d(500),p=await jn(e,n,i);if(!p)return{status:"pending",message:"目录已创建，但未在目标路径验证到新文件；\
 旧版保留"}}if(l("验证中："+e.path),!m||m.id===p.id)return t.cleanupDirectories?.length?
 (o[f]={...o[f],file:e,old:null,newFileId:p.id,stage:"old-deleted",directories:t.cleanupDirectories},
 qt(n,o),{status:"done",reused:w,cleanupKey:f,message:"新版已验证，继续检查对应的空旧目录"}):
 {status:"done",reused:w,message:"新版已在目标路径验证，未删除其他文件"};
-c();const y=new Map((o[f]?.directories||[]).map(M=>[M.id,M])),I=Ke(m.path);for(let M=1;M<I.
-length;M++){const b=I.slice(0,M).join("/"),N=a.directories.get(b);N&&!a.protectedDirectories.
-has(b)&&N.id!==n.id&&y.set(N.id,N)}const A=o[f]={...o[f],file:e,old:m,newFileId:p.id,directories:[
+c();const y=new Map((o[f]?.directories||[]).map(M=>[M.id,M])),I=He(m.path);for(let M=1;M<I.
+length;M++){const b=I.slice(0,M).join("/"),T=a.directories.get(b);T&&!a.protectedDirectories.
+has(b)&&T.id!==n.id&&y.set(T.id,T)}const A=o[f]={...o[f],file:e,old:m,newFileId:p.id,directories:[
 ...y.values()]};qt(n,o);try{const M=await jn(e,n,i);if(!M||M.id!==p.id||M.id===m.id)throw new Error(
 "目标文件已变化")}catch(M){return{status:"pending",message:"新版在清理前无法再次验证，旧版保留："+
 M.message,stop:M.stop}}try{const M=(await i.children({id:m.parentId})).find(b=>b.id===m.id);
@@ -4916,38 +4916,38 @@ n,o),{status:"cleanup-failed",reused:w,message:"新版已就绪，旧版清理�
 message,stop:M.stop}}}async function ii(e,t,n,a,i,s,r,o,l=et,d=()=>{}){const c=new Map,f=new Set,
 m=new Set;try{await We([...e],"旧目录清理前核验（新版文件）",o,async(w,y,I,A)=>{
 const M=s[w];try{const b=await jn(M.file,t,a);if(y(),!b||b.id!==M.newFileId)throw new Error(
-"新版已变化，保留旧目录待核对");for(const N of M.directories)!n.protectedDirectories.
-has(N.path)&&N.id!==t.id&&(c.has(N.id)||c.set(N.id,{node:N,keys:[]}),c.get(N.id).keys.push(
+"新版已变化，保留旧目录待核对");for(const T of M.directories)!n.protectedDirectories.
+has(T.path)&&T.id!==t.id&&(c.has(T.id)||c.set(T.id,{node:T,keys:[]}),c.get(T.id).keys.push(
 w))}catch(b){if(f.add(w),o(M.file.path+"：新版已就绪，旧目录清理失败："+b.message),
 A(b),b.stop)throw b;return"failed"}},d)}catch(w){return o("旧目录核验中断："+w.message),
-qt(t,s),{removed:0,failed:e.size}}let u=0;const p=St([...c.values()].sort((w,y)=>Ke(y.node.
-path).length-Ke(w.node.path).length),w=>Ke(w.node.path).length);try{for(const w of p)await We(
-w,"空旧目录清理（同层目录）",o,async({node:y,keys:I},A,M,b)=>{if(I.some(N=>f.has(
-N)))return"skipped";try{const N=(await a.children({id:y.parentId})).find(C=>C.id===y.id);if(A(),
-!N)return"skipped";if(!N.directory||N.name!==y.name)throw new Error("旧目录已变化，保留待核对："+
-y.path);let k=await a.children({id:y.id});for(let C=0;k.length&&C<3;C++)await l(500),A(),k=
-await a.children({id:y.id});if(k.length){for(const C of I)m.add(C);return o("旧目录仍有内容，保留并记录\
-待清理："+y.path),"skipped"}r("清理空旧目录："+y.path),A();const q=s[I[0]],U=q.
-directoryTasks?.[y.id]||"";await cr(y,a,i,l,C=>{var O;for(const j of I)((O=s[j]).directoryTasks||
-(O.directoryTasks={}))[y.id]=C;qt(t,s)},U),u++,o("已清理空旧目录："+y.path)}catch(N){
-for(const k of I)f.add(k);if(N.terminal)for(const k of I)delete s[k].directoryTasks?.[y.id];
-if(o("旧目录清理失败："+y.path+"；"+N.message),b(N),N.stop)throw N;return"failed"}},
+qt(t,s),{removed:0,failed:e.size}}let u=0;const p=xt([...c.values()].sort((w,y)=>He(y.node.
+path).length-He(w.node.path).length),w=>He(w.node.path).length);try{for(const w of p)await We(
+w,"空旧目录清理（同层目录）",o,async({node:y,keys:I},A,M,b)=>{if(I.some(T=>f.has(
+T)))return"skipped";try{const T=(await a.children({id:y.parentId})).find(E=>E.id===y.id);if(A(),
+!T)return"skipped";if(!T.directory||T.name!==y.name)throw new Error("旧目录已变化，保留待核对："+
+y.path);let k=await a.children({id:y.id});for(let E=0;k.length&&E<3;E++)await l(500),A(),k=
+await a.children({id:y.id});if(k.length){for(const E of I)m.add(E);return o("旧目录仍有内容，保留并记录\
+待清理："+y.path),"skipped"}r("清理空旧目录："+y.path),A();const F=s[I[0]],D=F.
+directoryTasks?.[y.id]||"";await cr(y,a,i,l,E=>{var O;for(const P of I)((O=s[P]).directoryTasks||
+(O.directoryTasks={}))[y.id]=E;qt(t,s)},D),u++,o("已清理空旧目录："+y.path)}catch(T){
+for(const k of I)f.add(k);if(T.terminal)for(const k of I)delete s[k].directoryTasks?.[y.id];
+if(o("旧目录清理失败："+y.path+"；"+T.message),b(T),T.stop)throw T;return"failed"}},
 d,8,"先处理深层目录，清理前重新确认当前目录为空")}catch(w){return o("\
 旧目录清理中断："+w.message),qt(t,s),{removed:u,failed:e.size}}for(const w of e)!f.
 has(w)&&!m.has(w)&&delete s[w];return qt(t,s),{removed:u,failed:f.size}}async function si(e,t,n,a,i,s,r,o,l=et,d=()=>{}){
 const c=na(t),f=new Set,m=[],u=new Set;let p=!1;for(const I of e)if(I.type!=="directory"){
-const A=Ke(I.path);for(let M=1;M<A.length;M++)u.add(A.slice(0,M).join("/"))}const w={processed:0,
+const A=He(I.path);for(let M=1;M<A.length;M++)u.add(A.slice(0,M).join("/"))}const w={processed:0,
 verified:0,imported:0,reused:0,deleted:0,pending:0,missed:0,failed:0,skipped:0,cleanupFailed:0,
 directories:0};try{await We(e,"光鸭替换与验证（清单项目）",o,async(I,A,M,b)=>{
-const N=n.actions.get(I.path),k=`[${M+1}/${e.length}] ${I.path}`;try{if(A(),N.kind==="conf\
-lict")return w.skipped++,o(k+"：跳过；"+N.reason),"skipped";if(I.type==="directory"){u.
-has(I.path)||await s(I.path);return}const q=await ai(I,N,t,n,a,i,s,c,U=>r(`[${M+1}/${e.length}\
-] ${U}`),l,A);if(o(k+"："+q.message),q.status==="done"||q.status==="cleanup-failed"?(w.verified++,
-w[q.reused?"reused":"imported"]++,m.push({path:t.exportPath?t.exportPath+"/"+I.path:I.path,
-md5:I.md5,size:I.size}),q.deleted&&w.deleted++,q.cleanupKey&&f.add(q.cleanupKey),q.status===
-"cleanup-failed"&&w.cleanupFailed++):w[q.status==="miss"?"missed":"pending"]++,q.stop)throw Object.
-assign(new Error(q.message),{stop:!0,recorded:!0});return q.status==="done"?void 0:"failed"}catch(q){
-if(b(q),q.recorded||w.failed++,o(k+"：未完成；"+q.message),q.stop||q.cancelled)throw q;
+const T=n.actions.get(I.path),k=`[${M+1}/${e.length}] ${I.path}`;try{if(A(),T.kind==="conf\
+lict")return w.skipped++,o(k+"：跳过；"+T.reason),"skipped";if(I.type==="directory"){u.
+has(I.path)||await s(I.path);return}const F=await ai(I,T,t,n,a,i,s,c,D=>r(`[${M+1}/${e.length}\
+] ${D}`),l,A);if(o(k+"："+F.message),F.status==="done"||F.status==="cleanup-failed"?(w.verified++,
+w[F.reused?"reused":"imported"]++,m.push({path:t.exportPath?t.exportPath+"/"+I.path:I.path,
+md5:I.md5,size:I.size}),F.deleted&&w.deleted++,F.cleanupKey&&f.add(F.cleanupKey),F.status===
+"cleanup-failed"&&w.cleanupFailed++):w[F.status==="miss"?"missed":"pending"]++,F.stop)throw Object.
+assign(new Error(F.message),{stop:!0,recorded:!0});return F.status==="done"?void 0:"failed"}catch(F){
+if(b(F),F.recorded||w.failed++,o(k+"：未完成；"+F.message),F.stop||F.cancelled)throw F;
 return"failed"}finally{w.processed++}},d,8,"同一项先转存和验证，新旧版本任务记录逐项保存")}catch(I){
 p=!0,o("替换中断："+I.message)}const y=p?{removed:0,failed:f.size}:await ii(f,t,n,a,i,
 c,r,o,l,d);if(p&&o("任务已停止，不再执行后续替换和旧目录清理；保留任务记录供下次核对"),
@@ -4958,19 +4958,19 @@ failed:0,directories:0,skipped:0,processed:0},l=new Map,d=new Map;let c=0,f=0;co
 const p=(async()=>{c++;const w=new Map;for(const y of await i.children({id:u})){const I=y.
 name.toLowerCase();w.set(I,w.has(I)?null:y)}return w})();return l.set(u,p),p.catch(()=>{l.
 get(u)===p&&l.delete(u)}),p};try{await We(e,"光鸭导入预检、转存与核验（清单项目）",
-s,async(u,p,w,y)=>{const I=`[${w+1}/${e.length}] ${u.path}`;try{return await Yt(d,u.path.toLowerCase(),
+s,async(u,p,w,y)=>{const I=`[${w+1}/${e.length}] ${u.path}`;try{return await Xt(d,u.path.toLowerCase(),
 async()=>{if(p(),s(I,{index:w+1,total:e.length,path:u.path}),u.type==="directory")await a(
-u.path),o.directories++,s(I+"：目录已就绪");else{const A=await a(Ke(u.path).slice(0,
--1).join("/"));p();const M=A||(t==="0"?"":t),b=u.name.toLowerCase(),N=l.get(M);let k=await(N||
-m(M));if(N&&!k.has(b)?k=await m(M):N&&f++,p(),k.has(b)){const q=k.get(b);if(!q)throw new Error(
-"目标存在多个同名项目，未上传");const U=En(q,u);return o.skipped++,s(I+"："+
-U),"skipped"}else{p(),l.delete(M);const q=await zr(u,A||t,n);if(q.status==="saved"?o.saved++:
-q.status==="pending"?o.pending++:o.missed++,s(I+"："+q.message),q.stop)throw Object.assign(
-new Error(q.message),{stop:!0,recorded:!0});return q.status==="saved"?void 0:"failed"}}})}catch(A){
+u.path),o.directories++,s(I+"：目录已就绪");else{const A=await a(He(u.path).slice(0,
+-1).join("/"));p();const M=A||(t==="0"?"":t),b=u.name.toLowerCase(),T=l.get(M);let k=await(T||
+m(M));if(T&&!k.has(b)?k=await m(M):T&&f++,p(),k.has(b)){const F=k.get(b);if(!F)throw new Error(
+"目标存在多个同名项目，未上传");const D=En(F,u);return o.skipped++,s(I+"："+
+D),"skipped"}else{p(),l.delete(M);const F=await zr(u,A||t,n);if(F.status==="saved"?o.saved++:
+F.status==="pending"?o.pending++:o.missed++,s(I+"："+F.message),F.stop)throw Object.assign(
+new Error(F.message),{stop:!0,recorded:!0});return F.status==="saved"?void 0:"failed"}}})}catch(A){
 if(y(A),A.recorded||o.failed++,s(I+"：失败，"+A.message),A.stop||A.cancelled)throw A;return"\
 failed"}finally{o.processed++}},r,8,"同目录同名串行，光鸭写入与任务轮询沿用 650ms 节流")}catch(u){
 s("导入中断："+u.message)}return s(`目录检查：读取 ${c} 次，复用已有项 ${f}\
- 次；新提交前仍读取最新目录`),o}function li(){const e=er(`光鸭跨盘 JSON ${Xt}`,
+ 次；新提交前仍读取最新目录`),o}function li(){const e=er(`光鸭跨盘 JSON ${Yt}`,
 `
             <p id="status"></p><p id="target"></p><p id="progress"></p>
             <textarea id="json" placeholder="导出的 JSON 会显示在这里；也可粘贴待导入 JSON"></textarea>
@@ -4986,7 +4986,7 @@ tton id="start">导入粘贴内容</button><button id="chooseJsonFile">选择文
             <div class="panel-actions" style="padding-top:0;border-top:0;margin-top:0"><bu\
 tton id="saveJson">下载 JSON</button><button id="copyJson">复制 JSON</button></div>
             <div id="log"></div>`);qr(e,"光鸭");const t=In(e);let n=null;Lt=()=>{e.get("\
-status").textContent=Xe.token?"已捕获登录凭证（不显示凭证内容）":"未捕获凭证：请在\
+status").textContent=Ye.token?"已捕获登录凭证（不显示凭证内容）":"未捕获凭证：请在\
 光鸭网页里切换文件夹后重试";const r=n||Nn();e.get("target").textContent=r?`${n?
 "本次固定目标":"当前导入目标"}：${r.path}；ID：${r.id}`:"请先进入“全部”中的目标文件夹；最近\
 、搜索和分类页没有唯一目标目录"},Lt();for(const r of["hashchange","popstate"])
@@ -4995,9 +4995,9 @@ Be.history[r]=function(){const l=o.apply(this,arguments);return Lt(),l}}e.onActi
 e,r);e.get("exportManifest").onclick=async()=>{e.busy(!0),t.forEach(r=>{r.disabled=!0}),e.
 get("json").value="",e.get("progress").textContent="",e.get("status").textContent="正在读取选中项\
 目…";try{const r=Nn();if(!r)throw new Error("请先进入“全部”中的目标目录");
-if(!Xe.token)throw new Error("未捕获光鸭登录状态，请刷新页面后重试");const o=Gr();
+if(!Ye.token)throw new Error("未捕获光鸭登录状态，请刷新页面后重试");const o=Gr();
 if(!o.length)throw new Error("没有识别到选中项，请先勾选要导出的文件或文件夹；未导出任何内容");
-const l=or(Xe.token,e.get("incremental").checked),d=await l.children({id:r.id,name:r.path,
+const l=or(Ye.token,e.get("incremental").checked),d=await l.children({id:r.id,name:r.path,
 directory:!0}),c=dn(d,o);if(!c.length)throw new Error("选中项目不在当前目录中，请重新选择");
 const f=await Ur(c,l,u=>{e.get("status").textContent=`正在导出：${u.path}；文件 ${u.
 files}，目录 ${u.directories}`},r.exportPath,pt,a);if(!f.entries.length)throw new Error(
@@ -5013,13 +5013,13 @@ cExisting").checked;e.get("syncExisting").checked=!1,e.get("manifestImport").ope
 !0),t.forEach(l=>{l.disabled=!0});try{r&&(e.get("json").value=await r.text()),await s(o)}catch(l){
 a("导入失败："+l.message),e.get("progress").textContent="导入失败："+l.message}finally{
 e.get("jsonFile").value="",t.forEach(l=>{l.disabled=!1}),e.busy(!1)}},s=async r=>{const o=Nn(),
-l=o?.id;let d,c;e.get("log").textContent="";try{if(!Xe.token)throw new Error("尚未捕获 Token，请\
+l=o?.id;let d,c;e.get("log").textContent="";try{if(!Ye.token)throw new Error("尚未捕获 Token，请\
 在光鸭网页里切换文件夹");if(!o)throw new Error("请先打开“全部”中的目标文件夹，再开始导入");
 ({files:d,alignedPath:c}=ti(Cn(JSON.parse(e.get("json").value)),o))}catch(M){a("无法开始："+
 M.message),e.get("progress").textContent="导入失败："+M.message;return}if(c&&a(`清单中的 \
 /${c} 就是当前目录，直接复用，不再重复嵌套`),!d.length){e.get("progress").
 textContent="清单目录就是当前目录，没有需要导入的子项目";return}let f=null,
-m=!1,u="",p=null;const w=Xe.token,y=ct(650,_n.bind(null,w)),I=ei(l,y,a),A=or(w,!1);n=o,Lt(),
+m=!1,u="",p=null;const w=Ye.token,y=ct(650,_n.bind(null,w)),I=ei(l,y,a),A=or(w,!1);n=o,Lt(),
 a(`开始处理 ${d.length} 个项目；固定目标：${o.path}；目录 ID：${l}`),e.get(
 "progress").textContent=`准备导入 ${d.length} 项…`;try{if(r){const M=await ni(d,o,A,
 b=>{e.get("progress").textContent=b},void 0,void 0,pt,a);if(e.get("progress").textContent=
@@ -5033,15 +5033,15 @@ M.skipped+M.cleanupFailed+d.length-M.processed;e.get("progress").textContent=`${
 文件已删除 ${M.deleted}，空旧目录已清理 ${M.directories}；待确认 ${M.pending}\
 ，未命中 ${M.missed}，失败 ${M.failed}，跳过 ${M.skipped}，旧版清理失败 ${M.
 cleanupFailed}，未处理 ${d.length-M.processed}。`}else if(f){const{saved:M,pending:b,
-missed:N,failed:k,processed:q,directories:U,skipped:C}=f;e.get("progress").textContent=`导入\
-结束：已处理 ${q}/${d.length} 项；确认生成 ${M}，同名跳过 ${C}，待确认 ${b}\
-，未命中 ${N}，失败 ${k}，目录就绪 ${U}。`}else e.get("progress").textContent=
+missed:T,failed:k,processed:F,directories:D,skipped:E}=f;e.get("progress").textContent=`导入\
+结束：已处理 ${F}/${d.length} 项；确认生成 ${M}，同名跳过 ${E}，待确认 ${b}\
+，未命中 ${T}，失败 ${k}，目录就绪 ${D}。`}else e.get("progress").textContent=
 m?"已取消，未修改网盘文件":u?"导入未完成："+u:"导入未开始";f&&a(`结束：\
 文件已确认生成 ${f.saved}，同名跳过 ${f.skipped}，待确认 ${f.pending}，秒传未命\
 中 ${f.missed}；目录就绪 ${f.directories}，失败项目 ${f.failed}，未处理 ${d.
 length-f.processed}。`),m||a("请刷新目录核对结果；未完成项目保留旧版，已验证的新版可在下次复用。"),
-n=null,Lt()}};e.get("start").onclick=()=>i()}const Nt=/\.(mkv|mp4|avi|mov|wmv|m4v|ts|m2ts|mpg|mpeg|webm|iso)$/i,
-Vt=/\.(srt|ass|ssa|vtt|sub|idx)$/i,Ge=e=>e.replace(/\.[^.]+$/,""),On=e=>String(e).split("：").
+n=null,Lt()}};e.get("start").onclick=()=>i()}const Rt=/\.(mkv|mp4|avi|mov|wmv|m4v|ts|m2ts|mpg|mpeg|webm|iso)$/i,
+Vt=/\.(srt|ass|ssa|vtt|sub|idx)$/i,Qe=e=>e.replace(/\.[^.]+$/,""),On=e=>String(e).split("：").
 map(t=>t.normalize("NFKC")).join("：").replace(/:/g,"：").replace(/[\\/*?"<>|\x00-\x1f]/g,
 " ").replace(/\s+/g," ").trim().replace(/[. ]+$/,""),ra="(?:(?:240|360|480|540|576|720|108\
 0|1440|2160|4320)p|(?:480|576|1080)i)",aa={"4k":"2160p","8k":"4320p","640x360":"360p","720\
@@ -5049,7 +5049,7 @@ x480":"480p","960x540":"540p","720x576":"576p","1280x720":"720p","1920x1080":"10
 x1440":"1440p","3840x2160":"2160p","7680x4320":"4320p"},ia=[ra,...Object.keys(aa).map(e=>e.
 replace("x","[x×]"))].join("|"),ci=new RegExp("^(?:"+ia+")$","i"),dr="(?<![a-z0-9])(?:"+ia+
 ")(?![a-z0-9])",di=new RegExp(dr,"gi"),sa=new RegExp(String.raw`\bS\d{1,2}E\d|\bSeason[ ._-]*\d{1,2}|\bSE?\d{1,2}\b|\b\d{1,2}x\d|\b(?:EP?|Episode)[ ._-]*\d{1,3}(?=$|[. _-])|第\s*[0-9一二三四五六七八九十零〇两]+\s*[季集话]|${dr}|\b(?:BluRay|WEB[ ._-]?DL|WEBRip|REMUX|HDR|DV|x26[45]|h[ ._-]?26[45]|HEVC|AVC|DTS|AAC|AC3)\b`,
-"i");function zn(e){const t=new Set(Array.from(Ge(e).normalize("NFKC").matchAll(di),([n])=>{
+"i");function zn(e){const t=new Set(Array.from(Qe(e).normalize("NFKC").matchAll(di),([n])=>{
 const a=n.toLowerCase().replace("×","x");return aa[a]||a}));return t.size===1?t.values().
 next().value:""}function oa(e){const t=String(e).normalize("NFKC"),n=a=>{if(/^\d+$/.test(a))
 return Number(a);const i={零:0,"〇":0,一:1,二:2,两:2,三:3,四:4,五:5,六:6,七:7,八:8,
@@ -5069,12 +5069,12 @@ if(i<=s.episode_count)return{season:s.season_number,episode:i};i-=s.episode_coun
 function ca(e,t,n){if(!Number.isInteger(t)||t<1||!Number.isInteger(n))return null;const a=la(
 e),i=a.findIndex(o=>o.season_number===t);if(i<0||n<=a[i].episode_count||a.slice(0,i+1).some(
 (o,l)=>o.season_number!==l+1))return null;const s=a.slice(0,i).reduce((o,l)=>o+l.episode_count,
-0),r=n-s;return r>0&&r<=a[i].episode_count?{season:t,episode:r}:null}function da(e){const t=Ge(
+0),r=n-s;return r>0&&r<=a[i].episode_count?{season:t,episode:r}:null}function da(e){const t=Qe(
 e).normalize("NFKC").replace(/[【】]/g,o=>o==="【"?"[":"]"),n=[...t.matchAll(/\[([^\]]+)\]/g)].
 map(o=>o[1].trim()),a=/^(?:動畫瘋|动画疯|CXRAW|KRSUB|DBD[- ]?Raws?|字幕|中字|简体|繁体|中文配音|電影|电影|剧场版|劇場版|BDrip|BDRip|1080P?|720P?|2160P?)$/i,
 s=n.filter(o=>!a.test(o)&&/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(o)).
 sort((o,l)=>l.length-o.length)[0];if(!s)return null;const r=t.slice(0,t.indexOf("[")).replace(
-/\]+$/,"").trim();return{title:s,release:n[0]!==s?n[0]:r}}function tt(e,t=[]){const n=Ge(e).
+/\]+$/,"").trim();return{title:s,release:n[0]!==s?n[0]:r}}function tt(e,t=[]){const n=Qe(e).
 normalize("NFKC").replace(/[【】]/g,b=>b==="【"?"[":"]"),a=[...n.matchAll(/\[([^\]]+)\]/g)].
 map(b=>b[1].trim()),i=a.find(b=>/^(?:EP?\s*)?\d{1,3}(?:v\d+)?$/i.test(b)),s=b=>ci.test(b)||
 /^(?:\d{3,4}p|\d{4}|4k|8k|BDRip|BluRay|WEB[ ._-]?DL|WEBRip|DVD|REMUX|HEVC.*|AVC.*|x26[45].*|H[ .]?26[45].*|FLAC.*|AAC.*|DTS.*|AC3.*|HDR.*|DV|10bit|8bit|CHS|CHT|ENG|简繁.*|简体.*|繁体.*|中字.*|動畫瘋|动画疯|CXRAW|KRSUB|DBD[- ]?Raws?|中文配音|电影|電影|剧场版|劇場版)$/i.
@@ -5085,19 +5085,19 @@ d=n.match(/第\s*(\d{1,3})\s*[集话]/),c=n.match(/(?:^|[. _-])(?:EP?|Episode)[.
 n.match(/^(\d{1,3})$/),f=[n,...[...t].reverse()].map(ur).find(b=>b!==null)??null,m=l?Number(
 l[2]):d?Number(d[1]):c?Number(c[1]):i?Number(i.match(/\d+/)[0]):null,u=l?Number(l[1]):f,p=[
 ...n.matchAll(/(?:^|[. _（(\[-])((?:19|20)\d{2})(?=$|[. _）)\]-])/g)].filter(b=>Number(b[1])<=
-new Date().getFullYear()+1).at(-1),w=b=>{let N=b.replace(/\[[^\]]*\]/g," ");if(p){const k=new RegExp(
-"(?:^|[. _（(\\[-])"+p[1]+"(?=$|[. _）)\\]-])").exec(N);k&&N.slice(0,k.index).trim()&&(N=
-N.slice(0,k.index))}return N.split(sa)[0].replace(/[._]/g," ").replace(/[-\s]+$/,"").trim()};
+new Date().getFullYear()+1).at(-1),w=b=>{let T=b.replace(/\[[^\]]*\]/g," ");if(p){const k=new RegExp(
+"(?:^|[. _（(\\[-])"+p[1]+"(?=$|[. _）)\\]-])").exec(T);k&&T.slice(0,k.index).trim()&&(T=
+T.slice(0,k.index))}return T.split(sa)[0].replace(/[._]/g," ").replace(/[-\s]+$/,"").trim()};
 let y=r?w(r.title):w(n)||(o?w(o):"");const I=/剧场版|劇場版|特别篇|特別篇|特典|导演剪辑|導演剪輯|加长版|加長版|未删减|未刪減|\b(?:movie|special|OVA|OAD|SP|director['’]?s[ ._-]*cut|extended[ ._-]*cut)\b/i.
 test(n),A=/导演剪辑|導演剪輯|加长版|加長版|未删减|未刪減|director['’]?s[ ._-]*cut|extended[ ._-]*cut/i;
 if(I&&o){const b=a.filter(k=>k!==r?.release&&k!==i&&!s(k)&&!A.test(k)&&!/^(?:剧场版|劇場版|特别篇|特別篇|特典|movie|special|OVA|OAD|SP)$/i.
-test(k)),N=[...new Set(b.map(w).filter(Boolean))];N.length&&(y=N.join(" "))}(!y||/^\d{1,3}$/.
+test(k)),T=[...new Set(b.map(w).filter(Boolean))];T.length&&(y=T.join(" "))}(!y||/^\d{1,3}$/.
 test(y)||/^(?:S\d+|Season\s*\d+|EP?\s*\d+)$/i.test(y))&&(y=[...t].reverse().map(w).find(b=>b&&
 !/^(?:电影|剧集|纪录片|综艺|动漫|Season\s*\d+|S\d+)$/i.test(b))||"");const M=[...t].
 reverse().join("/").match(/(?:19|20)\d{2}/);return{query:y,standalone:I,year:p?.[1]||M?.[0]||
 "",season:u,episode:m,endEpisode:l?.[3]?Number(l[3]):null,tv:m!==null||f!==null}}const pr=e=>/花絮|幕后|幕後|预告|預告|制作特辑|製作特輯|拍摄特辑|拍攝特輯|(?:^|[^a-z0-9])(?:extras?|featurettes?|trailers?|teasers?|bloopers?|outtakes?|sample|behind[ ._-]+the[ ._-]+scenes|special[ ._-]+features)(?=$|[^a-z0-9])/i.
-test(Ge(e)),en=e=>!e.explicitlySelected&&pr(e.name);async function fi(e,t,n="",a=()=>{},i){
-const s=Ye,r=u=>[...n.split("/").filter(Boolean).map((p,w,y)=>({id:"path:"+y.slice(0,w+1).
+test(Qe(e)),en=e=>!e.explicitlySelected&&pr(e.name);async function fi(e,t,n="",a=()=>{},i){
+const s=Ge,r=u=>[...n.split("/").filter(Boolean).map((p,w,y)=>({id:"path:"+y.slice(0,w+1).
 join("/"),name:p})),...(u.node.ancestors||[]).map(p=>({id:"id:"+p.id,name:p.name}))],o=/特别篇|特別篇|番外篇|(?:^|[^a-z0-9])(?:special|OVA|OAD|SP)(?=$|[^a-z0-9])/i,
 l=(u,p)=>{d.has(u)||d.set(u,new Map),d.get(u).set(String(p.id),p)},d=new Map,c=[];for(const u of e){
 if(u.type!=="tv"||!u.detail||u.error||u.season===0||u.episode==null)continue;const p=[u.detail.
@@ -5107,23 +5107,23 @@ startsWith(y.year)))||l(w.id,u.detail)}u.node.parentId!=null&&l("parent:"+u.node
 u.detail)}const f=new Map,m=u=>(f.has(u.id)||f.set(u.id,pa(t,u.id,0).then(({episodes:p})=>p)),
 f.get(u.id));return await We(e,"特别篇归属检查（视频）",i,async(u,p,w,y)=>{if(u.
 detail&&!u.error&&(u.aiAssisted||u.type==="movie"||u.season===0))return"skipped";const I=tt(
-u.node.name);if(I.episode!=null||en(u.node))return"skipped";const A=r(u).reverse().find(C=>d.
-has(C.id)),M=o.test(Ge(u.node.name)),b=s(Ge(u.node.name)),N=(C,O=b)=>[C.name,C.original_name,
-...C.workAliases||[]].some(j=>s(j).length>=3&&O.startsWith(s(j))),k=d.get("parent:"+u.node.
-parentId),q=A?[...d.get(A.id).values()]:M?[...k?.values()||[]].filter(C=>N(C)):[];if(!q.length)
-return"skipped";if(q.length!==1)return M&&(u.detail=null,u.error="此目录包含多个版本的同名剧集，特别篇归属不唯一"),
-"skipped";const U=q[0];try{const C=await m(U);p();let O=C.filter(x=>x.aliases.some(v=>s(v).
-length>=4&&b.includes(s(v))));const j=/christmas[ ._-]+special|圣诞特别篇|聖誕特別篇/i;
-if(!O.length&&j.test(u.node.name)){const x=u.node.name.match(/(?:christmas[ ._-]+special|圣诞特别篇|聖誕特別篇)[ ._（(-]*((?:19|20)\d{2})/i)?.[1];
-x&&(O=C.filter(v=>v.air_date===x+"-12-25"))}const T=s(I.query);!O.length&&M&&C.length===1&&
-[U.name,U.original_name,...U.workAliases||[]].some(x=>s(x).length>=3&&[s(x),s(x)+"特别篇",
-s(x)+"特別篇",s(x)+"special",s(x)+"番外篇",s(x)+"sp",s(x)+"ova",s(x)+"oad"].includes(
-T))&&(O=C);const h=O.length===1?O[0]:null;if(!h&&!M)return;Object.assign(u,{detail:U,match:"\
-tv:"+U.id,type:"tv",title:U.name,year:(U.first_air_date||"").slice(0,4),season:0,episode:h?.
-episode_number??null}),h?Object.assign(u,{category:fr(U,"tv"),endEpisode:null,episodeInferred:!0,
+u.node.name);if(I.episode!=null||en(u.node))return"skipped";const A=r(u).reverse().find(E=>d.
+has(E.id)),M=o.test(Qe(u.node.name)),b=s(Qe(u.node.name)),T=(E,O=b)=>[E.name,E.original_name,
+...E.workAliases||[]].some(P=>s(P).length>=3&&O.startsWith(s(P))),k=d.get("parent:"+u.node.
+parentId),F=A?[...d.get(A.id).values()]:M?[...k?.values()||[]].filter(E=>T(E)):[];if(!F.length)
+return"skipped";if(F.length!==1)return M&&(u.detail=null,u.error="此目录包含多个版本的同名剧集，特别篇归属不唯一"),
+"skipped";const D=F[0];try{const E=await m(D);p();let O=E.filter(S=>S.aliases.some(v=>s(v).
+length>=4&&b.includes(s(v))));const P=/christmas[ ._-]+special|圣诞特别篇|聖誕特別篇/i;
+if(!O.length&&P.test(u.node.name)){const S=u.node.name.match(/(?:christmas[ ._-]+special|圣诞特别篇|聖誕特別篇)[ ._（(-]*((?:19|20)\d{2})/i)?.[1];
+S&&(O=E.filter(v=>v.air_date===S+"-12-25"))}const j=s(I.query);!O.length&&M&&E.length===1&&
+[D.name,D.original_name,...D.workAliases||[]].some(S=>s(S).length>=3&&[s(S),s(S)+"特别篇",
+s(S)+"特別篇",s(S)+"special",s(S)+"番外篇",s(S)+"sp",s(S)+"ova",s(S)+"oad"].includes(
+j))&&(O=E);const h=O.length===1?O[0]:null;if(!h&&!M)return;Object.assign(u,{detail:D,match:"\
+tv:"+D.id,type:"tv",title:D.name,year:(D.first_air_date||"").slice(0,4),season:0,episode:h?.
+episode_number??null}),h?Object.assign(u,{category:fr(D,"tv"),endEpisode:null,episodeInferred:!0,
 error:""}):u.error="已定位特别篇；标题或播出日期无法唯一对应，请下拉选择集名",
-c[w]=u}catch(C){if(y(C),p(),C.stop)throw C;return M&&(u.detail=null,u.error="特别篇信息查询失败："+
-C.message),"failed"}},a,8,"相同作品的特别篇季资料复用请求"),c.filter(Boolean)}
+c[w]=u}catch(E){if(y(E),p(),E.stop)throw E;return M&&(u.detail=null,u.error="特别篇信息查询失败："+
+E.message),"failed"}},a,8,"相同作品的特别篇季资料复用请求"),c.filter(Boolean)}
 function fr(e,t){const n=new Set((e.genres||[]).map(a=>a.id));return n.has(99)?"纪录片":
 t==="movie"?"电影":n.has(16)?"动漫":t==="tv"&&(n.has(10764)||n.has(10767))?"综艺":t===
 "tv"?"剧集":"电影"}function un(e){return e.find(t=>["电影","剧集","纪录片","综艺",
@@ -5140,7 +5140,7 @@ const d=String(e.season).padStart(2,"0"),c=String(e.episode).padStart(2,"0");if(
 2,"0")}o.push("Season "+d)}if(t===i&&o.shift(),r&&(l+="."+r),l+=e.node.name.slice(e.node.name.
 lastIndexOf(".")),[...o,l].some(d=>d.length>=256||/[\\\/:*?"<>|\x00-\x1f]/.test(d)))throw new Error(
 "目标名称过长或含 123 不允许的字符，请修改标准片名");return o.join("\
-/")+"/"+l}function Dt(e,t){const n=Ge(e),a=Ge(t);if(a.toLowerCase()===n.toLowerCase())return"";
+/")+"/"+l}function Dt(e,t){const n=Qe(e),a=Qe(t);if(a.toLowerCase()===n.toLowerCase())return"";
 if(!a.toLowerCase().startsWith(n.toLowerCase()))return null;const i=a.slice(n.length).replace(
 /zh[._ -](cn|tw|hans|hant)(?=[. _&+-]|$)/gi,"zh$1");return/^(?:[. _&+-](?:zh(?:cn|tw|hans|hant)?|chs|cht|scjp|tcjp|chi|zho|en|eng|ja|jpn|ko|kor|简体|繁体|简中|繁中|中文|英文|双语|中英|forced|default|sdh|synced|简英|繁英))+$/i.
 test(i)?i.replace(/[ _&+-]+/g,".").replace(/zh(cn|tw|hans|hant)(?=[.]|$)/gi,"zh-$1"):null}
@@ -5157,53 +5157,53 @@ l.order,d.order)),{nodes:s.map(l=>l.node),children:r}}function pn(e){if(!e?.toke
 const n="cross-drive-file-history-v1:"+Ht(new TextEncoder().encode((e.provider||"123")+":"+
 e.token)),a=()=>new Map(GM_getValue(n,[])),i=(o,l)=>[String(l),o.name,o.size,String(o.md5||
 "").toLowerCase()],s=(o,l,d)=>{const[c,f,m,u]=i(l,d);return o[0]===c&&o[1]===f&&o[2]===m&&
-(!o[3]||!u||o[3]===u)},r=(o,l,d)=>{o.delete(l),o.set(l,d),Rt(o,5e3),GM_setValue(n,[...o])};
+(!o[3]||!u||o[3]===u)},r=(o,l,d)=>{o.delete(l),o.set(l,d),Mt(o,5e3),GM_setValue(n,[...o])};
 return{get(o,l,d=a()){const c=d.get(String(o.id));return c&&s(c.file,o,l)?c:null},load:a,revision(o){
 const l=new Set(o.map(String));return JSON.stringify([...a()].filter(([,d])=>l.has(d.videoId)))},
 link(o,l,d,c){if(l.id==null||o.node.id==null)return;const f=a(),m=String(l.id);r(f,m,{file:i(
 l,l.parentId??o.node.parentId),original:l.name,videoId:String(o.node.id),video:i(o.node,o.
 node.parentId),language:d,suffix:c})},organized(o,l){const d=a(),c=String(o.id),f=this.get(
-o,o.parentId,d);(f||Nt.test(o.name))&&d.set(c,{...f,original:f?.original||o.originalName||
+o,o.parentId,d);(f||Rt.test(o.name))&&d.set(c,{...f,original:f?.original||o.originalName||
 o.name,file:i(l,l.parentId)});for(const[m,u]of d)u.videoId===c&&s(u.video,o,o.parentId)&&d.
 set(m,{...u,video:i(l,l.parentId)});d.has(c)&&r(d,c,d.get(c))},associated(o,l,d){return l&&
-s(o.video,l,d)}}}function ua(e){const t=Ge(e),n=/(?:^|[. _-])S\d{1,2}[. _-]*E\d{1,3}(?:[. _-]*E\d{1,3})?(?=$|[. _-])/i.
+s(o.video,l,d)}}}function ua(e){const t=Qe(e),n=/(?:^|[. _-])S\d{1,2}[. _-]*E\d{1,3}(?:[. _-]*E\d{1,3})?(?=$|[. _-])/i.
 exec(t);if(!n||/E\d+[ ._]*[-~][ ._]*(?:E)?\d+/i.test(t))return null;const a=tt(e);if(!a.query||
 a.standalone)return null;const i=t.slice(0,n.index+n[0].length),s=/[. _-](?:\d{3,4}[pi]|4k|8k|BluRay|BDRip|WEB[ ._-]?(?:DL|Rip)|REMUX|HDTV|DVDRip|[xh]26[45]|HEVC|AVC)(?=$|[. _-])/i,
 r=t.slice(i.length),o=Dt(i+".mkv",e);if(o===null&&!s.test(r)||/(?:网络版|網絡版|ネット版|\bweb[ ._-]+edition\b)/i.
 test(e))return null;let l=o;if(l===null){for(const d of r.matchAll(/[. _&+-]/g))if(l=Dt("e\
 pisode.mkv","episode"+r.slice(d.index)+".srt"),l!==null)break}return{parsed:a,suffix:l??"",
-resolution:zn(e)}}function Gt(e,t,n){const a=e.filter(d=>!d.directory&&Nt.test(d.name)),i=new Map,
+resolution:zn(e)}}function Gt(e,t,n){const a=e.filter(d=>!d.directory&&Rt.test(d.name)),i=new Map,
 s=[],r=n?.load(),o=new Map(a.map(d=>[String(d.id),d])),l=new Map;for(const d of e.filter(c=>!c.
 directory&&Vt.test(c.name))){const c=t??d.parentId,f=n?.get(d,c,r),m=f?.videoId&&o.get(f.videoId),
 u=f?.videoId?n.associated(f,m,t??m?.parentId)?[m]:[]:a.filter(b=>Dt(b.name,d.name)!==null),
-p=!f?.videoId&&!u.length?ua(d.name):null;if(p){const b=p.parsed,N=Ye(b.query);if(N)for(const k of a){
-if(!l.has(k)){const O=tt(k.name),j=t??k.parentId,T=n?.get(k,j,r)?.original,h=Tt.get({...k,
-parentId:j}),x=[O.query,h?.query,...h?.aliases||[],T&&tt(T).query];l.set(k,{parsed:O,resolution:zn(
-k.name),titles:new Set(x.filter(Boolean).map(Ye))})}const{parsed:q,resolution:U,titles:C}=l.
-get(k);!q.standalone&&q.season===b.season&&q.episode===b.episode&&q.endEpisode===b.endEpisode&&
-(!p.resolution||!U||p.resolution===U)&&(!q.year||!b.year||q.year===b.year)&&C.has(N)&&u.push(
+p=!f?.videoId&&!u.length?ua(d.name):null;if(p){const b=p.parsed,T=Ge(b.query);if(T)for(const k of a){
+if(!l.has(k)){const O=tt(k.name),P=t??k.parentId,j=n?.get(k,P,r)?.original,h=Nt.get({...k,
+parentId:P}),S=[O.query,h?.query,...h?.aliases||[],j&&tt(j).query];l.set(k,{parsed:O,resolution:zn(
+k.name),titles:new Set(S.filter(Boolean).map(Ge))})}const{parsed:F,resolution:D,titles:E}=l.
+get(k);!F.standalone&&F.season===b.season&&F.episode===b.episode&&F.endEpisode===b.endEpisode&&
+(!p.resolution||!D||p.resolution===D)&&(!F.year||!b.year||F.year===b.year)&&E.has(T)&&u.push(
 k)}}if(u.length!==1){s.push(d);continue}const w=u[0],y=Dt(w.name,d.name),I=f?.language?"."+
-f.language:"",A=f&&/\.synced$/i.test(Ge(d.name))?(f.language==="und"?"":I)+".synced":"",M=y||
+f.language:"",A=f&&/\.synced$/i.test(Qe(d.name))?(f.language==="und"?"":I)+".synced":"",M=y||
 p?.suffix||f?.suffix||A||I;i.has(String(w.id))||i.set(String(w.id),[]),i.get(String(w.id)).
 push({...d,parentId:c,suffix:M,language:f?.language})}return{linked:i,unmatched:s}}async function mi(e,t,n=()=>{},a=()=>{},i,s){
-const{nodes:r,children:o}=await hi(e,t,n,a,s),l=r.filter(b=>Nt.test(b.name)),d=new Map;for(const b of l)
+const{nodes:r,children:o}=await hi(e,t,n,a,s),l=r.filter(b=>Rt.test(b.name)),d=new Map;for(const b of l)
 d.has(b.parentId)||d.set(b.parentId,[]),d.get(b.parentId).push(b);const c=new Map,f=new Map,
 m=[],u=new Map,p=new Map(r.filter(b=>Vt.test(b.name)).map(b=>[String(b.id),b])),w=new Set(
-[...d.keys(),...Array.from(p.values(),b=>b.parentId)]),y=i?.load();for(const b of w){const N=await o(
-b);u.set(b,N),f.set(b,new Set(N.map(k=>k.name.toLowerCase())));for(const k of d.get(b)||[]){
-const U=i?.get(k,b,y)?.original||Tt.get(k)?.originalName;U&&(k.originalName=U)}}const I=b=>{
-const N=new Map,k=[],q=[],U=new Set(l.map(T=>String(T.id)));for(const[T,h]of b){a();const x=Gt(
-h,T,i),v=d.get(T)||[],R=z=>{const L=p.get(String(z.id))||v[0];return{...z,parentId:T,folders:L?.
-folders||[],ancestors:L?.ancestors||[],path:[...L?.folders||[],z.name].join("/")}};for(const z of v)
-N.set(String(z.id),(x.linked.get(String(z.id))||[]).map(R));k.push(...x.unmatched.map(R)),
-q.push(...h.filter(z=>!z.directory&&Nt.test(z.name)).map(z=>({...z,parentId:T})))}const C=i?.
-load(),O=k.filter(T=>p.get(String(T.id))?.parentId===T.parentId&&(i?.get(T,T.parentId,C)?.
-videoId||ua(T.name))),j=new Set;if(O.length){const T=Gt([...q,...O],void 0,i);for(const[h,
-x]of T.linked)if(U.has(h))for(const v of x)j.add(String(v.id)),N.get(h).push(v)}return{linked:N,
-unmatched:k.filter(T=>!j.has(String(T.id)))}},A=()=>{const b=I(u);for(const N of l)c.set(N.
-id,b.linked.get(String(N.id)));m.length=0;for(const N of b.unmatched)m.push(N)},M=async b=>{
-const N=new Map([...w].map(k=>[k,[]]));return await Tr([...w],8,async k=>{N.set(k,await b(
-k))},a),I(N)};return A(),{videos:l,linked:c,namesByParent:f,unmatched:m,refreshSubtitleLinks:A,
+[...d.keys(),...Array.from(p.values(),b=>b.parentId)]),y=i?.load();for(const b of w){const T=await o(
+b);u.set(b,T),f.set(b,new Set(T.map(k=>k.name.toLowerCase())));for(const k of d.get(b)||[]){
+const D=i?.get(k,b,y)?.original||Nt.get(k)?.originalName;D&&(k.originalName=D)}}const I=b=>{
+const T=new Map,k=[],F=[],D=new Set(l.map(j=>String(j.id)));for(const[j,h]of b){a();const S=Gt(
+h,j,i),v=d.get(j)||[],R=z=>{const U=p.get(String(z.id))||v[0];return{...z,parentId:j,folders:U?.
+folders||[],ancestors:U?.ancestors||[],path:[...U?.folders||[],z.name].join("/")}};for(const z of v)
+T.set(String(z.id),(S.linked.get(String(z.id))||[]).map(R));k.push(...S.unmatched.map(R)),
+F.push(...h.filter(z=>!z.directory&&Rt.test(z.name)).map(z=>({...z,parentId:j})))}const E=i?.
+load(),O=k.filter(j=>p.get(String(j.id))?.parentId===j.parentId&&(i?.get(j,j.parentId,E)?.
+videoId||ua(j.name))),P=new Set;if(O.length){const j=Gt([...F,...O],void 0,i);for(const[h,
+S]of j.linked)if(D.has(h))for(const v of S)P.add(String(v.id)),T.get(h).push(v)}return{linked:T,
+unmatched:k.filter(j=>!P.has(String(j.id)))}},A=()=>{const b=I(u);for(const T of l)c.set(T.
+id,b.linked.get(String(T.id)));m.length=0;for(const T of b.unmatched)m.push(T)},M=async b=>{
+const T=new Map([...w].map(k=>[k,[]]));return await Tr([...w],8,async k=>{T.set(k,await b(
+k))},a),I(T)};return A(),{videos:l,linked:c,namesByParent:f,unmatched:m,refreshSubtitleLinks:A,
 readSubtitleLinks:M}}const fn=new Map;function gi(){let e=0;for(const t of fn.values())e+=
 t.clearCache();return e}async function pa(e,t,n){const a="/tv/"+t+"/season/"+n,[i,s]=await Promise.
 all([e.get(a),e.get(a,{language:"en-US"}).catch(()=>null)]),r=new Map((s?.episodes||[]).map(
@@ -5214,184 +5214,184 @@ e.trim(),!e)throw new Error("请先填写 TMDB API Key 或 API Read Access Token
 e))return fn.get(e);const t=new Map,n=ct(250,async(s,r={})=>{const o=new URL("https://api.\
 themoviedb.org/3"+s);for(const[c,f]of Object.entries({language:"zh-CN",...r}))f!==""&&o.searchParams.
 set(c,f);const l={Accept:"application/json"};/^[a-f0-9]{32}$/i.test(e)?o.searchParams.set(
-"api_key",e):l.Authorization="Bearer "+e.replace(/^Bearer\s+/i,"");const d=await Ct(o.href,
+"api_key",e):l.Authorization="Bearer "+e.replace(/^Bearer\s+/i,"");const d=await Et(o.href,
 {headers:l,credentials:"omit"});if(d.success===!1)throw new Error("TMDB 查询失败："+(d.
 status_message||d.status_code));return d}),a=(s,r={})=>{const o=JSON.stringify([s,r]),l=t.
 get(o);if(l&&Date.now()-l.time<6e5)return l.promise;const d={time:Date.now(),promise:n(s,r).
-catch(c=>{throw t.get(o)===d&&t.delete(o),c})};return t.delete(o),t.set(o,d),Rt(t,500),d.promise},
+catch(c=>{throw t.get(o)===d&&t.delete(o),c})};return t.delete(o),t.set(o,d),Mt(t,500),d.promise},
 i={get:a,clearCache(){const s=t.size;return t.clear(),s},async search(s,r=null){const o=await a(
 "/search/multi",{query:s,include_adult:"false"}),l=[...o.results],d=Math.min(o.total_pages||
 1,5);for(let c=2;!(r&&await r(l))&&c<=d;c++){const f=await a("/search/multi",{query:s,include_adult:"\
 false",page:c});l.push(...f.results)}return[...new Map(l.filter(c=>["movie","tv"].includes(
-c.media_type)).map(c=>[c.media_type+":"+c.id,c])).values()]}};return fn.set(e,i),Rt(fn,2),
-i}function ha(e,t=650){const n=async(s,r)=>{const o=await _n(e,s,r);if(Et(o)!==0)throw at(
-"光鸭整理",o);return o},a=ct(t,n),i=ct(180,n);return(s,r)=>(s===mt.task?i:a)(s,r)}async function Vn(e,t){
+c.media_type)).map(c=>[c.media_type+":"+c.id,c])).values()]}};return fn.set(e,i),Mt(fn,2),
+i}function ha(e,t=650){const n=async(s,r)=>{const o=await _n(e,s,r);if(kt(o)!==0)throw at(
+"光鸭整理",o);return o},a=ct(t,n),i=ct(180,n);return(s,r)=>(s===gt.task?i:a)(s,r)}async function Vn(e,t){
 if(e==="123"){const i=cn(),s=ir(i),r=t?.session.token===i.token&&t.session.parent===i.parent;
 s.mediaBreadcrumbs=r?t.source?.mediaBreadcrumbs||[]:[];const o=r?t.path:await Jr(s,s.mediaBreadcrumbs);
-return{session:i,source:s,path:o,selected:Yr("123")}}const n=Nn();if(!n)throw new Error("请\
-先打开光鸭“全部”中的文件夹");if(!Xe.token)throw new Error("未捕获光鸭登录状态，请切换文件\
-夹后重试");const a=or(Xe.token,!1);return a.parentId=n.id,a.breadcrumbs=n.breadcrumbs,
-{session:{provider:"光鸭",token:Xe.token,parent:n.id},source:a,path:n.exportPath,selected:Gr()}}
+return{session:i,source:s,path:o,selected:Xr("123")}}const n=Nn();if(!n)throw new Error("请\
+先打开光鸭“全部”中的文件夹");if(!Ye.token)throw new Error("未捕获光鸭登录状态，请切换文件\
+夹后重试");const a=or(Ye.token,!1);return a.parentId=n.id,a.breadcrumbs=n.breadcrumbs,
+{session:{provider:"光鸭",token:Ye.token,parent:n.id},source:a,path:n.exportPath,selected:Gr()}}
 async function hr(e,t,n){if(t.provider!=="光鸭")return ki(e,t,n);try{await cr(e,n,ha(t.token),
 et,()=>{})}catch(a){throw a.terminal||(a.pending=!0),a}}function yi(e,t,n){const a=e.provider===
-"光鸭",i=a?ha(e.token,0):ct(700,async(h,x)=>{const v=await Ct(e.base+h,{method:"POST",credentials:"\
-omit",headers:{...e.headers,"Content-Type":"application/json"},body:JSON.stringify(x)});if(![
-0,200].includes(kt(v)))throw at("123 "+h+(x.fileName?"，请求名称："+x.fileName:""),v);
+"光鸭",i=a?ha(e.token,0):ct(700,async(h,S)=>{const v=await Et(e.base+h,{method:"POST",credentials:"\
+omit",headers:{...e.headers,"Content-Type":"application/json"},body:JSON.stringify(S)});if(![
+0,200].includes(St(v)))throw at("123 "+h+(S.fileName?"，请求名称："+S.fileName:""),v);
 return v}),s=new Map([["",e.parent]]),r=new Map,o=new Map,l=pn(e),d=new Map,c=new Map,f=new Map,
-m=new Map;let u=[],p=()=>{};const w=(h,x)=>(h.size==null||x.size==null||x.size===h.size)&&
-(!h.md5||!x.md5||x.md5.toLowerCase()===h.md5.toLowerCase()),y=async(h,x,v,R)=>{let z=e.parent;
-const L=[],H=Ke(h);for(const[X,Se]of H.entries()){v();const de=(await x(z)).filter(be=>be.
-name.normalize("NFKC").toLowerCase()===Se.normalize("NFKC").toLowerCase());if(L.push(de.map(
-be=>[String(be.id),be.name,!!be.directory,be.size,be.md5]).sort((be,J)=>be[0].localeCompare(
-J[0]))),R){const[be]=de,J=X<H.length-1;if(de.length!==1||be.name!==Se||!!be.directory!==J||
-!J&&(String(be.id)!==String(R.id)||String(z)!==String(R.parentId)||!w(R,be)))throw new Error(
+m=new Map;let u=[],p=()=>{};const w=(h,S)=>(h.size==null||S.size==null||S.size===h.size)&&
+(!h.md5||!S.md5||S.md5.toLowerCase()===h.md5.toLowerCase()),y=async(h,S,v,R)=>{let z=e.parent;
+const U=[],K=He(h);for(const[Y,ke]of K.entries()){v();const de=(await S(z)).filter(ue=>ue.
+name.normalize("NFKC").toLowerCase()===ke.normalize("NFKC").toLowerCase());if(U.push(de.map(
+ue=>[String(ue.id),ue.name,!!ue.directory,ue.size,ue.md5]).sort((ue,Q)=>ue[0].localeCompare(
+Q[0]))),R){const[ue]=de,Q=Y<K.length-1;if(de.length!==1||ue.name!==ke||!!ue.directory!==Q||
+!Q&&(String(ue.id)!==String(R.id)||String(z)!==String(R.parentId)||!w(R,ue)))throw new Error(
 "已就位的文件发生变化，请重新生成预览："+h)}if(de.length!==1||!de[0].directory)
-break;z=de[0].id}return JSON.stringify(L)},I=async(h,x,v="",R=new Set)=>{if(p(),R.has(String(
+break;z=de[0].id}return JSON.stringify(U)},I=async(h,S,v="",R=new Set)=>{if(p(),R.has(String(
 h)))throw new Error("目录存在循环或重复引用，无法确认整理范围");R.add(
-String(h));const z=[];for(const L of await x(h)){p();const H={id:String(L.id),parentId:String(
-h),name:L.name,directory:!!L.directory,size:L.size??null,md5:L.md5||"",path:[v,L.name].filter(
-Boolean).join("/")};z.push(H),L.directory&&z.push(...await I(L.id,x,H.path,R))}return z},A=h=>JSON.
-stringify(h.map(x=>[x.id,x.parentId,x.name,x.directory,x.size,x.md5]).sort((x,v)=>x[0].localeCompare(
-v[0]))),M=h=>A(h.map(x=>({...x,id:String(x.id),name:x.name+"\0"+x.suffix})));function b(h){
-const x=new Map;let v;return R=>n?(v||(v=n(h).then(z=>z.linked)),v):(x.has(R)||x.set(R,h(R).
-then(z=>Gt(z,R,l).linked)),x.get(R))}async function N(h,x=()=>{},v){p=x,r.clear(),o.clear(),
-u=[];const R=h.filter(J=>J.node.id===J.videoId),z=new Map;for(const J of R){if(J.atDestination)
-continue;const le=Ke(J.destination);le.pop();const se=J.node.ancestors||[];tn(le.at(-1))&&
-se.length&&!tn(se.at(-1).name)&&!/^(?:season[ ._-]*\d+|s\d+|第[一二三四五六七八九十百零0-9]+季|\d+季)$/i.
-test(se.at(-1).name.trim())&&le.pop();for(let ue=1;ue<le.length&&ue<=se.length;ue++){const he=se[se.
-length-ue];if(he.id===e.parent||un([he.name]))break;const oe=le.slice(0,le.length-ue+1).join(
-"/");z.has(he.id)||z.set(he.id,{folder:he,paths:new Set}),z.get(he.id).paths.add(oe)}}const L=Wt(
-t,new Map,x);await We(h,"整理目标快照（文件）",v,async(J,le,se)=>{u[se]=[J.destination,
-await y(J.destination,L,le,J.atDestination?J.node:void 0)]},x);const H=new Map(R.map(J=>[String(
-J.node.id),J]));d.clear(),c.clear(),f.clear();for(const J of R)J.atDestination&&f.set(String(
-J.node.id),J);for(const J of h)if(J.node.id!==J.videoId){const le=String(J.videoId);c.has(
-le)||c.set(le,new Map),c.get(le).set(String(J.node.id),J.node)}const X=b(L);await We(R,"预览\
-字幕关联（视频）",v,async({node:J})=>{const le=String(J.id),se=(await X(J.parentId)).
-get(le)||[];if(se.some(ue=>!c.get(le)?.has(String(ue.id)))||se.length!==(c.get(le)?.size||
-0))throw new Error("关联字幕已变化，请重新生成预览："+J.name);d.set(J,M(se))},
-x);const Se=[];await We([...z.values()],"整体目录方案预检（候选目录）",v,async({
-folder:J,paths:le},se,ue)=>{if(le.size!==1)return"skipped";const he=[...le][0],oe=await I(
-J.id,L),ie=oe.filter(ce=>!ce.directory&&Nt.test(ce.name)).map(ce=>ce.id);if(!ie.length||ie.
-some(ce=>!H.has(ce)||!H.get(ce).destination.startsWith(he+"/"))||oe.some(ce=>!ce.directory&&
-Vt.test(ce.name)&&!ie.some(He=>c.get(He)?.has(ce.id))))return"skipped";se(),Se[ue]={folder:J,
-path:he,contents:oe}},x,8,"同一目录内按顺序读子树，绑定按原顺序合并");
-for(const{folder:J,path:le,contents:se}of Se.filter(Boolean)){const ue=r.get(le),he=Ke(le).
-at(-1);(!ue||ue.name!==he&&J.name===he)&&(r.set(le,J),o.set(String(J.id),se))}const de=new Map(
-[["",e.parent]]),be=async J=>{if(de.has(J))return de.get(J);const le=Ke(J),se=le.pop(),ue=await be(
-le.join("/")),he=ue==null?[]:(await L(ue)).filter(ce=>ce.name===se);if(he.length>1||he.length&&
-!he[0].directory)throw new Error("目标目录同名冲突："+J);const oe=r.get(J);he.length&&
-oe&&r.delete(J);const ie=he[0]?.id??oe?.id??null;return de.set(J,ie),ie};for(const J of[...r.
-keys()].sort((le,se)=>Ke(le).length-Ke(se).length))x(),await be(J);return[...r].map(([J,le])=>({
-folder:le,destination:J,contents:o.get(String(le.id))}))}async function k(h){const x=Wt(t,
-new Map,p),v=b(x);u.length&&await We(u,"执行前复核目标（文件）",h,async([R,z],L)=>{
-if(await y(R,x,L)!==z)throw new Error("整理目标已变化，请重新生成预览："+R)},
-p),await We([...d],"执行前复核字幕（视频）",h,async([R,z])=>{const L=(await v(R.
-parentId)).get(String(R.id))||[];if(M(L)!==z)throw new Error("关联字幕在预览后变化，请重新生成预览："+
-R.name)},p),await We([...r.values()],"执行前复核目录（目录）",h,async R=>{const z=(await x(
-R.parentId)).find(L=>L.id===R.id);if(!z||!z.directory||z.name!==R.name||A(await I(R.id,x))!==
+String(h));const z=[];for(const U of await S(h)){p();const K={id:String(U.id),parentId:String(
+h),name:U.name,directory:!!U.directory,size:U.size??null,md5:U.md5||"",path:[v,U.name].filter(
+Boolean).join("/")};z.push(K),U.directory&&z.push(...await I(U.id,S,K.path,R))}return z},A=h=>JSON.
+stringify(h.map(S=>[S.id,S.parentId,S.name,S.directory,S.size,S.md5]).sort((S,v)=>S[0].localeCompare(
+v[0]))),M=h=>A(h.map(S=>({...S,id:String(S.id),name:S.name+"\0"+S.suffix})));function b(h){
+const S=new Map;let v;return R=>n?(v||(v=n(h).then(z=>z.linked)),v):(S.has(R)||S.set(R,h(R).
+then(z=>Gt(z,R,l).linked)),S.get(R))}async function T(h,S=()=>{},v){p=S,r.clear(),o.clear(),
+u=[];const R=h.filter(Q=>Q.node.id===Q.videoId),z=new Map;for(const Q of R){if(Q.atDestination)
+continue;const ce=He(Q.destination);ce.pop();const oe=Q.node.ancestors||[];tn(ce.at(-1))&&
+oe.length&&!tn(oe.at(-1).name)&&!/^(?:season[ ._-]*\d+|s\d+|第[一二三四五六七八九十百零0-9]+季|\d+季)$/i.
+test(oe.at(-1).name.trim())&&ce.pop();for(let pe=1;pe<ce.length&&pe<=oe.length;pe++){const me=oe[oe.
+length-pe];if(me.id===e.parent||un([me.name]))break;const le=ce.slice(0,ce.length-pe+1).join(
+"/");z.has(me.id)||z.set(me.id,{folder:me,paths:new Set}),z.get(me.id).paths.add(le)}}const U=Wt(
+t,new Map,S);await We(h,"整理目标快照（文件）",v,async(Q,ce,oe)=>{u[oe]=[Q.destination,
+await y(Q.destination,U,ce,Q.atDestination?Q.node:void 0)]},S);const K=new Map(R.map(Q=>[String(
+Q.node.id),Q]));d.clear(),c.clear(),f.clear();for(const Q of R)Q.atDestination&&f.set(String(
+Q.node.id),Q);for(const Q of h)if(Q.node.id!==Q.videoId){const ce=String(Q.videoId);c.has(
+ce)||c.set(ce,new Map),c.get(ce).set(String(Q.node.id),Q.node)}const Y=b(U);await We(R,"预览\
+字幕关联（视频）",v,async({node:Q})=>{const ce=String(Q.id),oe=(await Y(Q.parentId)).
+get(ce)||[];if(oe.some(pe=>!c.get(ce)?.has(String(pe.id)))||oe.length!==(c.get(ce)?.size||
+0))throw new Error("关联字幕已变化，请重新生成预览："+Q.name);d.set(Q,M(oe))},
+S);const ke=[];await We([...z.values()],"整体目录方案预检（候选目录）",v,async({
+folder:Q,paths:ce},oe,pe)=>{if(ce.size!==1)return"skipped";const me=[...ce][0],le=await I(
+Q.id,U),ae=le.filter(ge=>!ge.directory&&Rt.test(ge.name)).map(ge=>ge.id);if(!ae.length||ae.
+some(ge=>!K.has(ge)||!K.get(ge).destination.startsWith(me+"/"))||le.some(ge=>!ge.directory&&
+Vt.test(ge.name)&&!ae.some(ze=>c.get(ze)?.has(ge.id))))return"skipped";oe(),ke[pe]={folder:Q,
+path:me,contents:le}},S,8,"同一目录内按顺序读子树，绑定按原顺序合并");
+for(const{folder:Q,path:ce,contents:oe}of ke.filter(Boolean)){const pe=r.get(ce),me=He(ce).
+at(-1);(!pe||pe.name!==me&&Q.name===me)&&(r.set(ce,Q),o.set(String(Q.id),oe))}const de=new Map(
+[["",e.parent]]),ue=async Q=>{if(de.has(Q))return de.get(Q);const ce=He(Q),oe=ce.pop(),pe=await ue(
+ce.join("/")),me=pe==null?[]:(await U(pe)).filter(ge=>ge.name===oe);if(me.length>1||me.length&&
+!me[0].directory)throw new Error("目标目录同名冲突："+Q);const le=r.get(Q);me.length&&
+le&&r.delete(Q);const ae=me[0]?.id??le?.id??null;return de.set(Q,ae),ae};for(const Q of[...r.
+keys()].sort((ce,oe)=>He(ce).length-He(oe).length))S(),await ue(Q);return[...r].map(([Q,ce])=>({
+folder:ce,destination:Q,contents:o.get(String(ce.id))}))}async function k(h){const S=Wt(t,
+new Map,p),v=b(S);u.length&&await We(u,"执行前复核目标（文件）",h,async([R,z],U)=>{
+if(await y(R,S,U)!==z)throw new Error("整理目标已变化，请重新生成预览："+R)},
+p),await We([...d],"执行前复核字幕（视频）",h,async([R,z])=>{const U=(await v(R.
+parentId)).get(String(R.id))||[];if(M(U)!==z)throw new Error("关联字幕在预览后变化，请重新生成预览："+
+R.name)},p),await We([...r.values()],"执行前复核目录（目录）",h,async R=>{const z=(await S(
+R.parentId)).find(U=>U.id===R.id);if(!z||!z.directory||z.name!==R.name||A(await I(R.id,S))!==
 A(o.get(String(R.id))))throw new Error("文件夹或内容在预览后发生变化，请重新生成预览："+
-R.path)},p)}async function q(h,x,v,R){let z=(await t.children({id:h.parentId})).find(de=>de.
+R.path)},p)}async function F(h,S,v,R){let z=(await t.children({id:h.parentId})).find(de=>de.
 id===h.id);if(!z||!z.directory||z.name!==h.name)throw new Error("原文件夹已变化，预览会自动更新："+
-h.path);const L=o.get(String(h.id));if(!L||A(await I(h.id,de=>t.children({id:de})))!==A(L))
+h.path);const U=o.get(String(h.id));if(!U||A(await I(h.id,de=>t.children({id:de})))!==A(U))
 throw new Error("文件夹内容在预览后发生变化，请重新生成预览："+h.path);
-let H=h.parentId;const X=async de=>{for(let be=0;be<5;be++)if(be&&await et(400),(await t.children(
-{id:H})).some(J=>J.id===h.id&&J.directory&&J.name===de))return;throw new Error("原文件夹操作结果未确\
-认："+h.path)};if((await t.children({id:H})).some(de=>de.name===v&&de.id!==h.id))throw new Error(
+let K=h.parentId;const Y=async de=>{for(let ue=0;ue<5;ue++)if(ue&&await et(400),(await t.children(
+{id:K})).some(Q=>Q.id===h.id&&Q.directory&&Q.name===de))return;throw new Error("原文件夹操作结果未确\
+认："+h.path)};if((await t.children({id:K})).some(de=>de.name===v&&de.id!==h.id))throw new Error(
 "原目录有同名项目，未覆盖："+v);if(z.name!==v&&(R(),await i(a?"/userres/v1/fi\
-le/rename":"/file/rename",a?{fileId:h.id,newName:v}:{driveId:0,fileId:h.id,fileName:v}),await X(
-v)),H!==x){R();const de=await i(a?"/userres/v1/file/move_file":"/file/mod_pid",a?{fileIds:[
-h.id],parentId:x==="0"?"":x}:{fileIdList:[{FileId:h.id}],parentFileId:x});a&&Bt(de.data)&&
-await Pn(Bt(de.data),i,et,"移动文件夹"),H=x,await X(v)}return h.id}const U=async(h,x)=>{
-const v=Ke(h),R=v.pop(),z=await C(v.join("/"),x);x();let L=(await t.children({id:z})).filter(
-X=>X.name===R);const H=r.get(h);if(H){if(L.some(X=>X.id!==H.id))throw new Error("目标目录在预览后出\
-现同名项目，请重新生成预览："+h);return q(H,z,R,x)}if(!L.length){x(),a?await i(
-mt.mkdir,{parentId:z==="0"?"":z,dirName:R,failIfNameExist:!0}):await i("/file/upload_reque\
-st",{driveId:0,parentFileId:z,fileName:R,type:1,size:0,duplicate:0});for(let X=0;X<3&&(X&&
-await et(400),L=(await t.children({id:z})).filter(Se=>Se.name===R),!L.length);X++);}if(L.length!==
-1||!L[0].directory||L[0].id==="0"||L[0].id===z)throw new Error("无法确认目标目录："+
-h);return L[0].id},C=(h,x)=>{const v=h.normalize("NFKC").toLowerCase();return s.has(v)||s.
-set(v,U(h,x)),s.get(v)},O=h=>{const{node:x,destination:v}=h,R=Ke(v).at(-1).toLowerCase(),z=new Set(
-[...r.values()].map(L=>String(L.id)));return["源:"+x.parentId+":"+x.name.toLowerCase(),"源\
-:"+x.parentId+":"+R,...(x.ancestors||[]).filter(L=>z.has(String(L.id))).map(L=>"目录:"+L.
-id)]};async function j(h,x=p){x();const v=h.node,R=Ke(h.destination),z=R.pop();if(v.id==null||
-v.id==="")throw new Error("原文件缺少文件 ID，保留原状");const L=je=>v.md5&&!je.
-md5||v.size!=null&&je.size==null,H=await t.children({id:v.parentId});x();let X=H.find(je=>je.
-id===v.id);if(X&&L(X)&&(X=await qn(X,t)),!X||X.name!==v.name||X.directory||!w(v,X))throw new Error(
-"预览后原文件发生变化，请重新识别");const Se=String(h.videoId),de=f.get(Se);
-de&&await y(de.destination,je=>t.children({id:je}),x,de.node);const be=v.id===h.videoId?v:
-de?.node;if(l&&be&&c.has(Se)){const je=l.load(),Pe=be===v?c.get(Se).values():[v];for(const ye of Pe)
-l.get(ye,ye.parentId,je)?.videoId||l.link({node:be},ye,ye.language,ye.suffix)}let J=v.parentId;
-x();const le=de?de.node.parentId:await C(R.join("/"),x),se=le===J?H:await t.children({id:le});
-x();const ue=(je,Pe)=>je.some(ye=>ye.name.toLowerCase()===Pe.toLowerCase()&&ye.id!==v.id);
-if(ue(se,z))throw new Error("目标已有同名项目，未覆盖");const he=z!==X.name,oe=le!==
-J,ie=!oe||!ue(H,z);if(he&&oe&&!ie&&ue(se,X.name))throw new Error("改名、移动均有同名冲突，已跳过");
-const ce=async je=>{for(let Pe=0;Pe<5;Pe++){Pe&&await et(500);let ye=(await t.children({id:J})).
-find(Re=>Re.id===v.id&&Re.name===je);if(ye&&L(ye)&&(ye=await qn(ye,t)),ye&&!ye.directory&&
-w(v,ye)){X=ye;return}}throw new Error("请求已提交但结果未确认，请刷新后重新识别；文件 ID："+
-v.id)};let He;const Oe=()=>{const je={...v};Object.assign(v,{name:X.name,parentId:J,originalName:v.
-originalName||je.name});try{l?.organized(je,v)}catch(Pe){He=Pe}},xe=async()=>{x(),await i(
+le/rename":"/file/rename",a?{fileId:h.id,newName:v}:{driveId:0,fileId:h.id,fileName:v}),await Y(
+v)),K!==S){R();const de=await i(a?"/userres/v1/file/move_file":"/file/mod_pid",a?{fileIds:[
+h.id],parentId:S==="0"?"":S}:{fileIdList:[{FileId:h.id}],parentFileId:S});a&&Bt(de.data)&&
+await Pn(Bt(de.data),i,et,"移动文件夹"),K=S,await Y(v)}return h.id}const D=async(h,S)=>{
+const v=He(h),R=v.pop(),z=await E(v.join("/"),S);S();let U=(await t.children({id:z})).filter(
+Y=>Y.name===R);const K=r.get(h);if(K){if(U.some(Y=>Y.id!==K.id))throw new Error("目标目录在预览后出\
+现同名项目，请重新生成预览："+h);return F(K,z,R,S)}if(!U.length){S(),a?await i(
+gt.mkdir,{parentId:z==="0"?"":z,dirName:R,failIfNameExist:!0}):await i("/file/upload_reque\
+st",{driveId:0,parentFileId:z,fileName:R,type:1,size:0,duplicate:0});for(let Y=0;Y<3&&(Y&&
+await et(400),U=(await t.children({id:z})).filter(ke=>ke.name===R),!U.length);Y++);}if(U.length!==
+1||!U[0].directory||U[0].id==="0"||U[0].id===z)throw new Error("无法确认目标目录："+
+h);return U[0].id},E=(h,S)=>{const v=h.normalize("NFKC").toLowerCase();return s.has(v)||s.
+set(v,D(h,S)),s.get(v)},O=h=>{const{node:S,destination:v}=h,R=He(v).at(-1).toLowerCase(),z=new Set(
+[...r.values()].map(U=>String(U.id)));return["源:"+S.parentId+":"+S.name.toLowerCase(),"源\
+:"+S.parentId+":"+R,...(S.ancestors||[]).filter(U=>z.has(String(U.id))).map(U=>"目录:"+U.
+id)]};async function P(h,S=p){S();const v=h.node,R=He(h.destination),z=R.pop();if(v.id==null||
+v.id==="")throw new Error("原文件缺少文件 ID，保留原状");const U=Oe=>v.md5&&!Oe.
+md5||v.size!=null&&Oe.size==null,K=await t.children({id:v.parentId});S();let Y=K.find(Oe=>Oe.
+id===v.id);if(Y&&U(Y)&&(Y=await qn(Y,t)),!Y||Y.name!==v.name||Y.directory||!w(v,Y))throw new Error(
+"预览后原文件发生变化，请重新识别");const ke=String(h.videoId),de=f.get(ke);
+de&&await y(de.destination,Oe=>t.children({id:Oe}),S,de.node);const ue=v.id===h.videoId?v:
+de?.node;if(l&&ue&&c.has(ke)){const Oe=l.load(),Ne=ue===v?c.get(ke).values():[v];for(const be of Ne)
+l.get(be,be.parentId,Oe)?.videoId||l.link({node:ue},be,be.language,be.suffix)}let Q=v.parentId;
+S();const ce=de?de.node.parentId:await E(R.join("/"),S),oe=ce===Q?K:await t.children({id:ce});
+S();const pe=(Oe,Ne)=>Oe.some(be=>be.name.toLowerCase()===Ne.toLowerCase()&&be.id!==v.id);
+if(pe(oe,z))throw new Error("目标已有同名项目，未覆盖");const me=z!==Y.name,le=ce!==
+Q,ae=!le||!pe(K,z);if(me&&le&&!ae&&pe(oe,Y.name))throw new Error("改名、移动均有同名冲突，已跳过");
+const ge=async Oe=>{for(let Ne=0;Ne<5;Ne++){Ne&&await et(500);let be=(await t.children({id:Q})).
+find(Re=>Re.id===v.id&&Re.name===Oe);if(be&&U(be)&&(be=await qn(be,t)),be&&!be.directory&&
+w(v,be)){Y=be;return}}throw new Error("请求已提交但结果未确认，请刷新后重新识别；文件 ID："+
+v.id)};let ze;const De=()=>{const Oe={...v};Object.assign(v,{name:Y.name,parentId:Q,originalName:v.
+originalName||Oe.name});try{l?.organized(Oe,v)}catch(Ne){ze=Ne}},Ce=async()=>{S(),await i(
 a?"/userres/v1/file/rename":"/file/rename",a?{fileId:v.id,newName:z}:{driveId:0,fileId:v.id,
-fileName:z}),await ce(z),Oe()},Ne=async()=>{x();const je=await i(a?"/userres/v1/file/move_\
-file":"/file/mod_pid",a?{fileIds:[v.id],parentId:le==="0"?"":le}:{fileIdList:[{FileId:v.id}],
-parentFileId:le});a&&Bt(je.data)&&await Pn(Bt(je.data),i,et,"移动"),J=le,await ce(X.name),
-Oe()};if(he&&ie&&await xe(),oe&&await Ne(),he&&!ie&&await xe(),oe&&tn(R.at(-1))){const je=t.
-mediaBreadcrumbs||t.breadcrumbs||[],Pe=je.at(-1),ye=[];if(Pe&&Pe.id===t.parentId){const ze=ur(
-Pe.name)!=null?Math.max(0,je.length-2):je.length-1;for(let Je=ze;Je<je.length;Je++)ye.push(
-{...je[Je],parentId:je[Je-1]?.id||"0",path:je.slice(0,Je+1).map(De=>De.name).join("/")})}const Re=[
-...ye,...v.ancestors||[]].map((ze,Je)=>({...ze,depth:Je}));for(const ze of Re.reverse()){if([
-e.parent,"0"].some(Je=>String(Je)===String(ze.id))||un([ze.name])||/^(?:来自[：:]\s*)?云添加$/.
-test(ze.name))break;m.set(ze.id,ze)}}return He?"已整理，原名记录保存失败："+He.
-message:he||oe?"已整理":"已是标准名称与位置"}async function T(h,x){const v=new Set(
-[...r.values()].map(z=>z.id));let R=0;for(const z of[...m.values()].sort((L,H)=>H.depth-L.
-depth)){if(h(),v.has(z.id)||!(await t.children({id:z.parentId})).some(X=>X.id===z.id&&X.directory&&
-X.name===z.name))continue;const H=await t.children({id:z.id});if(H.length){x("保留剧集来源目录 "+
-z.path+"，仍有 "+H.length+" 项："+H.slice(0,3).map(X=>X.name).join("、"));continue}h(),
-await hr({...z,directory:!0},e,t),R++,x("剧集空目录已移入回收站："+z.path)}return R}
-return{prepare:N,validate:k,execute:j,executionKeys:O,recycleEmptySeasonSources:T}}const bi=e=>(/^.+\.(?:19|20)\d{2}(?:\.\d{3,4}[pi])?$/.
+fileName:z}),await ge(z),De()},Pe=async()=>{S();const Oe=await i(a?"/userres/v1/file/move_\
+file":"/file/mod_pid",a?{fileIds:[v.id],parentId:ce==="0"?"":ce}:{fileIdList:[{FileId:v.id}],
+parentFileId:ce});a&&Bt(Oe.data)&&await Pn(Bt(Oe.data),i,et,"移动"),Q=ce,await ge(Y.name),
+De()};if(me&&ae&&await Ce(),le&&await Pe(),me&&!ae&&await Ce(),le&&tn(R.at(-1))){const Oe=t.
+mediaBreadcrumbs||t.breadcrumbs||[],Ne=Oe.at(-1),be=[];if(Ne&&Ne.id===t.parentId){const Le=ur(
+Ne.name)!=null?Math.max(0,Oe.length-2):Oe.length-1;for(let Xe=Le;Xe<Oe.length;Xe++)be.push(
+{...Oe[Xe],parentId:Oe[Xe-1]?.id||"0",path:Oe.slice(0,Xe+1).map(Fe=>Fe.name).join("/")})}const Re=[
+...be,...v.ancestors||[]].map((Le,Xe)=>({...Le,depth:Xe}));for(const Le of Re.reverse()){if([
+e.parent,"0"].some(Xe=>String(Xe)===String(Le.id))||un([Le.name])||/^(?:来自[：:]\s*)?云添加$/.
+test(Le.name))break;m.set(Le.id,Le)}}return ze?"已整理，原名记录保存失败："+ze.
+message:me||le?"已整理":"已是标准名称与位置"}async function j(h,S){const v=new Set(
+[...r.values()].map(z=>z.id));let R=0;for(const z of[...m.values()].sort((U,K)=>K.depth-U.
+depth)){if(h(),v.has(z.id)||!(await t.children({id:z.parentId})).some(Y=>Y.id===z.id&&Y.directory&&
+Y.name===z.name))continue;const K=await t.children({id:z.id});if(K.length){S("保留剧集来源目录 "+
+z.path+"，仍有 "+K.length+" 项："+K.slice(0,3).map(Y=>Y.name).join("、"));continue}h(),
+await hr({...z,directory:!0},e,t),R++,S("剧集空目录已移入回收站："+z.path)}return R}
+return{prepare:T,validate:k,execute:P,executionKeys:O,recycleEmptySeasonSources:j}}const bi=e=>(/^.+\.(?:19|20)\d{2}(?:\.\d{3,4}[pi])?$/.
 test(e)||tn(e)||!!un([e]))&&On(e)===e,ma=new RegExp(String.raw`^(.+\.(?:19|20)\d{2}(?:\.S\d{2}E\d{2,3}(?:E\d{2,3})?)?(?:\.${ra})?)(?=\.|$)`);
-function mr(e){if(e.directory)return bi(e.name);if(!Nt.test(e.name)&&!Vt.test(e.name)||On(
-e.name)!==e.name)return!1;const t=Ge(e.name),n=t.match(ma)?.[1];return!!n&&(n===t||Vt.test(
+function mr(e){if(e.directory)return bi(e.name);if(!Rt.test(e.name)&&!Vt.test(e.name)||On(
+e.name)!==e.name)return!1;const t=Qe(e.name),n=t.match(ma)?.[1];return!!n&&(n===t||Vt.test(
 e.name)&&Dt(n+".mkv",e.name)!==null)}function vi(e,t=()=>{}){const n=new Map,a=new Map;return async(i,s=[])=>{
 if(t(),i.directory&&(un([i.name])||tn(i.name)))return i.name;const r=!i.directory&&Vt.test(
-i.name),o=r&&Ge(i.name).match(ma)?.[1],l=o&&Dt(o+".mkv",i.name);if(r&&(typeof l!="string"||
+i.name),o=r&&Qe(i.name).match(ma)?.[1],l=o&&Dt(o+".mkv",i.name);if(r&&(typeof l!="string"||
 !o))return null;const d=i.directory?i.name+".mkv":r?o+".mkv":i.name,c=tt(d),f=!i.directory&&
 c.tv?tt(d,s):c;if(!c.query&&f.year&&f.query.endsWith(" "+f.year)&&(f.query=f.query.slice(0,
 -5).trimEnd()),!f.query||i.directory&&(!f.year||f.season!=null))return null;const m=JSON.stringify(
-[Ye(f.query),f.year,f.tv]);n.has(m)||n.set(m,(async()=>{const M=(await e.search(f.query)).
-filter(C=>["movie","tv"].includes(C.media_type)&&(!f.tv||C.media_type==="tv")&&(!f.year||(C.
-release_date||C.first_air_date||"").startsWith(f.year))&&[C.title,C.name,C.original_title,
-C.original_name].some(O=>O&&Ye(O)===Ye(f.query)));if(t(),M.length!==1)throw new Error("无法唯\
-一确认作品："+f.query+(f.year?" · "+f.year:""));const{media_type:b,id:N}=M[0],k=await e.
-get("/"+b+"/"+N);t();const q=b==="tv"?k.name:k.title,U=(b==="tv"?k.first_air_date:k.release_date)?.
-slice(0,4);if(String(k.id)!==String(N)||!q||!/^(19|20)\d{2}$/.test(U)||f.year&&U!==f.year)
-throw new Error("无法确认标准片名或年份："+f.query);return{id:N,type:b,detail:k,
-title:q,year:U}})());const{id:u,type:p,detail:w,title:y,year:I}=await n.get(m);if(t(),i.directory){
+[Ge(f.query),f.year,f.tv]);n.has(m)||n.set(m,(async()=>{const M=(await e.search(f.query)).
+filter(E=>["movie","tv"].includes(E.media_type)&&(!f.tv||E.media_type==="tv")&&(!f.year||(E.
+release_date||E.first_air_date||"").startsWith(f.year))&&[E.title,E.name,E.original_title,
+E.original_name].some(O=>O&&Ge(O)===Ge(f.query)));if(t(),M.length!==1)throw new Error("无法唯\
+一确认作品："+f.query+(f.year?" · "+f.year:""));const{media_type:b,id:T}=M[0],k=await e.
+get("/"+b+"/"+T);t();const F=b==="tv"?k.name:k.title,D=(b==="tv"?k.first_air_date:k.release_date)?.
+slice(0,4);if(String(k.id)!==String(T)||!F||!/^(19|20)\d{2}$/.test(D)||f.year&&D!==f.year)
+throw new Error("无法确认标准片名或年份："+f.query);return{id:T,type:b,detail:k,
+title:F,year:D}})());const{id:u,type:p,detail:w,title:y,year:I}=await n.get(m);if(t(),i.directory){
 const M=p==="tv"?zn(d):"";return On(y)+"."+I+(M?"."+M:"")}if(p==="tv"){const{season:M,episode:b,
-endEpisode:N}=f;if(M==null||b==null||N!=null&&N<b)return null;const k="/tv/"+u+"/season/"+
-M;a.has(k)||a.set(k,e.get(k));const q=await a.get(k);t();const U=new Set((q.episodes||[]).
-map(C=>C.episode_number));for(let C=b;C<=(N??b);C++)if(!U.has(C))return null}const A=Fn({...f,
-node:i,type:p,detail:w,title:y,year:I}).split("/").at(-1);return r?Ge(A)+l+A.slice(A.lastIndexOf(
+endEpisode:T}=f;if(M==null||b==null||T!=null&&T<b)return null;const k="/tv/"+u+"/season/"+
+M;a.has(k)||a.set(k,e.get(k));const F=await a.get(k);t();const D=new Set((F.episodes||[]).
+map(E=>E.episode_number));for(let E=b;E<=(T??b);E++)if(!D.has(E))return null}const A=Fn({...f,
+node:i,type:p,detail:w,title:y,year:I}).split("/").at(-1);return r?Qe(A)+l+A.slice(A.lastIndexOf(
 ".")):A}}const wi=e=>Vt.test(e)||/\.(?:ttf|otf|ttc|woff2?)$/i.test(e)||/(?:字体|字體|fonts?).*\.(?:zip|rar|7z)$/i.
 test(e);async function xi(e,t,n=()=>{},{extras:a=!1,emptyOnly:i=!1,includeSubtitles:s=!1,resolveCanonical:r,
 parentPath:o="",check:l=()=>{},log:d}={}){if(!e.length)throw new Error("请先勾选要清理的文件或文件夹");
 const c=[],{parentId:f}=t;l();const m=dn(await t.children({id:f}),e);l();const u=i?"检查空文件夹\
 ：":a?"检查非正片：":"识别并检查命名：",p=o.split("/").filter(Boolean);return await Sn(
 m.map(w=>({node:w,parentId:f,path:w.name})),w=>w.node.id,async(w,y,I)=>{const{node:A,parentId:M,
-path:b}=w;let{extraScope:N=null}=w;if(n(u+b),i){if(!A.directory)return;const k=await t.children(
+path:b}=w;let{extraScope:T=null}=w;if(n(u+b),i){if(!A.directory)return;const k=await t.children(
 {id:A.id});return y(),!k.length&&!un([A.name])&&!/^(?:来自[：:]\s*)?云添加$/.test(A.
 name)&&c.push({order:I,item:{id:A.id,parentId:M,name:A.name,path:b,directory:!0,cleanup:"e\
-mpty"}}),k.filter(q=>q.directory).map(q=>({node:q,parentId:A.id,path:b+"/"+q.name}))}if(a){
+mpty"}}),k.filter(F=>F.directory).map(F=>({node:F,parentId:A.id,path:b+"/"+F.name}))}if(a){
 if(A.directory){const k={id:A.id,parentId:M,name:A.name};/^(?:extras?|featurettes?|trailers?|teasers?|bloopers?|outtakes?|behind[ ._-]+the[ ._-]+scenes|special[ ._-]+features|花絮|幕后|幕後|预告片?|預告片?)$/i.
-test(A.name)?N={ancestors:[k]}:N&&(N={ancestors:[...N.ancestors,k]})}else if(s||!wi(A.name)){
-const k=Nt.test(A.name)?pr(A.name)?"花絮、预告等附加视频":N?"附加内容目录内的视频":
+test(A.name)?T={ancestors:[k]}:T&&(T={ancestors:[...T.ancestors,k]})}else if(s||!wi(A.name)){
+const k=Rt.test(A.name)?pr(A.name)?"花絮、预告等附加视频":T?"附加内容目录内的视频":
 "":"非视频附件";k&&c.push({order:I,item:{id:A.id,parentId:M,name:A.name,path:b,directory:!1,
-cleanup:"extras",extraScope:N,reason:k}})}}else{const k=A.directory||Nt.test(A.name)||Vt.test(
-A.name);let q=null;if(r&&k){const C=[...p,...b.split("/").slice(0,-1)];let O="";try{q=await r(
-A,C),y()}catch(j){if(y(),j.stop)throw j;O=j.message}!q&&(O||!mr(A))&&n("保留，未确认："+
-b+" · "+(O||"无法确认标准名称"))}if(r&&k?q&&q!==A.name:!mr(A)){c.push({order:I,item:{
-id:A.id,name:A.name,parentId:M,path:b,directory:!!A.directory,expectedName:q}});return}}if(A.
+cleanup:"extras",extraScope:T,reason:k}})}}else{const k=A.directory||Rt.test(A.name)||Vt.test(
+A.name);let F=null;if(r&&k){const E=[...p,...b.split("/").slice(0,-1)];let O="";try{F=await r(
+A,E),y()}catch(P){if(y(),P.stop)throw P;O=P.message}!F&&(O||!mr(A))&&n("保留，未确认："+
+b+" · "+(O||"无法确认标准名称"))}if(r&&k?F&&F!==A.name:!mr(A)){c.push({order:I,item:{
+id:A.id,name:A.name,parentId:M,path:b,directory:!!A.directory,expectedName:F}});return}}if(A.
 directory)return(await t.children({id:A.id})).map(k=>({node:k,parentId:A.id,path:b+"/"+k.name,
-extraScope:N}))},l,d,"清理扫描与候选识别（目录/文件）"),c.sort((w,y)=>kn(w.
+extraScope:T}))},l,d,"清理扫描与候选识别（目录/文件）"),c.sort((w,y)=>kn(w.
 order,y.order)).map(w=>w.item)}async function Si(e,t,n,a=()=>{}){const i=(await n.children(
 {id:e.parentId})).find(r=>r.id===e.id);if(!i)return"项目已不存在";let s;if(e.cleanup===
 "empty"){if(!i.directory||i.name!==e.name||String(e.id)==="0"||String(e.id)===String(t.parent)||
@@ -5399,7 +5399,7 @@ order,y.order)).map(w=>w.item)}async function Si(e,t,n,a=()=>{}){const i=(await 
 {retained:!0});s="空文件夹已移入回收站"}else if(e.cleanup==="extras"){let r=!1;if(e.
 extraScope){r=!0;for(const o of e.extraScope.ancestors)if(!(await n.children({id:o.parentId})).
 some(l=>l.id===o.id&&l.directory&&l.name===o.name)){r=!1;break}}if(i.directory||i.name!==e.
-name||e.id==="0"||e.id===t.parent||Nt.test(i.name)&&!pr(i.name)&&!r)throw Object.assign(new Error(
+name||e.id==="0"||e.id===t.parent||Rt.test(i.name)&&!pr(i.name)&&!r)throw Object.assign(new Error(
 "项目已变化或不再属于非正片，本次未删除"),{retained:!0});s="非正片文件已移入回收站"}else{
 if(!!i.directory!==e.directory||i.name!==e.name||e.id==="0"||e.id===t.parent||mr(i)&&(!e.expectedName||
 e.expectedName===i.name))throw Object.assign(new Error("项目已变化或已符合标准，本次未删除"),
@@ -5407,11 +5407,11 @@ e.expectedName===i.name))throw Object.assign(new Error("项目已变化或已符
 return a(),await hr(e,t,n),s}async function ki(e,t,n){const a=Number(e.id);if(!Number.isSafeInteger(
 a)||a<=0)throw new Error("文件 ID 无法安全转换为网页接口要求的数值");const i={
 RequestSource:null,driveId:0,event:"intoRecycle",fileTrashInfoList:[{FileId:a}],operatePlace:1,
-operation:!0},s=await Ct(t.base+"/file/trash",{method:"POST",credentials:"omit",headers:{...t.
+operation:!0},s=await Et(t.base+"/file/trash",{method:"POST",credentials:"omit",headers:{...t.
 headers,"Content-Type":"application/json"},body:JSON.stringify(i)});if(![0,1,200].includes(
-kt(s)))throw at("123 移入回收站",s);for(let r=0;r<10;r++)if(r&&await et(1e3),!(await n.
+St(s)))throw at("123 移入回收站",s);for(let r=0;r<10;r++)if(r&&await et(1e3),!(await n.
 children({id:e.parentId})).some(o=>o.id===e.id))return;throw Object.assign(new Error("接口已受\
-理，但目录列表仍有此项目，删除结果待确认；返回码 "+kt(s)+(s.message?
+理，但目录列表仍有此项目，删除结果待确认；返回码 "+St(s)+(s.message?
 "："+s.message:"")),{pending:!0})}function Ei(e,t){const n=t.split("/").filter(Boolean);if(e.
 breadcrumbs)return{id:"0",path:""};const a=n.findIndex(o=>["电影","剧集","动漫","纪录片",
 "综艺"].includes(o));if(a<0)return{id:e.parentId,path:t};const i=new URL(location.href),
@@ -5524,9 +5524,9 @@ ask({mode:"per_file",samples:n}),i=Array.isArray(a.items)?a.items:e.length===1?[
 [],s=[];for(let r=0;r<e.length;r++){const o=i.filter(d=>d?.index===r);if(o.length!==1){s.push(
 {error:"模型未为此文件单独返回完整作品名，请重新识别"});continue}const l=o[0];
 try{const d=Array.isArray(l.episodes)?l.episodes:[{index:0,season:l.season,episode:l.episode,
-confidence:l.confidence}],c=Ii({...l,episodes:d}),f=da(e[r].node.name);if(f?.release&&Ye(c.
-title)===Ye(f.release))throw new Error("模型将发布组误作片名，未采用；请重新识别完整作品名");
-s.push(c)}catch(d){s.push({error:d.message})}}return s}const Tt=(()=>{const e="cross-drive\
+confidence:l.confidence}],c=Ii({...l,episodes:d}),f=da(e[r].node.name);if(f?.release&&Ge(c.
+title)===Ge(f.release))throw new Error("模型将发布组误作片名，未采用；请重新识别完整作品名");
+s.push(c)}catch(d){s.push({error:d.message})}}return s}const Nt=(()=>{const e="cross-drive\
 -media-records-v2",t=new Map(GM_getValue(e,[])),n=l=>JSON.stringify([location.hostname,String(
 l.id),String(l.parentId??""),l.name,Number(l.size)||0,(l.md5||"").toLowerCase()]),a=l=>JSON.
 stringify([location.hostname,String(l.id)]),i=l=>{const d=t.get(a(l));return d?.fingerprint===
@@ -5541,14 +5541,14 @@ get(a(l));if(!d)return"没有该文件的识别记录，将查询共用作品资
 l))return"已复用文件识别记录";const c=JSON.parse(d.fingerprint),f=JSON.parse(n(l));
 return"文件记录未复用："+["网盘","文件编号","父目录","文件名","大小",
 "MD5"].filter((m,u)=>c[u]!==f[u]).join("、")+"变化；保留身份校验，另查作品资料"},
-save:()=>{Rt(t,3e3),GM_setValue(e,[...t])}}})();function Ln(e){return e.type&&e.match?{type:e.
+save:()=>{Mt(t,3e3),GM_setValue(e,[...t])}}})();function Ln(e){return e.type&&e.match?{type:e.
 type,reason:"已确认作品为"+(e.type==="movie"?"电影":"剧集")}:e.aiType==="movie"&&
 (e.explicitSeason!=null||e.explicitEpisode!=null)?{type:"",conflict:!0,reason:"电影识别与文件季集信息\
 冲突，请确认作品类型"}:e.aiType?{type:e.aiType,reason:"完整作品名识别为"+
 (e.aiType==="movie"?"电影":"剧集")}:e.episode!=null||e.workNumberedCount>1||e.season!=
 null?{type:"tv",reason:"文件或目录提供了季集信息"}:{type:"",reason:"请选择对应作品"}}
 function yr(e){const t=new Map;for(const n of e){if(en(n.node))continue;const a=JSON.stringify(
-[n.node.parentId,n.aiType||n.type||"",Ye(n.query)||n.node.id]);t.has(a)||t.set(a,[]),t.get(
+[n.node.parentId,n.aiType||n.type||"",Ge(n.query)||n.node.id]);t.has(a)||t.set(a,[]),t.get(
 a).push(n)}for(const n of t.values()){const a=new Set(n.filter(i=>i.episode!=null).map(i=>[
 i.season,i.episode].join(":"))).size;for(const i of n)i.workVideoCount=n.length,i.workNumberedCount=
 a}}function Ri(e,t,n){if(t==="movie"&&(e.explicitSeason!=null||e.explicitEpisode!=null))return"\
@@ -5556,7 +5556,7 @@ a}}function Ri(e,t,n){if(t==="movie"&&(e.explicitSeason!=null||e.explicitEpisode
 []).filter(i=>i.season_number>0).reduce((i,s)=>i+(Number(s.episode_count)||0),0);return a>
 0&&e.workNumberedCount>a?"本组选区有 "+e.workNumberedCount+" 个不同集号，已保存作品只有 "+
 a+" 集":""}function ya(e,t){return t&&(!e.tv||e.standalone)?"file:"+e.node.id:JSON.stringify(
-[Ye(e.query)||e.node.id,e.node.parentId,t?"":e.sourceYear,e.standalone?e.node.id:""])}function ba(e){
+[Ge(e.query)||e.node.id,e.node.parentId,t?"":e.sourceYear,e.standalone?e.node.id:""])}function ba(e){
 return[...new Set([e.title,e.name,e.original_title,e.original_name,...e.workAliases||[],...(e.
 alternative_titles?.titles||e.alternative_titles?.results||[]).filter(t=>["CN","TW","HK","\
 JP","US","GB"].includes(t.iso_3166_1)).map(t=>t.title)].filter(t=>typeof t=="string"&&t.trim()).
@@ -5624,407 +5624,413 @@ checked=i.enabled===!0,n.get("mediaAIProvider").value=i.provider||"custom",n.get
 ase").value=i.base||"",n.get("mediaAIKey").value=i.key||"",n.get("mediaAIModel").value=i.model||
 "";const r=()=>({enabled:n.get("enableMediaAI").checked,provider:n.get("mediaAIProvider").
 value,base:n.get("mediaAIBase").value.trim(),key:Dn(n.get("mediaAIKey").value),model:n.get(
-"mediaAIModel").value.trim()}),o=()=>{const S=s[n.get("mediaAIProvider").value],D=n.get("m\
-ediaAIKeyLink");D.hidden=!S,S&&(D.href=S.link)},l=(S=[])=>{const D=n.get("mediaAIModel").value.
-trim(),K=n.get("mediaAIModelSelect");K.replaceChildren();const _=(Y,B)=>{const g=document.
-createElement("option");g.value=Y,g.textContent=B,K.appendChild(g)};_("","请选择模型");
-for(const Y of S)_(Y,Y);D&&!S.includes(D)&&_(D,D+"（未验证）"),_("__manual__","手动填写模型\
- ID"),K.value=D,n.get("mediaAIManualModel").hidden=!0};o(),l(),n.get("mediaAIState").textContent=
+"mediaAIModel").value.trim()}),o=()=>{const x=s[n.get("mediaAIProvider").value],L=n.get("m\
+ediaAIKeyLink");L.hidden=!x,x&&(L.href=x.link)},l=(x=[])=>{const L=n.get("mediaAIModel").value.
+trim(),H=n.get("mediaAIModelSelect");H.replaceChildren();const X=(Z,J)=>{const _=document.
+createElement("option");_.value=Z,_.textContent=J,H.appendChild(_)};X("","请选择模型");
+for(const Z of x)X(Z,Z);L&&!x.includes(L)&&X(L,L+"（未验证）"),X("__manual__","手动填写模型\
+ ID"),H.value=L,n.get("mediaAIManualModel").hidden=!0};o(),l(),n.get("mediaAIState").textContent=
 i.enabled?"大模型识别已启用。":"未启用，不会发送大模型请求。";let d=[],
-c=null,f=null,m=null,u=null,p=null,w=null,y="",I=[],A=null,M=null,b=null,N="",k;const q=()=>t.
-check(),U=S=>t.status(S),C=(S,D=0,K=null)=>{const _=n.get("subtitleMeter"),Y=K===null?S+"…":
-`${S} · ${D}/${K}`;(_.getAttribute("aria-label")!==S||n.get("subtitleProgress").textContent===
-_.getAttribute("aria-valuetext"))&&U(Y),_.hidden=!1,_.setAttribute("aria-label",S),_.setAttribute(
-"aria-valuetext",Y),_.max=Math.max(1,K??1),K===null?_.removeAttribute("value"):_.value=D},
-O=()=>{const S=n.get("subtitleMeter");S.hasAttribute("value")||(S.value=0),S.setAttribute(
-"aria-valuetext","本阶段未完成")},j=S=>t.log("影视整理",S),T=()=>{c=null,f=null,
-n.get("runMedia").disabled=!0,n.get("mediaPreview").textContent=""};let h=!1;const x=()=>{
-for(const S of ie.querySelectorAll("input, select, button"))S.disabled=h||S.hasAttribute("\
-data-media-disabled")},v=S=>{h=S;for(const D of["scanMedia","openMediaCleanup","saveMediaK\
+c=null,f=null,m=null,u=null,p=null,w=null,y="",I=[],A=null,M=null,b=null,T="",k;const F=()=>t.
+check(),D=x=>t.status(x),E=(x,L=0,H=null)=>{const X=n.get("subtitleMeter"),Z=H===null?x+"…":
+`${x} · ${L}/${H}`;(X.getAttribute("aria-label")!==x||n.get("subtitleProgress").textContent===
+X.getAttribute("aria-valuetext"))&&D(Z),X.hidden=!1,X.setAttribute("aria-label",x),X.setAttribute(
+"aria-valuetext",Z),X.max=Math.max(1,H??1),H===null?X.removeAttribute("value"):X.value=L},
+O=()=>{const x=n.get("subtitleMeter");x.hasAttribute("value")||(x.value=0),x.setAttribute(
+"aria-valuetext","本阶段未完成")},P=x=>t.log("影视整理",x),j=()=>{c=null,f=null,
+n.get("runMedia").disabled=!0,n.get("mediaPreview").textContent=""};let h=!1;const S=()=>{
+for(const x of le.querySelectorAll("input, select, button"))x.disabled=h||x.hasAttribute("\
+data-media-disabled")},v=x=>{h=x;for(const L of["scanMedia","openMediaCleanup","saveMediaK\
 ey","forgetMediaKey","tmdbKey","checkCleanup","cleanupMode","cleanupSubtitles","enableMedi\
 aAI","mediaAIProvider","mediaAIBase","mediaAIKey","mediaAIModel","mediaAIModelSelect","fet\
-chMediaAIModels","saveMediaAI","testMediaAI","forgetMediaAI"])n.get(D).disabled=S;x(),n.get(
-"runMedia").disabled=S||!c,n.get("runEmpty").disabled=S||!I.length,n.get("previewMedia").disabled=
-S||!t.registryReady,n.get("mediaAllowMissing").disabled=S},R=t.run;t.controls.push(v);const z=()=>R(
-async()=>{const S=n.get("cleanupMode").value==="extras",D=n.get("cleanupMode").value==="em\
-pty";I=[],n.get("emptyPreview").textContent="",C(D?"检查空文件夹":S?"检查非正片与附件":
-"检查不规范项目");try{const K=await Vn(e);A=K.session,M=K.source,q();const _=S||D?null:
-vi(fa(n.get("tmdbKey").value),q),Y=await xi(K.selected,M,B=>{q(),U(B),B.startsWith("保留，未确认")&&
-j(B)},{extras:S,emptyOnly:D,includeSubtitles:S&&n.get("cleanupSubtitles").checked,resolveCanonical:_,
-parentPath:K.path,check:q,log:j});q(),n.get("emptyPreview").textContent=Y.map(B=>`${D?"回收空\
-文件夹":B.directory?"删除整个文件夹及全部内容":"删除文件"}：${B.path}${B.
+chMediaAIModels","saveMediaAI","testMediaAI","forgetMediaAI"])n.get(L).disabled=x;S(),n.get(
+"runMedia").disabled=x||!c,n.get("runEmpty").disabled=x||!I.length,n.get("previewMedia").disabled=
+x||!t.registryReady,n.get("mediaAllowMissing").disabled=x},R=t.run;t.controls.push(v);const z=()=>R(
+async()=>{const x=n.get("cleanupMode").value==="extras",L=n.get("cleanupMode").value==="em\
+pty";I=[],n.get("emptyPreview").textContent="",E(L?"检查空文件夹":x?"检查非正片与附件":
+"检查不规范项目");try{const H=await Vn(e);A=H.session,M=H.source,F();const X=x||L?null:
+vi(fa(n.get("tmdbKey").value),F),Z=await xi(H.selected,M,J=>{F(),D(J),J.startsWith("保留，未确认")&&
+P(J)},{extras:x,emptyOnly:L,includeSubtitles:x&&n.get("cleanupSubtitles").checked,resolveCanonical:X,
+parentPath:H.path,check:F,log:P});F(),n.get("emptyPreview").textContent=Z.map(J=>`${L?"回收空\
+文件夹":J.directory?"删除整个文件夹及全部内容":"删除文件"}：${J.path}${J.
 reason?`
-原因：`+B.reason:""}${B.expectedName?`
-应为标准名称：`+B.expectedName:""}`).join(`
+原因：`+J.reason:""}${J.expectedName?`
+应为标准名称：`+J.expectedName:""}`).join(`
 
-`)||(D?"未发现空文件夹。":S?"未发现非正片文件。":"没有已确认命名不规范的项目。未确认的作品已保留\
-，详见日志。"),I=Y,C("检查结束",I.length,I.length),U(`可清理 ${I.length} 个${D?
-"空文件夹":S?"非正片文件":"不规范项目（文件夹包含全部内容）"}；尚未删\
-除`)}catch(K){O(),U("检查失败："+K.message)}},!0),L=()=>{I=[],n.get("runEmpty").disabled=
+`)||(L?"未发现空文件夹。":x?"未发现非正片文件。":"没有已确认命名不规范的项目。未确认的作品已保留\
+，详见日志。"),I=Z,E("检查结束",I.length,I.length),D(`可清理 ${I.length} 个${L?
+"空文件夹":x?"非正片文件":"不规范项目（文件夹包含全部内容）"}；尚未删\
+除`)}catch(H){O(),D("检查失败："+H.message)}},!0),U=()=>{I=[],n.get("runEmpty").disabled=
 !0,n.get("emptyPreview").textContent="",n.get("cleanupRule").textContent=n.get("cleanupMod\
 e").value==="extras"?n.get("cleanupSubtitles").checked?"清理选中范围内的字幕、字体、图片、其他附件、花絮和预告；保留普通视频\
 及特别篇。":"清理图片、其他附件、花絮和预告；保留字幕、字体、普通视频及特别篇。":
 n.get("cleanupMode").value==="empty"?"预览所选范围内的空文件夹，回收前再次检查。":
 "使用 TMDB 识别所选范围，核对标准命名。无法确认的作品会保留。清单中的整文件夹包含全部内容。"};
 n.get("cleanupMode").onchange=()=>{n.get("cleanupSubtitleOption").hidden=n.get("cleanupMod\
-e").value!=="extras",L()},n.get("cleanupSubtitles").onchange=L,n.get("openMediaCleanup").onclick=
-()=>{const S=n.get("mediaCleanup");S.hidden=!S.hidden,n.get("openMediaCleanup").setAttribute(
-"aria-expanded",String(!S.hidden)),S.hidden&&L()},n.get("checkCleanup").onclick=z,n.get("r\
-unEmpty").onclick=()=>R(async()=>{if(!I.length)return;const S=I;I=[],T(),t.reset();let D=0,
-K=0,_=0,Y=0;try{await We(S,"回收站清理（文件或独立目录）",j,async(B,g,E,V)=>{
-let P;g();try{j(B.path+"："+await Si(B,A,M,g)),D++}catch(F){if(V(F),P=F.retained?"skipped":
-"failed",F.retained?(K++,j(B.path+"：保留；"+F.message)):F.pending?(Y++,j(B.path+"：删除结\
-果待确认；"+F.message)):(_++,j(B.path+"：删除失败；"+F.message)),F.stop)throw j(
-"登录或权限异常，停止后续清理"),F}return C("清理所选项目",D+K+_+Y,S.length),
-P},q,8,"整目录回收项已排除其子项")}catch(B){j("清理中断："+B.message)}U(`\
-清理结束：已清理 ${D}，保留 ${K}，删除失败 ${_}，结果待确认 ${Y}，未处理\
- ${S.length-D-K-_-Y}。具体原因见日志。`)},!0),n.get("mediaAIProvider").onchange=()=>{
-const S=s[n.get("mediaAIProvider").value];S&&(n.get("mediaAIBase").value=S.base,n.get("med\
-iaAIModel").value=S.model),o(),l(),T(),n.get("mediaAIState").textContent="服务商已切换；如密钥不同，请手动\
-更新后获取模型列表。"},n.get("mediaAIModelSelect").onchange=()=>{const S=n.get("\
-mediaAIModelSelect").value;n.get("mediaAIManualModel").hidden=S!=="__manual__",S!=="__manu\
-al__"&&(n.get("mediaAIModel").value=S),T()},n.get("mediaAIModel").oninput=T;for(const S of[
-"mediaAIBase","mediaAIKey"])n.get(S).oninput=()=>{l(),T()};n.get("fetchMediaAIModels").onclick=
-()=>R(async()=>{n.get("mediaAIState").textContent="正在获取模型列表…";try{const S=await Un(
-r()).models();l(S),n.get("mediaAIState").textContent=S.length?`已获取 ${S.length} 个模型，请\
-下拉选择后保存；模型能否用于识别请测试连接。`:"接口返回空列表，可选择手动填写模型 ID。"}catch(S){
-n.get("mediaAIState").textContent="获取模型失败："+S.message+"；接口不提供列表时可选择手动填写模型 ID\
-。"}}),n.get("saveMediaAI").onclick=()=>{try{const S=r();S.enabled&&gr(S),GM_setValue("cr\
-oss-drive-media-ai",S),T(),n.get("mediaAIState").textContent=S.enabled?"已保存并启用；仅在作品未匹配或字幕候\
-选待选择时使用大模型。":"设置已保存，大模型未启用。"}catch(S){n.get(
-"mediaAIState").textContent=S.message}},n.get("forgetMediaAI").onclick=()=>{n.get("mediaAI\
-Key").value="",n.get("enableMediaAI").checked=!1,GM_setValue("cross-drive-media-ai",r()),T(),
+e").value!=="extras",U()},n.get("cleanupSubtitles").onchange=U,n.get("openMediaCleanup").onclick=
+()=>{const x=n.get("mediaCleanup");x.hidden=!x.hidden,n.get("openMediaCleanup").setAttribute(
+"aria-expanded",String(!x.hidden)),x.hidden&&U()},n.get("checkCleanup").onclick=z,n.get("r\
+unEmpty").onclick=()=>R(async()=>{if(!I.length)return;const x=I;I=[],j(),t.reset();let L=0,
+H=0,X=0,Z=0;try{await We(x,"回收站清理（文件或独立目录）",P,async(J,_,g,N)=>{
+let C;_();try{P(J.path+"："+await Si(J,A,M,_)),L++}catch(q){if(N(q),C=q.retained?"skipped":
+"failed",q.retained?(H++,P(J.path+"：保留；"+q.message)):q.pending?(Z++,P(J.path+"：删除结\
+果待确认；"+q.message)):(X++,P(J.path+"：删除失败；"+q.message)),q.stop)throw P(
+"登录或权限异常，停止后续清理"),q}return E("清理所选项目",L+H+X+Z,x.length),
+C},F,8,"整目录回收项已排除其子项")}catch(J){P("清理中断："+J.message)}D(`\
+清理结束：已清理 ${L}，保留 ${H}，删除失败 ${X}，结果待确认 ${Z}，未处理\
+ ${x.length-L-H-X-Z}。具体原因见日志。`)},!0),n.get("mediaAIProvider").onchange=()=>{
+const x=s[n.get("mediaAIProvider").value];x&&(n.get("mediaAIBase").value=x.base,n.get("med\
+iaAIModel").value=x.model),o(),l(),j(),n.get("mediaAIState").textContent="服务商已切换；如密钥不同，请手动\
+更新后获取模型列表。"},n.get("mediaAIModelSelect").onchange=()=>{const x=n.get("\
+mediaAIModelSelect").value;n.get("mediaAIManualModel").hidden=x!=="__manual__",x!=="__manu\
+al__"&&(n.get("mediaAIModel").value=x),j()},n.get("mediaAIModel").oninput=j;for(const x of[
+"mediaAIBase","mediaAIKey"])n.get(x).oninput=()=>{l(),j()};n.get("fetchMediaAIModels").onclick=
+()=>R(async()=>{n.get("mediaAIState").textContent="正在获取模型列表…";try{const x=await Un(
+r()).models();l(x),n.get("mediaAIState").textContent=x.length?`已获取 ${x.length} 个模型，请\
+下拉选择后保存；模型能否用于识别请测试连接。`:"接口返回空列表，可选择手动填写模型 ID。"}catch(x){
+n.get("mediaAIState").textContent="获取模型失败："+x.message+"；接口不提供列表时可选择手动填写模型 ID\
+。"}}),n.get("saveMediaAI").onclick=()=>{try{const x=r();x.enabled&&gr(x),GM_setValue("cr\
+oss-drive-media-ai",x),j(),n.get("mediaAIState").textContent=x.enabled?"已保存并启用；仅在作品未匹配或字幕候\
+选待选择时使用大模型。":"设置已保存，大模型未启用。"}catch(x){n.get(
+"mediaAIState").textContent=x.message}},n.get("forgetMediaAI").onclick=()=>{n.get("mediaAI\
+Key").value="",n.get("enableMediaAI").checked=!1,GM_setValue("cross-drive-media-ai",r()),j(),
 n.get("mediaAIState").textContent="已清除大模型密钥并停用。"},n.get("testMedia\
 AI").onclick=()=>R(async()=>{n.get("mediaAIState").textContent="正在测试，发送一次简短请求…";
 try{if((await Un(r()).ask({test:!0})).ok!==!0)throw new Error("接口可响应，但没有返回预期 JSON，请检查模型兼容性");
-n.get("mediaAIState").textContent="连接成功，模型能返回识别所需 JSON。"}catch(S){
-n.get("mediaAIState").textContent="连接失败："+S.message}}),n.get("saveMediaKey").onclick=
-()=>{GM_setValue("cross-drive-tmdb-key",n.get("tmdbKey").value.trim()),U("TMDB 密钥已保存在脚本设置中")},
+n.get("mediaAIState").textContent="连接成功，模型能返回识别所需 JSON。"}catch(x){
+n.get("mediaAIState").textContent="连接失败："+x.message}}),n.get("saveMediaKey").onclick=
+()=>{GM_setValue("cross-drive-tmdb-key",n.get("tmdbKey").value.trim()),D("TMDB 密钥已保存在脚本设置中")},
 n.get("forgetMediaKey").onclick=()=>{GM_setValue("cross-drive-tmdb-key",""),n.get("tmdbKey").
-value="",U("已清除密钥")};const H=()=>(yr(d),R(()=>t.syncWorks(d),!0)),X=async S=>{let D=!1;
-try{await R(async()=>{D=!0,T();try{await S()}finally{ye()}})}finally{D&&await H()}},Se=(S,D,K,_,Y="\
-text")=>{const B=document.createElement("label"),g=document.createElement("input");return B.
-textContent=D,g.type=Y,g.value=K??"",B.appendChild(g),S.appendChild(B),g.oninput=()=>{_(g.
-value),T(),t.syncWorks(d,!1)},g.onchange=()=>D.startsWith("搜索片名")?void 0:H(),g},de=Ye,
-be=S=>d.filter(D=>D.group===S.group),J=S=>{if(!S.detail||S.error||!S.type||!S.title||!S.year)
-return!1;try{return Fn(S),!0}catch{return!1}};t.workReady=J;const le=async S=>{for(const D of S)
-D.include=!1;T(),ye(),U("已跳过 "+S.length+" 个视频，未修改网盘文件"),await H()},
-se=(S,D,K=!1)=>{const _=document.createElement("label"),Y=document.createElement("select");
-_.textContent=K?"选择季（应用到同组缺少季号的文件）":"选择季",Y.setAttribute(
-"data-media-season",K?"group":"file");const B=document.createElement("option");B.value="",
-B.textContent="请选择季",Y.appendChild(B);const g=[...D.detail?.seasons||[]].sort((E,V)=>E.
-season_number-V.season_number);D.season!=null&&!g.some(E=>E.season_number===D.season)&&g.push(
-{season_number:D.season});for(const E of g){const V=document.createElement("option");V.value=
-String(E.season_number),V.textContent=(E.season_number===0?"特别篇":"第 "+E.season_number+
-" 季")+(E.air_date?" · "+E.air_date.slice(0,4):"")+(E.episode_count!=null?" · "+E.episode_count+
-" 集":""),Y.appendChild(V)}Y.value=K?"":String(D.season??""),_.appendChild(Y),S.appendChild(
-_),Y.onchange=()=>{if(Y.value==="")return;const E=Number(Y.value),V=K?be(D).filter(P=>P.include&&
-P.type==="tv"&&P.detail?.id===D.detail.id&&P.season==null):[D];return X(async()=>{await We(
-V,"核对新季号（视频）",j,async F=>(F.episodeInferred&&(F.episode=null,F.episodeInferred=
-!1),F.season=E,await ze(F),F.error?"failed":void 0),q,8,"复用同一季资料，TMDB 保持节流");
-const P=V.filter(J).length;U("已应用第 "+E+" 季："+P+" 个文件就绪，"+(V.length-
-P)+" 个仍需处理；集号已自动提取或按标题匹配，无法对应的可直接下拉选集")})}},
-ue=(S,D)=>{const K=document.createElement("label"),_=document.createElement("select");K.textContent=
-"选择集（集号 · 标题）",_.setAttribute("data-media-episode","file");const Y=document.
-createElement("option");Y.value="",Y.textContent=D.season==null?"请先选择季":"未自动对应，请\
-选择这一集",_.appendChild(Y);for(const B of D.seasonEpisodes||[]){const g=document.createElement(
-"option");g.value=String(B.episode_number),g.textContent="E"+String(B.episode_number).padStart(
-2,"0")+(B.name?" · "+B.name:"")+(B.air_date?" · "+B.air_date:""),_.appendChild(g)}if(D.episode!=
-null&&!(D.seasonEpisodes||[]).some(B=>B.episode_number===D.episode)){const B=document.createElement(
-"option");B.value=String(D.episode),B.textContent="原集号 "+D.episode+"（本季未找到）",
-_.appendChild(B)}_.value=String(D.episode??""),D.season==null&&_.setAttribute("data-media-\
-disabled",""),K.appendChild(_),S.appendChild(K),_.onchange=()=>{if(_.value)return X(async()=>{
-D.episode=Number(_.value),D.episodeInferred=!1,D.endEpisode=null,await ze(D),U(J(D)?"已应用季集\
-，此文件已就绪，预览会自动更新":D.error)})}},he=(S,D,K=!1)=>{const _=Ln(D),
-Y=document.createElement("p");Y.textContent=_.reason+(D.workVideoCount?` · 同作品 ${D.
-workVideoCount} 个正片视频（本次读取）`:""),S.appendChild(Y);const B=document.createElement(
-"select");S.appendChild(B);const g=document.createElement("button");g.type="button";let E=!1;
-const V=()=>{const P=B.value||D.match||"";B.textContent="";const F=document.createElement(
-"option");F.value="",F.textContent=K?"待确认；选择作品应用到同组":"请选择候选作品",
-B.appendChild(F);const W=D.candidates.filter($=>E||!_.type||$.media_type===_.type||$.media_type+
-":"+$.id===D.match);for(const $ of W){const me=document.createElement("option");me.value=$.
-media_type+":"+$.id,me.textContent=`${$.media_type==="tv"?"剧集":"电影"} · ${$.title||
-$.name} · ${($.release_date||$.first_air_date||"").slice(0,4)} · ${$.source||"TMDB"} ${$.
-id}`,B.appendChild(me)}B.value=P,g.textContent=E?"只看符合判断的候选":"查看全部候选",
-W.length||(F.textContent="暂无符合类型的候选，可查看全部候选")};return g.
-hidden=!_.type||!D.candidates.some(P=>P.media_type!==_.type),g.onclick=()=>{E=!E,V()},S.appendChild(
-g),V(),B},oe=n.get("subtitleResults"),ie=n.get("mediaRows");let ce=null;const He=S=>S.include?
-J(S)?"已匹配":"待确认":"已跳过",Oe=(S,D,K="")=>{const _=document.createElement(S);
-return _.textContent=D,K&&(_.className=K),_},xe=(S,D,K)=>{const _=Oe("button",D);return _.
-type="button",_.onclick=K,S.append(_),_},Ne=(S,D)=>{Object.assign(S,{query:D,detail:null,match:"",
-aiType:"",aiAssisted:!1,error:"搜索片名已修改，请重新匹配"})},je=(S,D)=>{if(S.
-append(Oe("p","原位置："+(D.node.originalPath||D.node.path),"media-file-path")),D.error&&
-S.append(Oe("p",D.error)),!D.include)return;if(D.detail){const B=D.type==="tv"&&D.season!=
-null?" · "+(D.season?"第 "+D.season+" 季":"特别篇"):"";S.append(Oe("p","已匹配："+
-D.title+"（"+D.year+"）"+B)),D.type==="tv"&&(se(S,D),ue(S,D))}const K=document.createElement(
-"details");K.append(Oe("summary","修改此文件的作品或命名")),Se(K,"搜索片名（仅本文件）",
-D.query,B=>Ne(D,B)),xe(K,"查询候选作品",()=>X(async()=>{try{D.candidates=await p.search(
-D.query)}catch(B){U("查询失败："+B.message)}}));const _=he(K,D);_.onchange=()=>{if(_.
-value)return X(async()=>{try{await Re(D,_.value),await ze(D)}catch(B){D.error=B.message}})},
-Se(K,"标准片名（仅本文件）",D.title,B=>{D.title=B}),Se(K,"年份（仅本文件）",
-D.year,B=>{D.year=B}),S.append(K);const Y=document.createElement("div");Y.className="panel\
--actions",xe(Y,"检查此文件",()=>X(async()=>{await ze(D),U(J(D)?"此文件已就绪，正在更新预览。":
-D.error||"此文件仍需处理。")})),xe(Y,"跳过此文件",()=>le([D])),S.append(Y)},Pe=(S,D)=>{
-const K=document.createElement("section");K.className="sync-item media-detail";const _=xe(
-K,"返回结果",()=>{const{scrollTop:V}=ce;ce=null,t.closeWork(),oe.scrollTop=V});_.id="m\
-ediaBack",K.append(Oe("h5",D));const Y=S.filter(V=>V.include),B=Y.filter(V=>!J(V)),g=B[0]||
-Y[0];if(g&&Y.length>1){const V=document.createElement("details");V.open=!!B.length,V.append(
-Oe("summary","调整整组匹配")),Se(V,"搜索片名（整组）",g.query,W=>Y.forEach($=>Ne(
-$,W))),xe(V,"重新匹配整组",()=>X(async()=>{await Je(Y,g.query),U("已重新匹配整组。")}));
-const P=he(V,g,!0);P.onchange=()=>{if(P.value)return X(async()=>{try{await We(Y,"核对手选作品与季集\
-（视频）",j,async(W,$)=>(await Re(W,P.value),$(),await ze(W),W.error?"failed":void 0),
-q,8,"TMDB 详情和季集复用请求")}catch(W){U("读取作品失败："+W.message)}})};
-const F=B.find(W=>W.detail&&W.type==="tv"&&W.season==null);F&&se(V,F,!0),g.detail&&(Se(V,"\
-标准片名（整组）",g.title,W=>Y.forEach($=>{$.title=W})),Se(V,"年份（整组，剧集用首播年份）",
-g.year,W=>Y.forEach($=>{$.year=W}))),xe(V,"跳过本组",()=>le(Y)),K.append(V)}const E=S.
-includes(ce.file)?ce.file:B[0]||Y[0]||S[0];if(ce.file=E,S.length>1){const V=Oe("label","选择\
-文件"),P=document.createElement("select");P.id="mediaDetailFile";for(const[F,W]of S.entries()){
-const $=Oe("option",He(W)+" · "+W.node.name);$.value=String(F),P.append($)}P.value=String(
-S.indexOf(E)),P.onchange=()=>{ce.file=S[Number(P.value)],ye(),ie.querySelector("#mediaDeta\
-ilFile")?.focus({preventScroll:!0})},V.append(P),K.append(V)}je(K,E),ie.append(K)},ye=()=>{
-if(!ce)return;ie.textContent="";const{group:S}=ce;Pe(S,S[0].title||S[0].query),x()};async function Re(S,D){
-if(q(),S.episodeInferred&&(S.episode=null,S.episodeInferred=!1),S.match=D,S.detail=null,S.
-error="",S.title="",S.seasonEpisodes=[],!D)return;const[K,_]=D.split(":"),Y=await Ni(p,K,_,
-q);S.detail=Y,S.type=K,S.title=Y.title||Y.name,S.year=(Y.release_date||Y.first_air_date||"").
-slice(0,4),S.category=fr(Y,K),S.error=""}async function ze(S){if(q(),!!S.detail){S.error="";
-try{if(S.type==="tv"&&S.season==null){const D=(S.detail.seasons||[]).filter(B=>B.season_number>
-0),K=ui(S.recognitionFolders),_=pi(K,D,S.explicitEpisode);_&&(S.season=_.season,S.episode=
-_.episode,S.endEpisode=null,S.episodeInferred=!0,j("整季集号映射",S.node.name+" · 包内\
-第 "+S.explicitEpisode+" 集 → S"+String(S.season).padStart(2,"0")+"E"+String(S.episode).
-padStart(2,"0")+" · TMDB 季集总数与目录范围一致"));const Y=S.sourceYear?D.filter(
-B=>(B.air_date||"").startsWith(S.sourceYear)):[];S.season==null&&Y.length===1?S.season=Y[0].
-season_number:(S.season==null&&S.sourceYear&&D.length===1||S.season==null&&D.length===1&&S.
-explicitEpisode>0&&S.explicitEpisode<=D[0].episode_count&&!S.standalone&&!/特别篇|特別篇|剧场版|劇場版|特典|番外|\b(?:special|sp|ova|oad|movie)\b/i.
-test([S.node.name,...S.node.folders||[]].join(" ")))&&(S.season=D[0].season_number)}if(S.type===
-"tv"&&S.season!=null&&S.explicitSeason==null){const D=ca(S.detail.seasons||[],S.season,S.explicitEpisode);
-D&&(S.episode=D.episode,S.endEpisode=null,S.episodeInferred=!0,j("跨季集号映射",S.node.
-name+" · 全剧第 "+S.explicitEpisode+" 集 → S"+String(S.season).padStart(2,"0")+"E"+
-String(S.episode).padStart(2,"0")))}if(S.type==="tv"&&S.season!=null){const D=await pa(p,S.
-detail.id,S.season);if(S.seasonEpisodes=D.episodes,S.seasonYear=D.year,S.episode==null){const _=tt(
-S.node.name,S.node.folders||[]);if(_.episode!=null)S.episode=_.episode,S.endEpisode=_.endEpisode;else{
-const Y=de(Ge(S.node.name)),B=S.seasonEpisodes.filter(g=>(g.aliases||[g.name]).some(E=>{const V=de(
-E||"");return V.length>=3&&Y.includes(V)}));B.length===1&&(S.episode=B[0].episode_number,S.
-episodeInferred=!0)}}if(S.episode==null)throw new Error("已应用季号，但文件名无法唯一对应本季某集，请下拉选择集名");
-const K=new Set(S.seasonEpisodes.map(_=>_.episode_number));for(let _=S.episode;_<=(S.endEpisode??
-S.episode);_++)if(!K.has(_))throw new Error((S.detail.source||"TMDB")+" 没有对应季集，请确认季号和集号")}
-Fn(S)}catch(D){if(D.stop)throw D;S.error=D.message}}}async function Je(S,D,K=!1,_=null,Y=q){
-if(Y(),K&&r().enabled){for(let B=0;B<S.length;B+=12){q();const g=S.slice(B,B+12);for(const E of g)
-E.query="",E.detail=null,E.match="",E.candidates=[],E.aiAssisted=!1;U(`AI 翻译完整作品名：${B+
-1}–${B+g.length}/${S.length}`);try{const E=await Mi(g,Un(r()));q();for(let V=0;V<g.length;V++){
-q();const P=g[V],F=E[V];if(F.error){P.error=F.error;continue}await Je([P],F.title,!1,F,Y)}}catch(E){
-q();for(const V of g)V.error=E.message}}return}for(const B of S)B.detail=null,B.match="",B.
-error="",B.matchFailure="",B.query=D,B.aiAssisted=!1,B.aiType="",B.candidates=[];try{if(_){
-q(),D=_.title;for(const F of S)F.group=JSON.stringify([F.node.parentId,_.type,D,F.tv&&_.type!==
-"movie"?"":F.node.id]),F.query=D,F.aiAssisted=!0,F.aiType=_.type,!F.explicitYear&&_.year&&
-(F.sourceYear=_.year);for(const F of _.episodes){const W=S[F.index];W.explicitSeason==null&&
-F.season!==null&&(W.season=F.season),W.episode==null&&F.episode!==null&&(W.episode=F.episode)}
-j("大模型填写搜索片名："+S[0].node.name+" → "+D)}if(q(),!D)throw S.forEach(F=>{
-F.matchFailure="unmatched"}),new Error("未提取到片名，请填写搜索片名后重新匹配");
-let B=[],g="";const E=S.find(F=>F.tv)||S[0],V=async(F,W=!1,$=D)=>{const me=Ln(E);if(me.conflict)
-return[];const Z=F.filter(te=>(W?te.media_type==="movie"&&me.type!=="tv":!me.type||te.media_type===
-me.type)&&[te.title,te.name,te.original_title,te.original_name].filter(Boolean).some(fe=>W?
-de(hn(fe))===de(hn($)):de(fe)===de($))),ee=[];for(const te of Z){if(te.media_type==="tv"&&
-!E.sourceYear&&E.workNumberedCount>1){const G=((await p.get("/tv/"+te.id)).seasons||[]).filter(
-re=>re.season_number>0).reduce((re,we)=>re+(Number(we.episode_count)||0),0);if(G&&E.workNumberedCount>
-G)continue}if(!E.sourceYear||(te.release_date||te.first_air_date||"").startsWith(E.sourceYear)){
-ee.push(te);continue}if(te.media_type!=="tv")continue;((await p.get("/tv/"+te.id)).seasons||
-[]).some(pe=>(E.season==null||pe.season_number===E.season)&&pe.season_number>0&&(pe.air_date||
-"").startsWith(E.sourceYear))&&ee.push(te)}return ee};try{B=await p.search(D,E.sourceYear?
-async F=>(await V(F)).length===1:void 0)}catch(F){g=F.message}let P=await V(B);if(!P.length&&
-!g&&/剧场版|劇場版/.test(D)){const F=hn(D);if(F&&de(F)!==de(D)&&Ln(E).type!=="tv"){Y(),
-j("剧场版片名补搜："+F);try{const W=await p.search(F);B=[...new Map([...B,...W].map(
-$=>[$.media_type+":"+$.id,$])).values()],P=await V(B,!0)}catch(W){if(W.stop)throw W;Y(),g=
-W.message}}}if(!P.length&&!g&&E.tv&&!E.standalone){const F=D.split(/\s*[:：·｜|]\s*|\s+[-–—]\s+|\s+/u).
-filter(Boolean);for(let W=F.length-1;W>0;W--){const $=F.slice(0,W).join(" ").trim();if(!(de(
-$).length<2||de($)===de(D))){Y(),j("作品识别回退搜索："+D+" → "+$);try{const me=await p.
-search($);if(B=[...new Map([...B,...me].map(Z=>[Z.media_type+":"+Z.id,Z])).values()],P=await V(
-me,!1,$),P.length)break}catch(me){if(me.stop)throw me;Y(),g=me.message;break}}}}for(const F of S)
-F.candidates=B;if(P.length!==1){const F=P.length>1?"ambiguous":g?"lookup-error":"unmatched";
-S.forEach(W=>{W.matchFailure=F});for(const W of S)W.error=P.length>1?"同名作品不唯一，请为同组选择一次":
-"名称或年份无法可靠匹配，可修改搜索片名、选择候选或跳过"+(g?"；"+
-g:"");return}for(const F of S)Y(),await Re(F,P[0].media_type+":"+P[0].id),Y(),await ze(F)}catch(B){
-if(B.stop)throw B;Y();for(const g of S)g.error=B.message}}const De=new Map;async function Ze(S,D){
-const K=S.filter(Ai);K.length&&r().enabled&&await Yt(De,"ai",()=>Je(K,"",!0,null,D))}async function st(S,D){
-if(!p||J(S))return;const K=t.subtitleWorkHints(S);if(!K)return;const _=Ln(S);if(_.conflict||
-_.type&&_.type!==K.type||S.match&&K.id&&S.match!==K.type+":"+K.id)return;if(["season","epi\
-sode"].some(E=>{const V=S[E==="season"?"explicitSeason":"explicitEpisode"];return V!=null&&
-K[E]!=null&&V!==K[E]})){j("字幕季集与视频明确编号冲突："+S.node.name);return}
-const Y=()=>({...S,season:S.explicitSeason??K.season??S.season,episode:S.explicitEpisode??
-K.episode??S.episode,endEpisode:S.endEpisode??K.endEpisode,episodeInferred:!1,sourceYear:S.
-explicitYear||S.sourceYear||K.year,aiType:K.type,subtitleTitleHints:K.queries}),B=new Map,
-g=E=>{J(E)&&E.type===K.type&&(K.type!=="movie"||!E.sourceYear||E.year===String(E.sourceYear))&&
-B.set(E.match,E)};if(K.id){const E=Y();await Re(E,K.type+":"+K.id),D(),await ze(E),g(E)}else{
-let E;for(const V of K.queries){const P=Y();if(await Je([P],V,!1,null,D),E=P,D(),P.matchFailure===
-"lookup-error"||(P.matchFailure==="ambiguous"&&await Ze([P],D),D(),g(P),B.size>1))return}!B.
-size&&E&&(await Ze([E],D),D(),g(E))}B.size===1&&(Object.assign(S,B.values().next().value),
-await t.acceptSubtitleWork(S,D),j("已用字幕线索确认作品："+S.node.name+" → "+
-S.title+"（"+S.year+"）"))}t.resolveSubtitleWorks=async(S,D)=>{const K=S.filter(Y=>Y.media&&
-!J(Y.media)&&(t.coverage(Y.node.id)==="complete"||Y.identityClues?.length)&&!Y.writeBlocked&&
-Y.media.include!==!1&&!Y.organized&&!Y.organizePending);let _=0;await We(K,"字幕线索复核作品身份（视频）",
-j,async(Y,B,g,E)=>{try{await st(Y.media,B)}catch(V){if(E(V),B(),V.stop||V.phase==="drive-a\
-uth"||[401,403].includes(V.status))throw V;return j("字幕线索复核失败："+Y.node.name+
-"；"+V.message),"failed"}return C("字幕线索复核",++_,K.length),J(Y.media)?void 0:"s\
-kipped"},D,8,"字幕线索沿用作品候选、TMDB 详情和季集核对流程"),t.requestRender()},
-n.get("scanMedia").onclick=()=>R(yt,!0);async function yt(){t.reset(),T(),d=[],ce=null,k=void 0,
-oe.scrollTop=0,n.get("mediaPreviewPanel").open=!1,ye(),C("读取选中内容");try{const S=await Vn(
-e);m=S.session,u=S.source;const D=S.selected;if(!D.length)throw new Error("请先在 "+e+"\
- 勾选文件或文件夹");const K=S.path,_=Ei(u,K);y=_.path,w={...m,parent:_.id},b=pn(m);
-const Y=await mi(D,u,U,q,b,j);if(k=Y.readSubtitleLinks,S.readSubtitleLinks=k,!Y.videos.length){
-C("检查完成",0,0),U(Y.unmatched.length?"选区里只有待配对的字幕，请一并勾选视频所在目录。":
-"当前选区没有可识别的视频。");return}const B=n.get("tmdbKey").value.trim();p=
-B?fa(B):null;for(const P of Y.videos){const F=tt(P.name,[...K.split("/").filter(Boolean),...P.
-folders]);P.originalPath="/"+[K,P.path].filter(Boolean).join("/");for(const Z of Y.linked.
-get(P.id))Z.originalPath="/"+[K,Z.path].filter(Boolean).join("/");const W=P.folders.length?
-P.folders.join("/"):K,$=tt(P.name),me={node:P,...F,recognitionFolders:[...K.split("/").filter(
-Boolean),...P.folders],explicitSeason:$.season,explicitEpisode:$.episode,explicitYear:$.year,
-originalFolder:W,sourceYear:F.year,title:"",candidates:[],include:!0,subtitles:Y.linked.get(
-P.id),error:""};me.group=ya(me,!1),d.push(me)}if(t.context=S,t.seed(S,Y,d),!p){for(const P of d)
-P.error="请在设置中填写 TMDB 密钥后识别作品";return t.log("作品识别","缺少\
- TMDB 密钥，继续检查字幕"),await t.inspect(S,Y)}yr(d);const g=new Map;await We(d,
-"复用整理记录与核对季集（视频）",j,async(P,F)=>{const W=Tt.get(P.node);if(W&&
-!en(P.node))try{Object.assign(P,{query:W.query,sourceYear:W.sourceYear,season:W.season,episode:W.
-episode,endEpisode:W.endEpisode,aiAssisted:W.aiAssisted}),await Re(P,W.match),await ze(P);
-const $=Ri(P,W.type,P.detail);if($){const me=tt(P.node.name,P.recognitionFolders);return Object.
-assign(P,me,{query:me.query,sourceYear:me.year,title:"",type:"",year:"",category:"",detail:null,
+value="",D("已清除密钥")};const K=()=>(yr(d),R(()=>t.syncWorks(d),!0)),Y=async x=>{let L=!1;
+try{await R(async()=>{L=!0,j();try{await x()}finally{Ne()}})}finally{L&&await K()}},ke=(x,L,H,X,Z="\
+text")=>{const J=document.createElement("label"),_=document.createElement("input");return J.
+textContent=L,_.type=Z,_.value=H??"",J.appendChild(_),x.appendChild(J),_.oninput=()=>{X(_.
+value),j(),t.syncWorks(d,!1)},_.onchange=()=>L.startsWith("搜索片名")?void 0:K(),_},de=Ge,
+ue=x=>{if(!x.detail||x.error||!x.type||!x.title||!x.year)return!1;try{return Fn(x),!0}catch{
+return!1}};t.workReady=ue;const Q=async x=>{for(const L of x)L.include=!1;j(),Ne(),D("已跳过 "+
+x.length+" 个视频，未修改网盘文件"),await K()},ce=(x,L,H=[L])=>{const X=H.length>
+1,Z=document.createElement("label"),J=document.createElement("select");Z.textContent=X?"整组\
+选季（"+H.length+" 个文件）":"选择季（仅此文件）",J.setAttribute("data-med\
+ia-season",X?"group":"file");const _=[...L.detail?.seasons||[]].sort((C,q)=>C.season_number-
+q.season_number),g=_.some(C=>C.season_number===L.season),N=document.createElement("option");
+N.value="",N.textContent=L.season!=null&&!g?"原季号 "+L.season+" 无可用资料，请重新选择":
+"请选择季",J.appendChild(N);for(const C of _){const q=document.createElement("option");
+q.value=String(C.season_number),q.textContent=(C.season_number===0?"特别篇":"第 "+C.season_number+
+" 季")+(C.air_date?" · "+C.air_date.slice(0,4):"")+(C.episode_count!=null?" · "+C.episode_count+
+" 集":""),J.appendChild(q)}J.value=!X&&g?String(L.season):"",Z.appendChild(J),x.appendChild(
+Z),J.onchange=()=>{if(J.value==="")return;const C=Number(J.value);return Y(async()=>{await We(
+H,"核对新季号（视频）",P,async W=>(W.episodeInferred&&(W.episode=null,W.episodeInferred=
+!1),W.season=C,W.seasonEpisodes=[],W.seasonYear="",await Re(W,{matchTitleIfNumberInvalid:!0}),
+W.error?"failed":void 0),F,8,"复用同一季资料，TMDB 保持节流");const q=H.filter(
+ue).length,V=C===0?"特别篇":"第 "+C+" 季";D("已选择"+V+" · "+q+"/"+H.length+" 个文件\
+通过季集核对"+(q<H.length?" · 其余文件待确认":""))})}},oe=(x,L)=>{const H=document.
+createElement("label"),X=document.createElement("select");H.textContent="选择集（集号 · 标题）",
+X.setAttribute("data-media-episode","file");const Z=document.createElement("option");Z.value=
+"",Z.textContent=L.season==null?"请先选择季":"未自动对应，请选择这一集",X.
+appendChild(Z);for(const J of L.seasonEpisodes||[]){const _=document.createElement("option");
+_.value=String(J.episode_number),_.textContent="E"+String(J.episode_number).padStart(2,"0")+
+(J.name?" · "+J.name:"")+(J.air_date?" · "+J.air_date:""),X.appendChild(_)}if(L.episode!=
+null&&!(L.seasonEpisodes||[]).some(J=>J.episode_number===L.episode)){const J=document.createElement(
+"option");J.value=String(L.episode),J.textContent="原集号 "+L.episode+"（本季未找到）",
+X.appendChild(J)}X.value=String(L.episode??""),L.season==null&&X.setAttribute("data-media-\
+disabled",""),H.appendChild(X),x.appendChild(H),X.onchange=()=>{if(X.value)return Y(async()=>{
+L.episode=Number(X.value),L.episodeInferred=!1,L.endEpisode=null,await Re(L),D(ue(L)?"已应用季\
+集，此文件已就绪，预览会自动更新":L.error)})}},pe=(x,L,H=!1)=>{const X=Ln(
+L),Z=document.createElement("p");Z.textContent=X.reason+(L.workVideoCount?` · 同作品 ${L.
+workVideoCount} 个正片视频（本次读取）`:""),x.appendChild(Z);const J=document.createElement(
+"select");x.appendChild(J);const _=document.createElement("button");_.type="button";let g=!1;
+const N=()=>{const C=J.value||L.match||"";J.textContent="";const q=document.createElement(
+"option");q.value="",q.textContent=H?"待确认；选择作品应用到同组":"请选择候选作品",
+J.appendChild(q);const V=L.candidates.filter(W=>g||!X.type||W.media_type===X.type||W.media_type+
+":"+W.id===L.match);for(const W of V){const re=document.createElement("option");re.value=W.
+media_type+":"+W.id,re.textContent=`${W.media_type==="tv"?"剧集":"电影"} · ${W.title||
+W.name} · ${(W.release_date||W.first_air_date||"").slice(0,4)} · ${W.source||"TMDB"} ${W.
+id}`,J.appendChild(re)}J.value=C,_.textContent=g?"只看符合判断的候选":"查看全部候选",
+V.length||(q.textContent="暂无符合类型的候选，可查看全部候选")};return _.
+hidden=!X.type||!L.candidates.some(C=>C.media_type!==X.type),_.onclick=()=>{g=!g,N()},x.appendChild(
+_),N(),J},me=n.get("subtitleResults"),le=n.get("mediaRows");let ae=null;const ge=x=>x.include?
+ue(x)?"已匹配":"待确认":"已跳过",ze=(x,L,H="")=>{const X=document.createElement(x);
+return X.textContent=L,H&&(X.className=H),X},De=(x,L,H)=>{const X=ze("button",L);return X.
+type="button",X.onclick=H,x.append(X),X},Ce=(x,L)=>{Object.assign(x,{query:L,detail:null,match:"",
+aiType:"",aiAssisted:!1,error:"搜索片名已修改，请重新匹配"})},Pe=(x,L,H)=>{if(x.
+append(ze("p","原位置："+(L.node.originalPath||L.node.path),"media-file-path")),L.error&&
+x.append(ze("p",L.error)),!L.include)return;if(L.detail){const _=L.type==="tv"&&L.season!=
+null?" · "+(L.season?"第 "+L.season+" 季":"特别篇"):"";x.append(ze("p","已匹配："+
+L.title+"（"+L.year+"）"+_)),L.type==="tv"&&(H||ce(x,L),oe(x,L))}const X=document.createElement(
+"details");X.append(ze("summary","修改此文件的作品或命名")),H&&ce(X,L),ke(X,"搜索\
+片名（仅本文件）",L.query,_=>Ce(L,_)),De(X,"查询候选作品",()=>Y(async()=>{try{
+L.candidates=await p.search(L.query)}catch(_){D("查询失败："+_.message)}}));const Z=pe(
+X,L);Z.onchange=()=>{if(Z.value)return Y(async()=>{try{await be(L,Z.value),await Re(L)}catch(_){
+L.error=_.message}})},ke(X,"标准片名（仅本文件）",L.title,_=>{L.title=_}),ke(X,"\
+年份（仅本文件）",L.year,_=>{L.year=_}),x.append(X);const J=document.createElement(
+"div");J.className="panel-actions",De(J,"检查此文件",()=>Y(async()=>{await Re(L),D(ue(
+L)?"此文件已就绪，正在更新预览。":L.error||"此文件仍需处理。")})),De(
+J,"跳过此文件",()=>Q([L])),x.append(J)},Oe=(x,L)=>{const H=document.createElement("se\
+ction");H.className="sync-item media-detail";const X=De(H,"返回结果",()=>{const{scrollTop:q}=ae;
+ae=null,t.closeWork(),me.scrollTop=q});X.id="mediaBack",H.append(ze("h5",L));const Z=x.filter(
+q=>q.include),J=Z.filter(q=>!ue(q)),_=J[0]||Z[0],g=x.includes(ae.file)?ae.file:_||x[0];ae.
+file=g;const N=(g.include&&g.type==="tv"&&g.detail?g:null)||Z.find(q=>q.type==="tv"&&q.detail),
+C=N?Z.filter(q=>q.type==="tv"&&q.detail&&q.match===N.match):[];if(C.length>1&&ce(H,N,C),_&&
+Z.length>1){const q=document.createElement("details");q.open=!!J.length,q.append(ze("summa\
+ry","调整整组匹配")),ke(q,"搜索片名（整组）",_.query,W=>Z.forEach(re=>Ce(re,
+W))),De(q,"重新匹配整组",()=>Y(async()=>{await Le(Z,_.query),D("已重新匹配整组。")}));
+const V=pe(q,_,!0);V.onchange=()=>{if(V.value)return Y(async()=>{try{await We(Z,"核对手选作品与季集\
+（视频）",P,async(W,re)=>(await be(W,V.value),re(),await Re(W),W.error?"failed":void 0),
+F,8,"TMDB 详情和季集复用请求")}catch(W){D("读取作品失败："+W.message)}})},
+_.detail&&(ke(q,"标准片名（整组）",_.title,W=>Z.forEach(re=>{re.title=W})),ke(q,"年\
+份（整组，剧集用首播年份）",_.year,W=>Z.forEach(re=>{re.year=W}))),De(q,"跳过本组",
+()=>Q(Z)),H.append(q)}if(x.length>1){const q=ze("label","选择文件"),V=document.createElement(
+"select");V.id="mediaDetailFile";for(const[W,re]of x.entries()){const Se=ze("option",ge(re)+
+" · "+re.node.name);Se.value=String(W),V.append(Se)}V.value=String(x.indexOf(g)),V.onchange=
+()=>{ae.file=x[Number(V.value)],Ne(),le.querySelector("#mediaDetailFile")?.focus({preventScroll:!0})},
+q.append(V),H.append(q)}Pe(H,g,C.length>1&&C.includes(g)),le.append(H)},Ne=()=>{if(!ae)return;
+le.textContent="";const{group:x}=ae;Oe(x,x[0].title||x[0].query),S()};async function be(x,L){
+if(F(),x.episodeInferred&&(x.episode=null,x.episodeInferred=!1),x.match=L,x.detail=null,x.
+error="",x.title="",x.seasonEpisodes=[],!L)return;const[H,X]=L.split(":"),Z=await Ni(p,H,X,
+F);x.detail=Z,x.type=H,x.title=Z.title||Z.name,x.year=(Z.release_date||Z.first_air_date||"").
+slice(0,4),x.category=fr(Z,H),x.error=""}async function Re(x,{matchTitleIfNumberInvalid:L=!1}={}){
+if(F(),!!x.detail){x.error="";try{if(x.type==="tv"&&x.season==null){const H=(x.detail.seasons||
+[]).filter(_=>_.season_number>0),X=ui(x.recognitionFolders),Z=pi(X,H,x.explicitEpisode);Z&&
+(x.season=Z.season,x.episode=Z.episode,x.endEpisode=null,x.episodeInferred=!0,P("整季集号映射",
+x.node.name+" · 包内第 "+x.explicitEpisode+" 集 → S"+String(x.season).padStart(2,"0")+
+"E"+String(x.episode).padStart(2,"0")+" · TMDB 季集总数与目录范围一致"));const J=x.
+sourceYear?H.filter(_=>(_.air_date||"").startsWith(x.sourceYear)):[];x.season==null&&J.length===
+1?x.season=J[0].season_number:(x.season==null&&x.sourceYear&&H.length===1||x.season==null&&
+H.length===1&&x.explicitEpisode>0&&x.explicitEpisode<=H[0].episode_count&&!x.standalone&&!/特别篇|特別篇|剧场版|劇場版|特典|番外|\b(?:special|sp|ova|oad|movie)\b/i.
+test([x.node.name,...x.node.folders||[]].join(" ")))&&(x.season=H[0].season_number)}if(x.type===
+"tv"&&x.season!=null&&x.explicitSeason==null){const H=ca(x.detail.seasons||[],x.season,x.explicitEpisode);
+H&&(x.episode=H.episode,x.endEpisode=null,x.episodeInferred=!0,P("跨季集号映射",x.node.
+name+" · 全剧第 "+x.explicitEpisode+" 集 → S"+String(x.season).padStart(2,"0")+"E"+
+String(x.episode).padStart(2,"0")))}if(x.type==="tv"&&x.season!=null){const H=await pa(p,x.
+detail.id,x.season);if(x.seasonEpisodes=H.episodes,x.seasonYear=H.year,x.episode==null){const Z=tt(
+x.node.name,x.node.folders||[]);Z.episode!=null&&(x.episode=Z.episode,x.endEpisode=Z.endEpisode)}
+const X=new Set(x.seasonEpisodes.map(Z=>Z.episode_number));if(x.episode==null||L&&x.endEpisode==
+null&&!X.has(x.episode)){const Z=de(Qe(x.node.name)),J=x.seasonEpisodes.filter(_=>(_.aliases||
+[_.name]).some(g=>{const N=de(g||"");return N.length>=3&&Z.includes(N)}));J.length===1&&(x.
+episode=J[0].episode_number,x.episodeInferred=!0)}if(x.episode==null)throw new Error("已应用季\
+号，但文件名无法唯一对应本季某集，请下拉选择集名");for(let Z=x.episode;Z<=
+(x.endEpisode??x.episode);Z++)if(!X.has(Z))throw new Error((x.detail.source||"TMDB")+" 没有对\
+应季集，请确认季号和集号")}Fn(x)}catch(H){if(H.stop)throw H;x.error=H.message}}}
+async function Le(x,L,H=!1,X=null,Z=F){if(Z(),H&&r().enabled){for(let J=0;J<x.length;J+=12){
+F();const _=x.slice(J,J+12);for(const g of _)g.query="",g.detail=null,g.match="",g.candidates=
+[],g.aiAssisted=!1;D(`AI 翻译完整作品名：${J+1}–${J+_.length}/${x.length}`);try{
+const g=await Mi(_,Un(r()));F();for(let N=0;N<_.length;N++){F();const C=_[N],q=g[N];if(q.error){
+C.error=q.error;continue}await Le([C],q.title,!1,q,Z)}}catch(g){F();for(const N of _)N.error=
+g.message}}return}for(const J of x)J.detail=null,J.match="",J.error="",J.matchFailure="",J.
+query=L,J.aiAssisted=!1,J.aiType="",J.candidates=[];try{if(X){F(),L=X.title;for(const q of x)
+q.group=JSON.stringify([q.node.parentId,X.type,L,q.tv&&X.type!=="movie"?"":q.node.id]),q.query=
+L,q.aiAssisted=!0,q.aiType=X.type,!q.explicitYear&&X.year&&(q.sourceYear=X.year);for(const q of X.
+episodes){const V=x[q.index];V.explicitSeason==null&&q.season!==null&&(V.season=q.season),
+V.episode==null&&q.episode!==null&&(V.episode=q.episode)}P("大模型填写搜索片名："+
+x[0].node.name+" → "+L)}if(F(),!L)throw x.forEach(q=>{q.matchFailure="unmatched"}),new Error(
+"未提取到片名，请填写搜索片名后重新匹配");let J=[],_="";const g=x.find(
+q=>q.tv)||x[0],N=async(q,V=!1,W=L)=>{const re=Ln(g);if(re.conflict)return[];const Se=q.filter(
+ne=>(V?ne.media_type==="movie"&&re.type!=="tv":!re.type||ne.media_type===re.type)&&[ne.title,
+ne.name,ne.original_title,ne.original_name].filter(Boolean).some(se=>V?de(hn(se))===de(hn(
+W)):de(se)===de(W))),B=[];for(const ne of Se){if(ne.media_type==="tv"&&!g.sourceYear&&g.workNumberedCount>
+1){const he=((await p.get("/tv/"+ne.id)).seasons||[]).filter(G=>G.season_number>0).reduce(
+(G,$)=>G+(Number($.episode_count)||0),0);if(he&&g.workNumberedCount>he)continue}if(!g.sourceYear||
+(ne.release_date||ne.first_air_date||"").startsWith(g.sourceYear)){B.push(ne);continue}if(ne.
+media_type!=="tv")continue;((await p.get("/tv/"+ne.id)).seasons||[]).some(fe=>(g.season==null||
+fe.season_number===g.season)&&fe.season_number>0&&(fe.air_date||"").startsWith(g.sourceYear))&&
+B.push(ne)}return B};try{J=await p.search(L,g.sourceYear?async q=>(await N(q)).length===1:
+void 0)}catch(q){_=q.message}let C=await N(J);if(!C.length&&!_&&/剧场版|劇場版/.test(
+L)){const q=hn(L);if(q&&de(q)!==de(L)&&Ln(g).type!=="tv"){Z(),P("剧场版片名补搜："+
+q);try{const V=await p.search(q);J=[...new Map([...J,...V].map(W=>[W.media_type+":"+W.id,W])).
+values()],C=await N(J,!0)}catch(V){if(V.stop)throw V;Z(),_=V.message}}}if(!C.length&&!_&&g.
+tv&&!g.standalone){const q=L.split(/\s*[:：·｜|]\s*|\s+[-–—]\s+|\s+/u).filter(Boolean);
+for(let V=q.length-1;V>0;V--){const W=q.slice(0,V).join(" ").trim();if(!(de(W).length<2||de(
+W)===de(L))){Z(),P("作品识别回退搜索："+L+" → "+W);try{const re=await p.search(
+W);if(J=[...new Map([...J,...re].map(Se=>[Se.media_type+":"+Se.id,Se])).values()],C=await N(
+re,!1,W),C.length)break}catch(re){if(re.stop)throw re;Z(),_=re.message;break}}}}for(const q of x)
+q.candidates=J;if(C.length!==1){const q=C.length>1?"ambiguous":_?"lookup-error":"unmatched";
+x.forEach(V=>{V.matchFailure=q});for(const V of x)V.error=C.length>1?"同名作品不唯一，请为同组选择一次":
+"名称或年份无法可靠匹配，可修改搜索片名、选择候选或跳过"+(_?"；"+
+_:"");return}for(const q of x)Z(),await be(q,C[0].media_type+":"+C[0].id),Z(),await Re(q)}catch(J){
+if(J.stop)throw J;Z();for(const _ of x)_.error=J.message}}const Xe=new Map;async function Fe(x,L){
+const H=x.filter(Ai);H.length&&r().enabled&&await Xt(Xe,"ai",()=>Le(H,"",!0,null,L))}async function Je(x,L){
+if(!p||ue(x))return;const H=t.subtitleWorkHints(x);if(!H)return;const X=Ln(x);if(X.conflict||
+X.type&&X.type!==H.type||x.match&&H.id&&x.match!==H.type+":"+H.id)return;if(["season","epi\
+sode"].some(g=>{const N=x[g==="season"?"explicitSeason":"explicitEpisode"];return N!=null&&
+H[g]!=null&&N!==H[g]})){P("字幕季集与视频明确编号冲突："+x.node.name);return}
+const Z=()=>({...x,season:x.explicitSeason??H.season??x.season,episode:x.explicitEpisode??
+H.episode??x.episode,endEpisode:x.endEpisode??H.endEpisode,episodeInferred:!1,sourceYear:x.
+explicitYear||x.sourceYear||H.year,aiType:H.type,subtitleTitleHints:H.queries}),J=new Map,
+_=g=>{ue(g)&&g.type===H.type&&(H.type!=="movie"||!g.sourceYear||g.year===String(g.sourceYear))&&
+J.set(g.match,g)};if(H.id){const g=Z();await be(g,H.type+":"+H.id),L(),await Re(g),_(g)}else{
+let g;for(const N of H.queries){const C=Z();if(await Le([C],N,!1,null,L),g=C,L(),C.matchFailure===
+"lookup-error"||(C.matchFailure==="ambiguous"&&await Fe([C],L),L(),_(C),J.size>1))return}!J.
+size&&g&&(await Fe([g],L),L(),_(g))}J.size===1&&(Object.assign(x,J.values().next().value),
+await t.acceptSubtitleWork(x,L),P("已用字幕线索确认作品："+x.node.name+" → "+
+x.title+"（"+x.year+"）"))}t.resolveSubtitleWorks=async(x,L)=>{const H=x.filter(Z=>Z.media&&
+!ue(Z.media)&&(t.coverage(Z.node.id)==="complete"||Z.identityClues?.length)&&!Z.writeBlocked&&
+Z.media.include!==!1&&!Z.organized&&!Z.organizePending);let X=0;await We(H,"字幕线索复核作品身份（视频）",
+P,async(Z,J,_,g)=>{try{await Je(Z.media,J)}catch(N){if(g(N),J(),N.stop||N.phase==="drive-a\
+uth"||[401,403].includes(N.status))throw N;return P("字幕线索复核失败："+Z.node.name+
+"；"+N.message),"failed"}return E("字幕线索复核",++X,H.length),ue(Z.media)?void 0:"\
+skipped"},L,8,"字幕线索沿用作品候选、TMDB 详情和季集核对流程"),t.requestRender()},
+n.get("scanMedia").onclick=()=>R(st,!0);async function st(){t.reset(),j(),d=[],ae=null,k=void 0,
+me.scrollTop=0,n.get("mediaPreviewPanel").open=!1,Ne(),E("读取选中内容");try{const x=await Vn(
+e);m=x.session,u=x.source;const L=x.selected;if(!L.length)throw new Error("请先在 "+e+"\
+ 勾选文件或文件夹");const H=x.path,X=Ei(u,H);y=X.path,w={...m,parent:X.id},b=pn(m);
+const Z=await mi(L,u,D,F,b,P);if(k=Z.readSubtitleLinks,x.readSubtitleLinks=k,!Z.videos.length){
+E("检查完成",0,0),D(Z.unmatched.length?"选区里只有待配对的字幕，请一并勾选视频所在目录。":
+"当前选区没有可识别的视频。");return}const J=n.get("tmdbKey").value.trim();p=
+J?fa(J):null;for(const C of Z.videos){const q=tt(C.name,[...H.split("/").filter(Boolean),...C.
+folders]);C.originalPath="/"+[H,C.path].filter(Boolean).join("/");for(const Se of Z.linked.
+get(C.id))Se.originalPath="/"+[H,Se.path].filter(Boolean).join("/");const V=C.folders.length?
+C.folders.join("/"):H,W=tt(C.name),re={node:C,...q,recognitionFolders:[...H.split("/").filter(
+Boolean),...C.folders],explicitSeason:W.season,explicitEpisode:W.episode,explicitYear:W.year,
+originalFolder:V,sourceYear:q.year,title:"",candidates:[],include:!0,subtitles:Z.linked.get(
+C.id),error:""};re.group=ya(re,!1),d.push(re)}if(t.context=x,t.seed(x,Z,d),!p){for(const C of d)
+C.error="请在设置中填写 TMDB 密钥后识别作品";return t.log("作品识别","缺少\
+ TMDB 密钥，继续检查字幕"),await t.inspect(x,Z)}yr(d);const _=new Map;await We(d,
+"复用整理记录与核对季集（视频）",P,async(C,q)=>{const V=Nt.get(C.node);if(V&&
+!en(C.node))try{Object.assign(C,{query:V.query,sourceYear:V.sourceYear,season:V.season,episode:V.
+episode,endEpisode:V.endEpisode,aiAssisted:V.aiAssisted}),await be(C,V.match),await Re(C);
+const W=Ri(C,V.type,C.detail);if(W){const re=tt(C.node.name,C.recognitionFolders);return Object.
+assign(C,re,{query:re.query,sourceYear:re.year,title:"",type:"",year:"",category:"",detail:null,
 match:"",matchFailure:"",seasonEpisodes:[],error:"",aiAssisted:!1,aiType:"",episodeInferred:!1}),
-P.group=ya(P,!1),j("整理记录冲突",P.node.name+" · "+$+"；忽略旧记录，重新识别整组选集"),
-"skipped"}if(J(P)){P.group=JSON.stringify([P.node.parentId,P.type,P.title,P.type==="tv"?"":
-P.node.id]),P.reusedRecord=!0;return}}catch($){if(F(),$.stop)throw $}return"skipped"},q,8,
-"已保存记录优先，同一作品与季集读同一份 TMDB 结果");for(const P of d)
-if(!P.reusedRecord){if(en(P.node)){P.include=!1,P.error="文件名匹配附加内容规则，未参与作品识别",
-j("识别跳过："+P.node.path+"；"+P.error);continue}g.has(P.group)||g.set(P.group,[]),
-g.get(P.group).push(P)}let E=0;C("匹配作品",0,g.size),await We([...g.values()],"作品识别与季\
-集核对（作品组）",j,async(P,F)=>(F(),U(`匹配作品 ${E+1}/${g.size}：${P[0].query}\
-（${P.length} 个视频）`),await Je(P,P[0].query,!1,null,F),await Ze(P,F),C("匹配作品",
-++E,g.size),t.requestRender(),P.every(W=>!J(W))?"failed":void 0),q,8,"TMDB 请求沿用节流，同组季集及 AI\
- 回退顺序检查"),q(),yr(d),U("核对同一作品目录中的特别篇");const V=await fi(
-d.filter(P=>!P.reusedRecord),p,K,q,j);await We(V,"特别篇季集核对（视频）",j,async P=>(await ze(
-P),P.error?"failed":void 0),q,8,"特别篇归属先比对已有作品，再读取相同季资料"),
-q();for(const P of d)J(P)&&Tt.remember(P);Tt.save(),Y.unmatched.length&&Y.refreshSubtitleLinks(),
-C("识别结束",E,g.size);for(const P of Y.unmatched)j("字幕未唯一关联，保留原状："+
-P.path);return await t.inspect(S,Y)}catch(S){O(),U("识别失败："+S.message),j("识别中断："+
-S.message),t.interrupt()}finally{ye()}}const bt=()=>R(async()=>{T(),C("检查命名",0,d.filter(
-S=>S.include).length);try{if(!d.length)throw new Error("请先识别选中的视频");await t.
-requireScope();const S=[],D=new Map,K=new Set,_=[],Y=d.filter(Q=>Q.include),B=Wt(u,new Map,
-q);let g=0;const E=k?await k(B):null,V=t.videoStates(),P=new Map,F=Q=>P.set(Q,(P.get(Q)||0)+
-1),W=[];await We(Y,"元数据与文件名预览（视频组）",j,async(Q,ne,Ie,Ae)=>{try{
-C("检查命名",++g,Y.length);const Ve=V.get(String(Q.node.id));if(!Ve?.canOrganize){const Le=Ve?.
-blocker||"作品或字幕状态未确认";return F(Le),j("预览跳过："+Q.node.path+"；"+
-Le),"skipped"}const ve=E||Gt(await B(Q.node.parentId),Q.node.parentId,b);if(!t.sameSubtitles(
-Q,ve.linked.get(String(Q.node.id))||[]))throw new Error("目录字幕已变化，请重新识别并检查："+
-Q.node.name);if(!J(Q)){const Le=Q.error||"作品匹配未确认";return F(Le),j("预览跳过："+
-Q.node.path+"；"+Le),"skipped"}Object.assign(Q.node,await qn(Q.node,u)),Q.subtitles=(ve.linked.
-get(String(Q.node.id))||[]).map(Le=>({...Le,originalPath:Le.path?"/"+[t.context?.path,Le.path].
-filter(Boolean).join("/"):Q.node.originalPath?.replace(/[^/]+$/,()=>Le.name),path:Le.path||
-Le.name})),Tt.remember(Q);for(const Le of Q.subtitles)ne(),Object.assign(Le,await qn(Le,u));
-const Me=Fn(Q),Fe=[{node:Q.node,destination:Me,videoId:Q.node.id}];for(const Le of Q.subtitles)
-Fe.push({node:Le,destination:Ge(Me)+Le.suffix+Le.name.slice(Le.name.lastIndexOf(".")),videoId:Q.
-node.id});W[Ie]=Fe}catch(Ve){if(Ae(Ve),ne(),Ve.stop||Ve.phase==="drive-auth"||[401,403].includes(
-Ve.status))throw Ve;return F(Ve.message),j("预览跳过："+Q.node.path+"；"+Ve.message),
-"failed"}},q,8,"同组字幕依次读取");for(const Q of W.flat()){const ne=Q.destination.
-normalize("NFKC").toLowerCase(),Ie=D.get(ne);Ie&&Ie.node.id!==Q.node.id&&(K.add(Ie.videoId),
-K.add(Q.videoId),j("同名冲突，两组均跳过："+Q.destination)),D.set(ne,Q),S.push(
-Q)}if(!S.length){const Q=[...P].map(([ne,Ie])=>`${ne}（${Ie} 项）`).join("；");throw new Error(
-"当前没有可执行的整理项目"+(Q?"。阻塞原因："+Q:"。请检查作品识别和字幕覆盖状态"))}
-const $=Wt(u,new Map,q);let me=0;C("检查目标路径",0,S.length),await We(S,"目标路径预检（文件）",
-j,async(Q,ne)=>{let Ie=w.parent,Ae=!0;const Ve=Ke(Q.destination);for(let ve=0;ve<Ve.length;ve++){
-ne();const Me=Ve[ve],Fe=Me.normalize("NFKC").toLowerCase(),Le=(await $(Ie)).filter(wt=>wt.
-name.normalize("NFKC").toLowerCase()===Fe);if(!Le.length)break;const[rt]=Le,vt=ve===Ve.length-
-1;if(Le.length>1||(vt?rt.directory||String(rt.id)!==String(Q.node.id):!rt.directory)){K.add(
-Q.videoId),j("目标同名冲突，视频及字幕已跳过："+Q.destination);break}vt?Q.
-atDestination=Ae&&rt.name===Me&&Q.node.name===Me&&String(Ie)===String(Q.node.parentId):(Ae&&
-(Ae=rt.name===Me),Ie=rt.id)}if(C("检查目标路径",++me,S.length),K.has(Q.videoId))return"\
-failed";if(Q.atDestination)return"skipped"},q,8,"共享目录列表合并读取，按完整预览判定冲突");
-for(const Q of d)K.has(Q.node.id)&&(Q.error="目标同名冲突，请修改名称或取消此项；本次已跳过");
-const Z=S.filter(Q=>!K.has(Q.videoId));if(!Z.length)throw new Error("所有已匹配项目存在同名冲突，请调整后重试");
-q(),Tt.save();const ee=Z.filter(Q=>!Q.atDestination),te=new Set(ee.map(Q=>Q.videoId)),fe=Z.
-length-ee.length,pe=[...P.values()].reduce((Q,ne)=>Q+ne,K.size),G=fe?"名称和位置已规范，略过 "+
-fe+" 个文件。":"",re=pe?"另有 "+pe+" 个视频暂无法整理，原因见日志。":
-"",we=E?.unmatched.length?"未配对字幕，保留原位（"+E.unmatched.length+` 个）
-`+E.unmatched.map(Q=>Q.path).join(`
-`):"";if(G&&j(G),we&&j("未配对字幕，保留原位（"+E.unmatched.length+" 个），路径见整理预览\
-。"),!ee.length){await t.requireScope();const Q=["当前没有文件需要改名或移动。",
-G,re].filter(Boolean).join(" ");n.get("mediaPreview").textContent=[Q,we].filter(Boolean).join(
+C.group=ya(C,!1),P("整理记录冲突",C.node.name+" · "+W+"；忽略旧记录，重新识别整组选集"),
+"skipped"}if(ue(C)){C.group=JSON.stringify([C.node.parentId,C.type,C.title,C.type==="tv"?"":
+C.node.id]),C.reusedRecord=!0;return}}catch(W){if(q(),W.stop)throw W}return"skipped"},F,8,
+"已保存记录优先，同一作品与季集读同一份 TMDB 结果");for(const C of d)
+if(!C.reusedRecord){if(en(C.node)){C.include=!1,C.error="文件名匹配附加内容规则，未参与作品识别",
+P("识别跳过："+C.node.path+"；"+C.error);continue}_.has(C.group)||_.set(C.group,[]),
+_.get(C.group).push(C)}let g=0;E("匹配作品",0,_.size),await We([..._.values()],"作品识别与季\
+集核对（作品组）",P,async(C,q)=>(q(),D(`匹配作品 ${g+1}/${_.size}：${C[0].query}\
+（${C.length} 个视频）`),await Le(C,C[0].query,!1,null,q),await Fe(C,q),E("匹配作品",
+++g,_.size),t.requestRender(),C.every(V=>!ue(V))?"failed":void 0),F,8,"TMDB 请求沿用节流，同组季集及 A\
+I 回退顺序检查"),F(),yr(d),D("核对同一作品目录中的特别篇");const N=await fi(
+d.filter(C=>!C.reusedRecord),p,H,F,P);await We(N,"特别篇季集核对（视频）",P,async C=>(await Re(
+C),C.error?"failed":void 0),F,8,"特别篇归属先比对已有作品，再读取相同季资料"),
+F();for(const C of d)ue(C)&&Nt.remember(C);Nt.save(),Z.unmatched.length&&Z.refreshSubtitleLinks(),
+E("识别结束",g,_.size);for(const C of Z.unmatched)P("字幕未唯一关联，保留原状："+
+C.path);return await t.inspect(x,Z)}catch(x){O(),D("识别失败："+x.message),P("识别中断："+
+x.message),t.interrupt()}finally{Ne()}}const bt=()=>R(async()=>{j(),E("检查命名",0,d.filter(
+x=>x.include).length);try{if(!d.length)throw new Error("请先识别选中的视频");await t.
+requireScope();const x=[],L=new Map,H=new Set,X=[],Z=d.filter(ee=>ee.include),J=Wt(u,new Map,
+F);let _=0;const g=k?await k(J):null,N=t.videoStates(),C=new Map,q=ee=>C.set(ee,(C.get(ee)||
+0)+1),V=[];await We(Z,"元数据与文件名预览（视频组）",P,async(ee,Ve,te,Te)=>{
+try{E("检查命名",++_,Z.length);const we=N.get(String(ee.node.id));if(!we?.canOrganize){
+const xe=we?.blocker||"作品或字幕状态未确认";return q(xe),P("预览跳过："+ee.
+node.path+"；"+xe),"skipped"}const Ze=g||Gt(await J(ee.node.parentId),ee.node.parentId,b);
+if(!t.sameSubtitles(ee,Ze.linked.get(String(ee.node.id))||[]))throw new Error("目录字幕已变化，请重新\
+识别并检查："+ee.node.name);if(!ue(ee)){const xe=ee.error||"作品匹配未确认";return q(
+xe),P("预览跳过："+ee.node.path+"；"+xe),"skipped"}Object.assign(ee.node,await qn(ee.
+node,u)),ee.subtitles=(Ze.linked.get(String(ee.node.id))||[]).map(xe=>({...xe,originalPath:xe.
+path?"/"+[t.context?.path,xe.path].filter(Boolean).join("/"):ee.node.originalPath?.replace(
+/[^/]+$/,()=>xe.name),path:xe.path||xe.name})),Nt.remember(ee);for(const xe of ee.subtitles)
+Ve(),Object.assign(xe,await qn(xe,u));const ve=Fn(ee),je=[{node:ee.node,destination:ve,videoId:ee.
+node.id}];for(const xe of ee.subtitles)je.push({node:xe,destination:Qe(ve)+xe.suffix+xe.name.
+slice(xe.name.lastIndexOf(".")),videoId:ee.node.id});V[te]=je}catch(we){if(Te(we),Ve(),we.
+stop||we.phase==="drive-auth"||[401,403].includes(we.status))throw we;return q(we.message),
+P("预览跳过："+ee.node.path+"；"+we.message),"failed"}},F,8,"同组字幕依次读取");
+for(const ee of V.flat()){const Ve=ee.destination.normalize("NFKC").toLowerCase(),te=L.get(
+Ve);te&&te.node.id!==ee.node.id&&(H.add(te.videoId),H.add(ee.videoId),P("同名冲突，两组均跳过："+
+ee.destination)),L.set(Ve,ee),x.push(ee)}if(!x.length){const ee=[...C].map(([Ve,te])=>`${Ve}\
+（${te} 项）`).join("；");throw new Error("当前没有可执行的整理项目"+(ee?"\
+。阻塞原因："+ee:"。请检查作品识别和字幕覆盖状态"))}const W=Wt(u,new Map,
+F);let re=0;E("检查目标路径",0,x.length),await We(x,"目标路径预检（文件）",
+P,async(ee,Ve)=>{let te=w.parent,Te=!0;const we=He(ee.destination);for(let Ze=0;Ze<we.length;Ze++){
+Ve();const ve=we[Ze],je=ve.normalize("NFKC").toLowerCase(),xe=(await W(te)).filter(At=>At.
+name.normalize("NFKC").toLowerCase()===je);if(!xe.length)break;const[nt]=xe,mt=Ze===we.length-
+1;if(xe.length>1||(mt?nt.directory||String(nt.id)!==String(ee.node.id):!nt.directory)){H.add(
+ee.videoId),P("目标同名冲突，视频及字幕已跳过："+ee.destination);break}mt?
+ee.atDestination=Te&&nt.name===ve&&ee.node.name===ve&&String(te)===String(ee.node.parentId):
+(Te&&(Te=nt.name===ve),te=nt.id)}if(E("检查目标路径",++re,x.length),H.has(ee.videoId))
+return"failed";if(ee.atDestination)return"skipped"},F,8,"共享目录列表合并读取，按完整预览判定冲突");
+for(const ee of d)H.has(ee.node.id)&&(ee.error="目标同名冲突，请修改名称或取消此项；本次已跳过");
+const Se=x.filter(ee=>!H.has(ee.videoId));if(!Se.length)throw new Error("所有已匹配项目存在同名冲突，请调整\
+后重试");F(),Nt.save();const B=Se.filter(ee=>!ee.atDestination),ne=new Set(B.map(ee=>ee.
+videoId)),se=Se.length-B.length,fe=[...C.values()].reduce((ee,Ve)=>ee+Ve,H.size),he=se?"名称\
+和位置已规范，略过 "+se+" 个文件。":"",G=fe?"另有 "+fe+" 个视频暂无法整理，原因见日志。":
+"",$=g?.unmatched.length?"未配对字幕，保留原位（"+g.unmatched.length+` 个）
+`+g.unmatched.map(ee=>ee.path).join(`
+`):"";if(he&&P(he),$&&P("未配对字幕，保留原位（"+g.unmatched.length+" 个），路径见整理预\
+览。"),!B.length){await t.requireScope();const ee=["当前没有文件需要改名或移动。",
+he,G].filter(Boolean).join(" ");n.get("mediaPreview").textContent=[ee,$].filter(Boolean).join(
 `
 
-`),n.get("mediaPreviewPanel").open=!0,t.previewShown(),C("预览完成",S.length,S.length),
-U(Q);return}const Te=yi(w,u,k),qe=Z.filter(Q=>te.has(Q.videoId)),ae=await Te.prepare(qe,q,
-j);q();const Ee=ae.map(Q=>`文件夹整体改名/移动：${Q.folder.path||Q.folder.name}
-目标：/${[y,Q.destination].filter(Boolean).join("/")}
-随文件夹保留并移动的内容（${Q.contents.length} 项）：
-${Q.contents.map(ne=>"  "+ne.path+(ne.directory?"/":"")).join(`
+`),n.get("mediaPreviewPanel").open=!0,t.previewShown(),E("预览完成",x.length,x.length),
+D(ee);return}const Ae=yi(w,u,k),Ke=Se.filter(ee=>ne.has(ee.videoId)),qe=await Ae.prepare(Ke,
+F,P);F();const ie=qe.map(ee=>`文件夹整体改名/移动：${ee.folder.path||ee.folder.name}\
+
+目标：/${[y,ee.destination].filter(Boolean).join("/")}
+随文件夹保留并移动的内容（${ee.contents.length} 项）：
+${ee.contents.map(Ve=>"  "+Ve.path+(Ve.directory?"/":"")).join(`
 `)}`).join(`
 
-`);await t.requireScope();for(const Q of te)t.coverage(String(Q))==="missing"&&_.push(String(
-Q));const ge=_.length?"允许无字幕整理（"+_.length+` 个视频）
-`+ee.filter(Q=>String(Q.node.id)===String(Q.videoId)&&_.includes(String(Q.videoId))).map(Q=>Q.
-node.originalPath||Q.node.path).join(`
-`):"",Ce=ee.map(Q=>`原：${Q.node.originalPath||Q.node.path}
-新：/${[y,Q.destination].filter(Boolean).join("/")}`).join(`
+`);await t.requireScope();for(const ee of ne)t.coverage(String(ee))==="missing"&&X.push(String(
+ee));const Ie=X.length?"允许无字幕整理（"+X.length+` 个视频）
+`+B.filter(ee=>String(ee.node.id)===String(ee.videoId)&&X.includes(String(ee.videoId))).map(
+ee=>ee.node.originalPath||ee.node.path).join(`
+`):"",ye=B.map(ee=>`原：${ee.node.originalPath||ee.node.path}
+新：/${[y,ee.destination].filter(Boolean).join("/")}`).join(`
 
-`),_e=ee.some(Q=>tn(Ke(Q.destination).at(-2)))?"整理后，搬空的剧集来源目录将移入回收站。":
-"";N=b?.revision([...te])||"",c=ee,f=Te,n.get("mediaPreview").textContent=[ge,Ee,Ee?`逐文件目标\
-：
-`+Ce:Ce,we,_e].filter(Boolean).join(`
+`),Me=B.some(ee=>tn(He(ee.destination).at(-2)))?"整理后，搬空的剧集来源目录将移入回收站。":
+"";T=b?.revision([...ne])||"",c=B,f=Ae,n.get("mediaPreview").textContent=[Ie,ie,ie?`逐文件目标：\
 
-`),n.get("mediaPreviewPanel").open=!0,t.previewShown(),C("预览就绪",S.length,S.length),
-U([`待整理 ${ee.length} 个文件（含字幕）。`,G,re].filter(Boolean).join(" "))}catch(S){
-O(),U("无法生成预览："+S.message),j("预览失败："+S.message)}finally{ye()}},!0),
-Mt=()=>!c||N===(b?.revision(c.map(S=>S.videoId))||"")?!1:(T(),n.get("mediaPreview").textContent=
-"关联字幕已变化，请重新生成预览。",U("关联字幕已变化，请重新生成预览后确认执行。"),
+`+ye:ye,$,Me].filter(Boolean).join(`
+
+`),n.get("mediaPreviewPanel").open=!0,t.previewShown(),E("预览就绪",x.length,x.length),
+D([`待整理 ${B.length} 个文件（含字幕）。`,he,G].filter(Boolean).join(" "))}catch(x){
+O(),D("无法生成预览："+x.message),P("预览失败："+x.message)}finally{Ne()}},!0),
+vt=()=>!c||T===(b?.revision(c.map(x=>x.videoId))||"")?!1:(j(),n.get("mediaPreview").textContent=
+"关联字幕已变化，请重新生成预览。",D("关联字幕已变化，请重新生成预览后确认执行。"),
 !0);n.get("previewMedia").onclick=bt,n.get("mediaAllowMissing").onchange=()=>t.invalidate(
-"整理选项已更改"),t.invalidateMedia=T,t.openWork=S=>{ce={file:S[0],scrollTop:oe.scrollTop,
-group:S},t.showWork(),oe.scrollTop=0,ye(),ie.querySelector("#mediaBack")?.focus()},n.get("\
-runMedia").onclick=()=>R(async()=>{if(Mt()||!c)return;try{await t.requireScope()}catch(ee){
-U(ee.message);return}if(!c)return;const S=c,D=f;T(),C("重命名文件",0,S.length);let K=0,
-_=0,Y=0,B=!1;const g=new Set,E=new Map(d.map(ee=>[ee.node.id,ee])),V=new Set,P=new Set;try{
-if(!D)throw new Error("执行计划已失效，请重新生成预览");q(),await D.validate(
-j)}catch(ee){U("无法执行："+ee.message);return}const F=St(S,ee=>ee.videoId),W=La(F,ee=>ee.
-flatMap(te=>D.executionKeys?.(te)||[]));try{await We(W,"改名与移动（独立视频组）",
-j,async(ee,te,fe,pe)=>{let G;for(const re of ee)for(const we of re){if(te(),U(`重命名 ${K+
-_+Y+1}/${S.length}：${we.node.name}`),g.has(we.videoId)){Y++,j("视频未完成，字幕保留："+
-we.node.path),C("重命名文件",K+_+Y,S.length);continue}try{j(we.destination+"："+await D.
-execute(we,te)),K++;const Te=E.get(we.videoId);Te&&!V.has(String(we.videoId))&&(V.add(String(
-we.videoId)),Tt.remember(Te),Tt.save())}catch(Te){if(pe(Te),G="failed",_++,P.add(String(we.
-videoId)),we.node.id===we.videoId&&g.add(we.videoId),j(we.node.path+"：未完成；"+Te.message),
-Te.stop||Te.phase==="drive-auth"||[401,403].includes(Te.status))throw Te}C("重命名文件",
-K+_+Y,S.length)}return G},q,8,"同组先视频后字幕，共享移动目录和文件冲突顺序执行")}catch(ee){
-B=!0,j("整理中断："+ee.message)}const $=K+_+Y;C(_||$<S.length?"处理结束（含未完成项）":
-"整理完成",$,S.length);let me="";if(K&&!B)try{const ee=await D.recycleEmptySeasonSources(
-q,j);ee&&(me=" · 已回收空目录 "+ee)}catch(ee){me=" · 空目录待核对",j("空目录清理中\
-断："+ee.message)}const Z=`整理结束 · 已处理 ${$}/${S.length} · 已整理 ${K} \
-· 跳过 ${Y} · 失败 ${_} · 未处理 ${S.length-$} · 待核对 ${P.size} 组${me}`;
-U(Z),j(Z),t.finishOrganizing(V,P)},!0)}function br(e,t={}){const n=t.timeout||3e4,a=new URL(
-e).hostname;if(!["api.opensubtitles.com","api-shoulei-ssl.xunlei.com","api.assrt.net"].includes(
-a))throw new Error("不支持的字幕接口地址");if(typeof GM_xmlhttpRequest!="functio\
-n")throw new Error("需要 Tampermonkey 的跨域请求权限，请更新并保存完整脚本");
-return new Promise((i,s)=>GM_xmlhttpRequest({url:e,method:t.method||"GET",headers:t.headers||
-{},data:t.body,anonymous:!0,timeout:n,onload:r=>{let o;const l=r.responseText||"";try{o=l.
-trim()?JSON.parse(l):null}catch{}if(r.status<200||r.status>=300){const d=nt("HTTP "+r.status+
-(typeof o?.message=="string"?"："+o.message.slice(0,180):""));d.status=r.status;const c=String(
-r.responseHeaders||"").match(/^retry-after:\s*(.+)$/im)?.[1]?.trim();d.retryAfterMs=c&&Math.
-max(0,/^\d+$/.test(c)?Number(c)*1e3:Date.parse(c)-Date.now())||0,s(d);return}if(o===void 0){
-s(nt("字幕接口未返回 JSON（HTTP "+r.status+"）"));return}i(o)},onerror:()=>s(nt("\
-无法连接字幕来源，请检查网络或脚本跨域授权")),ontimeout:()=>s(nt(`字幕来\
-源请求超时（${n/1e3} 秒）`)),onabort:()=>s(nt("字幕请求已取消"))}))}function Ht(e){
-const t=e.length,n=new Uint8Array(((t+8>>>6)+1)*64);n.set(e),n[t]=128;const a=new DataView(
-n.buffer);a.setUint32(n.length-8,t*8,!0);const i=[7,12,17,22,5,9,14,20,4,11,16,23,6,10,15,
-21],s=Array.from({length:64},(c,f)=>Math.floor(Math.abs(Math.sin(f+1))*4294967296)|0);let r=1732584193,
-o=4023233417,l=2562383102,d=271733878;for(let c=0;c<n.length;c+=64){let f=r,m=o,u=l,p=d;for(let w=0;w<
-64;w++){let y,I;w<16?(y=m&u|~m&p,I=w):w<32?(y=p&m|~p&u,I=(5*w+1)%16):w<48?(y=m^u^p,I=(3*w+
-5)%16):(y=u^(m|~p),I=7*w%16);const A=f+y+s[w]+a.getUint32(c+I*4,!0)|0,M=i[(w>>>4)*4+w%4];f=
-p,p=u,u=m,m=m+(A<<M|A>>>32-M)|0}r=r+f|0,o=o+m|0,l=l+u|0,d=d+p|0}return[r,o,l,d].map(c=>[0,
-8,16,24].map(f=>(c>>>f&255).toString(16).padStart(2,"0")).join("")).join("")}function Kt(e,{
-allowHttp:t=!1,base:n}={}){let a;try{a=new URL(e,n)}catch{throw new Error("字幕来源未返回有效下载地址")}
-if(!(a.protocol==="https:"||t&&a.protocol==="http:")||a.username||a.password)throw new Error(
-"字幕来源返回了不支持的下载地址协议或内嵌账号");return a.href}function nt(e,t){
-return Object.assign(new Error(e),{phase:"subtitle-source",...t})}function nn(e){return e?.
-phase==="subtitle-source"||!e?.phase&&Number.isInteger(e?.status)&&e.status>=400}function rn(e){
-return[429,509].includes(e.status)}function It(e,t=""){const n=String(e).normalize("NFKC").
-toLowerCase(),a=u=>new RegExp("(?:^|[^\\p{L}\\p{N}])(?:"+u+")(?=$|[^\\p{L}\\p{N}])","u").test(
-n),i=/zh[._-]?(?:cn|hans)|简体|简中|简英|简[&+ ]英/.test(n)||a("chs|sc|scjp"),s=/zh[._-]?(?:tw|hant)|繁体|繁中|繁英|繁[&+ ]英/.
-test(n)||a("cht|tc|tcjp"),r=i||s||a("zh|zho|chi")||/中文|中英|双语|简繁/.test(n),o=a(
-"en|eng")||/英文|中英|简英|繁英|[简繁][&+ ]英/.test(n),l=n.match(/\[([a-z]{2,3})\]\.(?:srt|ass|ssa|vtt)$/)?.[1]||
+"整理选项已更改"),t.invalidateMedia=j,t.openWork=x=>{ae={file:x[0],scrollTop:me.scrollTop,
+group:x},t.showWork(),me.scrollTop=0,Ne(),le.querySelector("#mediaBack")?.focus()},n.get("\
+runMedia").onclick=()=>R(async()=>{if(vt()||!c)return;try{await t.requireScope()}catch(B){
+D(B.message);return}if(!c)return;const x=c,L=f;j(),E("重命名文件",0,x.length);let H=0,
+X=0,Z=0,J=!1;const _=new Set,g=new Map(d.map(B=>[B.node.id,B])),N=new Set,C=new Set;try{if(!L)
+throw new Error("执行计划已失效，请重新生成预览");F(),await L.validate(P)}catch(B){
+D("无法执行："+B.message);return}const q=xt(x,B=>B.videoId),V=La(q,B=>B.flatMap(ne=>L.
+executionKeys?.(ne)||[]));try{await We(V,"改名与移动（独立视频组）",P,async(B,ne,se,fe)=>{
+let he;for(const G of B)for(const $ of G){if(ne(),D(`重命名 ${H+X+Z+1}/${x.length}：${$.
+node.name}`),_.has($.videoId)){Z++,P("视频未完成，字幕保留："+$.node.path),E("重\
+命名文件",H+X+Z,x.length);continue}try{P($.destination+"："+await L.execute($,ne)),H++;
+const Ae=g.get($.videoId);Ae&&!N.has(String($.videoId))&&(N.add(String($.videoId)),Nt.remember(
+Ae),Nt.save())}catch(Ae){if(fe(Ae),he="failed",X++,C.add(String($.videoId)),$.node.id===$.
+videoId&&_.add($.videoId),P($.node.path+"：未完成；"+Ae.message),Ae.stop||Ae.phase===
+"drive-auth"||[401,403].includes(Ae.status))throw Ae}E("重命名文件",H+X+Z,x.length)}return he},
+F,8,"同组先视频后字幕，共享移动目录和文件冲突顺序执行")}catch(B){J=
+!0,P("整理中断："+B.message)}const W=H+X+Z;E(X||W<x.length?"处理结束（含未完成项）":
+"整理完成",W,x.length);let re="";if(H&&!J)try{const B=await L.recycleEmptySeasonSources(
+F,P);B&&(re=" · 已回收空目录 "+B)}catch(B){re=" · 空目录待核对",P("空目录清理中断："+
+B.message)}const Se=`整理结束 · 已处理 ${W}/${x.length} · 已整理 ${H} · 跳过 ${Z}\
+ · 失败 ${X} · 未处理 ${x.length-W} · 待核对 ${C.size} 组${re}`;D(Se),P(Se),t.
+finishOrganizing(N,C)},!0)}function br(e,t={}){const n=t.timeout||3e4,a=new URL(e).hostname;
+if(!["api.opensubtitles.com","api-shoulei-ssl.xunlei.com","api.assrt.net"].includes(a))throw new Error(
+"不支持的字幕接口地址");if(typeof GM_xmlhttpRequest!="function")throw new Error(
+"需要 Tampermonkey 的跨域请求权限，请更新并保存完整脚本");return new Promise(
+(i,s)=>GM_xmlhttpRequest({url:e,method:t.method||"GET",headers:t.headers||{},data:t.body,anonymous:!0,
+timeout:n,onload:r=>{let o;const l=r.responseText||"";try{o=l.trim()?JSON.parse(l):null}catch{}
+if(r.status<200||r.status>=300){const d=rt("HTTP "+r.status+(typeof o?.message=="string"?"\
+："+o.message.slice(0,180):""));d.status=r.status;const c=String(r.responseHeaders||"").match(
+/^retry-after:\s*(.+)$/im)?.[1]?.trim();d.retryAfterMs=c&&Math.max(0,/^\d+$/.test(c)?Number(
+c)*1e3:Date.parse(c)-Date.now())||0,s(d);return}if(o===void 0){s(rt("字幕接口未返回 JSON（HTTP "+
+r.status+"）"));return}i(o)},onerror:()=>s(rt("无法连接字幕来源，请检查网络或脚本跨域授权")),
+ontimeout:()=>s(rt(`字幕来源请求超时（${n/1e3} 秒）`)),onabort:()=>s(rt("字幕请求已取\
+消"))}))}function Ht(e){const t=e.length,n=new Uint8Array(((t+8>>>6)+1)*64);n.set(e),n[t]=
+128;const a=new DataView(n.buffer);a.setUint32(n.length-8,t*8,!0);const i=[7,12,17,22,5,9,
+14,20,4,11,16,23,6,10,15,21],s=Array.from({length:64},(c,f)=>Math.floor(Math.abs(Math.sin(
+f+1))*4294967296)|0);let r=1732584193,o=4023233417,l=2562383102,d=271733878;for(let c=0;c<
+n.length;c+=64){let f=r,m=o,u=l,p=d;for(let w=0;w<64;w++){let y,I;w<16?(y=m&u|~m&p,I=w):w<
+32?(y=p&m|~p&u,I=(5*w+1)%16):w<48?(y=m^u^p,I=(3*w+5)%16):(y=u^(m|~p),I=7*w%16);const A=f+y+
+s[w]+a.getUint32(c+I*4,!0)|0,M=i[(w>>>4)*4+w%4];f=p,p=u,u=m,m=m+(A<<M|A>>>32-M)|0}r=r+f|0,
+o=o+m|0,l=l+u|0,d=d+p|0}return[r,o,l,d].map(c=>[0,8,16,24].map(f=>(c>>>f&255).toString(16).
+padStart(2,"0")).join("")).join("")}function Kt(e,{allowHttp:t=!1,base:n}={}){let a;try{a=
+new URL(e,n)}catch{throw new Error("字幕来源未返回有效下载地址")}if(!(a.protocol===
+"https:"||t&&a.protocol==="http:")||a.username||a.password)throw new Error("字幕来源返回了不支持的下载地\
+址协议或内嵌账号");return a.href}function rt(e,t){return Object.assign(new Error(e),
+{phase:"subtitle-source",...t})}function nn(e){return e?.phase==="subtitle-source"||!e?.phase&&
+Number.isInteger(e?.status)&&e.status>=400}function rn(e){return[429,509].includes(e.status)}
+function Ct(e,t=""){const n=String(e).normalize("NFKC").toLowerCase(),a=u=>new RegExp("(?:\
+^|[^\\p{L}\\p{N}])(?:"+u+")(?=$|[^\\p{L}\\p{N}])","u").test(n),i=/zh[._-]?(?:cn|hans)|简体|简中|简英|简[&+ ]英/.
+test(n)||a("chs|sc|scjp"),s=/zh[._-]?(?:tw|hant)|繁体|繁中|繁英|繁[&+ ]英/.test(n)||
+a("cht|tc|tcjp"),r=i||s||a("zh|zho|chi")||/中文|中英|双语|简繁/.test(n),o=a("en|en\
+g")||/英文|中英|简英|繁英|[简繁][&+ ]英/.test(n),l=n.match(/\[([a-z]{2,3})\]\.(?:srt|ass|ssa|vtt)$/)?.[1]||
 n.match(/(?:\[|[._ -])(fra|fre|fr|spa|es|ger|deu|de|ita|it|por|pt|rus|ru|jpn|ja|kor|ko|ara|ar|tha|th|vie|vi|ind|id|dut|nld|nl|pol|pl|tur|tr|hin|hi)(?:\])?\.(?:srt|ass|ssa|vtt)$/)?.[1],
 d={fra:"fr",fre:"fr",spa:"es",ger:"de",deu:"de",ita:"it",por:"pt",rus:"ru",jpn:"ja",kor:"k\
 o",ara:"ar",tha:"th",vie:"vi",ind:"id",dut:"nl",nld:"nl",pol:"pl",tur:"tr",hin:"hi"},c={german:"\
@@ -6033,65 +6039,65 @@ ko",arabic:"ar",thai:"th",vietnamese:"vi",indonesian:"id",dutch:"nl",polish:"pl"
 tr",hindi:"hi",greek:"el",hebrew:"he",finnish:"fi",estonian:"et",hungarian:"hu",swedish:"s\
 v",danish:"da",norwegian:"no",czech:"cs",romanian:"ro"},f=Object.keys(c).find(a),m=/中英|简英|繁英|双语|bilingual/.
 test(n)||a("scjp|tcjp")||r&&o;return{language:i?"zh-cn":s?"zh-tw":r||m?"zh":o?"en":l?d[l]||
-l:f?c[f]:t,bilingual:m}}function Wn(e,t){const n=It(e.name,e.language);return t==="en"?n.language===
+l:f?c[f]:t,bilingual:m}}function Wn(e,t){const n=Ct(e.name,e.language);return t==="en"?n.language===
 "en"?300:n.bilingual||e.bilingual?200:0:(["zh-cn","zh-tw","zh"].includes(n.language)&&(n.bilingual||
 e.bilingual)?400:0)+(n.language==="zh-cn"?30:n.language==="zh-tw"?20:n.language==="zh"?10:
 0)}function Bn(e){const t={"zh-cn":"简体中文","zh-tw":"繁体中文",zh:"中文",en:"英\
 文"}[e.language]||"语言未标注";return[e.source,e.bilingual?"双语":"",t,e.name||e.release,
 e.fileSize||"",e.matchReason?"待确认："+e.matchReason:"",e.detailError?"文件列表读取失败："+
-e.detailError:""].filter(Boolean).join(" · ")}function jt(e,t=""){return String(e??"").normalize(
+e.detailError:""].filter(Boolean).join(" · ")}function Tt(e,t=""){return String(e??"").normalize(
 "NFKC").replace(t?new RegExp("[._\\s:(\\[-]+"+String(t).replace(/\D/g,"")+"[)\\]\\s]*$"):/$^/,
 " ").replace(/\s+/g," ").trim()}function hn(e){return String(e||"").normalize("NFKC").replace(
 /^\s*(?:剧场版|劇場版)\s*[:：._ -]*/u,"").replace(/[\s:：._-]*(?:剧场版|劇場版)\s*$/u,
-"").trim()}const ht=e=>Ye(String(e||"").replace(/[ː∶]/g,":"));function Zt(e){if(!e.tv||
+"").trim()}const ht=e=>Ge(String(e||"").replace(/[ː∶]/g,":"));function Zt(e){if(!e.tv||
 !e.workResolved||!(e.seasons||[]).some(n=>n.season_number>0&&n.season_number===e.season))return"";
 const t=e.videoReleaseTitle||"";return t&&![e.query,...e.aliases||[]].some(n=>ht(n)===ht(t))?
 t:""}function Pi(e){const t=new Map;for(const a of e){const{parsed:i,verification:s}=a,r=s?.
 projectVideoName;if(!a.complete||!i.workResolved||!r||s.work?.status==="mismatch")continue;
-const o=jt(Zn(r,i).title,i.year),l={...i,videoReleaseTitle:o};if(!Zt(l)||!Jn(r,l))continue;
+const o=Tt(Zn(r,i).title,i.year),l={...i,videoReleaseTitle:o};if(!Zt(l)||!Jn(r,l))continue;
 const d=Qt({...i,videoReleaseTitle:void 0},[],r);if(d.excluded||d.hardMismatch||!d.titleMatched&&
 !d.related)continue;const c=ht(o);t.has(c)||t.set(c,{title:o,episodes:new Set}),t.get(c).episodes.
 add(i.episode)}const n=[...t.values()].filter(a=>a.episodes.size>=2);return n.length===1?{
 title:n[0].title,count:n[0].episodes.size}:{title:"",reason:n.length>1?"多个篇章分别得到不同集字幕支持，无法\
 确定本次缺集所属篇章":t.size?"同一篇章的有效线索不足两集":"已有字幕缺少可对\
 应当前作品与季集的内部视频名"}}function mn(e,t,n){const a=String(e.query||"").
-match(/(?:19|20)\d{2}/g)||[],i=T=>[...String(T).normalize("NFKC").matchAll(/(?:^|[^\p{L}\p{N}])((?:19|20)\d{2})(?=$|[^\p{L}\p{N}])/gu)].
+match(/(?:19|20)\d{2}/g)||[],i=j=>[...String(j).normalize("NFKC").matchAll(/(?:^|[^\p{L}\p{N}])((?:19|20)\d{2})(?=$|[^\p{L}\p{N}])/gu)].
 map(h=>h[1]).filter(h=>Number(h)<=new Date().getFullYear()+1&&(!a.includes(h)||h===String(
-e.year))),s=(T,h=!1)=>{let x=String(T||"").normalize("NFKC").replace(/\.(?:srt|ass|ssa|vtt|zip|rar)$/i,
-"").trim();if(x=x.replace(/^(?:[\[【](?:v\d+(?:\.\d+)*|(?:简体|繁体|简中|繁中|中英|简英|繁英|chs|cht)(?:中英|双语|&英文)?(?:ass|ssa|srt|vtt)?)[\]】][. _-]*)+/i,
-""),x=x.replace(/(?:[. _-]|\[)(?:chi|zho|zh|en|eng|chs|cht|zh[._-]?(?:cn|tw|hans|hant))\]?$/i,
-""),x=x.replace(/^(?:【[^】]*(?:字幕组|字幕社|工作室)[^】]*】|\[[^\]]*(?:字幕组|字幕社|工作室)\])[. _-]*/i,
-""),x=x.replace(/(?:^|[. _-])(?:杜比视界|特效字幕|双语字幕)(?=$|[. _-])/g," "),
-x=x.replace(/^(?:(?:简体|繁体|简中|繁中|中文|双语|中英|简英|繁英|chs|cht|eng)(?:双语|&英文|英文)?[. _\-]*)+/i,
-""),e.tv&&!h){const R=Zn(x,e);R.title&&R.episode!=null&&(x=R.title)}const v=!h&&i(x).at(-1);
-if(v){const R=new RegExp("(?:^|[^\\p{L}\\p{N}])"+v+"(?=$|[^\\p{L}\\p{N}])","u").exec(x);R&&
-(x=R.index===0&&/^\d{4}/.test(R[0])?x.slice(R[0].length).replace(/^[. :_-]+/,""):x.slice(0,
-R.index))}return x=x.split(/(?:^|[. _\[(-])(?:\d{3,4}p|4k|8k|BluRay|BDRip|WEB(?:[ ._-]?(?:DL|Rip))?|REMUX|HDTV|DVD(?:Rip)?|x26[45]|h[ ._-]?26[45]|HEVC|AVC|chs|cht|eng|简体|繁体|简中|繁中|中英|双语)(?=$|[. _\])&+-])/i)[0],
-x=x.replace(/(?:^|[. _-])(?:SE?\d{1,2}(?:[ ._-]*E[ ._-]*|[ ._-]+(?:EP?[ ._-]*)?)\d{1,3}|\d{1,2}x\d{1,3}|Season[ ._-]*\d{1,2}[ ._-]+\d{1,3})[\s\S]*$/i,
-""),e.tv&&!h&&(x=x.replace(/(?:\s+-\s*|[ ._-]+(?:EP?|Episode)[ ._-]*)\d{1,3}(?:v\d+)?[ ._-]*$/i,
-"")),e.tv&&(x=x.replace(/(?:[. _-]*(?:S\d{1,2}|Season[. _-]*\d{1,2}|第[零〇一二两三四五六七八九十百\d]+季))[. _-]*$/i,
-"")),ht(e.tv?x:hn(x))},r=s(jt(e.query,e.year),!0),o=i(n),l=[...new Set(t.flatMap(i))],d=o.
-at(-1),c=e.tv&&e.season>1&&[n,...t].some(T=>Jn(T,e)),f=T=>e.year&&T&&String(e.year)!==T&&!(c&&
-Number(T)>=Number(e.year));if(f(d))return{titleMatched:!1,hardMismatch:!0,matchReason:`文件年\
+e.year))),s=(j,h=!1)=>{let S=String(j||"").normalize("NFKC").replace(/\.(?:srt|ass|ssa|vtt|zip|rar)$/i,
+"").trim();if(S=S.replace(/^(?:[\[【](?:v\d+(?:\.\d+)*|(?:简体|繁体|简中|繁中|中英|简英|繁英|chs|cht)(?:中英|双语|&英文)?(?:ass|ssa|srt|vtt)?)[\]】][. _-]*)+/i,
+""),S=S.replace(/(?:[. _-]|\[)(?:chi|zho|zh|en|eng|chs|cht|zh[._-]?(?:cn|tw|hans|hant))\]?$/i,
+""),S=S.replace(/^(?:【[^】]*(?:字幕组|字幕社|工作室)[^】]*】|\[[^\]]*(?:字幕组|字幕社|工作室)\])[. _-]*/i,
+""),S=S.replace(/(?:^|[. _-])(?:杜比视界|特效字幕|双语字幕)(?=$|[. _-])/g," "),
+S=S.replace(/^(?:(?:简体|繁体|简中|繁中|中文|双语|中英|简英|繁英|chs|cht|eng)(?:双语|&英文|英文)?[. _\-]*)+/i,
+""),e.tv&&!h){const R=Zn(S,e);R.title&&R.episode!=null&&(S=R.title)}const v=!h&&i(S).at(-1);
+if(v){const R=new RegExp("(?:^|[^\\p{L}\\p{N}])"+v+"(?=$|[^\\p{L}\\p{N}])","u").exec(S);R&&
+(S=R.index===0&&/^\d{4}/.test(R[0])?S.slice(R[0].length).replace(/^[. :_-]+/,""):S.slice(0,
+R.index))}return S=S.split(/(?:^|[. _\[(-])(?:\d{3,4}p|4k|8k|BluRay|BDRip|WEB(?:[ ._-]?(?:DL|Rip))?|REMUX|HDTV|DVD(?:Rip)?|x26[45]|h[ ._-]?26[45]|HEVC|AVC|chs|cht|eng|简体|繁体|简中|繁中|中英|双语)(?=$|[. _\])&+-])/i)[0],
+S=S.replace(/(?:^|[. _-])(?:SE?\d{1,2}(?:[ ._-]*E[ ._-]*|[ ._-]+(?:EP?[ ._-]*)?)\d{1,3}|\d{1,2}x\d{1,3}|Season[ ._-]*\d{1,2}[ ._-]+\d{1,3})[\s\S]*$/i,
+""),e.tv&&!h&&(S=S.replace(/(?:\s+-\s*|[ ._-]+(?:EP?|Episode)[ ._-]*)\d{1,3}(?:v\d+)?[ ._-]*$/i,
+"")),e.tv&&(S=S.replace(/(?:[. _-]*(?:S\d{1,2}|Season[. _-]*\d{1,2}|第[零〇一二两三四五六七八九十百\d]+季))[. _-]*$/i,
+"")),ht(e.tv?S:hn(S))},r=s(Tt(e.query,e.year),!0),o=i(n),l=[...new Set(t.flatMap(i))],d=o.
+at(-1),c=e.tv&&e.season>1&&[n,...t].some(j=>Jn(j,e)),f=j=>e.year&&j&&String(e.year)!==j&&!(c&&
+Number(j)>=Number(e.year));if(f(d))return{titleMatched:!1,hardMismatch:!0,matchReason:`文件年\
 份 ${d} 与视频 ${e.year} 不符`};if(!d&&l.length===1&&f(l[0]))return{titleMatched:!1,
-hardMismatch:!0,matchReason:`资源年份 ${l[0]} 与视频 ${e.year} 不符`};const m=T=>{
-const h=String(T||"").normalize("NFKC");return[h,h.replace(/^(.*?\D)\d+\s*:\s*(\S.*)$/,"$1\
-:$2")].map(x=>s(x,!0)).filter(Boolean)},u=new Set([r,...[jt(e.query,e.year),...e.aliases||
-[],Zt(e)].flatMap(m)]);let p=!1;const w=T=>{const h=T.normalize("NFKC").replace(/^(?:【[^】]*(?:字幕组|字幕社|工作室)[^】]*】|\[[^\]]*(?:字幕组|字幕社|工作室)\])[. _-]*/i,
+hardMismatch:!0,matchReason:`资源年份 ${l[0]} 与视频 ${e.year} 不符`};const m=j=>{
+const h=String(j||"").normalize("NFKC");return[h,h.replace(/^(.*?\D)\d+\s*:\s*(\S.*)$/,"$1\
+:$2")].map(S=>s(S,!0)).filter(Boolean)},u=new Set([r,...[Tt(e.query,e.year),...e.aliases||
+[],Zt(e)].flatMap(m)]);let p=!1;const w=j=>{const h=j.normalize("NFKC").replace(/^(?:【[^】]*(?:字幕组|字幕社|工作室)[^】]*】|\[[^\]]*(?:字幕组|字幕社|工作室)\])[. _-]*/i,
 "").trim().match(/^([\p{Script=Han}\p{N}\p{P}\s]+?)[.\s]+([a-z].*)$/iu);return h?[h[1],h[2]]:
-[T]},y=t.map(T=>String(T||"").split(/[\/|\n·]/).flatMap(w).map(h=>s(h)).filter(Boolean));
-for(const T of y)if(T.some(h=>u.has(h))){p=!0;const h=[...new Set(T.filter(x=>/[\p{Script=Han}]/u.
-test(x)!==/[\p{Script=Han}]/u.test(r)))];h.length===1&&u.add(h[0])}if(p){const T=[...new Set(
-y.flat().filter(h=>/[\p{Script=Han}]/u.test(h)!==/[\p{Script=Han}]/u.test(r)))];T.length===
-1&&u.add(T[0])}const I=s(n),A=I.match(/^(.*?\D)(\d{1,2})?$/),b=e.tv&&!/S\d+[ ._-]*E\d+/i.test(
-n)&&(tt(n).episode??Number(Ge(n).split(sa)[0].match(/(?:^|[ ._[(\-])(\d{1,3})[ ._\])\[-]*$/)?.[1])),
-N=Number.isInteger(b)&&b>0&&b===Number(A?.[2]);if(A&&!N&&[...u].some(T=>{const h=T.match(/^(.*?\D)(\d{1,2})?$/);
+[j]},y=t.map(j=>String(j||"").split(/[\/|\n·]/).flatMap(w).map(h=>s(h)).filter(Boolean));
+for(const j of y)if(j.some(h=>u.has(h))){p=!0;const h=[...new Set(j.filter(S=>/[\p{Script=Han}]/u.
+test(S)!==/[\p{Script=Han}]/u.test(r)))];h.length===1&&u.add(h[0])}if(p){const j=[...new Set(
+y.flat().filter(h=>/[\p{Script=Han}]/u.test(h)!==/[\p{Script=Han}]/u.test(r)))];j.length===
+1&&u.add(j[0])}const I=s(n),A=I.match(/^(.*?\D)(\d{1,2})?$/),b=e.tv&&!/S\d+[ ._-]*E\d+/i.test(
+n)&&(tt(n).episode??Number(Qe(n).split(sa)[0].match(/(?:^|[ ._[(\-])(\d{1,3})[ ._\])\[-]*$/)?.[1])),
+T=Number.isInteger(b)&&b>0&&b===Number(A?.[2]);if(A&&!T&&[...u].some(j=>{const h=j.match(/^(.*?\D)(\d{1,2})?$/);
 return h&&h[1]===A[1]&&(h[2]||"")!==(A[2]||"")}))return{titleMatched:!1,hardMismatch:!0,matchReason:"\
-片名续集编号不符"};const k=w(n).map(T=>s(T)).filter(Boolean),q=!I||/^(?:\d{1,3}|track\d+|台|港|简|繁|字幕|subtitle|subtitles)$/i.
-test(I),U=k.length===2&&k.some(T=>u.has(T))&&/\p{Script=Han}/u.test(k[0])!==/\p{Script=Han}/u.
-test(k[1]);if(U)for(const T of k)u.add(T);const C=!!r&&(q?p&&l.length<=1:u.has(I)||U||k.length>
-1&&k.every(T=>u.has(T))),O=[I,...y.flat()],j=!!r&&[...u].some(T=>O.some(h=>h&&h.includes(T))||
-I&&T.includes(I));return{titleMatched:C,related:j,aliases:[...u],matchReason:C?"":"文件片名未能确\
+片名续集编号不符"};const k=w(n).map(j=>s(j)).filter(Boolean),F=!I||/^(?:\d{1,3}|track\d+|台|港|简|繁|字幕|subtitle|subtitles)$/i.
+test(I),D=k.length===2&&k.some(j=>u.has(j))&&/\p{Script=Han}/u.test(k[0])!==/\p{Script=Han}/u.
+test(k[1]);if(D)for(const j of k)u.add(j);const E=!!r&&(F?p&&l.length<=1:u.has(I)||D||k.length>
+1&&k.every(j=>u.has(j))),O=[I,...y.flat()],P=!!r&&[...u].some(j=>O.some(h=>h&&h.includes(j))||
+I&&j.includes(I));return{titleMatched:E,related:P,aliases:[...u],matchReason:E?"":"文件片名未能确\
 认为同一作品"}}function vr(e,t){const n=/网络版|網絡版|ネット版|(?:^|[^a-z])(?:net|web)[ ._-]*(?:movie|edition|version)(?=$|[^a-z])/i;
 return!e.tv&&t.some(a=>n.test(String(a||"")))&&![e.query,...e.aliases||[]].some(a=>n.test(
 String(a||"")))}function Qt(e,t,n,a=!1){const i=String(n||"").normalize("NFKC"),s=/^[a-f0-9]{40}\.(?:srt|ass|ssa|vtt)$/i.
@@ -6134,31 +6140,31 @@ s={};let r=1/0,o=0,l=0,d=0,c=0,f=0;for(const m of Oi(e,t)){const u=m.kind==="cue
 c=Math.max(c,w.time-p.time),w.time>o?(d=o,o=w.time):d=Math.max(d,w.time))}return{start:Number.
 isFinite(r)?r:null,end:o,rawEnd:l,events:n,issues:a,invalid:s,dialogue:i,priorEnd:d,longest:c,
 visualEnd:f}}function zi(e,t,n){const{start:a,end:i,rawEnd:s,events:r,issues:o,invalid:l,priorEnd:d,
-longest:c,visualEnd:f}=t,m=U=>Number.isFinite(Number(U))&&Number(U)>0?Number(U):0,u=m(e.node.
+longest:c,visualEnd:f}=t,m=D=>Number.isFinite(Number(D))&&Number(D)>0?Number(D):0,u=m(e.node.
 durationSeconds),p=m(e.parsed?.runtimeSeconds),w=u||p,y=u?"视频文件时长":p?"TMDB 作品时\
-长参考":"无时长参考",I=Object.entries(o).map(([U,C])=>U+" "+C).join("、");n("字幕时长",
+长参考":"无时长参考",I=Object.entries(o).map(([D,E])=>D+" "+E).join("、");n("字幕时长",
 e.node.name+" · 对白 "+(a==null?"无":a.toFixed(1)+" 秒起")+" · 字幕结束 "+i.toFixed(
 1)+" 秒 · "+y+(w?" "+w.toFixed(1)+" 秒":"")+" · 原始最晚结束 "+s.toFixed(1)+" 秒 \
 · 对白 "+r.dialogue+"、注释 "+r.comment+"、绘图 "+r.drawing+"、排版 "+r.typeset+
 "、空事件 "+r.empty+(f>i?" · 绘图或排版延伸到 "+f.toFixed(1)+" 秒，不计入对白范围":
-"")+(I?" · 异常 "+I:""));const A=(U,C=!1)=>Object.assign(new Error(U),{timingUnconfirmed:!0,
-identityClueAllowed:C});if(Object.keys(l).length)throw A("字幕时间轴异常："+I+"，待确\
+"")+(I?" · 异常 "+I:""));const A=(D,E=!1)=>Object.assign(new Error(D),{timingUnconfirmed:!0,
+identityClueAllowed:E});if(Object.keys(l).length)throw A("字幕时间轴异常："+I+"，待确\
 认");if(!t.dialogue.length)throw A("字幕时间轴没有可用的对白，待确认");if(i>
 12*3600||c>4*3600||d>0&&i-d>3600&&i>d*3)throw A("字幕时间轴存在极端对白范围，待确认");
 if(u&&i>u+Math.max(30,u*.1))throw A("字幕时间轴与视频文件时长冲突，待确认");
 if(u&&i<u*.5)throw A("字幕不完整：对白只到 "+i.toFixed(1)+" 秒（"+y+"），待确认");
 if(!u&&p>=1200&&i<=Math.min(480,p*.2))throw A("字幕不完整：对白只到 "+i.toFixed(
-1)+" 秒（"+y+"），待确认",!0);const b=e.parsed||{},N=b.tv&&b.season>0&&b.episode>0&&
+1)+" 秒（"+y+"），待确认",!0);const b=e.parsed||{},T=b.tv&&b.season>0&&b.episode>0&&
 !b.standalone&&!/短片|短剧|特别篇|特別篇|番外|预告|\b(?:teaser|short|special|OVA|OAD)\b/i.
-test(e.node.name),k=t.dialogue.reduce((U,C)=>U+C.replace(/\s/g,"").length,0);if(!u&&N&&i<=
+test(e.node.name),k=t.dialogue.reduce((D,E)=>D+E.replace(/\s/g,"").length,0);if(!u&&T&&i<=
 90&&i-a<=75&&t.dialogue.length<=12&&k<=300)throw Object.assign(A("字幕可疑，待确认：普通剧集缺少文件时长，"+
 t.dialogue.length+" 条有效对白、"+k+" 个字符，对白只到 "+i.toFixed(1)+" 秒"),
-{subtitleSuspicious:!0});const q=u?"file":p?Math.abs(i-p)>=Math.max(120,p*.2)?"reference-d\
+{subtitleSuspicious:!0});const F=u?"file":p?Math.abs(i-p)>=Math.max(120,p*.2)?"reference-d\
 ifference":"reference":"unknown";return{start:a,end:i,rawEnd:s,visualEnd:f,events:r,issues:o,
-duration:w,source:y,evidence:q}}function wr(e){const t=[e.query,...e.aliases||[]].map(r=>jt(
-r,e.year)).filter(Boolean),n=t.filter((r,o)=>t.findIndex(l=>Ye(l)===Ye(r))===o),a=n.find(r=>/[\p{Script=Hiragana}\p{Script=Katakana}]/u.
+duration:w,source:y,evidence:F}}function wr(e){const t=[e.query,...e.aliases||[]].map(r=>Tt(
+r,e.year)).filter(Boolean),n=t.filter((r,o)=>t.findIndex(l=>Ge(l)===Ge(r))===o),a=n.find(r=>/[\p{Script=Hiragana}\p{Script=Katakana}]/u.
 test(r)),i=n.find(r=>/\p{Script=Latin}/u.test(r)&&!/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.
-test(r)),s=!e.tv&&n.map(hn).find((r,o)=>r&&Ye(r)!==Ye(n[o]));return[...new Set([n[0],s,a,i,
+test(r)),s=!e.tv&&n.map(hn).find((r,o)=>r&&Ge(r)!==Ge(n[o]));return[...new Set([n[0],s,a,i,
 ...n].filter(Boolean))].slice(0,3)}function xr(e,t,n){let a=Promise.resolve(),i=0;const s=new Set;
 return async(...r)=>{const o=a.then(async()=>{for(;s.size>=t;)await Promise.race(s);const l=e-
 (Date.now()-i);l>0&&await et(l),i=Date.now();const d=Promise.resolve().then(()=>n(...r)),c=d.
@@ -6169,185 +6175,185 @@ n.add(Number(i[1]||i[2]));return n.size===1?[...n][0]:null}function Fi({wait:e=a
 log:n=()=>{}}={}){let a="",i="";const s=new Map,r=new Map,o=new Map,l=new Map,d=new Map,c=new Map,
 f=new Map,m=new Map,u=new Map;let p=new WeakMap;const w=()=>{const O=s.size+r.size+o.size+
 l.size+c.size+f.size;return s.clear(),r.clear(),o.clear(),l.clear(),c.clear(),f.clear(),p=
-new WeakMap,O},y=ct(1500,async(O,j,T,h)=>{h();const x=await br("https://api.assrt.net/v1/s\
+new WeakMap,O},y=ct(1500,async(O,P,j,h)=>{h();const S=await br("https://api.assrt.net/v1/s\
 ub/"+O,{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:new URLSearchParams(
-{...j,token:T.assrtKey}).toString()});if(h(),x?.status!==0)throw nt("射手网查询失败，状态码 "+
-x?.status,{status:x?.status===30900?429:0});return Array.isArray(x.sub?.subs)?x.sub.subs:[]}),
-I=async(O,j,T)=>{const h=new Set,x=new Map,v=8,R=O[0].parsed,z=wr(R),L=" S"+String(R.season).
-padStart(2,"0"),H=[...z.slice(0,2).map(X=>({query:X+L,limit:2})),...z.map(X=>({query:X,limit:v}))];
-for(const{query:X,limit:Se}of H){if(h.size>=v)break;const de=await y("search",{q:X,cnt:8},
-j,T);n("射手网查询",X+" · 返回 "+de.length+" 条资源");let be=0;for(const J of de){
-if(be>=Se||h.size>=v)break;if(!Number.isSafeInteger(J?.id)||h.has(J.id))continue;be++,h.add(
-J.id);const[le]=await y("detail",{id:J.id},j,T);if(String(le?.id)!==String(J.id)||!Array.isArray(
-le.filelist))continue;const se=new Map;for(const he of le.filelist.slice(0,200)){const oe=he.
-f;if(typeof oe!="string"||!/\.(?:srt|ass|ssa|vtt|zip|rar)$/i.test(oe)||/[/\\]/.test(oe))continue;
-let ie;try{ie=new URL(he.url)}catch{continue}if(!["http:","https:"].includes(ie.protocol)||
-!/(^|\.)assrt\.net$/i.test(ie.hostname)||ie.username||ie.password)continue;ie.protocol="ht\
-tps:";const ce=/简/.test(le.lang?.desc)?"zh-cn":/繁/.test(le.lang?.desc)?"zh-tw":/中文|双语/.
-test(le.lang?.desc)?"zh":"",He=It(oe,ce);if(!j.language.split(",").includes(He.language))continue;
-const Oe=oe.split(".").pop().toLowerCase();if(At(Oe)){const Ne=[le.filename,Ge(oe)],je=Qt(
-R,Ne,Ge(oe));if(je.excluded||!je.titleMatched)continue;const Pe={source:"射手网",name:oe,
-...He,...je,url:ie.href,ext:Oe,release:le.filename,archiveFields:Ne,archiveSeason:Hn(Ne)};
-try{const ye=await b(ie.href,T,Oe,Pe.source);for(const Re of O){const ze={...Pe,parsed:{...Re.
-parsed}};xa(ye.index,ze,j.language).length&&(se.has(Re)?se.set(Re,null):se.set(Re,ze))}}catch(ye){
-if(t(),T(),ye.stop)throw ye;if(n("射手网压缩包",oe+" · "+ye.message),ye.phase==="tr\
-ansfer"&&[429,509].includes(ye.status))throw nt(ye.message,{status:ye.status})}continue}const xe=ja(
-oe,O,le.filename);if(!(!xe.row||xe.reason||xe.needsIdentity)){if(se.has(xe.row)){se.set(xe.
-row,null);continue}se.set(xe.row,{source:"射手网",name:oe,...He,url:ie.href,ext:Oe,titleMatched:!0,
-release:le.filename})}}const ue=[...se].filter(([,he])=>he);if(ue.length){if(n("射手网包内匹配",
-le.filename+" · 匹配 "+ue.length+"/"+O.length+" 集"),ue.length===O.length){for(const[he,
-oe]of ue)p.set(he,[oe]);n("射手网整季包",le.filename+" · 已对应 "+O.length+" 集");
-return}for(const[he,oe]of ue)x.has(he)||x.set(he,oe)}}}for(const[X,Se]of x)p.set(X,[Se]);n(
-"射手网整季包",R.query+" · 保留 "+x.size+"/"+O.length+" 集已匹配字幕"+(x.size<
-O.length?"，缺集由其他来源补查":"，来自多个字幕包"))},A=ct(0,async(O,j)=>(t(),
-j(),O())),M=(O,j,T)=>{t(),j();const h=JSON.stringify([T,O.url]);if(!d.has(h)){const x=T===
-"射手网",v=async()=>{t(),j();const L=c.get(T);if(L)throw Object.assign(new Error(T+" 本批\
-下载已暂停："+L.message),{phase:"transfer",downloadPaused:!0});x&&(await C(Math.max(
-0,1100-(Date.now()-(u.get(T)||0)))),j(),u.set(T,Date.now()));try{return await gn(O.url,{allowHttp:O.
-allowHttp===!0})}catch(H){throw H.phase==="transfer"&&[429,509].includes(H.status)&&(c.set(
-T,H),s.set(T,H.message),n("下载来源暂停",T+" · "+H.message+" · 后续排队请求转用其他来源")),
-H}},R=x?Yt(m,T,v):v();d.set(h,R);const z=()=>{d.get(h)===R&&d.delete(h)};R.then(z,z)}return d.
-get(h)},b=async(O,j,T,h)=>{if(t(),j(),!l.has(O)){const v=M({url:O,allowHttp:h==="迅雷"},
-j,h).then(async R=>({bytes:R,index:await Kn(R,T,j)})).catch(R=>{throw l.delete(O),R});l.set(
-O,v),Rt(l,3)}const x=await l.get(O);return t(),j(),x},N=xr(1100,2,(O,j)=>{if(t(),j(),s.has(
-"迅雷"))throw nt("迅雷本批已暂停");return br("https://api-shoulei-ssl.xunlei.com/\
+{...P,token:j.assrtKey}).toString()});if(h(),S?.status!==0)throw rt("射手网查询失败，状态码 "+
+S?.status,{status:S?.status===30900?429:0});return Array.isArray(S.sub?.subs)?S.sub.subs:[]}),
+I=async(O,P,j)=>{const h=new Set,S=new Map,v=8,R=O[0].parsed,z=wr(R),U=" S"+String(R.season).
+padStart(2,"0"),K=[...z.slice(0,2).map(Y=>({query:Y+U,limit:2})),...z.map(Y=>({query:Y,limit:v}))];
+for(const{query:Y,limit:ke}of K){if(h.size>=v)break;const de=await y("search",{q:Y,cnt:8},
+P,j);n("射手网查询",Y+" · 返回 "+de.length+" 条资源");let ue=0;for(const Q of de){
+if(ue>=ke||h.size>=v)break;if(!Number.isSafeInteger(Q?.id)||h.has(Q.id))continue;ue++,h.add(
+Q.id);const[ce]=await y("detail",{id:Q.id},P,j);if(String(ce?.id)!==String(Q.id)||!Array.isArray(
+ce.filelist))continue;const oe=new Map;for(const me of ce.filelist.slice(0,200)){const le=me.
+f;if(typeof le!="string"||!/\.(?:srt|ass|ssa|vtt|zip|rar)$/i.test(le)||/[/\\]/.test(le))continue;
+let ae;try{ae=new URL(me.url)}catch{continue}if(!["http:","https:"].includes(ae.protocol)||
+!/(^|\.)assrt\.net$/i.test(ae.hostname)||ae.username||ae.password)continue;ae.protocol="ht\
+tps:";const ge=/简/.test(ce.lang?.desc)?"zh-cn":/繁/.test(ce.lang?.desc)?"zh-tw":/中文|双语/.
+test(ce.lang?.desc)?"zh":"",ze=Ct(le,ge);if(!P.language.split(",").includes(ze.language))continue;
+const De=le.split(".").pop().toLowerCase();if(It(De)){const Pe=[ce.filename,Qe(le)],Oe=Qt(
+R,Pe,Qe(le));if(Oe.excluded||!Oe.titleMatched)continue;const Ne={source:"射手网",name:le,
+...ze,...Oe,url:ae.href,ext:De,release:ce.filename,archiveFields:Pe,archiveSeason:Hn(Pe)};
+try{const be=await b(ae.href,j,De,Ne.source);for(const Re of O){const Le={...Ne,parsed:{...Re.
+parsed}};xa(be.index,Le,P.language).length&&(oe.has(Re)?oe.set(Re,null):oe.set(Re,Le))}}catch(be){
+if(t(),j(),be.stop)throw be;if(n("射手网压缩包",le+" · "+be.message),be.phase==="tr\
+ansfer"&&[429,509].includes(be.status))throw rt(be.message,{status:be.status})}continue}const Ce=ja(
+le,O,ce.filename);if(!(!Ce.row||Ce.reason||Ce.needsIdentity)){if(oe.has(Ce.row)){oe.set(Ce.
+row,null);continue}oe.set(Ce.row,{source:"射手网",name:le,...ze,url:ae.href,ext:De,titleMatched:!0,
+release:ce.filename})}}const pe=[...oe].filter(([,me])=>me);if(pe.length){if(n("射手网包内匹配",
+ce.filename+" · 匹配 "+pe.length+"/"+O.length+" 集"),pe.length===O.length){for(const[me,
+le]of pe)p.set(me,[le]);n("射手网整季包",ce.filename+" · 已对应 "+O.length+" 集");
+return}for(const[me,le]of pe)S.has(me)||S.set(me,le)}}}for(const[Y,ke]of S)p.set(Y,[ke]);n(
+"射手网整季包",R.query+" · 保留 "+S.size+"/"+O.length+" 集已匹配字幕"+(S.size<
+O.length?"，缺集由其他来源补查":"，来自多个字幕包"))},A=ct(0,async(O,P)=>(t(),
+P(),O())),M=(O,P,j)=>{t(),P();const h=JSON.stringify([j,O.url]);if(!d.has(h)){const S=j===
+"射手网",v=async()=>{t(),P();const U=c.get(j);if(U)throw Object.assign(new Error(j+" 本批\
+下载已暂停："+U.message),{phase:"transfer",downloadPaused:!0});S&&(await E(Math.max(
+0,1100-(Date.now()-(u.get(j)||0)))),P(),u.set(j,Date.now()));try{return await gn(O.url,{allowHttp:O.
+allowHttp===!0})}catch(K){throw K.phase==="transfer"&&[429,509].includes(K.status)&&(c.set(
+j,K),s.set(j,K.message),n("下载来源暂停",j+" · "+K.message+" · 后续排队请求转用其他来源")),
+K}},R=S?Xt(m,j,v):v();d.set(h,R);const z=()=>{d.get(h)===R&&d.delete(h)};R.then(z,z)}return d.
+get(h)},b=async(O,P,j,h)=>{if(t(),P(),!l.has(O)){const v=M({url:O,allowHttp:h==="迅雷"},
+P,h).then(async R=>({bytes:R,index:await Kn(R,j,P)})).catch(R=>{throw l.delete(O),R});l.set(
+O,v),Mt(l,3)}const S=await l.get(O);return t(),P(),S},T=xr(1100,2,(O,P)=>{if(t(),P(),s.has(
+"迅雷"))throw rt("迅雷本批已暂停");return br("https://api-shoulei-ssl.xunlei.com/\
 oracle/subtitle?"+new URLSearchParams({name:O}),{headers:{"User-Agent":"XLPlayer/3.1.1 (co\
-m.xunlei.XLPlayer; build:65742; macOS 15.0.0) Alamofire/5.4.3"}})}),k=xr(0,2,async(O,j,T)=>{
-const h=await M({url:j,allowHttp:!0},T,"迅雷");t(),T();try{const{text:x}=Ea(h),v=Ia(x);if(!v)
-return null;const R=Ca(x,String(O.ext).toLowerCase());return R?(n("字幕正文线索",O.name+
-" · 内部视频名："+v),{videoName:v,chinese:/[\u3400-\u9fff]/.test(R)}):null}catch(x){
-return n("字幕正文线索失败",O.name+" · "+x.message+" · 已缓存解析失败结果"),
-null}}),q=async(O,j,T)=>{!j.parsed.tv||!j.parsed.workResolved||await Promise.all(O.map(async h=>{
+m.xunlei.XLPlayer; build:65742; macOS 15.0.0) Alamofire/5.4.3"}})}),k=xr(0,2,async(O,P,j)=>{
+const h=await M({url:P,allowHttp:!0},j,"迅雷");t(),j();try{const{text:S}=Ea(h),v=Ia(S);if(!v)
+return null;const R=Ca(S,String(O.ext).toLowerCase());return R?(n("字幕正文线索",O.name+
+" · 内部视频名："+v),{videoName:v,chinese:/[\u3400-\u9fff]/.test(R)}):null}catch(S){
+return n("字幕正文线索失败",O.name+" · "+S.message+" · 已缓存解析失败结果"),
+null}}),F=async(O,P,j)=>{!P.parsed.tv||!P.parsed.workResolved||await Promise.all(O.map(async h=>{
 if(!h||h.embeddedVideoName||typeof h.name!="string"||!["ass","ssa"].includes(String(h.ext).
-toLowerCase()))return;const x=Ot(h.name,j.parsed);if(x.matched||x.conflict)return;const v=Qt(
-j.parsed,[],h.name,!0);if(v.hardMismatch||!v.titleMatched&&!v.related)return;let R;try{R=Kt(
-h.url,{allowHttp:!0})}catch{return}try{if(!f.has(R)){const H=k(h,R,T);f.set(R,H),Rt(f,200),
-H.catch(()=>{f.get(R)===H&&f.delete(R)})}const z=await f.get(R);if(t(),T(),!z)return;h.embeddedVideoName=
-z.videoName;const L=[Array.isArray(h.languages)?h.languages.join(" "):"",h.simple_name||""].
-join(" ").replace(/英语/g,"英文");z.chinese&&!It(h.name,It(L).language).language&&(h.languages=
-["中文"])}catch(z){if(t(),T(),z.stop||z.phase==="drive-auth")throw z;n("字幕正文线索失败",
-h.name+" · "+z.message)}}))},U=ct(1100,(O,j,T)=>{if(!j.key)throw nt("请先填写 OpenSubtitles A\
-PI Key");return br("https://api.opensubtitles.com/api/v1"+O,{method:T?"POST":"GET",headers:{
-"Api-Key":j.key,"User-Agent":"CloudMediaOrganizer v"+Xt,Accept:"application/json",...T?{"C\
-ontent-Type":"application/json"}:{},...a&&i===j.key?{Authorization:"Bearer "+a}:{}},...T?{
-body:JSON.stringify(T)}:{}})}),C=async O=>{for(let j=O;j>0;j-=500)t(),await e(Math.min(j,500));
-t()};return{async prepareSeason(O,j,T=()=>{}){const h=O.find(R=>R.parsed.episode!=null&&(!R.
-parsed.endEpisode||R.parsed.endEpisode===R.parsed.episode)),x=h?.parsed;if(!x?.tv||x.season==
-null||!x.query)return;const v=JSON.stringify([x.tmdbId||"",x.query,x.year,x.season,Zt(x),wr(
-x),j.language,j.thunder,j.assrtKey,O.map(R=>R.node.id||R.parsed.episode)]);if(!o.has(v)){const R=(async()=>{
-n("整季搜索",`${x.query} · S${String(x.season).padStart(2,"0")} · 优先取得整季文件列表，逐集复核，缺集再\
-补查`);const z=[["迅雷",j.thunder,()=>this.thunderSearch(h,{...j,seasonSearch:!0,seasonRows:O.
-filter(L=>L.parsed.episode!=null&&(!L.parsed.endEpisode||L.parsed.endEpisode===L.parsed.episode))},
-()=>{},T)]];j.assrtKey&&z.push(["射手网",!0,()=>I(O,j,T)]);for(const[L,H,X]of z)if(!(!H||
-s.has(L)))try{await X()}catch(Se){if(t(),T(),!nn(Se))throw Se;rn(Se)&&s.set(L,Se.message),
-n("整季来源失败",`${x.query} · ${L} · ${Se.message}；单集仍可补查其他来源`)}
-t(),T()})();o.set(v,R),Rt(o,24),R.catch(()=>o.delete(v))}await o.get(v),t(),T()},assrtCachedEpisode(O){
+toLowerCase()))return;const S=Pt(h.name,P.parsed);if(S.matched||S.conflict)return;const v=Qt(
+P.parsed,[],h.name,!0);if(v.hardMismatch||!v.titleMatched&&!v.related)return;let R;try{R=Kt(
+h.url,{allowHttp:!0})}catch{return}try{if(!f.has(R)){const K=k(h,R,j);f.set(R,K),Mt(f,200),
+K.catch(()=>{f.get(R)===K&&f.delete(R)})}const z=await f.get(R);if(t(),j(),!z)return;h.embeddedVideoName=
+z.videoName;const U=[Array.isArray(h.languages)?h.languages.join(" "):"",h.simple_name||""].
+join(" ").replace(/英语/g,"英文");z.chinese&&!Ct(h.name,Ct(U).language).language&&(h.languages=
+["中文"])}catch(z){if(t(),j(),z.stop||z.phase==="drive-auth")throw z;n("字幕正文线索失败",
+h.name+" · "+z.message)}}))},D=ct(1100,(O,P,j)=>{if(!P.key)throw rt("请先填写 OpenSubtitles A\
+PI Key");return br("https://api.opensubtitles.com/api/v1"+O,{method:j?"POST":"GET",headers:{
+"Api-Key":P.key,"User-Agent":"CloudMediaOrganizer v"+Yt,Accept:"application/json",...j?{"C\
+ontent-Type":"application/json"}:{},...a&&i===P.key?{Authorization:"Bearer "+a}:{}},...j?{
+body:JSON.stringify(j)}:{}})}),E=async O=>{for(let P=O;P>0;P-=500)t(),await e(Math.min(P,500));
+t()};return{async prepareSeason(O,P,j=()=>{}){const h=O.find(R=>R.parsed.episode!=null&&(!R.
+parsed.endEpisode||R.parsed.endEpisode===R.parsed.episode)),S=h?.parsed;if(!S?.tv||S.season==
+null||!S.query)return;const v=JSON.stringify([S.tmdbId||"",S.query,S.year,S.season,Zt(S),wr(
+S),P.language,P.thunder,P.assrtKey,O.map(R=>R.node.id||R.parsed.episode)]);if(!o.has(v)){const R=(async()=>{
+n("整季搜索",`${S.query} · S${String(S.season).padStart(2,"0")} · 优先取得整季文件列表，逐集复核，缺集再\
+补查`);const z=[["迅雷",P.thunder,()=>this.thunderSearch(h,{...P,seasonSearch:!0,seasonRows:O.
+filter(U=>U.parsed.episode!=null&&(!U.parsed.endEpisode||U.parsed.endEpisode===U.parsed.episode))},
+()=>{},j)]];P.assrtKey&&z.push(["射手网",!0,()=>I(O,P,j)]);for(const[U,K,Y]of z)if(!(!K||
+s.has(U)))try{await Y()}catch(ke){if(t(),j(),!nn(ke))throw ke;rn(ke)&&s.set(U,ke.message),
+n("整季来源失败",`${S.query} · ${U} · ${ke.message}；单集仍可补查其他来源`)}
+t(),j()})();o.set(v,R),Mt(o,24),R.catch(()=>o.delete(v))}await o.get(v),t(),j()},assrtCachedEpisode(O){
 return p.get(O)||[]},resetSearchBatch(){s.clear(),c.clear(),o.clear(),p=new WeakMap},resetDownloadBatch(){
-c.clear()},searchUnavailable(O){return s.get(O)},pauseSearchSource(O,j){s.set(O,j)},thunderCachedEpisode(O,j,T=()=>{},h=()=>{},x){
-const v=O.parsed;return!v.tv||!jt(v.query,v.year)||v.season==null||v.episode==null||v.endEpisode&&
-v.endEpisode!==v.episode?[]:this.thunderSearch(O,{...j,thunderCacheOnly:!0},T,h,x)},async thunderSearch(O,j,T=()=>{},h=()=>{},x=()=>{}){
-t(),h();const v=O.parsed,R=jt(v.query,v.year);if(!R)throw nt("缺少可搜索的作品名");
-if(v.tv&&(v.season==null||v.episode==null))throw nt("缺少明确季集，未按片名搜索");
-if(v.endEpisode&&v.endEpisode!==v.episode)throw nt("合并多集视频需单独选字幕");
-const z=Zt(v),L=v.tv?JSON.stringify(["thunder-season",Ye(R),v.year||"",v.tmdbId||"",v.season,
-z]):"";let H,X;const Se=v.tv?" S"+String(v.season).padStart(2,"0")+(j.seasonSearch?"":"E"+
-String(v.episode).padStart(2,"0")):"",de=wr(v),be=O.node?.originalName||O.node?.name||"",J=!j.
+c.clear()},searchUnavailable(O){return s.get(O)},pauseSearchSource(O,P){s.set(O,P)},thunderCachedEpisode(O,P,j=()=>{},h=()=>{},S){
+const v=O.parsed;return!v.tv||!Tt(v.query,v.year)||v.season==null||v.episode==null||v.endEpisode&&
+v.endEpisode!==v.episode?[]:this.thunderSearch(O,{...P,thunderCacheOnly:!0},j,h,S)},async thunderSearch(O,P,j=()=>{},h=()=>{},S=()=>{}){
+t(),h();const v=O.parsed,R=Tt(v.query,v.year);if(!R)throw rt("缺少可搜索的作品名");
+if(v.tv&&(v.season==null||v.episode==null))throw rt("缺少明确季集，未按片名搜索");
+if(v.endEpisode&&v.endEpisode!==v.episode)throw rt("合并多集视频需单独选字幕");
+const z=Zt(v),U=v.tv?JSON.stringify(["thunder-season",Ge(R),v.year||"",v.tmdbId||"",v.season,
+z]):"";let K,Y;const ke=v.tv?" S"+String(v.season).padStart(2,"0")+(P.seasonSearch?"":"E"+
+String(v.episode).padStart(2,"0")):"",de=wr(v),ue=O.node?.originalName||O.node?.name||"",Q=!P.
 seasonSearch&&(/\b(?:BluRay|BDRip|WEB[ ._-]?(?:DL|Rip)|REMUX|HDTV|x26[45]|extended|theatrical)\b/i.
-test(be)||v.tv&&/\b(?:2160p|1080p|720p)\b/i.test(be)),le=de.map(xe=>xe+Se),se=z&&z+(j.seasonSearch?
-"":" "+String(v.episode).padStart(2,"0")),ue=z&&!j.seasonSearch&&z+" S"+v.season+"E"+String(
-v.episode).padStart(2,"0"),he=[...new Set([ue,se,J&&be.replace(/\.[^.]+$/,""),...le].filter(
-Boolean))].slice(0,ue?4:3),oe=(xe,{parsed:Ne,node:je})=>{const Pe=[],ye=new Set,Re={年份:0,
-季集:0,语言:0,内容:0,无关:0,待确认上限:0,格式:0,重复:0},ze=[],Je=(De,Ze)=>{
-ze.length<8&&ze.push(`${De}（${Ze}）`)};n("迅雷 响应",`返回 ${xe.length} 条原始结果`);
-for(const De of xe){if(t(),h(),!De||typeof De.name!="string"||!De.name.trim()){Re.格式++;
-continue}const Ze=De.name,st=String(De.ext||Ze.split(".").pop()).replace(/^\./,"").toLowerCase();
-if(!["srt","ass","ssa","vtt","zip","rar"].includes(st)||typeof De.url!="string"){Re.格式++;
-continue}let yt;try{yt=Kt(De.url,{allowHttp:!0})}catch{Re.格式++;continue}if(ye.has(yt)){
-Re.重复++;continue}ye.add(yt);const bt=De.embeddedVideoName||Ze,Mt=Ot(bt,Ne);if(Ot(Ze,Ne).
-conflict||Mt.conflict||!Ne.tv&&Mt.season!=null&&Mt.episode!=null){Re.季集++,Je(Ze,"季集不符");
-continue}const S=Mt.matched,D=!S&&Ui(je,Ne,bt),K=Qt(Ne,De.embeddedVideoName?[Ze]:[],bt,D||
-!!j.reviewCandidates);if(K.excluded){Re[K.excluded]++,Je(Ze,K.matchReason||K.excluded);continue}
-const _=[Array.isArray(De.languages)?De.languages.join(" "):"",De.simple_name||""].join(" ").
-replace(/\\u0026/gi,"&").replace(/英语/g,"英文"),Y=It(_),B=It(Ze,Y.language);B.bilingual||
-(B.bilingual=Y.bilingual&&B.language.startsWith("zh"));const g=At(st)?Hn([Ze]):null;if(Ne.
-tv&&g!=null&&g!==Ne.season){Re.季集++,Je(Ze,"季号不符");continue}const E=D||K.titleMatched&&
-(!Ne.tv||S||g===Ne.season);if(B.language&&!(j.language||"zh-cn,zh-tw,zh").split(",").includes(
-B.language)&&!B.bilingual&&!B.language.startsWith("zh")&&B.language!=="en"){Re.语言++,Je(
-Ze,"语言 "+B.language);continue}if(Pe.length>=60){const V=E?Pe.findIndex(P=>!P.titleMatched):
--1;if(Re.待确认上限++,V<0)continue;Pe.splice(V,1)}Pe.push({source:"迅雷",name:Ze,...B,
-titleMatched:E,opaque:!!K.opaque,matchReason:E?"":Ne.tv&&!S?"文件未标明准确季集":
-K.matchReason,url:yt,ext:st,release:bt,embeddedVideoName:De.embeddedVideoName,searchTerms:De.
-searchTerms||[],...At(st)?{parsed:{...Ne},archiveSeason:g,archiveFields:[Ze]}:{}})}return{
-candidates:Pe,excluded:Re,rejectionSamples:ze}},ie=(xe,Ne)=>{const{candidates:je}=oe(Ne,xe),
-Pe=new Set((xe.candidates||[]).filter(Re=>Re.downloadFailed).map(Re=>Re.url)),ye={node:xe.
-node||{name:""},parsed:xe.parsed,candidates:je.filter(Re=>!Pe.has(Re.url))};return zt(ye,j.
-language),!!ye.selectedCandidate};if(j.thunderCacheOnly){if(!r.has(L))return[];({items:H,attempts:X}=
-await r.get(L)),x({queries:X,rawCount:H.length,unit:"缓存条目",deferredTerms:he})}else{
-H=[],X=[];let xe,Ne=null,Pe=j.thunderOffset||0;for(;Pe<he.length;Pe++){t(),h();const Re=he[Pe],
-ze=JSON.stringify(["thunder",Re]),Je={term:Re};X.push(Je),n("迅雷 查询","实际搜索词："+
-Re+" · "+(r.has(ze)?"使用缓存":"请求来源"));try{r.has(ze)||(r.set(ze,N(Re,h).then(
-st=>{if(Number(st?.code)!==0||!Array.isArray(st?.data))throw nt("迅雷字幕接口返回异常："+
-String(st?.result||st?.code||"格式错误").slice(0,120));return st.data.map(yt=>({...yt,
-searchTerms:[Re]}))}).catch(st=>{throw r.delete(ze),st})),Rt(r,200));const Ze=await r.get(
-ze);t(),h(),Je.rawCount=Ze.length,Ne=(Ne??0)+Ze.length,H.push(...Ze)}catch(Ze){if(t(),h(),
-Je.error=gt(Ze.message,j),xe||(xe=Ze),!nn(Ze))throw x({queries:X,rawCount:Ne,unit:"条目"}),
-Ze;if(rn(Ze)){s.set("迅雷",Je.error),Pe++;break}}const De=j.seasonRows||[O];if(Ne!=null&&
-De.every(Ze=>ie(Ze,H))){Pe++;break}}const ye=s.has("迅雷")?[]:he.slice(Pe);if(x({queries:X,
-rawCount:Ne,unit:"条目",thunderOffset:Pe,deferredTerms:ye}),Ne===null&&xe)throw xe;if(L&&
-Ne!=null){const Re=r.get(L),ze=[...new Map([...Re?.items||[],...H].map(De=>[De.url||De.name,
-De])).values()],Je=[...new Map([...Re?.attempts||[],...X].map(De=>[De.term,De])).values()];
-r.set(L,{items:ze,attempts:Je}),Rt(r,200)}}t(),h(),await q(H,O,h);const{candidates:ce,excluded:He,
-rejectionSamples:Oe}=oe(H,O);return T(`搜索词：${X.map(xe=>xe.term).join(" / ")} · 筛选后\
- ${ce.length} 份字幕文件`+(ce.length?"："+ce.slice(0,12).map(xe=>xe.name).join("；")+
-(ce.length>12?"；…":""):"")),ce.sort((xe,Ne)=>Number(xe.opaque)-Number(Ne.opaque)),Oe.length&&
-n("迅雷 排除样例",Oe.join("；")),n("迅雷 筛选",`保留 ${ce.length} 份 · 排除 ${Object.
-values(He).reduce((xe,Ne)=>xe+Ne,0)} 份（${Object.entries(He).map(([xe,Ne])=>xe+" "+Ne).
-join("，")}）· 待确认 ${ce.filter(xe=>!xe.titleMatched).length} 份`),x({keptCount:ce.
-length,excluded:He}),ce},logout(){a="",i="",w()},clearCache:w,async login(O,j,T){if(a="",i=
-"",!O||!j)throw new Error("请输入 OpenSubtitles 用户名和密码");const h=await U("/\
-login",T,{username:O,password:j});if(!h?.token)throw new Error("接口未返回登录令牌");
-a=h.token,i=T.key},async search(O,j,T=()=>{}){const h=O.parsed,x=jt(h.query,h.year);if(!x)
-throw nt("无法从文件名识别作品名称");if(h.tv&&(h.season===null||h.episode===null))
-throw nt("缺少明确季集，请先在影视整理中确认季集并重命名");if(h.endEpisode&&
-h.endEpisode!==h.episode)throw nt("合并多集视频需要单独匹配字幕，本次未自动查询");
-const v=new URLSearchParams({query:x,languages:j.language,order_by:"download_count",order_direction:"\
+test(ue)||v.tv&&/\b(?:2160p|1080p|720p)\b/i.test(ue)),ce=de.map(Ce=>Ce+ke),oe=z&&z+(P.seasonSearch?
+"":" "+String(v.episode).padStart(2,"0")),pe=z&&!P.seasonSearch&&z+" S"+v.season+"E"+String(
+v.episode).padStart(2,"0"),me=[...new Set([pe,oe,Q&&ue.replace(/\.[^.]+$/,""),...ce].filter(
+Boolean))].slice(0,pe?4:3),le=(Ce,{parsed:Pe,node:Oe})=>{const Ne=[],be=new Set,Re={年份:0,
+季集:0,语言:0,内容:0,无关:0,待确认上限:0,格式:0,重复:0},Le=[],Xe=(Fe,Je)=>{
+Le.length<8&&Le.push(`${Fe}（${Je}）`)};n("迅雷 响应",`返回 ${Ce.length} 条原始结果`);
+for(const Fe of Ce){if(t(),h(),!Fe||typeof Fe.name!="string"||!Fe.name.trim()){Re.格式++;
+continue}const Je=Fe.name,st=String(Fe.ext||Je.split(".").pop()).replace(/^\./,"").toLowerCase();
+if(!["srt","ass","ssa","vtt","zip","rar"].includes(st)||typeof Fe.url!="string"){Re.格式++;
+continue}let bt;try{bt=Kt(Fe.url,{allowHttp:!0})}catch{Re.格式++;continue}if(be.has(bt)){
+Re.重复++;continue}be.add(bt);const vt=Fe.embeddedVideoName||Je,x=Pt(vt,Pe);if(Pt(Je,Pe).
+conflict||x.conflict||!Pe.tv&&x.season!=null&&x.episode!=null){Re.季集++,Xe(Je,"季集不符");
+continue}const L=x.matched,H=!L&&Ui(Oe,Pe,vt),X=Qt(Pe,Fe.embeddedVideoName?[Je]:[],vt,H||!!P.
+reviewCandidates);if(X.excluded){Re[X.excluded]++,Xe(Je,X.matchReason||X.excluded);continue}
+const Z=[Array.isArray(Fe.languages)?Fe.languages.join(" "):"",Fe.simple_name||""].join(" ").
+replace(/\\u0026/gi,"&").replace(/英语/g,"英文"),J=Ct(Z),_=Ct(Je,J.language);_.bilingual||
+(_.bilingual=J.bilingual&&_.language.startsWith("zh"));const g=It(st)?Hn([Je]):null;if(Pe.
+tv&&g!=null&&g!==Pe.season){Re.季集++,Xe(Je,"季号不符");continue}const N=H||X.titleMatched&&
+(!Pe.tv||L||g===Pe.season);if(_.language&&!(P.language||"zh-cn,zh-tw,zh").split(",").includes(
+_.language)&&!_.bilingual&&!_.language.startsWith("zh")&&_.language!=="en"){Re.语言++,Xe(
+Je,"语言 "+_.language);continue}if(Ne.length>=60){const C=N?Ne.findIndex(q=>!q.titleMatched):
+-1;if(Re.待确认上限++,C<0)continue;Ne.splice(C,1)}Ne.push({source:"迅雷",name:Je,..._,
+titleMatched:N,opaque:!!X.opaque,matchReason:N?"":Pe.tv&&!L?"文件未标明准确季集":
+X.matchReason,url:bt,ext:st,release:vt,embeddedVideoName:Fe.embeddedVideoName,searchTerms:Fe.
+searchTerms||[],...It(st)?{parsed:{...Pe},archiveSeason:g,archiveFields:[Je]}:{}})}return{
+candidates:Ne,excluded:Re,rejectionSamples:Le}},ae=(Ce,Pe)=>{const{candidates:Oe}=le(Pe,Ce),
+Ne=new Set((Ce.candidates||[]).filter(Re=>Re.downloadFailed).map(Re=>Re.url)),be={node:Ce.
+node||{name:""},parsed:Ce.parsed,candidates:Oe.filter(Re=>!Ne.has(Re.url))};return Ot(be,P.
+language),!!be.selectedCandidate};if(P.thunderCacheOnly){if(!r.has(U))return[];({items:K,attempts:Y}=
+await r.get(U)),S({queries:Y,rawCount:K.length,unit:"缓存条目",deferredTerms:me})}else{
+K=[],Y=[];let Ce,Pe=null,Ne=P.thunderOffset||0;for(;Ne<me.length;Ne++){t(),h();const Re=me[Ne],
+Le=JSON.stringify(["thunder",Re]),Xe={term:Re};Y.push(Xe),n("迅雷 查询","实际搜索词："+
+Re+" · "+(r.has(Le)?"使用缓存":"请求来源"));try{r.has(Le)||(r.set(Le,T(Re,h).then(
+st=>{if(Number(st?.code)!==0||!Array.isArray(st?.data))throw rt("迅雷字幕接口返回异常："+
+String(st?.result||st?.code||"格式错误").slice(0,120));return st.data.map(bt=>({...bt,
+searchTerms:[Re]}))}).catch(st=>{throw r.delete(Le),st})),Mt(r,200));const Je=await r.get(
+Le);t(),h(),Xe.rawCount=Je.length,Pe=(Pe??0)+Je.length,K.push(...Je)}catch(Je){if(t(),h(),
+Xe.error=yt(Je.message,P),Ce||(Ce=Je),!nn(Je))throw S({queries:Y,rawCount:Pe,unit:"条目"}),
+Je;if(rn(Je)){s.set("迅雷",Xe.error),Ne++;break}}const Fe=P.seasonRows||[O];if(Pe!=null&&
+Fe.every(Je=>ae(Je,K))){Ne++;break}}const be=s.has("迅雷")?[]:me.slice(Ne);if(S({queries:Y,
+rawCount:Pe,unit:"条目",thunderOffset:Ne,deferredTerms:be}),Pe===null&&Ce)throw Ce;if(U&&
+Pe!=null){const Re=r.get(U),Le=[...new Map([...Re?.items||[],...K].map(Fe=>[Fe.url||Fe.name,
+Fe])).values()],Xe=[...new Map([...Re?.attempts||[],...Y].map(Fe=>[Fe.term,Fe])).values()];
+r.set(U,{items:Le,attempts:Xe}),Mt(r,200)}}t(),h(),await F(K,O,h);const{candidates:ge,excluded:ze,
+rejectionSamples:De}=le(K,O);return j(`搜索词：${Y.map(Ce=>Ce.term).join(" / ")} · 筛选后\
+ ${ge.length} 份字幕文件`+(ge.length?"："+ge.slice(0,12).map(Ce=>Ce.name).join("；")+
+(ge.length>12?"；…":""):"")),ge.sort((Ce,Pe)=>Number(Ce.opaque)-Number(Pe.opaque)),De.length&&
+n("迅雷 排除样例",De.join("；")),n("迅雷 筛选",`保留 ${ge.length} 份 · 排除 ${Object.
+values(ze).reduce((Ce,Pe)=>Ce+Pe,0)} 份（${Object.entries(ze).map(([Ce,Pe])=>Ce+" "+Pe).
+join("，")}）· 待确认 ${ge.filter(Ce=>!Ce.titleMatched).length} 份`),S({keptCount:ge.
+length,excluded:ze}),ge},logout(){a="",i="",w()},clearCache:w,async login(O,P,j){if(a="",i=
+"",!O||!P)throw new Error("请输入 OpenSubtitles 用户名和密码");const h=await D("/\
+login",j,{username:O,password:P});if(!h?.token)throw new Error("接口未返回登录令牌");
+a=h.token,i=j.key},async search(O,P,j=()=>{}){const h=O.parsed,S=Tt(h.query,h.year);if(!S)
+throw rt("无法从文件名识别作品名称");if(h.tv&&(h.season===null||h.episode===null))
+throw rt("缺少明确季集，请先在影视整理中确认季集并重命名");if(h.endEpisode&&
+h.endEpisode!==h.episode)throw rt("合并多集视频需要单独匹配字幕，本次未自动查询");
+const v=new URLSearchParams({query:S,languages:P.language,order_by:"download_count",order_direction:"\
 desc"});h.tmdbId&&v.set(h.tv?"parent_tmdb_id":"tmdb_id",h.tmdbId),h.tv?(v.set("season_numb\
 er",h.season),v.set("episode_number",h.episode),v.set("type","episode")):(v.set("type","mo\
-vie"),h.year&&v.set("year",h.year));const R=JSON.stringify([j.key,v.toString()]);r.has(R)||
-r.set(R,U("/subtitles?"+v,j).catch(de=>{throw r.delete(R),de}));const z={term:v.toString()};
-let L;try{if(L=await r.get(R),!Array.isArray(L?.data))throw nt("搜索返回格式异常")}catch(de){
-throw z.error=de.message,T({queries:[z]}),de}z.rawCount=L.data.length;const H=[],X={作品:0,
-年份:0,季集:0,格式:0,上限:0};for(const de of L.data){const be=de.attributes||{},J=be.
-feature_details||{},le=h.tv?J.parent_tmdb_id:J.tmdb_id,se=h.tv||!h.year||!J.year||String(J.
-year)===String(h.year),ue=[J.title,J.movie_name].some(he=>Ye(he)===Ye(x))&&se;if(h.tmdbId&&
-le&&String(le)!==String(h.tmdbId)){X.作品++;continue}if(!h.tv&&/episode|tvshow/i.test(J.
-feature_type||"")){X.作品++;continue}if(h.tv&&(Number(J.season_number)!==h.season||Number(
-J.episode_number)!==h.episode)){X.季集++;continue}if(!Array.isArray(be.files)||!be.files.
-length){X.格式++;continue}for(const he of be.files){if(!Number.isSafeInteger(he?.file_id)||
-he.file_id<=0){X.格式++;continue}const oe=he.file_name||"",ie=oe.split(".").pop().toLowerCase(),
-ce=mn(h,[J.title,J.movie_name],he.file_name||"subtitle");H.push({source:"OpenSubtitles",fileId:he.
-file_id,...It(he.file_name||be.release||"",be.language||""),release:[J.movie_name||J.title,
-be.release].filter(Boolean).join(" · "),name:oe,ext:ie,parsed:{...h},archiveFields:[J.title,
-J.movie_name,be.release],archiveSeason:Hn([oe,be.release],J.season_number),workIdentity:{tmdbId:le,
-year:J.year,tv:h.tv,season:J.season_number,episode:J.episode_number},hardMismatch:!se||!!ce.
-hardMismatch,titleMatched:ue&&ce.titleMatched,identityMatched:se&&ce.titleMatched&&!!h.tmdbId&&
-String(le)===String(h.tmdbId),matchReason:se?ce.matchReason:"作品年份与视频不符"})}}
-X.上限=Math.max(0,H.length-12);const Se=H.slice(0,12);return T({queries:[z],rawCount:z.rawCount,
-unit:"资源",keptCount:Se.length,excluded:X}),Se},async fetchFile(O,j,T=()=>{},h=()=>{}){
-for(let x=0;x<2;x++){h();let v;try{if(v=await this.download(O,j),h(),v.fileName&&T("文件选择",
-`${O.source} · ${v.fileName}`),At(v.ext))return await A(async()=>{const z=await b(v.url,h,
-v.ext,O.source),L=await Di(z.bytes,O,j.language,h,z.index);return v.ext=L.ext,v.fileName=L.
-name,T(O.source+" 压缩包选择",L.name),{result:v,bytes:L.bytes}},h);const R=await M(v,
-h,O.source);return h(),{result:v,bytes:R}}catch(R){if(h(),x||R.downloadPaused||R.phase!=="\
-transfer"||!([401,403,408,500,502,503,504].includes(R.status)||R.retryable))throw R;T("下载重\
-试",`${O.source} · ${new URL(v.url).hostname} · ${R.message}；稍后重试一次`),At(
-O.ext)&&l.delete(O.url),await C(1500)}}},async download(O,j){if(O.source==="迅雷")return{
+vie"),h.year&&v.set("year",h.year));const R=JSON.stringify([P.key,v.toString()]);r.has(R)||
+r.set(R,D("/subtitles?"+v,P).catch(de=>{throw r.delete(R),de}));const z={term:v.toString()};
+let U;try{if(U=await r.get(R),!Array.isArray(U?.data))throw rt("搜索返回格式异常")}catch(de){
+throw z.error=de.message,j({queries:[z]}),de}z.rawCount=U.data.length;const K=[],Y={作品:0,
+年份:0,季集:0,格式:0,上限:0};for(const de of U.data){const ue=de.attributes||{},Q=ue.
+feature_details||{},ce=h.tv?Q.parent_tmdb_id:Q.tmdb_id,oe=h.tv||!h.year||!Q.year||String(Q.
+year)===String(h.year),pe=[Q.title,Q.movie_name].some(me=>Ge(me)===Ge(S))&&oe;if(h.tmdbId&&
+ce&&String(ce)!==String(h.tmdbId)){Y.作品++;continue}if(!h.tv&&/episode|tvshow/i.test(Q.
+feature_type||"")){Y.作品++;continue}if(h.tv&&(Number(Q.season_number)!==h.season||Number(
+Q.episode_number)!==h.episode)){Y.季集++;continue}if(!Array.isArray(ue.files)||!ue.files.
+length){Y.格式++;continue}for(const me of ue.files){if(!Number.isSafeInteger(me?.file_id)||
+me.file_id<=0){Y.格式++;continue}const le=me.file_name||"",ae=le.split(".").pop().toLowerCase(),
+ge=mn(h,[Q.title,Q.movie_name],me.file_name||"subtitle");K.push({source:"OpenSubtitles",fileId:me.
+file_id,...Ct(me.file_name||ue.release||"",ue.language||""),release:[Q.movie_name||Q.title,
+ue.release].filter(Boolean).join(" · "),name:le,ext:ae,parsed:{...h},archiveFields:[Q.title,
+Q.movie_name,ue.release],archiveSeason:Hn([le,ue.release],Q.season_number),workIdentity:{tmdbId:ce,
+year:Q.year,tv:h.tv,season:Q.season_number,episode:Q.episode_number},hardMismatch:!oe||!!ge.
+hardMismatch,titleMatched:pe&&ge.titleMatched,identityMatched:oe&&ge.titleMatched&&!!h.tmdbId&&
+String(ce)===String(h.tmdbId),matchReason:oe?ge.matchReason:"作品年份与视频不符"})}}
+Y.上限=Math.max(0,K.length-12);const ke=K.slice(0,12);return j({queries:[z],rawCount:z.rawCount,
+unit:"资源",keptCount:ke.length,excluded:Y}),ke},async fetchFile(O,P,j=()=>{},h=()=>{}){
+for(let S=0;S<2;S++){h();let v;try{if(v=await this.download(O,P),h(),v.fileName&&j("文件选择",
+`${O.source} · ${v.fileName}`),It(v.ext))return await A(async()=>{const z=await b(v.url,h,
+v.ext,O.source),U=await Di(z.bytes,O,P.language,h,z.index);return v.ext=U.ext,v.fileName=U.
+name,j(O.source+" 压缩包选择",U.name),{result:v,bytes:U.bytes}},h);const R=await M(v,
+h,O.source);return h(),{result:v,bytes:R}}catch(R){if(h(),S||R.downloadPaused||R.phase!=="\
+transfer"||!([401,403,408,500,502,503,504].includes(R.status)||R.retryable))throw R;j("下载重\
+试",`${O.source} · ${new URL(v.url).hostname} · ${R.message}；稍后重试一次`),It(
+O.ext)&&l.delete(O.url),await E(1500)}}},async download(O,P){if(O.source==="迅雷")return{
 url:Kt(O.url,{allowHttp:!0}),ext:O.ext,fileName:O.name,allowHttp:!0};if(O.source==="射手网")
-return{url:Kt(O.url),ext:O.ext,fileName:O.name};const T=await U("/download",j,{file_id:O.fileId}),
-h=String(T?.file_name||O.name).split(".").pop().toLowerCase();return{url:Kt(T?.link),ext:h,
-fileName:T?.file_name||O.name}}}}const Pt=16*1024*1024,Sr=64*1024*1024,qi=new Map,At=e=>e===
-"zip"||e==="rar";async function Kn(e,t,n=()=>{},a=!1,i){if(n(),e.length>Pt)throw new Error(
-"压缩包超过 16 MiB");return t==="rar"||[82,97,114,33,26,7].every((r,o)=>e[o]===r)?Yt(
+return{url:Kt(O.url),ext:O.ext,fileName:O.name};const j=await D("/download",P,{file_id:O.fileId}),
+h=String(j?.file_name||O.name).split(".").pop().toLowerCase();return{url:Kt(j?.link),ext:h,
+fileName:j?.file_name||O.name}}}}const jt=16*1024*1024,Sr=64*1024*1024,qi=new Map,It=e=>e===
+"zip"||e==="rar";async function Kn(e,t,n=()=>{},a=!1,i){if(n(),e.length>jt)throw new Error(
+"压缩包超过 16 MiB");return t==="rar"||[82,97,114,33,26,7].every((r,o)=>e[o]===r)?Xt(
 qi,"rar",()=>new Promise((r,o)=>{let l,d,c,f=!1;const m=(u,p)=>{f||(f=!0,clearInterval(c),
 l?.terminate(),d&&URL.revokeObjectURL(d),u?o(u):r(p))};try{n(),d=URL.createObjectURL(new Blob(
 [Ua],{type:"text/javascript"})),l=new Worker(d);const u=Date.now();c=setInterval(()=>{try{
@@ -6357,7 +6363,7 @@ m(w)}},250),l.onerror=w=>{w.preventDefault(),m(new Error("RAR 解压线程启动
 l.onmessage=w=>{try{if(n(),w.data.type==="error")throw new Error(w.data.error);w.data.type===
 "headers"?i?l.postMessage({type:"extract",paths:i}):m(null,w.data.index):w.data.type==="co\
 mplete"&&m(null,w.data.index)}catch(y){m(y)}};const p=e.slice().buffer;l.postMessage({type:"\
-open",bytes:p,limits:{file:Pt,batch:Sr}},[p])}catch(u){m(u)}})):Vi(e,n,a)}function Vi(e,t=()=>{},n=!1){
+open",bytes:p,limits:{file:jt,batch:Sr}},[p])}catch(u){m(u)}})):Vi(e,n,a)}function Vi(e,t=()=>{},n=!1){
 const a=()=>new Error("ZIP 格式不支持或数据不完整（不支持 ZIP64 及多卷）"),
 i=new DataView(e.buffer,e.byteOffset,e.byteLength);let s=e.length-22;for(;s>=Math.max(0,e.
 length-65557)&&!(i.getUint32(s,!0)===101010256&&s+22+i.getUint16(s+20,!0)===e.length);s--)
@@ -6366,34 +6372,34 @@ length-65557)&&!(i.getUint32(s,!0)===101010256&&s+22+i.getUint16(s+20,!0)===e.le
 8,!0)||r>2e3||l+o!==s)throw a();const d=[],c=new Map,f=[];let m=l;for(let u=0;u<r;u++){if(t(),
 m+46>s||i.getUint32(m,!0)!==33639248)throw a();const p=i.getUint16(m+8,!0),w=i.getUint16(m+
 10,!0),y=i.getUint32(m+16,!0),I=i.getUint32(m+20,!0),A=i.getUint32(m+24,!0),M=i.getUint32(
-m+42,!0),b=i.getUint16(m+28,!0),N=m+46+b+i.getUint16(m+30,!0)+i.getUint16(m+32,!0);if(N>s||
-i.getUint16(m+34,!0))throw a();const k=e.subarray(m+46,m+46+b),q=new TextDecoder(p&2048?"u\
-tf-8":"gb18030",{fatal:n}).decode(k),U=q.split(/[\\/]/).pop(),C=U.split(".").pop().toLowerCase();
-if(n){const O=q.normalize("NFKC").replace(/\\/g,"/").replace(/\/$/,"").split("/");if(O.some(
+m+42,!0),b=i.getUint16(m+28,!0),T=m+46+b+i.getUint16(m+30,!0)+i.getUint16(m+32,!0);if(T>s||
+i.getUint16(m+34,!0))throw a();const k=e.subarray(m+46,m+46+b),F=new TextDecoder(p&2048?"u\
+tf-8":"gb18030",{fatal:n}).decode(k),D=F.split(/[\\/]/).pop(),E=D.split(".").pop().toLowerCase();
+if(n){const O=F.normalize("NFKC").replace(/\\/g,"/").replace(/\/$/,"").split("/");if(O.some(
 v=>!v||v==="."||v===".."||/[:\x00-\x1f]/.test(v)||/[ .]$/.test(v)))throw new Error("ZIP 包含\
-绝对路径或不安全路径");const j=O.join("/").toLowerCase(),T=!U;if(c.has(j))throw new Error(
-"ZIP 包含重复或冲突路径");if(c.set(j,T),(p|(M+30<=l?i.getUint16(M+6,!0):0))&8257)
+绝对路径或不安全路径");const P=O.join("/").toLowerCase(),j=!D;if(c.has(P))throw new Error(
+"ZIP 包含重复或冲突路径");if(c.set(P,j),(p|(M+30<=l?i.getUint16(M+6,!0):0))&8257)
 throw new Error("不支持加密 ZIP");if(A===4294967295||I===4294967295||M===4294967295||
 ![0,8].includes(w))throw a();const h=Sa(i,{local:M,flags:p,method:w,compressed:I,length:A,
 crc:y},l,a);if(i.getUint16(M+26,!0)!==k.length||M+30+k.length>h||k.some((v,R)=>v!==e[M+30+
-R]))throw a();let x=h+I;if(p&8){const v=R=>R+12<=l&&i.getUint32(R,!0)===y&&i.getUint32(R+4,
-!0)===I&&i.getUint32(R+8,!0)===A;if(v(x))x+=12;else if(x+4<=l&&i.getUint32(x,!0)===134695760&&
-v(x+4))x+=16;else throw a()}else if(i.getUint32(M+14,!0)!==y||i.getUint32(M+18,!0)!==I||i.
-getUint32(M+22,!0)!==A)throw a();f.push([M,x])}m=N,!(!["srt","ass","ssa","vtt"].includes(C)||
-q.startsWith("__MACOSX/")||U.startsWith("._"))&&(p&1||![0,8].includes(w)||!n&&!A||I>Pt||d.
-push({name:U,path:q,ext:C,method:w,crc:y,compressed:I,length:A,local:M,flags:p}))}if(m!==s)
+R]))throw a();let S=h+I;if(p&8){const v=R=>R+12<=l&&i.getUint32(R,!0)===y&&i.getUint32(R+4,
+!0)===I&&i.getUint32(R+8,!0)===A;if(v(S))S+=12;else if(S+4<=l&&i.getUint32(S,!0)===134695760&&
+v(S+4))S+=16;else throw a()}else if(i.getUint32(M+14,!0)!==y||i.getUint32(M+18,!0)!==I||i.
+getUint32(M+22,!0)!==A)throw a();f.push([M,S])}m=T,!(!["srt","ass","ssa","vtt"].includes(E)||
+F.startsWith("__MACOSX/")||D.startsWith("._"))&&(p&1||![0,8].includes(w)||!n&&!A||I>jt||d.
+push({name:D,path:F,ext:E,method:w,crc:y,compressed:I,length:A,local:M,flags:p}))}if(m!==s)
 throw a();if(n){for(const u of c.keys())for(let p=u.lastIndexOf("/");p>=0;p=u.lastIndexOf(
 "/",p-1))if(c.get(u.slice(0,p))===!1)throw new Error("ZIP 包含文件与目录路径冲突");
 if(f.sort((u,p)=>u[0]-p[0]),f.some(([u],p)=>p&&u<f[p-1][1]))throw a()}return{files:d,start:l}}
 function xa(e,t,n){const a=t.parsed;if(a.tv&&(a.season==null||a.episode==null||a.endEpisode&&
 a.endEpisode!==a.episode))return[];const i=[];for(const s of e.files){if(!s.length||s.length>
-Pt)continue;const{name:r}=s;let o=r;if(a.tv){const c=s.path.replace(/\\/g,"/").split("/").
+jt)continue;const{name:r}=s;let o=r;if(a.tv){const c=s.path.replace(/\\/g,"/").split("/").
 slice(0,-1),f=c.flatMap(p=>[...p.matchAll(/(?:^|[^a-z])(?:Season[ ._-]*|S)(\d{1,2})(?!\d)/gi)].
 map(w=>Number(w[1])));if(f.some(p=>p!==a.season)||c.some(p=>/^(?:extras?|specials?|bonus|特典|花絮)$/i.
 test(p)))continue;const m=t.titleMatched?t.archiveSeason??f[0]??null:null;if(r.match(/^(?:E(?:P)?[ ._-]*)?(\d{1,3})(?:[ ._-](?:chs|cht|zh|zh-cn|zh-tw|简体|繁体|简中|繁中))?\.(?:srt|ass|ssa|vtt)$/i)&&
-m===a.season){if(!Ot(r,a,m).matched)continue;o=a.query+".S"+String(a.season).padStart(2,"0")+
-"E"+String(a.episode).padStart(2,"0")+"."+s.ext}else if(!Ot(r,a,m).matched)continue}const l=Qt(
-a,t.archiveFields||[],o),d=It(r,t.language);l.excluded||!l.titleMatched||!yn(r,n)&&!n.split(
+m===a.season){if(!Pt(r,a,m).matched)continue;o=a.query+".S"+String(a.season).padStart(2,"0")+
+"E"+String(a.episode).padStart(2,"0")+"."+s.ext}else if(!Pt(r,a,m).matched)continue}const l=Qt(
+a,t.archiveFields||[],o),d=Ct(r,t.language);l.excluded||!l.titleMatched||!yn(r,n)&&!n.split(
 ",").some(c=>c===d.language||c.startsWith("zh")&&d.language.startsWith("zh"))||i.push({...s,
 score:Wn({...d,name:r},n)})}return i.sort((s,r)=>r.score-s.score||s.name.localeCompare(r.name))}
 async function Di(e,t,n,a=()=>{},i){a(),i||(i=await Kn(e,t.ext,a));const s=xa(i,t,n);if(!s.
@@ -6401,7 +6407,7 @@ length)throw new Error("压缩包没有通过片名、年份、季集及语言�
 return ka(e,i,s[0],a)}function Sa(e,t,n,a){const{local:i}=t;if(i+30>n||e.getUint32(i,!0)!==
 67324752||e.getUint16(i+6,!0)!==t.flags||e.getUint16(i+8,!0)!==t.method)throw a();const s=i+
 30+e.getUint16(i+26,!0)+e.getUint16(i+28,!0);if(s+t.compressed>n||t.method===0&&t.compressed!==
-t.length)throw a();return s}async function ka(e,t,n,a){if(a(),n.length>Pt)throw new Error(
+t.length)throw a();return s}async function ka(e,t,n,a){if(a(),n.length>jt)throw new Error(
 "字幕「"+n.name+"」超过 16 MiB");if(t.format==="rar"){const d=await Kn(e,"rar",a,!1,
 [n.originalPath]);a();const c=d.files.find(f=>f.originalPath===n.originalPath);if(!c||c.length!==
 n.length)throw new Error("RAR 所选字幕与目录记录不符");return{name:c.name,ext:c.
@@ -6410,12 +6416,12 @@ e.buffer,e.byteOffset,e.byteLength),r=Sa(s,n,t.start,i);let o=e.subarray(r,r+n.c
 if(n.method===8){let d;try{d=new DecompressionStream("deflate-raw")}catch{throw new Error(
 "当前浏览器不支持 ZIP 解压，请更新浏览器或选择其他来源的单文件字幕")}
 const c=new Blob([o]).stream().pipeThrough(d).getReader(),f=[];let m=0;try{for(;;){a();const{
-done:p,value:w}=await c.read();if(a(),p)break;if(m+=w.length,m>n.length||m>Pt)throw i();f.
+done:p,value:w}=await c.read();if(a(),p)break;if(m+=w.length,m>n.length||m>jt)throw i();f.
 push(w)}}catch(p){throw a(),p.name==="TypeError"?i():p}finally{await c.cancel().catch(()=>{})}
 o=new Uint8Array(m);let u=0;for(const p of f)o.set(p,u),u+=p.length}a();let l=4294967295;for(const d of o){
 l^=d;for(let c=0;c<8;c++)l=l>>>1^(l&1?3988292384:0)}if(o.length!==n.length||(l^4294967295)>>>
 0!==n.crc)throw i();return{name:n.name,ext:n.ext,bytes:o}}function gn(e,{method:t="GET",headers:n={},
-bytes:a,range:i,limit:s=Pt,allowHttp:r=!1}={}){return e=Kt(e,{allowHttp:r&&t==="GET"&&!a&&
+bytes:a,range:i,limit:s=jt,allowHttp:r=!1}={}){return e=Kt(e,{allowHttp:r&&t==="GET"&&!a&&
 !Object.keys(n).length}),new Promise((o,l)=>{let d,c=!1;const f=m=>{c=!0,l(new Error(m)),d?.
 abort()};d=GM_xmlhttpRequest({url:e,method:t,headers:n,data:a&&new Blob([a]),anonymous:!0,
 responseType:"arraybuffer",timeout:i?8e3:6e4,onreadystatechange:m=>{i&&m.readyState===2&&m.
@@ -6445,8 +6451,8 @@ i=0;for(let s=0;s<n*2;s+=2)e[s]===0&&a++,e[s+1]===0&&i++;if(n>=8&&i/n>.3&&a/n<.1
 `)}function Ia(e){let t="";const n=new Set;for(const a of e.replace(/^\uFEFF/,"").split(/\r?\n/)){
 const i=a.match(/^\s*\[([^\]]+)\]\s*$/);if(i&&(t=i[1].toLowerCase()),!["script info","aegi\
 sub project garbage"].includes(t))continue;const r=a.match(/^\s*Video File\s*:\s*(.+?)\s*$/i)?.[1].
-replace(/^"|"$/g,"").split(/[\\/]/).at(-1);r&&Nt.test(r)&&n.add(r)}return n.size===1?[...n][0]:
-""}function an(e,t,n,a,i=()=>{}){if(!t.length||t.length>Pt||!["srt","ass","ssa","vtt"].includes(
+replace(/^"|"$/g,"").split(/[\\/]/).at(-1);r&&Rt.test(r)&&n.add(r)}return n.size===1?[...n][0]:
+""}function an(e,t,n,a,i=()=>{}){if(!t.length||t.length>jt||!["srt","ass","ssa","vtt"].includes(
 n))throw new Error("仅支持单个 SRT、ASS、SSA、VTT 字幕，不导入压缩包或不完整字幕对");
 let s;try{s=Ea(t)}catch{throw new Error("字幕文本解码失败（UTF-8 / UTF-16 / GB18030），未上传")}
 const{text:r,encoding:o}=s,l=`编码 ${o.toUpperCase()}，${t.length} 字节`;if(i("字幕解码",
@@ -6478,13 +6484,13 @@ let c=o?n.slice(0,o.index):r?n.slice(0,r.index):"";const f=c.replace(/^\s*\[[^\]
 null&&t.workResolved&&c){const y=ht(Zt(t)),I=ht(c);y&&y===I&&(l=t.season);const A=c.match(
 /^(.*?)[ ._-]*(\d{1,2}|VIII|VII|VI|IV|IX|III|II|V|X|I)$/i),M={I:1,II:2,III:3,IV:4,V:5,VI:6,
 VII:7,VIII:8,IX:9,X:10},b=A&&(/^\d+$/.test(A[2])?Number(A[2]):M[A[2].toUpperCase()]);if(l==
-null&&!m.has(ht(c))&&A&&m.has(ht(A[1]))&&u.some(N=>N.season_number===b))l=b,c=A[1].trim();else if(l==
-null){const N=u.filter(k=>{const q=ht(k.name);return!q||/^(?:season\d+|第[零〇一二两三四五六七八九十\d]+季)$/i.
-test(q)?!1:m.has(ht(c))?u.length===1:[...m].some(U=>ht(c)===U+q)});N.length===1&&(l=N[0].season_number),
+null&&!m.has(ht(c))&&A&&m.has(ht(A[1]))&&u.some(T=>T.season_number===b))l=b,c=A[1].trim();else if(l==
+null){const T=u.filter(k=>{const F=ht(k.name);return!F||/^(?:season\d+|第[零〇一二两三四五六七八九十\d]+季)$/i.
+test(F)?!1:m.has(ht(c))?u.length===1:[...m].some(D=>ht(c)===D+F)});T.length===1&&(l=T[0].season_number),
 l==null&&u.length===1&&m.has(ht(c))&&(l=u[0].season_number)}}const p=o?o.index+o[0].lastIndexOf(
 o[2]):r?r.index+r[0].indexOf(r[1]):-1,w=p<0?n:n.slice(0,p)+"{episode}"+n.slice(p+(o?o[2]:r[1]).
 length).replace(/「[^」]*」|『[^』]*』/g,"{episodeTitle}");return{stem:n,named:a,markers:i,
-season:l,episode:d,title:c,pattern:w}}function Ot(e,t,n=null){const a=Zn(e,t),{stem:i,named:s,
+season:l,episode:d,title:c,pattern:w}}function Pt(e,t,n=null){const a=Zn(e,t),{stem:i,named:s,
 markers:r,title:o,pattern:l}=a;let d=a.season??n,c=a.episode;const f=r.some(y=>Number(y[1])!==
 d||Number(y[2])!==c||/^(?:[ ._-]*E\d|[ ._-]*[-~][ ._-]*(?:EP?)?\d)/i.test(i.slice(y.index+
 y[0].length)))||/(?:^|[ ._\[(])\d{1,3}[ ._]*[-~][ ._]*(?:EP?)?\d{1,3}(?!\d)/i.test(i)||s.endEpisode!=
@@ -6495,17 +6501,17 @@ pattern:l});if(f||new Set(m).size>1||m.some(y=>d!=null&&y!==d)||t.tv&&t.season>0
 const p=t.seasons||[];if(d==null){const y=p.filter(M=>M.season_number>0).sort((M,b)=>M.season_number-
 b.season_number),I=y.findIndex(M=>M.season_number===t.season);if(I>=0&&y.slice(0,I+1).every(
 (M,b)=>M.season_number===b+1&&Number.isInteger(M.episode_count)&&M.episode_count>0)){const M=y.
-slice(0,I).reduce((b,N)=>b+N.episode_count,0);if(c<=M||c>M+y[I].episode_count)return u(!1,
+slice(0,I).reduce((b,T)=>b+T.episode_count,0);if(c<=M||c>M+y[I].episode_count)return u(!1,
 !1);d=t.season,c-=M}}else{const y=ca(p,d,c);y&&(c=y.episode)}const w=t.tv&&t.season!=null&&
 t.episode!=null&&(t.endEpisode==null||t.endEpisode===t.episode)&&d===t.season&&c===t.episode;
-return u(w,d!=null&&t.season!=null&&(d!==t.season||c!==t.episode))}function Jn(e,t){return Ot(
+return u(w,d!=null&&t.season!=null&&(d!==t.season||c!==t.episode))}function Jn(e,t){return Pt(
 e,t).matched}function Ui(e,t,n){if(!t.tv||t.season==null||t.episode==null||t.endEpisode!=null&&
 t.endEpisode!==t.episode)return!1;for(const a of[e?.originalName,e?.name]){if(!a||!/^\s*\[[^\]]+\]\s*\[[^\]]+\]\s*\[\d{1,3}(?:v\d+)?\]/i.
 test(a)||Dt(a,n)===null)continue;const i=tt(a);if(i.query&&i.episode===t.episode&&(i.season==
 null||i.season===t.season)&&i.endEpisode==null&&(!i.year||!t.year||i.year===String(t.year)))
-return!0}return!1}function Xn(e,t,n,a){try{return kr(n,a)}catch(i){if(t.source!=="迅雷"||
+return!0}return!1}function Yn(e,t,n,a){try{return kr(n,a)}catch(i){if(t.source!=="迅雷"||
 !t.titleMatched||t.hardMismatch||t.opaque||!e.parsed?.tv||!Jn(t.embeddedVideoName||t.name,
-e.parsed)||!["srt","ass","ssa","vtt"].includes(a)||t.ext!==a)throw i;return kr(Ge(e.node.name)+
+e.parsed)||!["srt","ass","ssa","vtt"].includes(a)||t.ext!==a)throw i;return kr(Qe(e.node.name)+
 "."+a,a)}}function kr(e,t){if(typeof e!="string"||!e.trim())throw new Error("来源未提供字幕原名，待处理");
 if(e!==e.trim()||e.length>=256||/[\\\/:*?"<>|\x00-\x1f\x7f]/.test(e)||/^\.+|^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])\s*\./i.
 test(e)||!/\.(?:srt|ass|ssa|vtt)$/i.test(e)||e.split(".").at(-1).toLowerCase()!==t)throw new Error(
@@ -6524,8 +6530,8 @@ p.length<4||p.length>160||!m.some(y=>y.includes(p))||!u.reason.trim())return d("
 补齐":"支持作品归属，但不代表音画同步"} · ${w.reason}`),w}catch(u){if(l(),
 u.stop)throw u;return u.aiParse&&++a>=2&&t("AI 正文复查","连续两次解析失败，本批剩余正文复查停用"),
 t("AI 正文复查失败",`${i.node.name} · ${u.message}`),d("AI 复查未完成")}})}function yn(e,t){
-const n=It(e);return t.split(",").some(a=>a==="en"?n.language==="en"||n.bilingual:a==="zh"?
-n.language.startsWith("zh"):n.language===a)}function zt(e,t){const n=r=>new Set((String(r).
+const n=Ct(e);return t.split(",").some(a=>a==="en"?n.language==="en"||n.bilingual:a==="zh"?
+n.language.startsWith("zh"):n.language===a)}function Ot(e,t){const n=r=>new Set((String(r).
 toLowerCase().match(/2160p|1080p|720p|bluray|bdrip|webrip|web[ ._-]?dl|remux|hdtv|x26[45]/g)||
 []).map(o=>o.replace(/[ ._-]/g,""))),a=n(e.node.originalName||e.node.name),i=t.split(","),
 s=(e.candidates||[]).map(r=>{const o=n(r.release+" "+r.name),l=e.parsed&&vr(e.parsed,[r.name,
@@ -6545,15 +6551,15 @@ downloadFailed&&!e.selectedCandidate.opaque)return"ready";if(e.candidates?.some(
 !n.opaque))return"choice";if(e.candidates?.some(n=>!n.downloadFailed&&n.opaque))return"unc\
 onfirmed";const t=e.sources||[];return t.some(n=>n.error||n.paused||n.cacheError&&n.count==
 null||n.queries?.some(a=>a.error)||n.downloadErrors?.length)?"failed":t.some(n=>n.count!=null)?
-"notFound":"unsearched"}function gt(e,{key:t,assrtKey:n,password:a}={}){let i=String(e??"").
+"notFound":"unsearched"}function yt(e,{key:t,assrtKey:n,password:a}={}){let i=String(e??"").
 replace(/https?:\/\/[^\s"'<>]+/gi,s=>{try{return new URL(s).origin+"/[地址已隐藏]"}catch{
 return"[地址已隐藏]"}});for(const s of[t,n,a])s&&(i=i.split(s).join("[凭证已隐藏]"),
 i=i.split(encodeURIComponent(s)).join("[凭证已隐藏]"));return i.replace(/Bearer\s+\S+/gi,
 "Bearer [已隐藏]").replace(/\b((?:security[-_ ]?)?token|api[-_ ]?key|authorization|signature)\b["']?\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s&,;]+)/gi,
 "$1=[已隐藏]")}function Ir(e,t,n){const{queries:a,downloadErrors:i,deferredTerms:s,...r}=n;
-Object.assign(e,r),s&&(e.deferredTerms=s.map(o=>gt(o,t))),a&&(e.queries=a.map(({term:o,rawCount:l,
-error:d})=>({term:gt(o,t),rawCount:l,...d?{error:gt(d,t)}:{}}))),i?.length&&(e.downloadErrors||
-(e.downloadErrors=[])).push(...i.map(o=>gt(o,t)))}function Aa(e){const t=Object.entries(e.
+Object.assign(e,r),s&&(e.deferredTerms=s.map(o=>yt(o,t))),a&&(e.queries=a.map(({term:o,rawCount:l,
+error:d})=>({term:yt(o,t),rawCount:l,...d?{error:yt(d,t)}:{}}))),i?.length&&(e.downloadErrors||
+(e.downloadErrors=[])).push(...i.map(o=>yt(o,t)))}function Aa(e){const t=Object.entries(e.
 excluded||{}).filter(([,n])=>n).map(([n,a])=>`${n} ${a}`);return[e.skipped,e.paused&&"本批暂停\
 ："+e.paused,e.cacheError&&"整季缓存："+e.cacheError,e.deferredTerms?.length&&`暂缓 ${e.
 deferredTerms.length} 个搜索词`,e.rawCount!=null?`返回 ${e.rawCount} ${e.unit}`:"",e.
@@ -6570,46 +6576,46 @@ s.release],s.name||"");if(l.hardMismatch)return i(l.matchReason||"作品信息�
 r,[s.name,s.release]))return i("网络版不能作为电影版字幕");if(o){if(!!o.tv!=!!r.
 tv||r.tmdbId&&o.tmdbId&&String(r.tmdbId)!==String(o.tmdbId))return i("类型或 TMDB 编号冲突");
 if(!r.tv&&r.year&&o.year&&String(r.year)!==String(o.year))return i("年份冲突")}const d=[
-s.name,s.release].filter(Boolean).map(m=>Ot(m,r));if(r.tv){if(r.season==null||r.episode==null||
+s.name,s.release].filter(Boolean).map(m=>Pt(m,r));if(r.tv){if(r.season==null||r.episode==null||
 r.endEpisode&&r.endEpisode!==r.episode)return i("目标季集不完整或为多集文件");
 if(o&&(Number(o.season)!==r.season||Number(o.episode)!==r.episode))return i("接口季集冲突");
 if(!d.some(m=>m.matched)&&!o||d.some(m=>m.conflict))return i("字幕缺少准确季集或季集冲突")}else if(d.
 some(m=>m.season!=null&&m.episode!=null))return i("电影候选含剧集季集编号");const c=n.
 split(",");return c.includes(s.language)||s.bilingual&&c.some(m=>m.startsWith("zh"))||c.some(
 m=>yn(s.name||"",m))?s:i("字幕语言未确认或不符合所选语言")}function Wi(e,t,n=()=>{},a=()=>{}){
-let i=0,s=!1;const r=new Map,o=new Map,l=(c,f)=>{const m=c.parsed,u=p=>m.tv?Ot(p,m).pattern:
-p;return JSON.stringify([m.tmdbId||"",Ye(m.query),m.year||"",!!m.tv,m.season,m.aliases||[],
+let i=0,s=!1;const r=new Map,o=new Map,l=(c,f)=>{const m=c.parsed,u=p=>m.tv?Pt(p,m).pattern:
+p;return JSON.stringify([m.tmdbId||"",Ge(m.query),m.year||"",!!m.tv,m.season,m.aliases||[],
 t,f.source,u(f.name),u(f.release),f.ext,f.language,!!f.bilingual,f.workIdentity||null])},d=(c,f)=>{
 let m=0;const u=new Set;for(const p of f){const w=r.get(l(c,p));if(!(!w||p.titleMatched||p.
 identityMatched||p.aiAccepted)){if(w.state==="rejected")u.add(p),n("AI 排除候选",`${c.
 node.name} · ${p.name} · ${w.reason}`);else if(w.state==="accepted"){const y=Ma({index:c.
 candidates.indexOf(p),confidence:w.confidence},c,t,I=>{p.matchReason=I,n("AI 建议未采用",
 `${c.node.name} · ${p.name} · ${I}`)});y&&(y.aiAccepted=!0,y.matchReason="",m++)}}}return c.
-candidates=c.candidates.filter(p=>!u.has(p)),zt(c,t),m};return async(c,f,m=a)=>{m();const u=d(
+candidates=c.candidates.filter(p=>!u.has(p)),Ot(c,t),m};return async(c,f,m=a)=>{m();const u=d(
 c,f);if(c.selectedCandidate){u&&n("AI 命名复用",`${c.node.name} · 同作品、同季、同命名格式 · ${u}\
  份候选通过逐集核验`);return}if(s)return;const p=new Map;for(const b of f)b.opaque||
 b.hardMismatch||b.detailError||b.mainTitleFallback||b.downloadFailed||c.parsed.tv&&!Ma({index:c.
-candidates.indexOf(b),confidence:1},c,t,N=>{b.matchReason=N})||p.set(l(c,b),b);const w=[...p].
+candidates.indexOf(b),confidence:1},c,t,T=>{b.matchReason=T})||p.set(l(c,b),b);const w=[...p].
 filter(([b])=>!r.has(b)&&!o.has(b)),y=new Set([...p.keys()].map(b=>o.get(b)).filter(Boolean));
-for(let b=0;b<w.length;b+=20){const N=w.slice(b,b+20),k=Promise.resolve().then(async()=>{if(m(),
-!s){n("AI 候选判断",`${c.node.name} · 合并 ${N.length} 种命名格式，后续同季集数复用`);
-try{const q=N.map(([,C],O)=>{const j=Ot(C.name,c.parsed);return{index:O,source:C.source,name:String(
-C.name||"").slice(0,300),release:C.release===C.name?void 0:String(C.release||"").slice(0,200),
-language:C.language,bilingual:!!C.bilingual,season:j.season,episode:j.episode}}),U=await e.
+for(let b=0;b<w.length;b+=20){const T=w.slice(b,b+20),k=Promise.resolve().then(async()=>{if(m(),
+!s){n("AI 候选判断",`${c.node.name} · 合并 ${T.length} 种命名格式，后续同季集数复用`);
+try{const F=T.map(([,E],O)=>{const P=Pt(E.name,c.parsed);return{index:O,source:E.source,name:String(
+E.name||"").slice(0,300),release:E.release===E.name?void 0:String(E.release||"").slice(0,200),
+language:E.language,bilingual:!!E.bilingual,season:P.season,episode:P.episode}}),D=await e.
 disambiguateSubtitle({work:{title:c.parsed.query,aliases:c.parsed.aliases||[],year:c.parsed.
 year||"",tv:!!c.parsed.tv,season:c.parsed.season,episode:c.parsed.episode,tmdbId:c.parsed.
-tmdbId||""},candidates:q});m(),i=0;for(const[C]of N)r.set(C,{state:"unknown"});if(Number.isInteger(
-U?.index)&&N[U.index]&&Number.isFinite(U.confidence)&&U.confidence>=.9&&U.confidence<=1){const[
-C]=N[U.index];r.set(C,{state:"accepted",confidence:U.confidence})}n("AI 判断依据",`${c.
-node.name} · index=${U?.index??"无"} · confidence=${U?.confidence??"无"} · ${String(U?.
-reason||"未提供依据").slice(0,300)}`);for(const C of Array.isArray(U?.rejected)?U.rejected:
-[]){if(!Number.isInteger(C?.index)||C.index===U.index||!N[C.index]||!Number.isFinite(C.confidence)||
-C.confidence<.9||C.confidence>1||typeof C.reason!="string"||!C.reason.trim())continue;const[
-O,j]=N[C.index];j.identityMatched||j.titleMatched||j.aiAccepted||r.set(O,{state:"rejected",
-reason:C.reason.slice(0,200)})}}catch(q){if(m(),q.stop)throw q;for(const[U]of N)r.set(U,{state:"\
-unknown"});n("AI 字幕建议",`${c.node.name} · 判断失败：${q.message}；继续其他来源`),
-i=q.aiParse?i+1:0,i>=2&&(s=!0,n("AI 字幕建议","连续两次解析失败，本批剩余 AI 判断已停用"))}}}).
-finally(()=>{for(const[q]of N)o.delete(q)});for(const[q]of N)o.set(q,k);y.add(k)}const A=(await Promise.
+tmdbId||""},candidates:F});m(),i=0;for(const[E]of T)r.set(E,{state:"unknown"});if(Number.isInteger(
+D?.index)&&T[D.index]&&Number.isFinite(D.confidence)&&D.confidence>=.9&&D.confidence<=1){const[
+E]=T[D.index];r.set(E,{state:"accepted",confidence:D.confidence})}n("AI 判断依据",`${c.
+node.name} · index=${D?.index??"无"} · confidence=${D?.confidence??"无"} · ${String(D?.
+reason||"未提供依据").slice(0,300)}`);for(const E of Array.isArray(D?.rejected)?D.rejected:
+[]){if(!Number.isInteger(E?.index)||E.index===D.index||!T[E.index]||!Number.isFinite(E.confidence)||
+E.confidence<.9||E.confidence>1||typeof E.reason!="string"||!E.reason.trim())continue;const[
+O,P]=T[E.index];P.identityMatched||P.titleMatched||P.aiAccepted||r.set(O,{state:"rejected",
+reason:E.reason.slice(0,200)})}}catch(F){if(m(),F.stop)throw F;for(const[D]of T)r.set(D,{state:"\
+unknown"});n("AI 字幕建议",`${c.node.name} · 判断失败：${F.message}；继续其他来源`),
+i=F.aiParse?i+1:0,i>=2&&(s=!0,n("AI 字幕建议","连续两次解析失败，本批剩余 AI 判断已停用"))}}}).
+finally(()=>{for(const[F]of T)o.delete(F)});for(const[F]of T)o.set(F,k);y.add(k)}const A=(await Promise.
 allSettled(y)).find(b=>b.status==="rejected");if(A)throw A.reason;m();const M=d(c,f);M&&n(
 "AI 字幕建议",`${c.node.name} · ${M} 份候选通过作品与季集复核`)}}function Ar(e){
 return[e.selectedCandidate?e.aiSuggested?"AI 建议了这份字幕，请核对候选名称后补齐。":
@@ -6619,28 +6625,28 @@ e)==="failed"?"查询有失败，请查看各来源结果。":sn(e)==="notFound"
 匹配项。":"尚未查询任何来源。",e.selectedCandidate&&"所选字幕："+Bn(e.selectedCandidate),
 ...(e.sources||[]).map(n=>n.name+"："+Aa(n))].filter(Boolean).join(`
 `)}async function Ra(e,t,n,a=()=>{},i=()=>{},s=!1){s||(e.error="",e.candidates=[],e.selectedCandidate=
-null,e.aiSuggested=!1,e.sources=[],e.seasonCacheHit=!1);const r=jt(e.parsed.query,e.parsed.
+null,e.aiSuggested=!1,e.sources=[],e.seasonCacheHit=!1);const r=Tt(e.parsed.query,e.parsed.
 year),o=new Set,l=async c=>{if(!(c.selectedCandidate||!c.parsed.tv||t.language!=="en"&&!t.
 language.split(",").includes("zh")))for(const f of c.candidates){if(!(f.titleMatched||f.identityMatched||
-f.aiAccepted)||f.hardMismatch||f.opaque||f.downloadFailed||At(f.ext)||!Jn(f.embeddedVideoName||
+f.aiAccepted)||f.hardMismatch||f.opaque||f.downloadFailed||It(f.ext)||!Jn(f.embeddedVideoName||
 f.name,c.parsed))continue;const m=JSON.stringify([f.source,f.url||f.fileId]);if(!o.has(m)){
 o.add(m),i(),a("候选语言核验",`${e.node.name} · ${f.name} · 来源标注 ${f.language||
 "未知"}，读取正文核验`);try{const{result:u,bytes:p}=await n.fetchFile(f,t,(w,y)=>a(
 w,`${e.node.name} · ${y}`),i);if(i(),an(c,p,u.ext,t.language,(w,y)=>a(w,`${e.node.name} ·\
- ${y}`)),Xn(c,f,u.fileName??f.name,u.ext),f.language=t.language==="en"?"en":"zh",f.matchReason=
-"",zt(c,t.language),a("候选语言通过",`${e.node.name} · ${f.name} · 正文格式、对白语言与时长检查通过`),
+ ${y}`)),Yn(c,f,u.fileName??f.name,u.ext),f.language=t.language==="en"?"en":"zh",f.matchReason=
+"",Ot(c,t.language),a("候选语言通过",`${e.node.name} · ${f.name} · 正文格式、对白语言与时长检查通过`),
 c.selectedCandidate)return}catch(u){if(i(),u.stop||u.phase==="drive-auth")throw u;if(f.matchReason=
-gt(u.message,t),a("候选语言未通过",`${e.node.name} · ${f.name} · ${f.matchReason}`),
+yt(u.message,t),a("候选语言未通过",`${e.node.name} · ${f.name} · ${f.matchReason}`),
 u.downloadPaused||rn(u))break}}}};if(!s&&e.parsed.tv)for(const[c,f,m]of[["迅雷",t.thunder,
 "thunderCachedEpisode"],["射手网",t.assrtKey,"assrtCachedEpisode"]]){if(!f||!n[m]||n.searchUnavailable?.(
 c))continue;i();const u={name:c};let p;try{p=await n[m](e,t,I=>a(c+" 缓存文件列表",I),
-i,I=>Ir(u,t,I)),i()}catch(I){if(i(),!nn(I))throw I;const A=gt(I.message,t);e.sources.push(
+i,I=>Ir(u,t,I)),i()}catch(I){if(i(),!nn(I))throw I;const A=yt(I.message,t);e.sources.push(
 {...u,cacheError:A}),rn(I)&&n.pauseSearchSource?.(c,A),a("整季缓存失败",e.node.name+
 " · "+c+" · "+A);continue}if(!Array.isArray(p))throw new TypeError("整季缓存未返回候选列表："+
-c);const w={node:e.node,parsed:e.parsed,candidates:p};if(zt(w,t.language),await l(w),!w.selectedCandidate&&
+c);const w={node:e.node,parsed:e.parsed,candidates:p};if(Ot(w,t.language),await l(w),!w.selectedCandidate&&
 p.length&&t.reviewCandidates&&await t.reviewCandidates(w,p,i),i(),!w.selectedCandidate)continue;
 e.candidates.push(...w.candidates),e.seasonCacheHit=!0,u.count=w.candidates.length,e.sources.
-push(u),zt(e,t.language);const y=c!=="射手网"&&t.assrtKey&&!n.searchUnavailable?.("射手网")?
+push(u),Ot(e,t.language);const y=c!=="射手网"&&t.assrtKey&&!n.searchUnavailable?.("射手网")?
 n.assrtCachedEpisode?.(e):null;y?.length&&(e.sources.push({name:"射手网",deferred:!0,cachedCandidates:y,
 skipped:"已匹配整季包，保留为下载备选"}),a("整季备选",e.node.name+" · 射手\
 网已匹配本集，首选字幕失败后自动尝试")),a("整季快速命中",`${e.node.
@@ -6648,43 +6654,43 @@ name} · ${c} · 复查缓存中的片名、年份及准确季集后选中；跳
 break}!s&&!e.selectedCandidate&&a("查找阶段",`${e.node.name} · 使用片名及作品别名搜索字幕来源`);
 const d=async(c,f,m,u)=>{if(i(),!s&&e.sources.some(k=>k.name===c&&k.count!=null))return;let p=e.
 sources.find(k=>k.name===c&&k.cacheError);if(s){if(p=e.sources.find(k=>k.name===c&&(k.deferred||
-k.deferredTerms?.length)),!p||(zt(e,t.language),e.selectedCandidate))return;p.deferred=!1,
+k.deferredTerms?.length)),!p||(Ot(e,t.language),e.selectedCandidate))return;p.deferred=!1,
 p.deferredTerms=[]}const w=k=>{p?Object.assign(p,k):e.sources.push({name:c,...k})};if(!f){
 w({skipped:"已关闭"}),a("来源跳过",`${c} 已关闭`);return}if(!m){w({skipped:"未配置密\
 钥，未查询"}),a("来源跳过",`${c} 未配置密钥`);return}const y=n.searchUnavailable?.(
-c);if(y){w({paused:gt(y,t)}),a("来源跳过",`${c} 本批已暂停：${y}`);return}if(zt(
+c);if(y){w({paused:yt(y,t)}),a("来源跳过",`${c} 本批已暂停：${y}`);return}if(Ot(
 e,t.language),e.selectedCandidate){const k="已有可靠字幕，省去重复查询";w({skipped:k,
 deferred:!0}),a("来源跳过",`${c}：${k}`);return}const A=Date.now();let M=0;const b=p||
-{name:c};delete b.skipped,p||e.sources.push(b);const N={...b};try{a("来源",`${c} 开始，搜索片名\
-：${r}`);const k=await u(O=>{if(Ir(b,t,O),O.queries&&N.queries&&(b.queries=[...N.queries,
-...b.queries]),"rawCount"in O&&N.rawCount!=null&&N.unit===b.unit&&(b.rawCount=(b.rawCount??
-0)+N.rawCount),O.excluded&&N.excluded)for(const[j,T]of Object.entries(N.excluded))b.excluded[j]=
-(b.excluded[j]||0)+T},b);if(i(),!Array.isArray(k))throw new TypeError("字幕来源未返回候选列表");
-M=Date.now();const q=new Set(e.candidates.filter(O=>O.source===c).map(O=>O.url||O.fileId||
-O.name)),U=k.filter(O=>!q.has(O.url||O.fileId||O.name));b.count=(N.count||0)+U.length,e.candidates.
-push(...U),a("来源",`${c} 返回 ${k.length} 个文件候选`),zt(e,t.language),await l(
-e),!e.selectedCandidate&&t.reviewCandidates&&await t.reviewCandidates(e,U,i);const C=U.filter(
-O=>e.candidates.includes(O)).length;b.count=(N.count||0)+C,b.rejected=(N.rejected||0)+U.length-
-C,k.length>U.length&&((b.excluded||(b.excluded={})).重复=(b.excluded.重复||0)+k.length-
-U.length),a("来源判断",`${e.node.name} · ${c} · 返回 ${k.length}，AI 排除 ${b.rejected}\
+{name:c};delete b.skipped,p||e.sources.push(b);const T={...b};try{a("来源",`${c} 开始，搜索片名\
+：${r}`);const k=await u(O=>{if(Ir(b,t,O),O.queries&&T.queries&&(b.queries=[...T.queries,
+...b.queries]),"rawCount"in O&&T.rawCount!=null&&T.unit===b.unit&&(b.rawCount=(b.rawCount??
+0)+T.rawCount),O.excluded&&T.excluded)for(const[P,j]of Object.entries(T.excluded))b.excluded[P]=
+(b.excluded[P]||0)+j},b);if(i(),!Array.isArray(k))throw new TypeError("字幕来源未返回候选列表");
+M=Date.now();const F=new Set(e.candidates.filter(O=>O.source===c).map(O=>O.url||O.fileId||
+O.name)),D=k.filter(O=>!F.has(O.url||O.fileId||O.name));b.count=(T.count||0)+D.length,e.candidates.
+push(...D),a("来源",`${c} 返回 ${k.length} 个文件候选`),Ot(e,t.language),await l(
+e),!e.selectedCandidate&&t.reviewCandidates&&await t.reviewCandidates(e,D,i);const E=D.filter(
+O=>e.candidates.includes(O)).length;b.count=(T.count||0)+E,b.rejected=(T.rejected||0)+D.length-
+E,k.length>D.length&&((b.excluded||(b.excluded={})).重复=(b.excluded.重复||0)+k.length-
+D.length),a("来源判断",`${e.node.name} · ${c} · 返回 ${k.length}，AI 排除 ${b.rejected}\
 ，保留 ${b.count} · ${e.selectedCandidate?"产生可靠候选，后续来源暂缓":b.
 count?"只有待确认候选，继续下一来源":"没有可用候选，继续下一来源"}`)}catch(k){
-i(),b.error=gt(k.message,t);const q=nn(k);if(q&&rn(k)&&n.pauseSearchSource?.(c,b.error),a(
-k.phase==="drive-auth"?"网盘授权失败":q?"来源失败":"来源处理异常",`${e.node.
-name} · ${c}：${k.message}`),!q)throw e.error=b.error,e.searchMessage=Ar(e),k}finally{const k=n.
-searchUnavailable?.(c);k&&(b.paused=gt(k,t));for(const U of b.queries||[])a("来源查询记录",
-`${c} · ${U.term}${U.rawCount!=null?` · 原始 ${U.rawCount} 条`:""}${U.error?" · "+U.
-error:""}`);const q=Aa(b);q&&a("来源结果",`${e.node.name} · ${c} · ${q}`),a("来源耗时",
+i(),b.error=yt(k.message,t);const F=nn(k);if(F&&rn(k)&&n.pauseSearchSource?.(c,b.error),a(
+k.phase==="drive-auth"?"网盘授权失败":F?"来源失败":"来源处理异常",`${e.node.
+name} · ${c}：${k.message}`),!F)throw e.error=b.error,e.searchMessage=Ar(e),k}finally{const k=n.
+searchUnavailable?.(c);k&&(b.paused=yt(k,t));for(const D of b.queries||[])a("来源查询记录",
+`${c} · ${D.term}${D.rawCount!=null?` · 原始 ${D.rawCount} 条`:""}${D.error?" · "+D.
+error:""}`);const F=Aa(b);F&&a("来源结果",`${e.node.name} · ${c} · ${F}`),a("来源耗时",
 `${e.node.name} · ${c} · 查询 ${(((M||Date.now())-A)/1e3).toFixed(1)} 秒${M?"，候选判断 "+
 ((Date.now()-M)/1e3).toFixed(1)+" 秒":""}`)}};s&&await d("射手网",!!t.assrtKey,!0,(c,f)=>{
 const m=f.cachedCandidates||[];return delete f.cachedCandidates,m}),e.selectedCandidate||a(
 "查找阶段",`${e.node.name} · 迅雷片名搜索`),await d("迅雷",t.thunder,!0,(c,f)=>n.
 thunderSearch(e,{...t,thunderOffset:f.thunderOffset},m=>a("迅雷 文件列表",m),i,c)),await d(
-"OpenSubtitles",t.open,t.key,c=>n.search(e,t,c)),i(),zt(e,t.language),e.searchMessage=Ar(e)}
+"OpenSubtitles",t.open,t.key,c=>n.search(e,t,c)),i(),Ot(e,t.language),e.searchMessage=Ar(e)}
 function Na(e){if(!e)return"";const t=e.node,n=e.parsed||{};return JSON.stringify([4,String(
 t.id),String(t.parentId??""),t.name,t.size,(t.md5||"").toLowerCase(),n.query,n.year,!!n.tv,
 n.tmdbId,n.season,n.episode,n.endEpisode,t.durationSeconds,n.runtimeSeconds,!!n.standalone])}
-async function Yn(e,t,n,a=()=>{},i=()=>{},{force:s=!1,review:r=null,observe:o=()=>{}}={}){
+async function Xn(e,t,n,a=()=>{},i=()=>{},{force:s=!1,review:r=null,observe:o=()=>{}}={}){
 e.complete=!1,e.verification=null,e.verifiedSubtitle=null,e.verifiedSubtitleCandidate=null,
 e.identityClues=[],e.coverageUnconfirmed=!1;const l=[];for(const d of e.subtitles.filter(c=>/\.(srt|ass|ssa|vtt)$/i.
 test(c.name))){i(),t.assertReady?.(),s&&t.verified?.forget(d);const c=!s&&t.verified?.get(
@@ -6715,30 +6721,30 @@ test(t)}async function Hi(e,t,n=()=>{}){if(!Number.isSafeInteger(e)||e<1)throw n
 视频大小未知，无法安全分段读取");const a=4*1024,i=128,s=new Map,r=async(y,I)=>{
 if(!Number.isSafeInteger(y)||y<0||!Number.isSafeInteger(I)||I<0||!Number.isSafeInteger(y+I)||
 y+I>e)throw new Error("MKV 元素超出文件范围");const A=new Uint8Array(I);for(let M=0;M<
-I;){n();const b=y+M,N=Math.floor(b/a)*a;if(!s.has(N)){if(s.size>=i)throw new Error("达到 512\
- KiB 分段读取上限");let q=Math.min(Math.ceil((y+I)/a)*a,N+(i-s.size)*a,e);for(let C=N+
-a;C<q;C+=a)if(s.has(C)){q=C;break}const U=await t(N,q-1);if(n(),U.length!==q-N)throw new Error(
-"MKV 片段长度不正确");for(let C=N;C<q;C+=a)s.set(C,U.subarray(C-N,C-N+a))}const k=s.
-get(N).subarray(b-N,b-N+I-M);A.set(k,M),M+=k.length}return A},o=(y,I,A)=>{let M=0;const b=(C,O)=>{
-const j=y[M];if(!j)throw new Error("MKV 元素头无效或不完整");let T=1,h=128;for(;!(j&
-h);)T++,h>>=1;if(T>O||M+T>y.length)throw new Error("MKV 元素头无效或不完整");let x=C?
-j:j&h-1,v=!C&&x===h-1;for(let R=1;R<T;R++){const z=y[M+R];x=x*256+z,v=v&&z===255}if(M+=T,!v&&
-!Number.isSafeInteger(x))throw new Error("MKV 元素大小超出可处理范围");return v?
-null:x},N=b(!0,4),k=b(!1,8),q=I+M,U=k===null?A:q+k;if(!Number.isSafeInteger(U)||q>U||U>A)throw new Error(
-"MKV 元素超出容器范围");return{id:N,data:q,end:U,unknown:k===null}},l=async(y,I)=>o(
+I;){n();const b=y+M,T=Math.floor(b/a)*a;if(!s.has(T)){if(s.size>=i)throw new Error("达到 512\
+ KiB 分段读取上限");let F=Math.min(Math.ceil((y+I)/a)*a,T+(i-s.size)*a,e);for(let E=T+
+a;E<F;E+=a)if(s.has(E)){F=E;break}const D=await t(T,F-1);if(n(),D.length!==F-T)throw new Error(
+"MKV 片段长度不正确");for(let E=T;E<F;E+=a)s.set(E,D.subarray(E-T,E-T+a))}const k=s.
+get(T).subarray(b-T,b-T+I-M);A.set(k,M),M+=k.length}return A},o=(y,I,A)=>{let M=0;const b=(E,O)=>{
+const P=y[M];if(!P)throw new Error("MKV 元素头无效或不完整");let j=1,h=128;for(;!(P&
+h);)j++,h>>=1;if(j>O||M+j>y.length)throw new Error("MKV 元素头无效或不完整");let S=E?
+P:P&h-1,v=!E&&S===h-1;for(let R=1;R<j;R++){const z=y[M+R];S=S*256+z,v=v&&z===255}if(M+=j,!v&&
+!Number.isSafeInteger(S))throw new Error("MKV 元素大小超出可处理范围");return v?
+null:S},T=b(!0,4),k=b(!1,8),F=I+M,D=k===null?A:F+k;if(!Number.isSafeInteger(D)||F>D||D>A)throw new Error(
+"MKV 元素超出容器范围");return{id:T,data:F,end:D,unknown:k===null}},l=async(y,I)=>o(
 await r(y,Math.min(12,I-y)),y,I);function*d(y,I=0,A=y.length){for(let M=I;M<A;){const b=o(
 y.subarray(M,A),M,A);if(b.unknown)throw new Error("MKV 元数据包含未知长度的元素");
 yield b,M=b.end}}async function*c(y,I){for(let A=y;A<I;){const M=await l(A,I);if(M.unknown)
 throw new Error("MKV 元数据包含未知长度的元素");yield M,A=M.end}}const f=async y=>{
-let I=!1,A=0;for await(const M of c(y.data,y.end)){if(M.id!==174)continue;A++;const b=[];for await(const j of c(
-M.data,M.end))b.push(j);const N=b.filter(j=>j.id===131),k=N[0];if(N.length!==1||k.end-k.data<
-1||k.end-k.data>8)throw new Error("MKV 轨道缺少有效的类型信息");const q=await r(
-k.data,k.end-k.data);if(q.at(-1)!==17||!q.subarray(0,-1).every(j=>j===0))continue;const U=b.
-find(j=>j.id===185);if(U){if(U.end-U.data<1||U.end-U.data>8)throw new Error("MKV 轨道启用信息无效");
-if((await r(U.data,U.end-U.data)).every(j=>j===0))continue}const C=async j=>{if(!j)return"";
-if(j.end-j.data>64*1024)throw new Error("MKV 轨道文本超过读取上限");return new TextDecoder().
-decode(await r(j.data,j.end-j.data)).replace(/\0+$/,"").trim()},O=b.find(j=>j.id===2274717)||
-b.find(j=>j.id===2274716);Bi(await C(O),await C(b.find(j=>j.id===21358)))&&(I=!0)}if(!A)throw new Error(
+let I=!1,A=0;for await(const M of c(y.data,y.end)){if(M.id!==174)continue;A++;const b=[];for await(const P of c(
+M.data,M.end))b.push(P);const T=b.filter(P=>P.id===131),k=T[0];if(T.length!==1||k.end-k.data<
+1||k.end-k.data>8)throw new Error("MKV 轨道缺少有效的类型信息");const F=await r(
+k.data,k.end-k.data);if(F.at(-1)!==17||!F.subarray(0,-1).every(P=>P===0))continue;const D=b.
+find(P=>P.id===185);if(D){if(D.end-D.data<1||D.end-D.data>8)throw new Error("MKV 轨道启用信息无效");
+if((await r(D.data,D.end-D.data)).every(P=>P===0))continue}const E=async P=>{if(!P)return"";
+if(P.end-P.data>64*1024)throw new Error("MKV 轨道文本超过读取上限");return new TextDecoder().
+decode(await r(P.data,P.end-P.data)).replace(/\0+$/,"").trim()},O=b.find(P=>P.id===2274717)||
+b.find(P=>P.id===2274716);Bi(await E(O),await E(b.find(P=>P.id===21358)))&&(I=!0)}if(!A)throw new Error(
 "MKV 轨道表没有有效轨道");return I},m=await l(0,e);if(m.id!==440786851||m.unknown||
 m.end-m.data>64*1024)throw new Error("不是有效的 MKV 文件头");const u=await r(m.data,
 m.end-m.data),p=[...d(u)].find(y=>y.id===17026);if(!p||new TextDecoder().decode(u.subarray(
@@ -6747,123 +6753,123 @@ end,I=0;y<e&&I<32;I++){const A=await l(y,e);if(A.id===408125543){w=A;break}if(A.
 y=A.end}if(!w)throw new Error("未找到 MKV Segment");for(let y=w.data,I=0;y<w.end&&I<128;I++){
 const A=await l(y,w.end);if(A.unknown)throw new Error("遇到未知长度的 MKV 元素，无法继续定位轨道表");
 if(A.id===374648427)return f(A);if(A.id===290298740&&A.end-A.data<=64*1024){const M=await r(
-A.data,A.end-A.data),b=[];try{for(const N of d(M)){if(N.id!==19899)continue;const k=[...d(
-M,N.data,N.end)],q=k.find(j=>j.id===21419),U=k.find(j=>j.id===21420);if(!q||q.end-q.data!==
-4||!U||U.end-U.data<1||U.end-U.data>8||new DataView(M.buffer,M.byteOffset+q.data,4).getUint32(
-0)!==374648427)continue;let C=0;for(const j of M.subarray(U.data,U.end))C=C*256+j;const O=w.
-data+C;Number.isSafeInteger(O)&&O>=w.data&&O<w.end&&b.push(O)}}catch{b.length=0}for(const N of b){
-const k=await r(N,Math.min(12,w.end-N));let q;try{q=o(k,N,w.end)}catch{continue}if(q.id===
-374648427&&!q.unknown)return f(q)}}y=A.end}throw new Error("在读取限制内未找到 MKV 轨道表")}
+A.data,A.end-A.data),b=[];try{for(const T of d(M)){if(T.id!==19899)continue;const k=[...d(
+M,T.data,T.end)],F=k.find(P=>P.id===21419),D=k.find(P=>P.id===21420);if(!F||F.end-F.data!==
+4||!D||D.end-D.data<1||D.end-D.data>8||new DataView(M.buffer,M.byteOffset+F.data,4).getUint32(
+0)!==374648427)continue;let E=0;for(const P of M.subarray(D.data,D.end))E=E*256+P;const O=w.
+data+E;Number.isSafeInteger(O)&&O>=w.data&&O<w.end&&b.push(O)}}catch{b.length=0}for(const T of b){
+const k=await r(T,Math.min(12,w.end-T));let F;try{F=o(k,T,w.end)}catch{continue}if(F.id===
+374648427&&!F.unknown)return f(F)}}y=A.end}throw new Error("在读取限制内未找到 MKV 轨道表")}
 function Mr(e,t=et){const{session:n,source:a}=e,i=n.provider==="光鸭",s=typeof pn=="func\
 tion"?pn(n):null,r=n.token?"cross-drive-subtitle-uploads-v1:"+Ht(new TextEncoder().encode(
 (n.provider||"123")+":"+n.token)):"",o=r.replace("cross-drive-subtitle-uploads-v1:","cross\
 -drive-subtitle-verified-v1:"),l=o&&GM_getValue(o,[]),d=new Map(Array.isArray(l)?l:[]),c=h=>h.
 id!=null&&Number.isSafeInteger(h.size)&&h.size>=0&&/^[a-f0-9]{32}$/i.test(h.md5||"")?JSON.
-stringify([String(h.id),h.size,h.md5.toLowerCase()]):"",f={get(h,x,v){const R=d.get(c(h));
-return R?.language===x&&R.encoding&&R.time>0&&R.context&&R.context===Na(v)&&R.result?R:void 0},
-remember(h,x,v,R,z,L){const H=c(h);!o||!H||!z||!L||h.size!==x.length||h.md5.toLowerCase()!==
-Ht(x)||(d.delete(H),d.set(H,{time:Date.now(),encoding:R,language:v,context:Na(z),result:L}),
-Rt(d,5e3),GM_setValue(o,[...d]))},forget(h){d.delete(c(h))&&o&&GM_setValue(o,[...d])},clear(){
+stringify([String(h.id),h.size,h.md5.toLowerCase()]):"",f={get(h,S,v){const R=d.get(c(h));
+return R?.language===S&&R.encoding&&R.time>0&&R.context&&R.context===Na(v)&&R.result?R:void 0},
+remember(h,S,v,R,z,U){const K=c(h);!o||!K||!z||!U||h.size!==S.length||h.md5.toLowerCase()!==
+Ht(S)||(d.delete(K),d.set(K,{time:Date.now(),encoding:R,language:v,context:Na(z),result:U}),
+Mt(d,5e3),GM_setValue(o,[...d]))},forget(h){d.delete(c(h))&&o&&GM_setValue(o,[...d])},clear(){
 const h=d.size;return d.clear(),o&&GM_setValue(o,[]),h}},m=r&&GM_getValue(r,[]),u=new Map(
 Array.isArray(m)?m.filter(h=>Array.isArray(h)&&typeof h[0]=="string"&&h[1]&&typeof h[1].name==
 "string"&&Number.isSafeInteger(h[1].size)&&/^[a-f0-9]{32}$/i.test(h[1].md5||"")):[]),p=h=>JSON.
 stringify([String(h.node.id),String(h.node.parentId),h.node.name,h.node.size]),w=h=>[...u].
-filter(([,x])=>x.video===p(h)),y=()=>{r&&GM_setValue(r,[...u])};let I=null;const A=()=>{if(I)
-throw I},M=async h=>{A();try{return await h()}catch(x){throw(x.stop||[401,403].includes(x.
-status))&&(x.stop=!0,x.phase="drive-auth",x.message=`${n.provider||"123"}网盘登录失效或权限不足：${x.
-message}；请刷新网盘登录后重新检查目录`,I=x),x}},b=ct(350,(h,x,v=[0,200])=>M(
-async()=>{const R=await Ct(i?"https://api.guangyapan.com"+h:n.base+h,{method:"POST",credentials:"\
+filter(([,S])=>S.video===p(h)),y=()=>{r&&GM_setValue(r,[...u])};let I=null;const A=()=>{if(I)
+throw I},M=async h=>{A();try{return await h()}catch(S){throw(S.stop||[401,403].includes(S.
+status))&&(S.stop=!0,S.phase="drive-auth",S.message=`${n.provider||"123"}网盘登录失效或权限不足：${S.
+message}；请刷新网盘登录后重新检查目录`,I=S),S}},b=ct(350,(h,S,v=[0,200])=>M(
+async()=>{const R=await Et(i?"https://api.guangyapan.com"+h:n.base+h,{method:"POST",credentials:"\
 omit",headers:i?Pr(n.token):{...n.headers,"Content-Type":"application/json"},body:JSON.stringify(
-x)});if(!v.includes(i?Et(R):kt(R))){const z=at("字幕网盘操作",R);throw z.submissionRejected=
-[110,117,118,400,401,403,404,413,415,422,429].includes(kt(R)),z}return R})),N=async h=>{if(i){
+S)});if(!v.includes(i?kt(R):St(R))){const z=at("字幕网盘操作",R);throw z.submissionRejected=
+[110,117,118,400,401,403,404,413,415,422,429].includes(St(R)),z}return R})),T=async h=>{if(i){
 const z=await b("/userres/v1/get_res_download_url",{fileId:h.id});return Kt(z.data?.signedURL||
 z.data?.signedUrl||z.data?.downloadUrl)}let v=(await b("/file/download_info",{driveId:0,fileId:h.
 id,fileName:h.name,size:h.size,etag:h.md5,type:0,s3keyFlag:h.s3keyFlag})).data?.DownloadUrl;
 const R=new URL(v).searchParams.get("params");return R&&(v=atob(R)),Kt(v)},k=h=>!h.stop&&/连接|超时|网络|fetch|network|HTTP\s*(?:401|403|408|429|5\d\d)/i.
-test(h.message),q=async(h,x=()=>{},v=()=>{},R=Pt)=>{if(h.size>R)throw new Error("字幕文件超过读取大\
-小上限");for(let z=0;z<3;z++){v();try{let L;try{L=await N(h)}catch(X){throw X.message.startsWith(
-"获取网盘下载地址失败：")||(X.message="获取网盘下载地址失败："+X.message),
-X}v();const H=await gn(L,{limit:R});return v(),H}catch(L){if(v(),z===2||!k(L))throw L;x(`读\
-取核验失败：${L.message}；重新获取下载地址，重试 ${z+1}/2`),await t(1e3*
-(z+1))}}},U=async(h,x,v,R=()=>{},z=()=>{})=>{if(h.directory||h.size!==x.length)return!1;let L=h.
-md5;if(!/^[a-f0-9]{32}$/i.test(L||"")&&i&&a.metadata){z();try{const H=await M(()=>a.metadata(
-h));if(z(),H?.size!==h.size)return!1;L=H.md5}catch(H){if(z(),H.stop)throw H;R("文件详情核验失败："+
-H.message+"；改用正文核验")}}return/^[a-f0-9]{32}$/i.test(L||"")?L.toLowerCase()===
-v:Ht(await q(h,R,z))===v},C=async(h,x,v)=>{for(let R=0;;R++){v();try{const z=await M(()=>a.
+test(h.message),F=async(h,S=()=>{},v=()=>{},R=jt)=>{if(h.size>R)throw new Error("字幕文件超过读取大\
+小上限");for(let z=0;z<3;z++){v();try{let U;try{U=await T(h)}catch(Y){throw Y.message.startsWith(
+"获取网盘下载地址失败：")||(Y.message="获取网盘下载地址失败："+Y.message),
+Y}v();const K=await gn(U,{limit:R});return v(),K}catch(U){if(v(),z===2||!k(U))throw U;S(`读\
+取核验失败：${U.message}；重新获取下载地址，重试 ${z+1}/2`),await t(1e3*
+(z+1))}}},D=async(h,S,v,R=()=>{},z=()=>{})=>{if(h.directory||h.size!==S.length)return!1;let U=h.
+md5;if(!/^[a-f0-9]{32}$/i.test(U||"")&&i&&a.metadata){z();try{const K=await M(()=>a.metadata(
+h));if(z(),K?.size!==h.size)return!1;U=K.md5}catch(K){if(z(),K.stop)throw K;R("文件详情核验失败："+
+K.message+"；改用正文核验")}}return/^[a-f0-9]{32}$/i.test(U||"")?U.toLowerCase()===
+v:Ht(await F(h,R,z))===v},E=async(h,S,v)=>{for(let R=0;;R++){v();try{const z=await M(()=>a.
 children({id:h.node.parentId}));return v(),z}catch(z){if(v(),!z.directoryChanged||R>=2)throw z;
-x("目录分页不一致，重新读取 "+(R+1)+"/2"),await t(500*(R+1))}}},O=(h,x)=>{const v=x.
+S("目录分页不一致，重新读取 "+(R+1)+"/2"),await t(500*(R+1))}}},O=(h,S)=>{const v=S.
 find(R=>R.id===h.node.id);if(!v||v.directory||v.name!==h.node.name||v.size!==h.node.size||
 h.node.md5&&v.md5&&h.node.md5.toLowerCase()!==v.md5.toLowerCase())throw new Error("视频已移动、改\
-名或内容变化，请重新查找字幕")},j=async(h,x=()=>{},v=()=>{})=>{const R=w(h),
-z=[];if(!R.length)return z;try{v(),x("检查此前已提交的字幕");const L=await C(h,x,
-v);O(h,L);for(const[H,X]of R){v();const Se=L.filter(de=>de.name===X.name);if(Se.length!==1||
-!await U(Se[0],{length:X.size},X.md5,x,v))throw Object.assign(new Error("此前字幕上传已提交，但目录或内容仍\
-未确认："+X.name+"；请稍后重新检查目录，不重复上传"),{pendingUpload:!0});
-v(),X.language&&s?.link(h,Se[0],X.language),z.push({...Se[0],parentId:h.node.parentId,language:X.
-language}),u.delete(H),y(),x("已核验此前上传："+X.name)}return z}catch(L){throw v(),
-L.pendingUpload=!0,L}};async function T(h,x){if(Number(h.provider)!==1)throw new Error("光鸭\
+名或内容变化，请重新查找字幕")},P=async(h,S=()=>{},v=()=>{})=>{const R=w(h),
+z=[];if(!R.length)return z;try{v(),S("检查此前已提交的字幕");const U=await E(h,S,
+v);O(h,U);for(const[K,Y]of R){v();const ke=U.filter(de=>de.name===Y.name);if(ke.length!==1||
+!await D(ke[0],{length:Y.size},Y.md5,S,v))throw Object.assign(new Error("此前字幕上传已提交，但目录或内容仍\
+未确认："+Y.name+"；请稍后重新检查目录，不重复上传"),{pendingUpload:!0});
+v(),Y.language&&s?.link(h,ke[0],Y.language),z.push({...ke[0],parentId:h.node.parentId,language:Y.
+language}),u.delete(K),y(),S("已核验此前上传："+Y.name)}return z}catch(U){throw v(),
+U.pendingUpload=!0,U}};async function j(h,S){if(Number(h.provider)!==1)throw new Error("光鸭\
 未返回请求的 OSS 上传通道，本项未上传");const v=h.creds||h,R=h.bucketName,
 z=h.objectPath;if(!R||!z||!v.accessKeyID||!v.secretAccessKey||!v.sessionToken)throw new Error(
-"光鸭未返回完整上传凭证");const L=h.endPoint||h.fullEndPoint,H=new URL(/^https?:\/\//i.
-test(L)?L:"https://"+L);H.hostname.startsWith(R+".")||(H.hostname=R+"."+H.hostname),H.protocol=
-"https:",H.pathname="/"+z.split("/").map(encodeURIComponent).join("/");const X=new Date().
-toUTCString(),Se="application/octet-stream",de=`PUT
+"光鸭未返回完整上传凭证");const U=h.endPoint||h.fullEndPoint,K=new URL(/^https?:\/\//i.
+test(U)?U:"https://"+U);K.hostname.startsWith(R+".")||(K.hostname=R+"."+K.hostname),K.protocol=
+"https:",K.pathname="/"+z.split("/").map(encodeURIComponent).join("/");const Y=new Date().
+toUTCString(),ke="application/octet-stream",de=`PUT
 
-`+Se+`
-`+X+`
+`+ke+`
+`+Y+`
 x-oss-security-token:`+v.sessionToken+`
-/`+R+"/"+z,be=new TextEncoder,J=await crypto.subtle.importKey("raw",be.encode(v.secretAccessKey),
-{name:"HMAC",hash:"SHA-1"},!1,["sign"]),le=btoa(String.fromCharCode(...new Uint8Array(await crypto.
-subtle.sign("HMAC",J,be.encode(de)))));await gn(H.href,{method:"PUT",headers:{"Content-Typ\
-e":Se,Date:X,"x-oss-security-token":v.sessionToken,Authorization:"OSS "+v.accessKeyID+":"+
-le},bytes:x})}return{read:q,reconcile:j,assertReady:A,verified:f,async inspectEmbedded(h,x=()=>{}){
+/`+R+"/"+z,ue=new TextEncoder,Q=await crypto.subtle.importKey("raw",ue.encode(v.secretAccessKey),
+{name:"HMAC",hash:"SHA-1"},!1,["sign"]),ce=btoa(String.fromCharCode(...new Uint8Array(await crypto.
+subtle.sign("HMAC",Q,ue.encode(de)))));await gn(K.href,{method:"PUT",headers:{"Content-Typ\
+e":ke,Date:Y,"x-oss-security-token":v.sessionToken,Authorization:"OSS "+v.accessKeyID+":"+
+ce},bytes:S})}return{read:F,reconcile:P,assertReady:A,verified:f,async inspectEmbedded(h,S=()=>{}){
 if(!/\.mkv$/i.test(h.name))return{chinese:!1,message:"非 MKV 格式，未读取视频"};try{
-let v;const R=await Hi(h.size,async(z,L)=>(v||(v=await N(h)),x(),gn(v,{headers:{Range:`byt\
-es=${z}-${L}`},range:[z,L,h.size],limit:L-z+1})),x);return{chinese:R,message:R?"有内嵌中文字幕，跳过\
-补齐":"未发现内嵌中文字幕"}}catch(v){if(x(),v.stop||v.phase==="drive-auth")throw v;
-return{chinese:!1,unconfirmed:!0,message:"未读取到 MKV 字幕轨："+v.message}}},async save(h,x,v,R=()=>{},z=()=>{},{
-beforeWrite:L,language:H}={}){if(z(),w(h).length){const ue=(await j(h,R,z)).find(he=>he.name===
-x);if(!L&&ue&&await U(ue,v,Ht(v),R,z))return ue;throw Object.assign(new Error("此前上传已核验，请重新\
-检查目录后确认字幕状态；本次不再上传其他版本"),{pendingUpload:!0})}const X=Ht(
-v),Se=await C(h,R,z);O(h,Se),L?.(Se);const de=Se.filter(se=>se.name===x);if(de.length){if(de.
-length!==1||!await U(de[0],v,X,R,z))throw new Error("同名字幕已存在且内容不同或无法确认，未覆盖");
-return de[0]}z(),R("上传到视频目录");const be=JSON.stringify([p(h),x]);u.set(be,{video:p(
-h),name:x,size:v.length,md5:X,time:Date.now(),language:H});try{y()}catch(se){throw u.delete(
-be),new Error("无法保存上传恢复记录，本次未上传："+se.message)}const J=()=>{
-try{z()}catch(se){throw se.pendingUpload=!0,se}};let le=!1;try{if(i){const se=await b(mt.create,
-{capacity:2,name:x,parentId:h.node.parentId==="0"?"":h.node.parentId,res:{fileSize:v.length,
-md5:X}},[0,156]);le=!0,Et(se)!==156&&(z(),await T(se.data||{},v));const ue=Bt(se.data);if(!ue)
-throw new Error("上传请求已提交，但未返回任务 ID");for(let he=0;he<20;he++){
-z(),R("等待网盘处理字幕");const oe=await b(mt.info,{taskId:ue},[0,145,146,147,155,
-163]);if(oe.data?.fileId||oe.data?.fileInfo?.fileId)break;he<19&&await t(1e3)}}else{const se=await b(
-"/file/upload_request",{driveId:0,duplicate:0,etag:X,fileName:x,parentFileId:h.node.parentId,
-size:v.length,type:0});le=!0;const ue=se.data||{};if(ue.Reuse!==!0){if(!ue.Key||!ue.Bucket||
-!ue.FileId)throw new Error("123 未返回完整上传任务，未报告成功");z();const he={
-StorageNode:ue.StorageNode,bucket:ue.Bucket,key:ue.Key,uploadId:ue.UploadId,partNumberStart:1,
-partNumberEnd:2},ie=(await b("/file/s3_upload_object/auth",he)).data?.presignedUrls?.["1"];
-if(!ie)throw new Error("123 未返回字幕上传地址");z(),await gn(ie,{method:"PUT",bytes:v}),
-await b("/file/upload_complete/v2",{StorageNode:ue.StorageNode,bucket:ue.Bucket,fileId:ue.
-FileId,fileSize:v.length,isMultipart:!1,key:ue.Key,uploadId:ue.UploadId})}}}catch(se){throw!le&&
-(se.submissionRejected||[400,401,403,404,405,413,415,422,429].includes(se.status))?(u.delete(
-be),y(),se):(J(),Object.assign(new Error("上传请求可能已提交："+se.message+"；先重新\
-检查目录，不重复上传"),{pendingUpload:!0,stop:!!se.stop}))}R("核验网盘字幕");
-try{let se=0;for(let ue=0;ue<12;ue++){z();let he;try{he=await C(h,R,z),se=0}catch(ie){if(z(),
-!k(ie)||++se>2||ue===11)throw ie;R(`刷新目录失败：${ie.message}；重试 ${se}/2`),
-await t(1e3);continue}O(h,he);const oe=he.filter(ie=>ie.name===x);if(oe.length===1&&await U(
-oe[0],v,X,R,z))return z(),H&&s?.link(h,oe[0],H),u.delete(be),y(),{...oe[0],parentId:h.node.
-parentId,language:H};if(oe.length)throw new Error("上传后字幕内容不一致或同名不唯一，未标为已补齐");
-ue<11&&await t(1e3)}throw new Error("目录中尚未找到字幕")}catch(se){throw J(),Object.
-assign(new Error("上传请求已提交，但核验未通过："+se.message+"；请先重新检查目录，未标为\
-已补齐，不要重复上传"),{pendingUpload:!0,stop:!!se.stop})}}}}function Rr(e){return St(
-e,t=>{const{parsed:n}=t;return n.tv?JSON.stringify([n.tmdbId||"",Ye(n.query),n.year||"",n.
+let v;const R=await Hi(h.size,async(z,U)=>(v||(v=await T(h)),S(),gn(v,{headers:{Range:`byt\
+es=${z}-${U}`},range:[z,U,h.size],limit:U-z+1})),S);return{chinese:R,message:R?"有内嵌中文字幕，跳过\
+补齐":"未发现内嵌中文字幕"}}catch(v){if(S(),v.stop||v.phase==="drive-auth")throw v;
+return{chinese:!1,unconfirmed:!0,message:"未读取到 MKV 字幕轨："+v.message}}},async save(h,S,v,R=()=>{},z=()=>{},{
+beforeWrite:U,language:K}={}){if(z(),w(h).length){const pe=(await P(h,R,z)).find(me=>me.name===
+S);if(!U&&pe&&await D(pe,v,Ht(v),R,z))return pe;throw Object.assign(new Error("此前上传已核验，请重新\
+检查目录后确认字幕状态；本次不再上传其他版本"),{pendingUpload:!0})}const Y=Ht(
+v),ke=await E(h,R,z);O(h,ke),U?.(ke);const de=ke.filter(oe=>oe.name===S);if(de.length){if(de.
+length!==1||!await D(de[0],v,Y,R,z))throw new Error("同名字幕已存在且内容不同或无法确认，未覆盖");
+return de[0]}z(),R("上传到视频目录");const ue=JSON.stringify([p(h),S]);u.set(ue,{video:p(
+h),name:S,size:v.length,md5:Y,time:Date.now(),language:K});try{y()}catch(oe){throw u.delete(
+ue),new Error("无法保存上传恢复记录，本次未上传："+oe.message)}const Q=()=>{
+try{z()}catch(oe){throw oe.pendingUpload=!0,oe}};let ce=!1;try{if(i){const oe=await b(gt.create,
+{capacity:2,name:S,parentId:h.node.parentId==="0"?"":h.node.parentId,res:{fileSize:v.length,
+md5:Y}},[0,156]);ce=!0,kt(oe)!==156&&(z(),await j(oe.data||{},v));const pe=Bt(oe.data);if(!pe)
+throw new Error("上传请求已提交，但未返回任务 ID");for(let me=0;me<20;me++){
+z(),R("等待网盘处理字幕");const le=await b(gt.info,{taskId:pe},[0,145,146,147,155,
+163]);if(le.data?.fileId||le.data?.fileInfo?.fileId)break;me<19&&await t(1e3)}}else{const oe=await b(
+"/file/upload_request",{driveId:0,duplicate:0,etag:Y,fileName:S,parentFileId:h.node.parentId,
+size:v.length,type:0});ce=!0;const pe=oe.data||{};if(pe.Reuse!==!0){if(!pe.Key||!pe.Bucket||
+!pe.FileId)throw new Error("123 未返回完整上传任务，未报告成功");z();const me={
+StorageNode:pe.StorageNode,bucket:pe.Bucket,key:pe.Key,uploadId:pe.UploadId,partNumberStart:1,
+partNumberEnd:2},ae=(await b("/file/s3_upload_object/auth",me)).data?.presignedUrls?.["1"];
+if(!ae)throw new Error("123 未返回字幕上传地址");z(),await gn(ae,{method:"PUT",bytes:v}),
+await b("/file/upload_complete/v2",{StorageNode:pe.StorageNode,bucket:pe.Bucket,fileId:pe.
+FileId,fileSize:v.length,isMultipart:!1,key:pe.Key,uploadId:pe.UploadId})}}}catch(oe){throw!ce&&
+(oe.submissionRejected||[400,401,403,404,405,413,415,422,429].includes(oe.status))?(u.delete(
+ue),y(),oe):(Q(),Object.assign(new Error("上传请求可能已提交："+oe.message+"；先重新\
+检查目录，不重复上传"),{pendingUpload:!0,stop:!!oe.stop}))}R("核验网盘字幕");
+try{let oe=0;for(let pe=0;pe<12;pe++){z();let me;try{me=await E(h,R,z),oe=0}catch(ae){if(z(),
+!k(ae)||++oe>2||pe===11)throw ae;R(`刷新目录失败：${ae.message}；重试 ${oe}/2`),
+await t(1e3);continue}O(h,me);const le=me.filter(ae=>ae.name===S);if(le.length===1&&await D(
+le[0],v,Y,R,z))return z(),K&&s?.link(h,le[0],K),u.delete(ue),y(),{...le[0],parentId:h.node.
+parentId,language:K};if(le.length)throw new Error("上传后字幕内容不一致或同名不唯一，未标为已补齐");
+pe<11&&await t(1e3)}throw new Error("目录中尚未找到字幕")}catch(oe){throw Q(),Object.
+assign(new Error("上传请求已提交，但核验未通过："+oe.message+"；请先重新检查目录，未标为\
+已补齐，不要重复上传"),{pendingUpload:!0,stop:!!oe.stop})}}}}function Rr(e){return xt(
+e,t=>{const{parsed:n}=t;return n.tv?JSON.stringify([n.tmdbId||"",Ge(n.query),n.year||"",n.
 season]):t})}async function Ki(e,t,n){if(e.length>200)throw new Error("一次最多选择 200 个本地文件");
 let a=0,i=0;const s=[];return await We(e,"本地导入读取与解压（文件/ZIP/RAR）",
 n,async(r,o,l,d)=>{const c=r.name,f=c.split(".").pop().toLowerCase();try{if(!["srt","ass",
 "ssa","vtt","zip","rar"].includes(f))throw new Error("仅支持 SRT、ASS、SSA、VTT、ZIP 或 RAR");
-if(r.size>Pt)throw new Error(At(f)?"压缩包超过 16 MiB":"字幕超过 16 MiB");if(a+r.
+if(r.size>jt)throw new Error(It(f)?"压缩包超过 16 MiB":"字幕超过 16 MiB");if(a+r.
 size>Sr)throw new Error("本批读取的本地文件合计超过 64 MiB");a+=r.size;const m=new Uint8Array(
 await r.arrayBuffer());if(o(),m.length!==r.size)throw new Error("本地文件大小已变化，请重新选择");
-const u=At(f)?await Kn(m,f,o,!0):null;if(u&&!u.files.length)throw new Error("压缩包内没有支持的字幕");
+const u=It(f)?await Kn(m,f,o,!0):null;if(u&&!u.files.length)throw new Error("压缩包内没有支持的字幕");
 const p=u?u.files.length:1;if(i+p>2e3)throw new Error("本批字幕目录超过 2000 项");
 i+=p;const w=[];if(u){const y={bytes:m,index:u};for(const I of u.files)w.push({name:I.name,
 ext:I.ext,source:y,archiveEntry:I,archiveName:c,label:c+" / "+I.path});n(c+" · 已读取 "+
@@ -6871,35 +6877,35 @@ p+" 份字幕目录，选择目标后按需解压检查")}else w.push({name:c,la
 bytes:m});s[l]=w}catch(m){return d(m),o(),s[l]=[{name:c,label:c,error:m.message}],"failed"}},
 t,8,"先读取目录，正文按导入目标提取，RAR 使用后台线程"),s.flat()}async function Ta(e,t){
 if(t(),e.bytes)return e.bytes;const n=await ka(e.source.bytes,e.source.index,e.archiveEntry,
-t);return t(),n.bytes}function ja(e,t,n="",{manual:a=!1}={}){const i=Ge(e).normalize("NFKC"),
+t);return t(),n.bytes}function ja(e,t,n="",{manual:a=!1}={}){const i=Qe(e).normalize("NFKC"),
 s=[...i.matchAll(/(?:^|[^\dA-Z])S(\d{1,2})[ ._-]*E(\d{1,3})(?!\d)/gi)],r=tt(e);if(s.length>
 1||r.endEpisode&&r.endEpisode!==r.episode||/E\d+(?:[ ._-]*[-~][ ._-]*(?:E)?|\s*E)\d+/i.test(
 i))return{reason:"暂不支持合并多集字幕"};let o=t;const l=a&&t[0].parsed.tv?e.normalize(
 "NFKC").replace(/^\[(?:dvd(?:rip)?|blu[ ._-]?ray|bdrip|web[ ._-]?(?:dl|rip)|hdtv)\]\[([^\[\]\r\n]+)\](?=\[\d{1,3}(?:v\d+)?(?:[ ._-]+end)?\])/i,
-"$1"):e;if(t[0].parsed.tv){const N=n?Hn([n]):null;if(o=t.filter(k=>Ot(l,k.parsed,N).matched),
-!o.length&&n){const k=/\bTV[ _.-]*(\d{1,3})\s*[-~]\s*(\d{1,3})(?!\d)/i.exec(n),q=/^(.+?)\s+-\s+(\d{1,3})$/.
-exec(i),U=t[0].media?.detail?.seasons?.filter(C=>C.season_number>0);k&&q&&U?.length===1&&Number(
-k[1])===1&&Number(k[2])===U[0].episode_count&&Number(q[2])>=1&&Number(q[2])<=Number(k[2])&&
-mn(t[0].parsed,[],q[1]).titleMatched&&(o=t.filter(C=>C.parsed.season===U[0].season_number&&
-C.parsed.episode===Number(q[2])))}if(o.length!==1)return{reason:o.length?"同一集有多个目标版本":
+"$1"):e;if(t[0].parsed.tv){const T=n?Hn([n]):null;if(o=t.filter(k=>Pt(l,k.parsed,T).matched),
+!o.length&&n){const k=/\bTV[ _.-]*(\d{1,3})\s*[-~]\s*(\d{1,3})(?!\d)/i.exec(n),F=/^(.+?)\s+-\s+(\d{1,3})$/.
+exec(i),D=t[0].media?.detail?.seasons?.filter(E=>E.season_number>0);k&&F&&D?.length===1&&Number(
+k[1])===1&&Number(k[2])===D[0].episode_count&&Number(F[2])>=1&&Number(F[2])<=Number(k[2])&&
+mn(t[0].parsed,[],F[1]).titleMatched&&(o=t.filter(E=>E.parsed.season===D[0].season_number&&
+E.parsed.episode===Number(F[2])))}if(o.length!==1)return{reason:o.length?"同一集有多个目标版本":
 "季集与所选目标不符或缺少可验证的季集标记"};if(o[0].parsed.endEpisode&&
 o[0].parsed.endEpisode!==o[0].parsed.episode)return{reason:"暂不支持导入到合并多集视频"}}else if(r.
 tv||s.length)return{reason:"剧集字幕与电影目标不符"};if(o.length!==1)return{reason:"\
-请选择一个明确的视频"};const d=o[0],c=N=>[/导演剪辑|導演剪輯|\bdirector['’]?s[ ._-]*cut\b/i,
+请选择一个明确的视频"};const d=o[0],c=T=>[/导演剪辑|導演剪輯|\bdirector['’]?s[ ._-]*cut\b/i,
 /加长版|加長版|\bextended\b/i,/未删减|未刪減|\buncut\b/i,/剧场版|劇場版|\btheatrical\b/i,
 /网络版|網絡版|ネット版|\b(?:net|web)[ ._-]*(?:movie|edition|version)\b/i].map(k=>k.
-test(N)),f=c(i),m=c(d.node.name),u=N=>/\b(?:blu[ ._-]?ray|bdrip|web[ ._-]?(?:dl|rip)|hdtv|dvd(?:rip)?|hd[ ._-]?cam|hd[ ._-]?ts)\b/i.
-exec(N)?.[0]?.toLowerCase().replace(/[ ._-]/g,"").replace(/bdrip/,"bluray").replace(/web(?:dl|rip)/,
+test(T)),f=c(i),m=c(d.node.name),u=T=>/\b(?:blu[ ._-]?ray|bdrip|web[ ._-]?(?:dl|rip)|hdtv|dvd(?:rip)?|hd[ ._-]?cam|hd[ ._-]?ts)\b/i.
+exec(T)?.[0]?.toLowerCase().replace(/[ ._-]/g,"").replace(/bdrip/,"bluray").replace(/web(?:dl|rip)/,
 "web"),p=u(i),w=u(d.node.name)||(a?u(d.node.originalName||""):""),y=p&&w&&p!==w;if(f.some(
-(N,k)=>N&&!m[k]))return{row:d,reason:"字幕标注的剪辑版本与目标不一致或未确认"};
+(T,k)=>T&&!m[k]))return{row:d,reason:"字幕标注的剪辑版本与目标不一致或未确认"};
 const I=y?"发行来源不同（字幕 "+p.toUpperCase()+"，视频 "+w.toUpperCase()+"），播\
-放同步待确认":"";if(I&&(!a||!d.parsed.tv||[p,w].some(N=>/^hd(?:cam|ts)$/.test(N))))return{
-row:d,reason:I};const A=n&&d.parsed.tv&&!s.length?Ge(l).replace(/\s+-\s+\d{1,3}$/,""):l,M=mn(
+放同步待确认":"";if(I&&(!a||!d.parsed.tv||[p,w].some(T=>/^hd(?:cam|ts)$/.test(T))))return{
+row:d,reason:I};const A=n&&d.parsed.tv&&!s.length?Qe(l).replace(/\s+-\s+\d{1,3}$/,""):l,M=mn(
 d.parsed,[],A);if(M.hardMismatch)return{row:d,reason:M.matchReason};if(M.titleMatched||Dt(
 d.node.name,e)!==null)return{row:d,releaseWarning:I};const b=(s.length?i.slice(0,s[0].index):
 i).trim();return!b||/^(?:subtitles?|字幕|中文|简中|繁中|chs|cht|zh(?:[-_. ]?(?:cn|tw))?)[ ._-]*$/i.
 test(b)?{row:d,needsIdentity:!0,releaseWarning:I}:{row:d,reason:"文件名中的作品归属未确认"}}
-function Zi(e){const t=e.filter(({parsed:n})=>!n.tv||n.season!=null&&n.episode!=null);return St(
+function Zi(e){const t=e.filter(({parsed:n})=>!n.tv||n.season!=null&&n.episode!=null);return xt(
 t,n=>n.parsed.tv?n.groupKey:n)}async function Ji(e,t,n,a,i,s){const r=[];let o=0;for(const l of e){
 if(s(),l.error){r.push({...l,state:"invalid",reason:l.error});continue}const d=ja(l.name,t,
 l.archiveName,{manual:!0}),{row:c,releaseWarning:f}=d;if(d.reason){r.push({...l,row:c,state:"\
@@ -6909,15 +6915,15 @@ unmatched",reason:d.reason});continue}if(Er(c)){r.push({...l,row:c,state:"skip",
 "本次目标匹配超过 200 份字幕，请减少选区后分批导入");i("导入正文检查",
 l.label);const m=await Ta(l,s);s();const{text:u,...p}=an(c,m,l.ext,n,i);if(d.needsIdentity&&
 !a.has(l)){r.push({...l,row:c,state:"unmatched",needsIdentity:!0,reason:"文件名未标明作品，请确认归属"});
-continue}const w=It(l.name).language;if(["zh-cn","zh-tw"].includes(n)&&w!==n)throw new Error(
+continue}const w=Ct(l.name).language;if(["zh-cn","zh-tw"].includes(n)&&w!==n)throw new Error(
 "字幕文件未标注当前设置要求的简繁语言");const y=n==="en"?"en":w?.startsWith(
 "zh")?w:"zh",I=kr(l.name,l.ext);if(c.siblingNames?.has(I.toLowerCase())){r.push({...l,row:c,
 state:"unmatched",reason:"目标目录已有同名项目，待处理"});continue}r.push({...l,
 row:c,verification:p,digest:Ht(m),state:"ready",name:I,language:y,releaseWarning:f})}catch(m){
-if(s(),m.stop)throw m;r.push({...l,row:c,state:"invalid",reason:m.message})}}for(const l of St(
-r.filter(d=>d.state==="ready"||d.needsIdentity),d=>d.row)){for(const u of St(l.filter(p=>p.
+if(s(),m.stop)throw m;r.push({...l,row:c,state:"invalid",reason:m.message})}}for(const l of xt(
+r.filter(d=>d.state==="ready"||d.needsIdentity),d=>d.row)){for(const u of xt(l.filter(p=>p.
 state==="ready"),p=>p.digest)){if(u.length<2)continue;const p=A=>Wn(A,n),w=Math.max(...u.map(
-p)),y=u.filter(A=>p(A)===w),I=y.find(A=>!/ - (?:副本|copy)$/i.test(Ge(A.name)))||y[0];for(const A of u)
+p)),y=u.filter(A=>p(A)===w),I=y.find(A=>!/ - (?:副本|copy)$/i.test(Qe(A.name)))||y[0];for(const A of u)
 A!==I&&(A.state="skip",A.reason="与 "+I.name+" 内容相同，已跳过副本")}const d=l.
 filter(u=>u.state!=="skip");if(d.length<2)continue;const c=d.map(u=>Wn({name:u.name||u.label,
 language:u.language||""},n)),f=Math.max(...c),m=d.filter((u,p)=>c[p]===f);if(f>0&&m.length===
@@ -6929,7 +6935,7 @@ some(r=>r.name.toLowerCase()===t.toLowerCase()))throw new Error("目标已有同
 const i=e.subtitles.filter(r=>r.parentId==null||String(r.parentId)===String(e.node.parentId)).
 map(a).sort(),s=(Gt(n,e.node.parentId,e.history).linked.get(String(e.node.id))||[]).map(a).
 sort();if(i.length!==s.length||i.some((r,o)=>r!==s[o]))throw new Error("目录中的关联字幕已变化，请重新检查目\
-录后导入")}function Xi(e){const t=e.complete?e.verifiedSubtitle:e.identityClues?.length===
+录后导入")}function Yi(e){const t=e.complete?e.verifiedSubtitle:e.identityClues?.length===
 1?e.identityClues[0]:null,n=e.parsed;if(!t||!e.subtitles.some(p=>p.id===t.id&&p.name===t.name))
 return null;const a=e.verifiedSubtitleCandidate,i=tt(t.name),s=!e.complete,r=Qt(s?{...i,aliases:[],
 workResolved:!1}:n,[],t.name);if(r.hardMismatch||r.opaque||r.excluded&&r.excluded!=="无关")
@@ -6937,7 +6943,7 @@ return null;const o=a&&!a.opaque&&!a.hardMismatch&&(a.titleMatched||a.identityMa
 titleMatched&&!o)return null;const l=e.media,d=l?.explicitSeason!=null||l?.explicitEpisode!=
 null||l?.aiType==="tv",c=s?!!(i.tv||n.tv||d||l?.type==="tv"):n.tv,f=s?i.year||l?.explicitYear||
 "":n.year||(c?"":i.year),m=s?[i.query]:[i.query,n.query,...n.aliases||[]],u=[...new Set(m.
-map(p=>jt(p,f)).filter(Boolean))].slice(0,3);return s&&l?.explicitYear&&i.year&&String(l.explicitYear)!==
+map(p=>Tt(p,f)).filter(Boolean))].slice(0,3);return s&&l?.explicitYear&&i.year&&String(l.explicitYear)!==
 String(i.year)||c&&["season","episode","endEpisode"].some(p=>i[p]!=null&&l?.["explicit"+p[0].
 toUpperCase()+p.slice(1)]!=null&&i[p]!==l["explicit"+p[0].toUpperCase()+p.slice(1)])?null:
 {queries:u,year:f,type:c?"tv":l?.type||"movie",id:n.workResolved&&n.tmdbId||"",season:i.season??
@@ -6946,18 +6952,18 @@ name:n,bytes:a,verification:i,language:s,candidate:r},o,l){const d=await e.save(
 {language:s,beforeWrite:c=>Pa(t,n,c)});t.subtitles.push(d),t.siblingNames?.add(n.toLowerCase()),
 t.complete=!0,t.verification=i,t.verifiedSubtitle=d,t.verifiedSubtitleCandidate=r||null}async function za(e,t,n,a){
 const i=await e.reconcile(t,n,a);a();const s=new Set(t.subtitles.map(r=>String(r.id)));for(const r of i){
-const o=String(r.id);s.has(o)||(s.add(o),t.subtitles.push(r))}}function bn(e,t){if(!t||At(
-t.ext))return"";try{const n=Xn(e,t,t.name,t.ext);return e.siblingNames?.has(n.toLowerCase())?
+const o=String(r.id);s.has(o)||(s.add(o),t.subtitles.push(r))}}function bn(e,t){if(!t||It(
+t.ext))return"";try{const n=Yn(e,t,t.name,t.ext);return e.siblingNames?.has(n.toLowerCase())?
 "目标目录已有同名项目，待处理："+n:""}catch(n){return n.message}}function Gn(e){
 const t=[],n=e.map(({parsed:i})=>[i.episode,i.endEpisode??i.episode]).filter(([i])=>i!=null).
 sort(([i],[s])=>i-s);for(const[i,s]of n){const r=t.at(-1);r&&i<=r[1]+1?r[1]=Math.max(r[1],
 s):t.push([i,s])}const a=i=>String(i).padStart(2,"0");return t.length?t.map(([i,s])=>i===s?
-a(i):a(i)+"—"+a(s)).join("、")+" 集":""}function Yi(e,t,n){return St(e,i=>i.groupKey).
+a(i):a(i)+"—"+a(s)).join("、")+" 集":""}function Xi(e,t,n){return xt(e,i=>i.groupKey).
 flatMap(i=>{const s=i.filter(d=>!n(d));if(!i[0].parsed.tv)return s.filter(t);if(i[0].parsed.
 season==null||!s.length)return[];const r=new Set(s.map(d=>d.parsed.episode));if(!s.every(d=>t(
 d)&&!d.selectedCandidate.hardMismatch&&d.autoCandidates?.includes(d.selectedCandidate)))return[];
-const o=s.filter(d=>!At(d.selectedCandidate.ext));return new Set(o.map(d=>JSON.stringify([
-d.node.parentId,Xn(d,d.selectedCandidate,d.selectedCandidate.name,d.selectedCandidate.ext).
+const o=s.filter(d=>!It(d.selectedCandidate.ext));return new Set(o.map(d=>JSON.stringify([
+d.node.parentId,Yn(d,d.selectedCandidate,d.selectedCandidate.name,d.selectedCandidate.ext).
 toLowerCase()]))).size!==o.length?[]:r.has(null)||r.has(void 0)||r.size!==s.length?[]:s})}
 function Fa(e){const t={controls:[],registryReady:!1};Gi(e,t),ji(e,t)}function Gi(e,t){const n=er(
 e+" 影视整理",Ti()+`
@@ -7022,526 +7028,526 @@ abel="字幕运行日志"></textarea></details>
 `,"subtitle");n.moveSettings(["subtitleSettings"],"字幕来源与设置","#settingsModels"),
 n.moveSettings(["cacheSettings"],"缓存管理","#settingsBasics");let a=[],i=null,s=null,
 r=null,o=null,l=!1,d=!1,c=null;const f=new Set,m=new Set;let u=null,p=!1,w=null,y=null,I=null;
-t.ui=n,n.get("subtitleView").value="all";const A=Fi({check:()=>O(),log:(g,E)=>C(g,E)}),M=GM_getValue(
+t.ui=n,n.get("subtitleView").value="all";const A=Fi({check:()=>O(),log:(g,N)=>E(g,N)}),M=GM_getValue(
 "cross-drive-subtitle-settings",{});n.get("openSubtitlesKey").value=M.key||"",n.get("useOp\
 enSubtitles").checked=M.open===!0,n.get("useThunder").checked=M.thunder!==!1,n.get("assrtK\
 ey").value=M.assrtKey||"",n.get("subtitleLanguage").value=M.language||"zh-cn,zh-tw,zh";const b=()=>({
 assrtKey:n.get("assrtKey").value.trim(),key:n.get("openSubtitlesKey").value.trim(),language:n.
 get("subtitleLanguage").value,open:n.get("useOpenSubtitles").checked,thunder:n.get("useThu\
-nder").checked});GM_setValue("cross-drive-subtitle-settings",b());const N=g=>{let E=gt(g,{
-...b(),password:n.get("subtitlePassword").value});for(const V of[n.get("assrtKey")?.value,
-Xe.token,Xe.token123,n.get("tmdbKey")?.value,n.get("mediaAIKey")?.value])V?.trim()&&(E=E.split(
-V.trim()).join("[已隐藏]"));return E},k=g=>{n.get("subtitleProgress").textContent=N(g)},
-q=()=>{o=null;const g=n.get("subtitleDeletePreview");g.hidden=!0,g.open=!1,n.get("subtitle\
-DeleteList").textContent=""},U=[],C=(g,E="")=>{const V=N(E),P=`${new Date().toLocaleTimeString()}\
- [${g}]${V?" "+V:""}`;if(U.push(P),U.length>2e3){const F=U.findIndex(W=>!/\[(批量统计|检查开始|字幕检查|检查复用)\]/.
-test(W));U.splice(Math.max(0,F),1)}t.flushLog()},O=()=>t.check(),j=async(g,E)=>{try{await t.
-resolveSubtitleWorks?.([g],E)}catch(V){if(C("字幕线索复核中断",g.path+" · "+V.message),
-E(),V.stop||V.phase==="drive-auth"||[401,403].includes(V.status))throw V}},T=()=>{const g=GM_getValue(
+nder").checked});GM_setValue("cross-drive-subtitle-settings",b());const T=g=>{let N=yt(g,{
+...b(),password:n.get("subtitlePassword").value});for(const C of[n.get("assrtKey")?.value,
+Ye.token,Ye.token123,n.get("tmdbKey")?.value,n.get("mediaAIKey")?.value])C?.trim()&&(N=N.split(
+C.trim()).join("[已隐藏]"));return N},k=g=>{n.get("subtitleProgress").textContent=T(g)},
+F=()=>{o=null;const g=n.get("subtitleDeletePreview");g.hidden=!0,g.open=!1,n.get("subtitle\
+DeleteList").textContent=""},D=[],E=(g,N="")=>{const C=T(N),q=`${new Date().toLocaleTimeString()}\
+ [${g}]${C?" "+C:""}`;if(D.push(q),D.length>2e3){const V=D.findIndex(W=>!/\[(批量统计|检查开始|字幕检查|检查复用)\]/.
+test(W));D.splice(Math.max(0,V),1)}t.flushLog()},O=()=>t.check(),P=async(g,N)=>{try{await t.
+resolveSubtitleWorks?.([g],N)}catch(C){if(E("字幕线索复核中断",g.path+" · "+C.message),
+N(),C.stop||C.phase==="drive-auth"||[401,403].includes(C.status))throw C}},j=()=>{const g=GM_getValue(
 "cross-drive-media-ai",{})||{};if(!g.enabled||!g.base||!g.model)return null;try{return gr(
-g),Un(g)}catch(E){return C("AI 设置","设置无效，跳过 AI："+E.message),null}},h=(g,E)=>{
-const V=n.get("subtitleMeter");V.hidden=E===0,V.max=E||1,V.value=g},x=g=>g.checkState&&g.checkState!==
-"done",v=g=>!x(g)&&Er(g),R={...Cr,choice:Cr.unconfirmed},z=g=>p&&r!==null&&!x(g)&&!v(g)&&!g.
+g),Un(g)}catch(N){return E("AI 设置","设置无效，跳过 AI："+N.message),null}},h=(g,N)=>{
+const C=n.get("subtitleMeter");C.hidden=N===0,C.max=N||1,C.value=g},S=g=>g.checkState&&g.checkState!==
+"done",v=g=>!S(g)&&Er(g),R={...Cr,choice:Cr.unconfirmed},z=g=>p&&r!==null&&!S(g)&&!v(g)&&!g.
 organized&&!g.organizePending&&!g.writeBlocked&&!!g.selectedCandidate&&!g.selectedCandidate.
-downloadFailed&&!g.selectedCandidate.opaque&&!bn(g,g.selectedCandidate),L=g=>{const E=new Set(
-Yi(a,z,v));return g.filter(V=>E.has(V))},H=(g,E=null)=>{const V=g.media,P=x(g)?g.checkState:
-it(g),F=t.recognizing?"recognizing":V?V.include?t.workReady?.(V)?"confirmed":V.error?"bloc\
+downloadFailed&&!g.selectedCandidate.opaque&&!bn(g,g.selectedCandidate),U=g=>{const N=new Set(
+Xi(a,z,v));return g.filter(C=>N.has(C))},K=(g,N=null)=>{const C=g.media,q=S(g)?g.checkState:
+it(g),V=t.recognizing?"recognizing":C?C.include?t.workReady?.(C)?"confirmed":C.error?"bloc\
 ked":"pending":"skipped":"unavailable",W=g.organized?"complete":g.organizePending?"unconfi\
-rmed":V?.include?"pending":"skipped",$=r!==null&&P==="missing"&&W==="pending"&&(!g.parsed.
-tv||g.parsed.season!=null&&g.parsed.episode!=null),me=!g.writeBlocked&&!g.identityRecheck&&
-F==="confirmed"&&W==="pending"&&(P==="complete"||P==="missing"&&n.get("mediaAllowMissing").
-checked);let Z="";return W==="complete"?Z="视频已整理":W==="unconfirmed"?Z="上次整理结果待核对":
-W==="skipped"?Z="视频已跳过":g.writeBlocked?Z=g.error||"字幕写入结果待核对":
-g.identityRecheck?Z=g.searchMessage||"作品资料变化，关联字幕待核验":F==="blo\
-cked"?Z=V.error||"作品识别受阻":F!=="confirmed"?Z=V?.error||"作品匹配未确认":
-P==="waiting"||P==="checking"||P==="interrupted"?Z="字幕检查未完成":P==="unconfirme\
-d"?Z=g.searchMessage||g.embedded?.message||"字幕覆盖未确认":P==="missing"&&!n.get("\
-mediaAllowMissing").checked&&(Z="缺少可用字幕；勾选“允许无字幕整理”后可执行"),
-{identity:F,coverage:P,search:sn(g),execution:W,canSearch:$,canFill:E?.has(g)??!1,canOrganize:me,
-blocker:Z}};let X=null;const Se=(g,E)=>E==="all"?!0:E==="incomplete"?!v(g):E==="ready"?!!X?.
-get(String(g.node.id))?.canFill:v(g),de=(g,E)=>!g.organized&&!g.organizePending&&r!==null&&
-!x(g)&&!g.embedded?.chinese&&!m.has(String(E.id)),be=(g,E)=>de(g,E)&&f.has(String(E.id)),J=g=>a.
-filter(E=>Se(E,g)).flatMap(E=>E.subtitles.filter(V=>de(E,V)).map(V=>String(V.id))),le=n.get(
-"selectAllSubtitleDeletes"),se=n.get("subtitleResults"),ue=n.get("subtitleRows"),he=(g,E)=>{
-const V=y,P=document.createElement("section");P.className="sync-item subtitle-action-view";
-const F=document.createElement("h5");F.textContent="本地字幕导入预览",P.append(F);
+rmed":C?.include?"pending":"skipped",re=r!==null&&q==="missing"&&W==="pending"&&(!g.parsed.
+tv||g.parsed.season!=null&&g.parsed.episode!=null),Se=!g.writeBlocked&&!g.identityRecheck&&
+V==="confirmed"&&W==="pending"&&(q==="complete"||q==="missing"&&n.get("mediaAllowMissing").
+checked);let B="";return W==="complete"?B="视频已整理":W==="unconfirmed"?B="上次整理结果待核对":
+W==="skipped"?B="视频已跳过":g.writeBlocked?B=g.error||"字幕写入结果待核对":
+g.identityRecheck?B=g.searchMessage||"作品资料变化，关联字幕待核验":V==="blo\
+cked"?B=C.error||"作品识别受阻":V!=="confirmed"?B=C?.error||"作品匹配未确认":
+q==="waiting"||q==="checking"||q==="interrupted"?B="字幕检查未完成":q==="unconfirme\
+d"?B=g.searchMessage||g.embedded?.message||"字幕覆盖未确认":q==="missing"&&!n.get("\
+mediaAllowMissing").checked&&(B="缺少可用字幕；勾选“允许无字幕整理”后可执行"),
+{identity:V,coverage:q,search:sn(g),execution:W,canSearch:re,canFill:N?.has(g)??!1,canOrganize:Se,
+blocker:B}};let Y=null;const ke=(g,N)=>N==="all"?!0:N==="incomplete"?!v(g):N==="ready"?!!Y?.
+get(String(g.node.id))?.canFill:v(g),de=(g,N)=>!g.organized&&!g.organizePending&&r!==null&&
+!S(g)&&!g.embedded?.chinese&&!m.has(String(N.id)),ue=(g,N)=>de(g,N)&&f.has(String(N.id)),Q=g=>a.
+filter(N=>ke(N,g)).flatMap(N=>N.subtitles.filter(C=>de(N,C)).map(C=>String(C.id))),ce=n.get(
+"selectAllSubtitleDeletes"),oe=n.get("subtitleResults"),pe=n.get("subtitleRows"),me=(g,N)=>{
+const C=y,q=document.createElement("section");q.className="sync-item subtitle-action-view";
+const V=document.createElement("h5");V.textContent="本地字幕导入预览",q.append(V);
 const W=document.createElement("select");W.setAttribute?.("aria-label","选择导入目标"),
-g(W,"import-target");const $=(me,Z)=>{const ee=document.createElement("option");ee.value=me,
-ee.textContent=Z,ee.title=Z,W.append(ee)};$("","请选择一部电影或一季剧集");for(const[
-me,Z]of V.groups.entries()){const ee=Z[0],te=ee.path.slice(0,ee.path.lastIndexOf("/")),fe=ee.
-parsed.tv?" · 第 "+ee.parsed.season+" 季 · "+Z.length+" 项":"";$(String(me),(ee.parsed.
-tv?ee.parsed.query:ee.node.name)+fe+" · "+te+(ee.parsed.tv?" · "+ee.node.name:""))}if(W.
-value=V.target,W.disabled=l,W.onchange=()=>{l||(V.target=W.value,V.confirmed.clear(),He(),
-oe())},P.append(W),E(P,"取消导入","import-cancel",()=>{y=null,k("已取消导入"),oe(),
-n.get("importSubtitles").focus?.()}),V.plan){const me={ready:"可导入",skip:"已跳过",
-invalid:"检测失败",unmatched:"待匹配"},Z=document.createElement("p");Z.textContent=
-Object.entries(me).map(([fe,pe])=>{const G=V.plan.filter(we=>we.state===fe),re=Gn(G.filter(
-we=>we.row).map(we=>we.row));return pe+" "+G.length+" 项"+(re?"（"+re+"）":"")}).join("\
- · "),P.append(Z);const ee=V.plan.filter(fe=>fe.state==="ready").length,te=V.plan;ee&&E(P,
-"确认导入 "+ee+" 项","import-confirm",()=>Ne(V,te)),V.plan.some(fe=>fe.state==="unmat\
-ched"||fe.state==="invalid")&&E(P,V.showIssues?"查看可导入项":"处理待匹配与失败项",
-"import-issues",()=>{V.showIssues=!V.showIssues,oe()});for(const[fe,pe]of V.plan.entries()){
-if((pe.state==="unmatched"||pe.state==="invalid")!==V.showIssues)continue;const re=document.
-createElement("p"),we=pe.state==="ready"?"正文可用 · 归属已核对 · "+(pe.verification.
+g(W,"import-target");const re=(Se,B)=>{const ne=document.createElement("option");ne.value=
+Se,ne.textContent=B,ne.title=B,W.append(ne)};re("","请选择一部电影或一季剧集");
+for(const[Se,B]of C.groups.entries()){const ne=B[0],se=ne.path.slice(0,ne.path.lastIndexOf(
+"/")),fe=ne.parsed.tv?" · 第 "+ne.parsed.season+" 季 · "+B.length+" 项":"";re(String(
+Se),(ne.parsed.tv?ne.parsed.query:ne.node.name)+fe+" · "+se+(ne.parsed.tv?" · "+ne.node.
+name:""))}if(W.value=C.target,W.disabled=l,W.onchange=()=>{l||(C.target=W.value,C.confirmed.
+clear(),ze(),le())},q.append(W),N(q,"取消导入","import-cancel",()=>{y=null,k("已取消导入"),
+le(),n.get("importSubtitles").focus?.()}),C.plan){const Se={ready:"可导入",skip:"已跳过",
+invalid:"检测失败",unmatched:"待匹配"},B=document.createElement("p");B.textContent=
+Object.entries(Se).map(([fe,he])=>{const G=C.plan.filter(Ae=>Ae.state===fe),$=Gn(G.filter(
+Ae=>Ae.row).map(Ae=>Ae.row));return he+" "+G.length+" 项"+($?"（"+$+"）":"")}).join(" ·\
+ "),q.append(B);const ne=C.plan.filter(fe=>fe.state==="ready").length,se=C.plan;ne&&N(q,"确\
+认导入 "+ne+" 项","import-confirm",()=>Pe(C,se)),C.plan.some(fe=>fe.state==="unmatched"||
+fe.state==="invalid")&&N(q,C.showIssues?"查看可导入项":"处理待匹配与失败项",
+"import-issues",()=>{C.showIssues=!C.showIssues,le()});for(const[fe,he]of C.plan.entries()){
+if((he.state==="unmatched"||he.state==="invalid")!==C.showIssues)continue;const $=document.
+createElement("p"),Ae=he.state==="ready"?"正文可用 · 归属已核对 · "+(he.verification.
 evidence==="file"?"对白范围已按视频文件时长检查，未核对播放同步":"时间\
-轴未验证"+(pe.verification.duration?"（TMDB 仅作作品时长参考）":"")):pe.reason;
-re.textContent=N(pe.label+(pe.row?" → "+pe.row.path:"")+" · "+me[pe.state]+" · "+we+(pe.
-state==="ready"&&pe.releaseWarning?" · "+pe.releaseWarning:"")),P.append(re),pe.needsIdentity&&
-E(P,"确认文件归属","import-identity-"+fe,()=>{V.confirmed.add(V.entries[fe]),He(),oe()})}}else
-for(const me of V.entries.filter(Z=>Z.error)){const Z=document.createElement("p");Z.textContent=
-N(me.label+" · "+me.error),P.append(Z)}ue.append(P)},oe=()=>{const g=t.videoStates();X=g;
-const E=n.get("subtitleScope");E.textContent=u?.scope||"",E.title=E.textContent;const V=a.
-filter(ne=>!v(ne)),P=new Set(a.filter(ne=>g.get(String(ne.node.id))?.canFill)),F=ne=>P.has(
-ne),W=P.size,$=n.get("subtitleView").value,me=J($),Z=me.filter(ne=>f.has(ne)).length;le.disabled=
-l||!!y||!me.length,le.checked=me.length>0&&Z===me.length,le.indeterminate=Z>0&&Z<me.length;
-for(const[ne,Ie,Ae]of[["Incomplete","未补齐",V.length],["Ready","待补齐",W],["Comple\
-te","有字幕",a.length-V.length],["All","全部",a.length]])n.get("subtitleView"+ne).textContent=
-`${Ie}（${Ae}）`;const ee=n.get("subtitleSummary"),te=a.filter(ne=>!x(ne)),fe=a.length-te.
-length;ee.hidden=!a.length;const pe=["有字幕 "+te.filter(v).length,...W?["待补齐 "+W]:
-[],"没字幕 "+te.filter(ne=>it(ne)==="missing"&&!F(ne)).length,"检查未确认 "+te.filter(
-ne=>it(ne)==="unconfirmed").length].join(" · "),G=" · 作品已确认 "+[...g.values()].
-filter(ne=>ne.identity==="confirmed").length+" · 可整理 "+[...g.values()].filter(ne=>ne.
-canOrganize).length+" · 已整理 "+[...g.values()].filter(ne=>ne.execution==="complete").
-length+" · 整理待核对 "+[...g.values()].filter(ne=>ne.execution==="unconfirmed").length;
-ee.textContent="共 "+a.length+" 项 · 已检查 "+te.length+" · "+(u?.interrupted?"未检查完\
-成 ":"待检查 ")+fe+" · "+pe+G;const re=new Set(a.flatMap(ne=>ne.subtitles.filter(Ie=>be(
-ne,Ie)).map(Ie=>String(Ie.id)))).size,we=n.get("subtitleDeleteSelectionCount");we.hidden=!re,
-we.textContent="已选 "+re+" 项"+(Z===re?"":" · 当前筛选 "+Z+" 项"),n.get("reviewS\
-ubtitleDeletes").disabled=l||!!y||!re,n.get("confirmSubtitleDeletes").disabled=l||!!y||!o?.
-length,n.get("cancelSubtitleDeletes").disabled=l,n.get("fillSubtitles").disabled=l||!!y||r===
-null||!W;const Te=se.scrollTop,qe=ue.getRootNode?.().activeElement,ae=qe&&ue.contains?.(qe)?
-qe.dataset.subtitleFocus:void 0,Ee=(ne,Ie)=>{ne.dataset.subtitleFocus=Ie},ge=(ne,Ie,Ae,Ve)=>{
-const ve=document.createElement("button");ve.type="button",ve.textContent=Ie,Ee(ve,Ae),ve.
-disabled=l,ve.onclick=Ve,ne.append(ve)};ue.replaceChildren();const Ce=(ne,Ie)=>{const Ae=document.
-createElement("div");Ae.className="subtitle-result";const Ve=document.createElement("p"),ve=x(
-ne),Me=ve?ne.checkState:it(ne),Fe=ve?null:ne.embedded,Le={complete:"有字幕",missing:"缺可\
+轴未验证"+(he.verification.duration?"（TMDB 仅作作品时长参考）":"")):he.reason;
+$.textContent=T(he.label+(he.row?" → "+he.row.path:"")+" · "+Se[he.state]+" · "+Ae+(he.
+state==="ready"&&he.releaseWarning?" · "+he.releaseWarning:"")),q.append($),he.needsIdentity&&
+N(q,"确认文件归属","import-identity-"+fe,()=>{C.confirmed.add(C.entries[fe]),ze(),le()})}}else
+for(const Se of C.entries.filter(B=>B.error)){const B=document.createElement("p");B.textContent=
+T(Se.label+" · "+Se.error),q.append(B)}pe.append(q)},le=()=>{const g=t.videoStates();Y=g;
+const N=n.get("subtitleScope");N.textContent=u?.scope||"",N.title=N.textContent;const C=a.
+filter(te=>!v(te)),q=new Set(a.filter(te=>g.get(String(te.node.id))?.canFill)),V=te=>q.has(
+te),W=q.size,re=n.get("subtitleView").value,Se=Q(re),B=Se.filter(te=>f.has(te)).length;ce.
+disabled=l||!!y||!Se.length,ce.checked=Se.length>0&&B===Se.length,ce.indeterminate=B>0&&B<
+Se.length;for(const[te,Te,we]of[["Incomplete","未补齐",C.length],["Ready","待补齐",W],
+["Complete","有字幕",a.length-C.length],["All","全部",a.length]])n.get("subtitleView"+
+te).textContent=`${Te}（${we}）`;const ne=n.get("subtitleSummary"),se=a.filter(te=>!S(te)),
+fe=a.length-se.length;ne.hidden=!a.length;const he=["有字幕 "+se.filter(v).length,...W?
+["待补齐 "+W]:[],"没字幕 "+se.filter(te=>it(te)==="missing"&&!V(te)).length,"检查未确认 "+
+se.filter(te=>it(te)==="unconfirmed").length].join(" · "),G=" · 作品已确认 "+[...g.
+values()].filter(te=>te.identity==="confirmed").length+" · 可整理 "+[...g.values()].filter(
+te=>te.canOrganize).length+" · 已整理 "+[...g.values()].filter(te=>te.execution==="com\
+plete").length+" · 整理待核对 "+[...g.values()].filter(te=>te.execution==="unconfirm\
+ed").length;ne.textContent="共 "+a.length+" 项 · 已检查 "+se.length+" · "+(u?.interrupted?
+"未检查完成 ":"待检查 ")+fe+" · "+he+G;const $=new Set(a.flatMap(te=>te.subtitles.
+filter(Te=>ue(te,Te)).map(Te=>String(Te.id)))).size,Ae=n.get("subtitleDeleteSelectionCount");
+Ae.hidden=!$,Ae.textContent="已选 "+$+" 项"+(B===$?"":" · 当前筛选 "+B+" 项"),n.get(
+"reviewSubtitleDeletes").disabled=l||!!y||!$,n.get("confirmSubtitleDeletes").disabled=l||!!y||
+!o?.length,n.get("cancelSubtitleDeletes").disabled=l,n.get("fillSubtitles").disabled=l||!!y||
+r===null||!W;const Ke=oe.scrollTop,qe=pe.getRootNode?.().activeElement,ie=qe&&pe.contains?.(
+qe)?qe.dataset.subtitleFocus:void 0,Ie=(te,Te)=>{te.dataset.subtitleFocus=Te},ye=(te,Te,we,Ze)=>{
+const ve=document.createElement("button");ve.type="button",ve.textContent=Te,Ie(ve,we),ve.
+disabled=l,ve.onclick=Ze,te.append(ve)};pe.replaceChildren();const Me=(te,Te)=>{const we=document.
+createElement("div");we.className="subtitle-result";const Ze=document.createElement("p"),ve=S(
+te),je=ve?te.checkState:it(te),xe=ve?null:te.embedded,nt={complete:"有字幕",missing:"缺可\
 用字幕",unconfirmed:"检查未确认",waiting:"待检查",checking:"检查中",interrupted:"\
-未检查完成"}[Me];Ae.dataset.state=Me;const rt=document.createElement("span");rt.className=
-"subtitle-badge";const vt=p&&!ve&&!Fe?.chinese&&!ne.writeBlocked?R[sn(ne)]:"";if(rt.textContent=
-F(ne)?"已找到字幕 · 待补齐":Fe?.chinese?"内嵌中文 · 已补齐":(Le==="缺可用字幕"&&
-!p?"没字幕":Le)+(vt&&Me!=="complete"?" · "+vt:""),ne.parsed.episode!=null&&Ie){const Qe=document.
-createElement("strong");Qe.textContent=Gn([ne]),Ve.append(Qe)}Ve.append(rt);const wt=ne.sources?.
-find(Qe=>Qe.error||Qe.paused),Ut=!ve&&(ne.error||bn(ne,ne.selectedCandidate)||Fe?.unconfirmed&&
-Fe.message||ne.coverageUnconfirmed&&ne.searchMessage||wt?.error||wt?.paused);if(Ut&&!Fe?.chinese){
-const Qe=document.createElement("span");Qe.className="subtitle-detail";const ke=N(Ut).split(
-/\r?\n/,1)[0];Qe.textContent=ke.length>64?ke.slice(0,61)+"…":ke,Ve.append(Qe)}if(Ae.append(
-Ve),ve)return Ae;if(Ie==="delete")for(const Qe of ne.subtitles){if(ne.embedded?.chinese)break;
-const ke=document.createElement("label"),$e=document.createElement("input"),xt=document.createElement(
-"span");$e.type="checkbox",$e.checked=be(ne,Qe),$e.disabled=l||!de(ne,Qe),Ee($e,JSON.stringify(
-["delete",ne.node.id,Qe.id])),xt.textContent="移入回收站："+Qe.name,xt.title=xt.textContent,
-$e.onchange=()=>{l||!de(ne,Qe)||($e.checked?f.add(String(Qe.id)):f.delete(String(Qe.id)),q(),
-oe())},ke.append($e,xt),Ae.append(ke)}return Ae},_e=new Map(St(a,ne=>ne.groupKey).map(ne=>[
-ne[0].groupKey,ne]));let Q=0;if(w&&!_e.has(w.key)&&(w=null),y)he(Ee,ge),Q++;else if(w){const{
-key:ne}=w,Ie=_e.get(ne),Ae=document.createElement("section");Ae.className="sync-item subti\
-tle-action-view";const Ve=document.createElement("h5");Ve.textContent=(Ie[0].parsed.query||
-Ie[0].node.name)+" · 选择外置字幕",Ae.append(Ve),ge(Ae,"返回结果","subtitle-bac\
-k",()=>{const Me=w;w=null,oe(),se.scrollTop=Me.scrollTop,[...ue.querySelectorAll("[data-su\
-btitle-focus]")].find(Fe=>Fe.dataset.subtitleFocus===Me.focus)?.focus({preventScroll:!0})});
-const ve=Ie.filter(Me=>Se(Me,$)&&Me.subtitles.some(Fe=>de(Me,Fe)));for(const Me of ve)Ae.append(
-Ce(Me,"delete"));if(!ve.length){const Me=document.createElement("p");Me.textContent="当前没有可\
-处理的项目。",Ae.append(Me)}ue.append(Ae),Q++}else for(const[ne,Ie]of _e){const Ae=Ie.
-filter(ke=>Se(ke,$));if(!Ae.length)continue;Q+=Ae.length;const Ve=Ie[0],ve=Ve.parsed.tv,Me=(Ve.
-parsed.query||Ve.node.name)+(ve?Ve.parsed.season==null?" · 季号待确认":Ve.parsed.season===
-0?" · 特别篇":" · 第 "+Ve.parsed.season+" 季":""),Fe=document.createElement("sectio\
-n");Fe.className="sync-item subtitle-card";const Le=document.createElement("h5");Le.textContent=
-Me,Le.title=Me,Fe.append(Le);const rt=Ie.filter(ke=>ke.organized).length,vt=Ie.filter(ke=>ke.
-organizePending).length,wt=Ie.filter(ke=>X.get(String(ke.node.id))?.identity!=="confirmed"&&
-!ke.organized&&!ke.organizePending&&ke.media?.include).map(ke=>ke.media);if(t.recognizing||
-rt||vt||wt.length){const ke=document.createElement("p");ke.textContent=[t.recognizing?"正在识\
-别":wt.length&&(wt.every($e=>!$e.detail)?"未匹配作品":"整理信息未确认"),rt&&"\
-已整理 "+rt,vt&&"整理结果待确认 "+vt].filter(Boolean).join(" · "),Fe.append(ke)}
-wt.length&&!t.recognizing&&ge(Fe,ve?"修正作品信息":"修正片名",JSON.stringify(["w\
-ork",ne]),()=>t.openWork(wt));const Ut=()=>{w={key:ne,scrollTop:se.scrollTop,focus:JSON.stringify(
-["delete",ne])},se.scrollTop=0,oe(),[...ue.querySelectorAll("[data-subtitle-focus]")].find(
-ke=>ke.dataset.subtitleFocus==="subtitle-back")?.focus({preventScroll:!0})};if(ve){const ke=Ie.
-filter(v),$e=Ie.filter(x),xt=Ie.filter(lt=>!v(lt)&&!x(lt)&&it(lt)==="unconfirmed"),vn=Ie.filter(
-lt=>!v(lt)&&!x(lt)&&it(lt)==="missing"),_t=document.createElement("p");_t.className="subti\
-tle-group-count",_t.textContent="共 "+Ie.length+" 集"+(Ae.length!==Ie.length?" · 当前筛选 "+
-Ae.length+" 集":""),Fe.append(_t);const Ue=(lt,qa,Qi=!0)=>{const Va=document.createElement(
-"p"),Da=Qi&&Ve.parsed.season!=null?Gn(qa):"";Va.textContent=lt+" "+qa.length+" 集"+(Da?" \
-· "+Da:""),Fe.append(Va)},wn=ke.length&&ke.every(lt=>lt.embedded?.chinese);ke.length&&Ue(
-wn?"有字幕（内嵌中文）":"有字幕",ke);const xn=vn.filter(lt=>!F(lt)&&!(lt.cardSearched&&
-lt.autoCandidates?.length));xn.length&&Ue("没字幕",xn),xt.length&&Ue("检查未确认",
-xt),$e.length&&Ue(u?.interrupted?"未检查完成":"待检查／检查中",$e)}else for(const ke of Ae)
-Fe.append(Ce(ke));if(r!==null){const ke=Ie.filter(Ue=>!Ue.organized&&!Ue.organizePending&&
-!v(Ue)&&it(Ue)==="missing"),$e=Ie.filter(Ue=>!Ue.organized&&!Ue.organizePending&&!v(Ue)&&it(
-Ue)==="unconfirmed"),xt=!ve||Ve.parsed.season!=null&&ke.every(Ue=>Ue.parsed.episode!=null),
-vn=L(Ie),_t=ke.filter(Ue=>Ue.autoCandidates?.length).length;if(ve&&ke.length&&(!xt||ke.some(
-Ue=>Ue.cardSearched)&&_t<ke.length)){const Ue=document.createElement("a");Ue.textContent="\
-按片名找整季字幕包 ↗",Ue.href="https://assrt.net/sub/?searchword="+encodeURIComponent(
-Ve.media?.detail?.name||Ve.parsed.query),Ue.target="_blank",Ue.rel="noopener noreferrer",Fe.
-append(Ue)}if(ke.length&&xt){if(ve&&!vn.length&&ke.some(Ue=>Ue.cardSearched)){const Ue=document.
-createElement("p"),wn=ke.find(xn=>bn(xn,xn.selectedCandidate));Ue.textContent="已找到候选 "+
-_t+"/"+(ke.length+$e.length)+" 集 · "+($e.length?$e.length+" 集字幕检查未确认，请复查已有字幕":
-_t<ke.length?"整季候选不完整，可导入字幕":wn?bn(wn,wn.selectedCandidate):"整季补\
-齐条件未通过，请查看日志"),Fe.append(Ue)}else if(ve&&vn.length){const Ue=document.
+未检查完成"}[je];we.dataset.state=je;const mt=document.createElement("span");mt.className=
+"subtitle-badge";const At=p&&!ve&&!xe?.chinese&&!te.writeBlocked?R[sn(te)]:"";if(mt.textContent=
+V(te)?"已找到字幕 · 待补齐":xe?.chinese?"内嵌中文 · 已补齐":(nt==="缺可用字幕"&&
+!p?"没字幕":nt)+(At&&je!=="complete"?" · "+At:""),te.parsed.episode!=null&&Te){const _e=document.
+createElement("strong");_e.textContent=Gn([te]),Ze.append(_e)}Ze.append(mt);const zt=te.sources?.
+find(_e=>_e.error||_e.paused),Ut=!ve&&(te.error||bn(te,te.selectedCandidate)||xe?.unconfirmed&&
+xe.message||te.coverageUnconfirmed&&te.searchMessage||zt?.error||zt?.paused);if(Ut&&!xe?.chinese){
+const _e=document.createElement("span");_e.className="subtitle-detail";const Ee=T(Ut).split(
+/\r?\n/,1)[0];_e.textContent=Ee.length>64?Ee.slice(0,61)+"…":Ee,Ze.append(_e)}if(we.append(
+Ze),ve)return we;if(Te==="delete")for(const _e of te.subtitles){if(te.embedded?.chinese)break;
+const Ee=document.createElement("label"),$e=document.createElement("input"),wt=document.createElement(
+"span");$e.type="checkbox",$e.checked=ue(te,_e),$e.disabled=l||!de(te,_e),Ie($e,JSON.stringify(
+["delete",te.node.id,_e.id])),wt.textContent="移入回收站："+_e.name,wt.title=wt.textContent,
+$e.onchange=()=>{l||!de(te,_e)||($e.checked?f.add(String(_e.id)):f.delete(String(_e.id)),F(),
+le())},Ee.append($e,wt),we.append(Ee)}return we},ee=new Map(xt(a,te=>te.groupKey).map(te=>[
+te[0].groupKey,te]));let Ve=0;if(w&&!ee.has(w.key)&&(w=null),y)me(Ie,ye),Ve++;else if(w){const{
+key:te}=w,Te=ee.get(te),we=document.createElement("section");we.className="sync-item subti\
+tle-action-view";const Ze=document.createElement("h5");Ze.textContent=(Te[0].parsed.query||
+Te[0].node.name)+" · 选择外置字幕",we.append(Ze),ye(we,"返回结果","subtitle-bac\
+k",()=>{const je=w;w=null,le(),oe.scrollTop=je.scrollTop,[...pe.querySelectorAll("[data-su\
+btitle-focus]")].find(xe=>xe.dataset.subtitleFocus===je.focus)?.focus({preventScroll:!0})});
+const ve=Te.filter(je=>ke(je,re)&&je.subtitles.some(xe=>de(je,xe)));for(const je of ve)we.
+append(Me(je,"delete"));if(!ve.length){const je=document.createElement("p");je.textContent=
+"当前没有可处理的项目。",we.append(je)}pe.append(we),Ve++}else for(const[te,Te]of ee){
+const we=Te.filter(Ee=>ke(Ee,re));if(!we.length)continue;Ve+=we.length;const Ze=Te[0],ve=Ze.
+parsed.tv,je=(Ze.parsed.query||Ze.node.name)+(ve?Ze.parsed.season==null?" · 季号待确认":
+Ze.parsed.season===0?" · 特别篇":" · 第 "+Ze.parsed.season+" 季":""),xe=document.createElement(
+"section");xe.className="sync-item subtitle-card";const nt=document.createElement("h5");nt.
+textContent=je,nt.title=je,xe.append(nt);const mt=Te.filter(Ee=>Ee.organized).length,At=Te.
+filter(Ee=>Ee.organizePending).length,zt=Te.filter(Ee=>Y.get(String(Ee.node.id))?.identity!==
+"confirmed"&&!Ee.organized&&!Ee.organizePending&&Ee.media?.include).map(Ee=>Ee.media);if(t.
+recognizing||mt||At||zt.length){const Ee=document.createElement("p");Ee.textContent=[t.recognizing?
+"正在识别":zt.length&&(zt.every($e=>!$e.detail)?"未匹配作品":"整理信息未确认"),
+mt&&"已整理 "+mt,At&&"整理结果待确认 "+At].filter(Boolean).join(" · "),xe.append(
+Ee)}zt.length&&!t.recognizing&&ye(xe,ve?"修正作品信息":"修正片名",JSON.stringify(
+["work",te]),()=>t.openWork(zt));const Ut=()=>{w={key:te,scrollTop:oe.scrollTop,focus:JSON.
+stringify(["delete",te])},oe.scrollTop=0,le(),[...pe.querySelectorAll("[data-subtitle-focu\
+s]")].find(Ee=>Ee.dataset.subtitleFocus==="subtitle-back")?.focus({preventScroll:!0})};if(ve){
+const Ee=Te.filter(v),$e=Te.filter(S),wt=Te.filter(lt=>!v(lt)&&!S(lt)&&it(lt)==="unconfirm\
+ed"),vn=Te.filter(lt=>!v(lt)&&!S(lt)&&it(lt)==="missing"),_t=document.createElement("p");_t.
+className="subtitle-group-count",_t.textContent="共 "+Te.length+" 集"+(we.length!==Te.length?
+" · 当前筛选 "+we.length+" 集":""),xe.append(_t);const Ue=(lt,qa,Qi=!0)=>{const Va=document.
+createElement("p"),Da=Qi&&Ze.parsed.season!=null?Gn(qa):"";Va.textContent=lt+" "+qa.length+
+" 集"+(Da?" · "+Da:""),xe.append(Va)},wn=Ee.length&&Ee.every(lt=>lt.embedded?.chinese);Ee.
+length&&Ue(wn?"有字幕（内嵌中文）":"有字幕",Ee);const xn=vn.filter(lt=>!V(lt)&&
+!(lt.cardSearched&&lt.autoCandidates?.length));xn.length&&Ue("没字幕",xn),wt.length&&Ue(
+"检查未确认",wt),$e.length&&Ue(u?.interrupted?"未检查完成":"待检查／检查中",
+$e)}else for(const Ee of we)xe.append(Me(Ee));if(r!==null){const Ee=Te.filter(Ue=>!Ue.organized&&
+!Ue.organizePending&&!v(Ue)&&it(Ue)==="missing"),$e=Te.filter(Ue=>!Ue.organized&&!Ue.organizePending&&
+!v(Ue)&&it(Ue)==="unconfirmed"),wt=!ve||Ze.parsed.season!=null&&Ee.every(Ue=>Ue.parsed.episode!=
+null),vn=U(Te),_t=Ee.filter(Ue=>Ue.autoCandidates?.length).length;if(ve&&Ee.length&&(!wt||
+Ee.some(Ue=>Ue.cardSearched)&&_t<Ee.length)){const Ue=document.createElement("a");Ue.textContent=
+"按片名找整季字幕包 ↗",Ue.href="https://assrt.net/sub/?searchword="+encodeURIComponent(
+Ze.media?.detail?.name||Ze.parsed.query),Ue.target="_blank",Ue.rel="noopener noreferrer",xe.
+append(Ue)}if(Ee.length&&wt){if(ve&&!vn.length&&Ee.some(Ue=>Ue.cardSearched)){const Ue=document.
+createElement("p"),wn=Ee.find(xn=>bn(xn,xn.selectedCandidate));Ue.textContent="已找到候选 "+
+_t+"/"+(Ee.length+$e.length)+" 集 · "+($e.length?$e.length+" 集字幕检查未确认，请复查已有字幕":
+_t<Ee.length?"整季候选不完整，可导入字幕":wn?bn(wn,wn.selectedCandidate):"整季补\
+齐条件未通过，请查看日志"),xe.append(Ue)}else if(ve&&vn.length){const Ue=document.
 createElement("p");Ue.textContent="已找到字幕 · 待补齐 "+vn.length+" 集，点击上方「补齐字幕」",
-Fe.append(Ue)}}else if(ke.length&&ve){const Ue=document.createElement("p");Ue.textContent=
-"请先核对季号和集号，再查找或导入字幕。",Fe.append(Ue)}}!l&&Ae.some(ke=>ke.
-subtitles.some($e=>de(ke,$e)))&&ge(Fe,ve?"选择本季外置字幕":"选择外置字幕",JSON.
-stringify(["delete",ne]),Ut);const Qe=Ie.filter(ke=>!F(ke)&&!x(ke)&&!ke.organized&&!ke.organizePending&&
-(ke.subtitles.length||ke.writeBlocked||it(ke)==="unconfirmed"));r!==null&&Qe.length&&ge(Fe,
-"复查已有字幕",JSON.stringify(["audit",ne]),()=>Ze(Qe)),ue.append(Fe)}n.get("subtitl\
-eEmpty").hidden=Q>0||!n.get("mediaRows").hidden,n.get("subtitleEmpty").textContent=a.length?
-$==="incomplete"&&!V.length?"所选范围内的视频都有字幕。":$==="ready"?"当前没有已选中\
-可用候选的待补齐项目。":"当前筛选下没有视频。":"勾选网盘文件或目录后，点击「识别并检查」。",
-n.get("mediaRows").hidden||(n.get("subtitleSummary").hidden=!0),se.scrollTop=Te,ae&&[...ue.
-querySelectorAll("[data-subtitle-focus]")].find(ne=>ne.dataset.subtitleFocus===ae)?.focus(
-{preventScroll:!0})},ie=(g,E)=>{l=g,g&&(d=!1);for(const P of["readSubtitles","reviewSubtit\
-leDeletes","confirmSubtitleDeletes","cancelSubtitleDeletes","importSubtitles","saveSubtitl\
-eSettings","forgetSubtitleKey","loginSubtitles","openSubtitlesKey","subtitleUsername","sub\
-titlePassword","useOpenSubtitles","useThunder","subtitleLanguage","assrtKey"])n.get(P).disabled=
-g;const V=n.get("stopSubtitles");V.hidden=V.disabled=!g||!E,t.requestRender()},ce=(...g)=>t.
-run(...g);t.controls.push(ie);const He=()=>ce(async()=>{const g=y;if(!g)return;const E=g.target,
-V=g.groups[E];if(g.showIssues=!1,g.plan=null,!V)return;const P=()=>{if(O(),g!==y||g.target!==
-E||g.scan!==u||g.drive!==i||g.language!==b().language||r===null)throw Object.assign(new Error(
-"导入目标或检查范围已变化，请重新选择"),{stop:!0})};k("正在按导入目标逐份检查字幕…");
-try{const F=await Ji(g.entries,V,g.language,g.confirmed,C,P);P(),g.plan=F;for(const W of F){
-const $=W.state==="ready"?[Jt(W.verification),W.releaseWarning].filter(Boolean).join(" · "):
-W.reason;C("导入检测",W.label+(W.row?" → "+W.row.path:"")+" · "+$)}k("字幕正文检查结束，请核对导\
-入预览。")}catch(F){k("导入检测结束 · "+F.message),C("导入检测结束",F.message)}},
-!0),Oe=n.get("subtitleImportFiles"),xe=()=>{if(!l){if(!t.registryReady){k("请先识别并检查当前选区。");
-return}I={language:b().language},Oe.value="",Oe.click()}};n.get("importSubtitles").onclick=
-()=>xe(),Oe.oncancel=()=>{I=null},Oe.onchange=()=>{const g=Array.from(Oe.files||[]);Oe.value=
-"";const E=I;if(I=null,!(!g.length||!E||l))return ce(async()=>{try{await De()}catch(P){k(P.
-message);return}const V=Zi(a);if(!V.length){k("当前选区没有可导入的电影或季集。");
-return}Object.assign(E,{scan:u,drive:i,groups:V}),y=null,h(0,0),k("正在读取本地字幕文件和压缩包目录…");
-try{const P=await Ki(g,O,ye);if(O(),E.scan!==u||E.drive!==i)throw new Error("检查范围已改变，请重新选择\
-本地文件");q(),w=null,y={...E,entries:P,target:"",confirmed:new Set,showIssues:!1,plan:null};
-for(const F of P)F.error&&C("导入读取失败",F.label+" · "+F.error);se.scrollTop=0,k(
-"请选择导入目标，压缩包只提取匹配项并逐份检查。")}catch(P){k("导入检测结\
-束 · "+P.message),C("导入检测结束",P.message)}},!0)};const Ne=(g,E)=>ce(async()=>{
-const V=E.filter(te=>te.state==="ready");if(!V.length||g!==y||g.plan!==E||g.scan!==u||g.drive!==
+xe.append(Ue)}}else if(Ee.length&&ve){const Ue=document.createElement("p");Ue.textContent=
+"请先核对季号和集号，再查找或导入字幕。",xe.append(Ue)}}!l&&we.some(Ee=>Ee.
+subtitles.some($e=>de(Ee,$e)))&&ye(xe,ve?"选择本季外置字幕":"选择外置字幕",JSON.
+stringify(["delete",te]),Ut);const _e=Te.filter(Ee=>!V(Ee)&&!S(Ee)&&!Ee.organized&&!Ee.organizePending&&
+(Ee.subtitles.length||Ee.writeBlocked||it(Ee)==="unconfirmed"));r!==null&&_e.length&&ye(xe,
+"复查已有字幕",JSON.stringify(["audit",te]),()=>Je(_e)),pe.append(xe)}n.get("subtitl\
+eEmpty").hidden=Ve>0||!n.get("mediaRows").hidden,n.get("subtitleEmpty").textContent=a.length?
+re==="incomplete"&&!C.length?"所选范围内的视频都有字幕。":re==="ready"?"当前没有已\
+选中可用候选的待补齐项目。":"当前筛选下没有视频。":"勾选网盘文件或目录后，点击「识\
+别并检查」。",n.get("mediaRows").hidden||(n.get("subtitleSummary").hidden=!0),oe.scrollTop=
+Ke,ie&&[...pe.querySelectorAll("[data-subtitle-focus]")].find(te=>te.dataset.subtitleFocus===
+ie)?.focus({preventScroll:!0})},ae=(g,N)=>{l=g,g&&(d=!1);for(const q of["readSubtitles","r\
+eviewSubtitleDeletes","confirmSubtitleDeletes","cancelSubtitleDeletes","importSubtitles","\
+saveSubtitleSettings","forgetSubtitleKey","loginSubtitles","openSubtitlesKey","subtitleUse\
+rname","subtitlePassword","useOpenSubtitles","useThunder","subtitleLanguage","assrtKey"])n.
+get(q).disabled=g;const C=n.get("stopSubtitles");C.hidden=C.disabled=!g||!N,t.requestRender()},
+ge=(...g)=>t.run(...g);t.controls.push(ae);const ze=()=>ge(async()=>{const g=y;if(!g)return;
+const N=g.target,C=g.groups[N];if(g.showIssues=!1,g.plan=null,!C)return;const q=()=>{if(O(),
+g!==y||g.target!==N||g.scan!==u||g.drive!==i||g.language!==b().language||r===null)throw Object.
+assign(new Error("导入目标或检查范围已变化，请重新选择"),{stop:!0})};k("\
+正在按导入目标逐份检查字幕…");try{const V=await Ji(g.entries,C,g.language,g.
+confirmed,E,q);q(),g.plan=V;for(const W of V){const re=W.state==="ready"?[Jt(W.verification),
+W.releaseWarning].filter(Boolean).join(" · "):W.reason;E("导入检测",W.label+(W.row?" \
+→ "+W.row.path:"")+" · "+re)}k("字幕正文检查结束，请核对导入预览。")}catch(V){
+k("导入检测结束 · "+V.message),E("导入检测结束",V.message)}},!0),De=n.get("su\
+btitleImportFiles"),Ce=()=>{if(!l){if(!t.registryReady){k("请先识别并检查当前选区。");
+return}I={language:b().language},De.value="",De.click()}};n.get("importSubtitles").onclick=
+()=>Ce(),De.oncancel=()=>{I=null},De.onchange=()=>{const g=Array.from(De.files||[]);De.value=
+"";const N=I;if(I=null,!(!g.length||!N||l))return ge(async()=>{try{await Fe()}catch(q){k(q.
+message);return}const C=Zi(a);if(!C.length){k("当前选区没有可导入的电影或季集。");
+return}Object.assign(N,{scan:u,drive:i,groups:C}),y=null,h(0,0),k("正在读取本地字幕文件和压缩包目录…");
+try{const q=await Ki(g,O,be);if(O(),N.scan!==u||N.drive!==i)throw new Error("检查范围已改变，请重新选择\
+本地文件");F(),w=null,y={...N,entries:q,target:"",confirmed:new Set,showIssues:!1,plan:null};
+for(const V of q)V.error&&E("导入读取失败",V.label+" · "+V.error);oe.scrollTop=0,k(
+"请选择导入目标，压缩包只提取匹配项并逐份检查。")}catch(q){k("导入检测结\
+束 · "+q.message),E("导入检测结束",q.message)}},!0)};const Pe=(g,N)=>ge(async()=>{
+const C=N.filter(se=>se.state==="ready");if(!C.length||g!==y||g.plan!==N||g.scan!==u||g.drive!==
 i||g.language!==b().language||r===null){k("导入计划已失效，请重新检查目录并预览。");
-return}try{await De()}catch(te){y=null,k(te.message);return}y=null,h(0,V.length);let P=0,F=0,
-W=0,$="";const me=()=>{if(O(),g.scan!==u||g.drive!==i||r===null)throw Object.assign(new Error(
-"检查范围已改变，请重新检查目录"),{stop:!0})},Z=new Map;try{await We(V,"本地字\
-幕上传与核验（视频）",ye,async(te,fe,pe,G)=>{const{row:re,name:we,verification:Te,
-label:qe}=te;let ae;try{if(!a.includes(re)||v(re)||re.writeBlocked)throw new Error("目标状态已变\
-，请重新检查目录");k("正在导入 · "+re.node.name),C("导入开始",qe+" → "+
-re.path);const Ee=await Ta(te,fe);if(fe(),Ht(Ee)!==te.digest)throw new Error("字幕内容与导入预览不一致\
-，请重新选择本地文件");await Yt(Z,String(re.node.parentId||"0"),()=>Oa(g.drive,re,
-{...te,bytes:Ee},ge=>{k(ge+" · "+re.node.name),C("导入网盘",re.node.name+" · "+ge)},
-fe)),t.invalidate("导入字幕使整理预览失效"),re.error="",re.searchMessage="已导入，上\
-传内容一致 · "+Jt(Te),P++,C("导入成功",re.path+" · 上传字节一致 · 未核对播放同步")}catch(Ee){
-if(G(Ee),ae="failed",re.error=Ee.message,Ee.pendingUpload?(t.invalidate("字幕上传结果待核对"),
-re.writeBlocked=!0,W++):!d&&!Ee.stop&&Ee.phase!=="drive-auth"&&F++,C(Ee.pendingUpload?"导入待\
-对账":"导入未完成",re.path+" · "+Ee.message),d||Ee.stop||Ee.phase==="drive-auth"||
-[401,403].includes(Ee.status))throw Ee}return ae||await j(re,fe),h(P+F+W,V.length),t.requestRender(),
-ae},me,4,"按需提取字幕，最多 4 份正文驻留；同目录依次核对、上传和读回")}catch(te){
-$=te.message}const ee="已处理 "+(P+F+W)+"/"+V.length+" · 已导入 "+P+" · 失败 "+F+
-" · 待对账 "+W+($?" · "+$:"");h(P+F+W,V.length),k(($?"导入中断 · ":"导入结束 · ")+
-ee),C("导入结果",ee)},!0),je=async g=>{if(h(0,0),g=g.filter(Z=>!x(Z)&&it(Z)==="missing"),
+return}try{await Fe()}catch(se){y=null,k(se.message);return}y=null,h(0,C.length);let q=0,V=0,
+W=0,re="";const Se=()=>{if(O(),g.scan!==u||g.drive!==i||r===null)throw Object.assign(new Error(
+"检查范围已改变，请重新检查目录"),{stop:!0})},B=new Map;try{await We(C,"本地字\
+幕上传与核验（视频）",be,async(se,fe,he,G)=>{const{row:$,name:Ae,verification:Ke,
+label:qe}=se;let ie;try{if(!a.includes($)||v($)||$.writeBlocked)throw new Error("目标状态已变，请重\
+新检查目录");k("正在导入 · "+$.node.name),E("导入开始",qe+" → "+$.path);const Ie=await Ta(
+se,fe);if(fe(),Ht(Ie)!==se.digest)throw new Error("字幕内容与导入预览不一致，请重新选择本地文件");
+await Xt(B,String($.node.parentId||"0"),()=>Oa(g.drive,$,{...se,bytes:Ie},ye=>{k(ye+" · "+
+$.node.name),E("导入网盘",$.node.name+" · "+ye)},fe)),t.invalidate("导入字幕使整理预览失效"),
+$.error="",$.searchMessage="已导入，上传内容一致 · "+Jt(Ke),q++,E("导入成功",
+$.path+" · 上传字节一致 · 未核对播放同步")}catch(Ie){if(G(Ie),ie="failed",$.
+error=Ie.message,Ie.pendingUpload?(t.invalidate("字幕上传结果待核对"),$.writeBlocked=
+!0,W++):!d&&!Ie.stop&&Ie.phase!=="drive-auth"&&V++,E(Ie.pendingUpload?"导入待对账":"导\
+入未完成",$.path+" · "+Ie.message),d||Ie.stop||Ie.phase==="drive-auth"||[401,403].includes(
+Ie.status))throw Ie}return ie||await P($,fe),h(q+V+W,C.length),t.requestRender(),ie},Se,4,
+"按需提取字幕，最多 4 份正文驻留；同目录依次核对、上传和读回")}catch(se){
+re=se.message}const ne="已处理 "+(q+V+W)+"/"+C.length+" · 已导入 "+q+" · 失败 "+
+V+" · 待对账 "+W+(re?" · "+re:"");h(q+V+W,C.length),k((re?"导入中断 · ":"导入结束 · ")+
+ne),E("导入结果",ne)},!0),Oe=async g=>{if(h(0,0),g=g.filter(B=>!S(B)&&it(B)==="missing"),
 !g.length){k(a.length?"本次检查范围内没有可查找的缺字幕项目。":"本次检查范围内\
-没有正片视频。");return}const E=b();if(!E.assrtKey&&!E.thunder&&!(E.open&&E.key)){n.
+没有正片视频。");return}const N=b();if(!N.assrtKey&&!N.thunder&&!(N.open&&N.key)){n.
 openSettings("subtitleSettings"),k("请启用迅雷免 Key 搜索，或配置其他字幕来源。");
-return}h(0,g.length),C("查找开始",`v${Xt} · 视频 ${g.length}，语言 ${E.language}\
-，启用来源：${[E.assrtKey&&"射手网整季包",E.thunder&&"迅雷",E.open&&E.key&&"\
-OpenSubtitles"].filter(Boolean).join("、")||"无"}`);const V=new Set(g.map(Z=>Z.groupKey)),
-P=a.filter(Z=>V.has(Z.groupKey)&&it(Z)==="unconfirmed");for(const Z of P)C("查找跳过",
-Z.node.name+" · 字幕检查未确认 · "+(Z.embedded?.message||Z.searchMessage||Z.error||
-"请复查已有字幕"));E.thunder||C("来源跳过","迅雷 已关闭"),E.open?E.key||C(
-"来源跳过","OpenSubtitles 未配置 API Key"):C("来源跳过","OpenSubtitles 已关闭");
-let F=0;const W=T(),$={batches:0,requests:0,retries:0,queued:0,elapsed:0},me=W&&xr(0,2,async(Z,ee)=>{
-O();const te=Date.now(),fe=te-ee;$.batches++,$.queued+=fe,C("AI 排队耗时",`候选判断 · ${Z.
+return}h(0,g.length),E("查找开始",`v${Yt} · 视频 ${g.length}，语言 ${N.language}\
+，启用来源：${[N.assrtKey&&"射手网整季包",N.thunder&&"迅雷",N.open&&N.key&&"\
+OpenSubtitles"].filter(Boolean).join("、")||"无"}`);const C=new Set(g.map(B=>B.groupKey)),
+q=a.filter(B=>C.has(B.groupKey)&&it(B)==="unconfirmed");for(const B of q)E("查找跳过",
+B.node.name+" · 字幕检查未确认 · "+(B.embedded?.message||B.searchMessage||B.error||
+"请复查已有字幕"));N.thunder||E("来源跳过","迅雷 已关闭"),N.open?N.key||E(
+"来源跳过","OpenSubtitles 未配置 API Key"):E("来源跳过","OpenSubtitles 已关闭");
+let V=0;const W=j(),re={batches:0,requests:0,retries:0,queued:0,elapsed:0},Se=W&&xr(0,2,async(B,ne)=>{
+O();const se=Date.now(),fe=se-ne;re.batches++,re.queued+=fe,E("AI 排队耗时",`候选判断 · ${B.
 work?.title||""} · 等待 ${(fe/1e3).toFixed(1)} 秒`);try{return await W.disambiguateSubtitle(
-Z,{onRequest:()=>{$.requests++},onRetry:pe=>{$.retries++,C("AI 重试",`候选判断 · ${pe}`)}})}finally{
-const pe=Date.now()-te;$.elapsed+=pe,C("AI 请求耗时",`候选判断 · ${(pe/1e3).toFixed(
-1)} 秒`)}});A.resetSearchBatch?.(),c=W?Wi({disambiguateSubtitle:Z=>me(Z,Date.now())},E.language,
-C,O):null,E.reviewCandidates=c,C("查找策略",`剧集先按季搜索并建立文件索引；缺集再搜索迅雷、OpenSubtitles；${W?
+B,{onRequest:()=>{re.requests++},onRetry:he=>{re.retries++,E("AI 重试",`候选判断 · ${he}`)}})}finally{
+const he=Date.now()-se;re.elapsed+=he,E("AI 请求耗时",`候选判断 · ${(he/1e3).toFixed(
+1)} 秒`)}});A.resetSearchBatch?.(),c=W?Wi({disambiguateSubtitle:B=>Se(B,Date.now())},N.language,
+E,O):null,N.reviewCandidates=c,E("查找策略",`剧集先按季搜索并建立文件索引；缺集再搜索迅雷、OpenSubtitles；${W?
 "名称有歧义时交给 AI 判断":"AI 未启用，使用严格片名匹配"}；来源限流后本批跳过该\
-来源`);try{i.assertReady?.(),C("并发策略","视频任务上限 8，AI 请求上限 2；同季命名判断合并，优先使用整季缓存");
-for(const G of g.filter(re=>re.parsed.tv))C("原名搜索线索",G.node.name+" · "+(Zt(G.
-parsed)||"未取得独立篇章名，将检查同季已有字幕"));const Z=Rr(a).filter(G=>G[0].
-parsed.tv&&V.has(G[0].groupKey)&&G.some(re=>it(re)==="missing"&&!Zt(re.parsed))),ee=Z.flat().
-filter(G=>G.complete&&G.parsed.workResolved&&/\.(?:ass|ssa)$/i.test(G.verifiedSubtitle?.name||
-"")&&G.verification&&G.verification.projectVideoName===void 0);ee.length&&await We(ee,"同季字\
-幕搜索线索（已有字幕）",ye,async(G,re,we,Te)=>{const qe=G.verifiedSubtitle;try{
-const ae=await i.read(qe,ge=>C("线索读取重试",ge),re);re();const Ee=an(G,ae,qe.name.
-split(".").pop().toLowerCase(),E.language);G.verification={...G.verification,projectVideoName:Ee.
-projectVideoName},i.verified?.remember(qe,ae,E.language,G.verification.encoding,G,G.verification)}catch(ae){
-if(Te(ae),re(),ae.stop||ae.phase==="drive-auth"||[401,403].includes(ae.status))throw ae;return C(
-"同季线索读取失败",qe.name+" · "+ae.message),"failed"}},O,8,"仅补读旧核验记录缺少的 ASS/SSA \
-视频名线索，结果随正文核验缓存保存");for(const G of Z){const re=Pi(G);if(!re.
-title){const we=G.filter(Te=>Te.complete&&Te.verification?.projectVideoName).slice(0,3).map(
-Te=>Te.node.name+" → "+Te.verification.projectVideoName);C("同季线索未采用",G[0].
-parsed.query+" · S"+String(G[0].parsed.season).padStart(2,"0")+" · "+re.reason+(we.length?
-" · 正文样例："+we.join("；"):""));continue}for(const we of G)Zt(we.parsed)||(we.parsed.
-videoReleaseTitle=re.title);C("同季搜索线索",`${G[0].parsed.query} · S${String(G[0].
-parsed.season).padStart(2,"0")} · ${re.count} 集已有字幕支持篇章名：${re.title}`)}
-const te=Rr(g).filter(G=>G[0]?.parsed.tv);await We(te,"整季字幕准备（季）",ye,async(G,re)=>{
-k("查找整季字幕："+G[0].parsed.query),await A.prepareSeason?.(G,E,re)},O,8,"同季合并请求，\
-各来源保持原节流，整季压缩包顺序处理"),await We(g,"单集及电影查找（视频）",
-ye,async(G,re,we,Te)=>{const qe=Date.now();re(),k(`查找字幕 ${F+1}/${g.length}：${G.node.
-name}`),C("源文件",G.node.name),C("作品解析",`片名：${G.parsed.query||"空"} · 年\
-份：${G.parsed.year||"未知"} · 类型：${G.parsed.tv?"剧集":"电影/特别篇"} · \
-季：${G.parsed.season??"未知"} · 集：${G.parsed.episode??"未知"} · TMDB：${G.parsed.
-tmdbId||"无记录"}`),C("作品别名",G.parsed.aliases?.length?G.parsed.aliases.join("；"):
-"无"),await Ra(G,E,A,C,re);for(const ae of G.sources||[])for(const Ee of ae.queries||[])Te(
-Ee.error);return G.candidates.length&&C("字幕候选",G.node.name+" · "+G.candidates.map(
-ae=>Bn(ae)+(!ae.titleMatched&&!ae.identityMatched&&!ae.aiAccepted?" · "+(ae.matchReason||
-"需确认作品或语言"):"")).join("；")),C("视频结果",`${G.node.name} · ${Cr[sn(
-G)]}${G.selectedCandidate?" · "+Bn(G.selectedCandidate):""}`),C("单片耗时",`${G.node.
-name} · ${((Date.now()-qe)/1e3).toFixed(1)} 秒`),h(++F,g.length),t.requestRender(),sn(G)===
-"failed"?"failed":void 0},O,8,"复用整季缓存，迅雷、OpenSubtitles 和 AI 保持各自限速"),
-C("整季缓存统计",`命中 ${g.filter(G=>G.seasonCacheHit).length}/${g.filter(G=>G.parsed.
+来源`);try{i.assertReady?.(),E("并发策略","视频任务上限 8，AI 请求上限 2；同季命名判断合并，优先使用整季缓存");
+for(const G of g.filter($=>$.parsed.tv))E("原名搜索线索",G.node.name+" · "+(Zt(G.parsed)||
+"未取得独立篇章名，将检查同季已有字幕"));const B=Rr(a).filter(G=>G[0].parsed.
+tv&&C.has(G[0].groupKey)&&G.some($=>it($)==="missing"&&!Zt($.parsed))),ne=B.flat().filter(
+G=>G.complete&&G.parsed.workResolved&&/\.(?:ass|ssa)$/i.test(G.verifiedSubtitle?.name||"")&&
+G.verification&&G.verification.projectVideoName===void 0);ne.length&&await We(ne,"同季字幕搜索线索\
+（已有字幕）",be,async(G,$,Ae,Ke)=>{const qe=G.verifiedSubtitle;try{const ie=await i.
+read(qe,ye=>E("线索读取重试",ye),$);$();const Ie=an(G,ie,qe.name.split(".").pop().toLowerCase(),
+N.language);G.verification={...G.verification,projectVideoName:Ie.projectVideoName},i.verified?.
+remember(qe,ie,N.language,G.verification.encoding,G,G.verification)}catch(ie){if(Ke(ie),$(),
+ie.stop||ie.phase==="drive-auth"||[401,403].includes(ie.status))throw ie;return E("同季线索读取失\
+败",qe.name+" · "+ie.message),"failed"}},O,8,"仅补读旧核验记录缺少的 ASS/SSA 视频名线索，结果随正文核验缓存保存");
+for(const G of B){const $=Pi(G);if(!$.title){const Ae=G.filter(Ke=>Ke.complete&&Ke.verification?.
+projectVideoName).slice(0,3).map(Ke=>Ke.node.name+" → "+Ke.verification.projectVideoName);
+E("同季线索未采用",G[0].parsed.query+" · S"+String(G[0].parsed.season).padStart(2,
+"0")+" · "+$.reason+(Ae.length?" · 正文样例："+Ae.join("；"):""));continue}for(const Ae of G)
+Zt(Ae.parsed)||(Ae.parsed.videoReleaseTitle=$.title);E("同季搜索线索",`${G[0].parsed.
+query} · S${String(G[0].parsed.season).padStart(2,"0")} · ${$.count} 集已有字幕支持篇章名：${$.
+title}`)}const se=Rr(g).filter(G=>G[0]?.parsed.tv);await We(se,"整季字幕准备（季）",
+be,async(G,$)=>{k("查找整季字幕："+G[0].parsed.query),await A.prepareSeason?.(G,N,$)},
+O,8,"同季合并请求，各来源保持原节流，整季压缩包顺序处理"),await We(
+g,"单集及电影查找（视频）",be,async(G,$,Ae,Ke)=>{const qe=Date.now();$(),k(`查找字\
+幕 ${V+1}/${g.length}：${G.node.name}`),E("源文件",G.node.name),E("作品解析",`片名：${G.
+parsed.query||"空"} · 年份：${G.parsed.year||"未知"} · 类型：${G.parsed.tv?"剧集":
+"电影/特别篇"} · 季：${G.parsed.season??"未知"} · 集：${G.parsed.episode??"未知"}\
+ · TMDB：${G.parsed.tmdbId||"无记录"}`),E("作品别名",G.parsed.aliases?.length?G.parsed.
+aliases.join("；"):"无"),await Ra(G,N,A,E,$);for(const ie of G.sources||[])for(const Ie of ie.
+queries||[])Ke(Ie.error);return G.candidates.length&&E("字幕候选",G.node.name+" · "+G.
+candidates.map(ie=>Bn(ie)+(!ie.titleMatched&&!ie.identityMatched&&!ie.aiAccepted?" · "+(ie.
+matchReason||"需确认作品或语言"):"")).join("；")),E("视频结果",`${G.node.name}\
+ · ${Cr[sn(G)]}${G.selectedCandidate?" · "+Bn(G.selectedCandidate):""}`),E("单片耗时",
+`${G.node.name} · ${((Date.now()-qe)/1e3).toFixed(1)} 秒`),h(++V,g.length),t.requestRender(),
+sn(G)==="failed"?"failed":void 0},O,8,"复用整季缓存，迅雷、OpenSubtitles 和 AI 保持各自限速"),
+E("整季缓存统计",`命中 ${g.filter(G=>G.seasonCacheHit).length}/${g.filter(G=>G.parsed.
 tv).length} 个剧集视频，命中项已复用整季文件列表`);for(const G of Rr(g)){
-if(!G[0]?.parsed.tv)continue;const re=G.filter(qe=>!v(qe)),we=re.filter(qe=>!qe.autoCandidates?.
-some(ae=>!ae.downloadFailed));if(!we.length)continue;for(const qe of re)qe.selectedCandidate=
-null;const Te=we.map(qe=>"S"+String(qe.parsed.season).padStart(2,"0")+"E"+String(qe.parsed.
-episode).padStart(2,"0"));C("整季转手动导入",G[0].parsed.query+" · 可靠候选覆盖 "+
-(re.length-we.length)+"/"+re.length+" · 缺少可靠候选："+Te.join("、")+" · 停止逐集补齐")}
-const fe=g.filter(G=>G.sources?.some(re=>re.error||re.paused||re.cacheError||re.queries?.some(
-we=>we.error))).length,pe="已处理 "+F+"/"+g.length+" · "+(fe?fe+" 项遇到来源错误 · ":
-"")+"找到候选 "+g.filter(G=>G.autoCandidates?.length).length+" · 可补齐 "+L(g).length+
-(P.length?" · 同组字幕检查未确认 "+P.length+" 项，请复查已有字幕":"");k(
-"查找结束 · "+pe),C("查找结束",pe)}catch(Z){const ee="已处理 "+F+"/"+g.length+
-" · "+Z.message;k((d?"查找已停止 · ":"查找中断 · ")+ee),C(d?"已停止":"查找中断",
-ee)}finally{W&&C("AI 统计",`判断/纠正 ${$.batches} 批 · 实际请求 ${$.requests}\
- 次 · 重试 ${$.retries} 次 · 累计排队 ${($.queued/1e3).toFixed(1)} 秒 · 累计请求 ${($.
-elapsed/1e3).toFixed(1)} 秒 · 并发上限 2`)}},Pe=async(g,E,V=i)=>{if(g.embedded||/\.mkv$/i.
-test(g.node.name)&&g.complete)return;const P=await V.inspectEmbedded?.(g.node,E);if(E(),g.
-embedded=P,g.embedded&&C("内嵌字幕",`${g.node.name} · ${g.embedded.message}`),g.embedded?.
-chinese){for(const F of g.subtitles)f.delete(String(F.id));o?.some(F=>F.row===g)&&q()}},ye=g=>C(
-"批量统计",g),Re=async(g,E)=>{const V=Date.now(),P=8;C("检查开始","v"+Xt+" · 读取当前选\
-中的视频与已有字幕 · 并发上限 "+P),p=!1,w=null;const F=u={scope:u?.scope,interrupted:!1};
-let W=!1;const $=()=>{if(W)return;W=!0;const te=()=>{W=!1,u===F&&F.running&&!d&&oe()};typeof requestAnimationFrame==
-"function"?requestAnimationFrame(te):Promise.resolve().then(te)},me=()=>{if(u!==F)throw new Error(
-"检查范围已改变");O()};i=null,s=null,r=null,y=null,I=null,f.clear(),q(),n.get("subt\
-itleView").value="all",n.get("subtitleResults").scrollTop=0,h(0,0);let Z=0,ee=0;k("正在读取目录…"),
-oe();try{me(),g.history||(g.history=pn(g.session));const te=Mr(g),fe=g.selected.slice(0,3).
-map(ge=>ge.name).filter(Boolean),pe=fe.length?"（"+fe.join("、")+(g.selected.length>fe.length?
-"等":"")+"）":"",G=a,re=E.videos.filter(en);for(const ge of re)C("附加视频跳过",ge.
-path+" · 文件名匹配附加内容规则");const we=E.videos.length?"读取到 "+E.videos.
-length+" 个视频，"+re.length+" 个按附加内容规则跳过，详见日志":"选中范围内没有\
-读取到视频文件";ee=G.length;for(const ge of G)ge.checkState="waiting",ge.history=g.
-history;F.scope="本次范围：/"+(g.path||"")+" · 选中 "+g.selected.length+" 项"+pe+
-" · 视频 "+G.length,F.running=!0,G.length&&h(0,G.length),k(G.length?"正在检查目录字幕…":
-we),oe();const Te=b().language;C("目录扫描","读取视频 "+E.videos.length+"，参与检查 "+
-G.length+"，附加内容跳过 "+re.length+"，已关联字幕 "+G.filter(ge=>ge.subtitles.
-length).length+" 组");const qe=ge=>ge.stop||ge.phase==="drive-auth"||[401,403].includes(ge.
-status);await We(G,"目录字幕检查（视频）",ye,async(ge,Ce,_e,Q)=>{Ce(),ge.checkState=
-"checking",$();const ne=ge.node;C("检查文件",ge.path),C("识别记录",ne.name+" · "+
-Tt.explain(ne));const Ie=ge.subtitles.map(Ae=>Ae.name);C("现有字幕",ne.name+" · "+(Ie.
-join("、")||"未发现字幕文件"));try{await za(te,ge,Ae=>C("上传对账",ne.name+" ·\
- "+Ae),Ce),await Yn(ge,te,Te,C,Ce,{observe:Q})}catch(Ae){if(Q(Ae),Ce(),qe(Ae))throw Ae;ge.
-writeBlocked=!0,ge.error=Ae.message,C("上传对账失败",ne.name+" · "+Ae.message)}try{
-await Pe(ge,Ce,te),ge.embedded?.unconfirmed&&Q(ge.embedded.message)}catch(Ae){if(Q(Ae),Ce(),
-qe(Ae))throw Ae;ge.coverageUnconfirmed=!0,ge.error=Ae.message,C("内嵌字幕检查失败",
-ne.name+" · "+Ae.message)}return Ce(),ge.checkState="done",h(++Z,G.length),$(),it(ge)==="\
-unconfirmed"?"failed":void 0},me,P,"网盘目录、详情与正文请求沿用服务节流"),
-me(),m.clear(),i=te,s=g,r=F.scope;const ae=G.filter(ge=>it(ge)==="unconfirmed").length,Ee=G.
-length?"已检查 "+Z+"/"+ee+" · 有字幕 "+G.filter(v).length+(ae?" · 检查未确认 "+
-ae:""):we;k(Ee),C("字幕检查",Ee+" · 耗时 "+((Date.now()-V)/1e3).toFixed(2)+" 秒")}catch(te){
-if(u!==F)return!1;F.interrupted=!0;for(const pe of a)x(pe)&&(pe.checkState="interrupted");
-const fe=(ee?"已检查 "+Z+"/"+ee+" · ":"目录读取未完成 · ")+te.message;k("检查结束 \
-· "+fe),C("检查失败",fe)}finally{F.running=!1,u===F&&oe()}return r!==null};n.get("rea\
-dSubtitles").onclick=()=>ce(async()=>{try{await t.requireScope()}catch(E){k(E.message);return}
-y=null,I=null,w=null,p=!0;const g=a.filter(E=>H(E).canSearch);for(const E of g)Object.assign(
-E,{cardSearched:!0,candidates:[],autoCandidates:[],selectedCandidate:null,sources:[]});await je(
-g)},!0);const ze=g=>JSON.stringify([g.session.parent,g.path,g.selected.map(E=>JSON.stringify(
-[E.id??"",[...E.names||[E.name||""]].sort()])).sort()]),Je=g=>r!==null&&s&&g.session.token===
-s.session.token&&ze(g)===ze(s),De=async()=>{const g=await Vn(e,s);if(O(),!Je(g))throw r=null,
+if(!G[0]?.parsed.tv)continue;const $=G.filter(qe=>!v(qe)),Ae=$.filter(qe=>!qe.autoCandidates?.
+some(ie=>!ie.downloadFailed));if(!Ae.length)continue;for(const qe of $)qe.selectedCandidate=
+null;const Ke=Ae.map(qe=>"S"+String(qe.parsed.season).padStart(2,"0")+"E"+String(qe.parsed.
+episode).padStart(2,"0"));E("整季转手动导入",G[0].parsed.query+" · 可靠候选覆盖 "+
+($.length-Ae.length)+"/"+$.length+" · 缺少可靠候选："+Ke.join("、")+" · 停止逐集补齐")}
+const fe=g.filter(G=>G.sources?.some($=>$.error||$.paused||$.cacheError||$.queries?.some(Ae=>Ae.
+error))).length,he="已处理 "+V+"/"+g.length+" · "+(fe?fe+" 项遇到来源错误 · ":
+"")+"找到候选 "+g.filter(G=>G.autoCandidates?.length).length+" · 可补齐 "+U(g).length+
+(q.length?" · 同组字幕检查未确认 "+q.length+" 项，请复查已有字幕":"");k(
+"查找结束 · "+he),E("查找结束",he)}catch(B){const ne="已处理 "+V+"/"+g.length+
+" · "+B.message;k((d?"查找已停止 · ":"查找中断 · ")+ne),E(d?"已停止":"查找中断",
+ne)}finally{W&&E("AI 统计",`判断/纠正 ${re.batches} 批 · 实际请求 ${re.requests}\
+ 次 · 重试 ${re.retries} 次 · 累计排队 ${(re.queued/1e3).toFixed(1)} 秒 · 累计请求 ${(re.
+elapsed/1e3).toFixed(1)} 秒 · 并发上限 2`)}},Ne=async(g,N,C=i)=>{if(g.embedded||/\.mkv$/i.
+test(g.node.name)&&g.complete)return;const q=await C.inspectEmbedded?.(g.node,N);if(N(),g.
+embedded=q,g.embedded&&E("内嵌字幕",`${g.node.name} · ${g.embedded.message}`),g.embedded?.
+chinese){for(const V of g.subtitles)f.delete(String(V.id));o?.some(V=>V.row===g)&&F()}},be=g=>E(
+"批量统计",g),Re=async(g,N)=>{const C=Date.now(),q=8;E("检查开始","v"+Yt+" · 读取当前选\
+中的视频与已有字幕 · 并发上限 "+q),p=!1,w=null;const V=u={scope:u?.scope,interrupted:!1};
+let W=!1;const re=()=>{if(W)return;W=!0;const se=()=>{W=!1,u===V&&V.running&&!d&&le()};typeof requestAnimationFrame==
+"function"?requestAnimationFrame(se):Promise.resolve().then(se)},Se=()=>{if(u!==V)throw new Error(
+"检查范围已改变");O()};i=null,s=null,r=null,y=null,I=null,f.clear(),F(),n.get("subt\
+itleView").value="all",n.get("subtitleResults").scrollTop=0,h(0,0);let B=0,ne=0;k("正在读取目录…"),
+le();try{Se(),g.history||(g.history=pn(g.session));const se=Mr(g),fe=g.selected.slice(0,3).
+map(ye=>ye.name).filter(Boolean),he=fe.length?"（"+fe.join("、")+(g.selected.length>fe.length?
+"等":"")+"）":"",G=a,$=N.videos.filter(en);for(const ye of $)E("附加视频跳过",ye.path+
+" · 文件名匹配附加内容规则");const Ae=N.videos.length?"读取到 "+N.videos.length+
+" 个视频，"+$.length+" 个按附加内容规则跳过，详见日志":"选中范围内没有读取到视频文件";
+ne=G.length;for(const ye of G)ye.checkState="waiting",ye.history=g.history;V.scope="本次范围：/"+
+(g.path||"")+" · 选中 "+g.selected.length+" 项"+he+" · 视频 "+G.length,V.running=!0,
+G.length&&h(0,G.length),k(G.length?"正在检查目录字幕…":Ae),le();const Ke=b().language;
+E("目录扫描","读取视频 "+N.videos.length+"，参与检查 "+G.length+"，附加内容跳过 "+
+$.length+"，已关联字幕 "+G.filter(ye=>ye.subtitles.length).length+" 组");const qe=ye=>ye.
+stop||ye.phase==="drive-auth"||[401,403].includes(ye.status);await We(G,"目录字幕检查（视频）",
+be,async(ye,Me,ee,Ve)=>{Me(),ye.checkState="checking",re();const te=ye.node;E("检查文件",
+ye.path),E("识别记录",te.name+" · "+Nt.explain(te));const Te=ye.subtitles.map(we=>we.
+name);E("现有字幕",te.name+" · "+(Te.join("、")||"未发现字幕文件"));try{await za(
+se,ye,we=>E("上传对账",te.name+" · "+we),Me),await Xn(ye,se,Ke,E,Me,{observe:Ve})}catch(we){
+if(Ve(we),Me(),qe(we))throw we;ye.writeBlocked=!0,ye.error=we.message,E("上传对账失败",
+te.name+" · "+we.message)}try{await Ne(ye,Me,se),ye.embedded?.unconfirmed&&Ve(ye.embedded.
+message)}catch(we){if(Ve(we),Me(),qe(we))throw we;ye.coverageUnconfirmed=!0,ye.error=we.message,
+E("内嵌字幕检查失败",te.name+" · "+we.message)}return Me(),ye.checkState="done",h(
+++B,G.length),re(),it(ye)==="unconfirmed"?"failed":void 0},Se,q,"网盘目录、详情与正文请求沿用服务节流"),
+Se(),m.clear(),i=se,s=g,r=V.scope;const ie=G.filter(ye=>it(ye)==="unconfirmed").length,Ie=G.
+length?"已检查 "+B+"/"+ne+" · 有字幕 "+G.filter(v).length+(ie?" · 检查未确认 "+
+ie:""):Ae;k(Ie),E("字幕检查",Ie+" · 耗时 "+((Date.now()-C)/1e3).toFixed(2)+" 秒")}catch(se){
+if(u!==V)return!1;V.interrupted=!0;for(const he of a)S(he)&&(he.checkState="interrupted");
+const fe=(ne?"已检查 "+B+"/"+ne+" · ":"目录读取未完成 · ")+se.message;k("检查结束 \
+· "+fe),E("检查失败",fe)}finally{V.running=!1,u===V&&le()}return r!==null};n.get("rea\
+dSubtitles").onclick=()=>ge(async()=>{try{await t.requireScope()}catch(N){k(N.message);return}
+y=null,I=null,w=null,p=!0;const g=a.filter(N=>K(N).canSearch);for(const N of g)Object.assign(
+N,{cardSearched:!0,candidates:[],autoCandidates:[],selectedCandidate:null,sources:[]});await Oe(
+g)},!0);const Le=g=>JSON.stringify([g.session.parent,g.path,g.selected.map(N=>JSON.stringify(
+[N.id??"",[...N.names||[N.name||""]].sort()])).sort()]),Xe=g=>r!==null&&s&&g.session.token===
+s.session.token&&Le(g)===Le(s),Fe=async()=>{const g=await Vn(e,s);if(O(),!Xe(g))throw r=null,
 t.registryReady=!1,t.invalidate("账号或选区已变化"),new Error("账号或选区已变化，请重新查找字幕或导入\
-。");i.assertReady?.()},Ze=g=>ce(async()=>{const E=s,V=i;if(r===null||!E||!g.every(ee=>a.
-includes(ee)))return;q(),y=null,I=null;const{language:P}=b(),F=T(),W=F?Li(F,C,O):null,$=Wt(
-E.source,new Map,O),me=new Map;let Z=0;h(0,g.length),C("复查范围",F?"格式、语言、已有时长参考及 AI \
+。");i.assertReady?.()},Je=g=>ge(async()=>{const N=s,C=i;if(r===null||!N||!g.every(ne=>a.
+includes(ne)))return;F(),y=null,I=null;const{language:q}=b(),V=j(),W=V?Li(V,E,O):null,re=Wt(
+N.source,new Map,O),Se=new Map;let B=0;h(0,g.length),E("复查范围",V?"格式、语言、已有时长参考及 AI \
 对白证据；不核对音画同步":"格式、语言及已有时长参考；作品归属和音画同步未确认");
-try{await De();const ee=await E.readSubtitleLinks?.($);await We(g,"已有字幕复查（视频）",
-ye,async(te,fe,pe,G)=>{const{node:re}=te,we=await $(re.parentId);fe();const Te=we.find(ae=>!ae.
-directory&&String(ae.id)===String(re.id));if(!Te||Te.name!==re.name||Te.size!==re.size||re.
-md5&&Te.md5&&re.md5!==Te.md5)throw r=null,new Error("目标视频已变化，请重新查找字幕");
-me.has(re.parentId)||me.set(re.parentId,ee?.linked||Gt(we,re.parentId,E.history).linked);const qe={
-...te,subtitles:[...me.get(re.parentId).get(String(re.id))||[]],embedded:void 0,siblingNames:new Set(
-we.map(ae=>ae.name.toLowerCase())),error:""};await za(V,qe,ae=>C("上传对账",ae),fe),qe.
-writeBlocked=!1,await Yn(qe,V,P,C,fe,{force:!0,review:W,observe:G}),await Pe(qe,fe,V),fe();
-for(const ae of te.subtitles)f.delete(String(ae.id)),m.delete(String(ae.id));return Object.
-assign(te,qe,{selectedCandidate:null,candidates:[],autoCandidates:[],sources:[]}),t.invalidate(
-"字幕复查后需要重新生成整理预览"),await j(te,fe),h(++Z,g.length),oe(),it(qe)===
+try{await Fe();const ne=await N.readSubtitleLinks?.(re);await We(g,"已有字幕复查（视频）",
+be,async(se,fe,he,G)=>{const{node:$}=se,Ae=await re($.parentId);fe();const Ke=Ae.find(ie=>!ie.
+directory&&String(ie.id)===String($.id));if(!Ke||Ke.name!==$.name||Ke.size!==$.size||$.md5&&
+Ke.md5&&$.md5!==Ke.md5)throw r=null,new Error("目标视频已变化，请重新查找字幕");
+Se.has($.parentId)||Se.set($.parentId,ne?.linked||Gt(Ae,$.parentId,N.history).linked);const qe={
+...se,subtitles:[...Se.get($.parentId).get(String($.id))||[]],embedded:void 0,siblingNames:new Set(
+Ae.map(ie=>ie.name.toLowerCase())),error:""};await za(C,qe,ie=>E("上传对账",ie),fe),qe.
+writeBlocked=!1,await Xn(qe,C,q,E,fe,{force:!0,review:W,observe:G}),await Ne(qe,fe,C),fe();
+for(const ie of se.subtitles)f.delete(String(ie.id)),m.delete(String(ie.id));return Object.
+assign(se,qe,{selectedCandidate:null,candidates:[],autoCandidates:[],sources:[]}),t.invalidate(
+"字幕复查后需要重新生成整理预览"),await P(se,fe),h(++B,g.length),le(),it(qe)===
 "unconfirmed"?"failed":void 0},O,8,"网盘正文沿用原节流，AI 正文复查保持排队"),
-k("重新检测完成 · "+Z+"/"+g.length)}catch(ee){(ee.pendingUpload||ee.stop||ee.phase===
-"drive-auth")&&(r=null),k("重新检测中断 · "+Z+"/"+g.length+" · "+ee.message)}},!0);
-n.get("reviewSubtitleDeletes").onclick=()=>{if(l||y||(o=a.flatMap(E=>E.subtitles.filter(V=>be(
-E,V)).map(V=>({row:E,sub:V}))),!o.length))return;n.get("subtitleDeleteList").textContent=o.
-map(({row:E,sub:V})=>`${E.path.slice(0,E.path.lastIndexOf("/")+1)}${V.name}`).join(`
+k("重新检测完成 · "+B+"/"+g.length)}catch(ne){(ne.pendingUpload||ne.stop||ne.phase===
+"drive-auth")&&(r=null),k("重新检测中断 · "+B+"/"+g.length+" · "+ne.message)}},!0);
+n.get("reviewSubtitleDeletes").onclick=()=>{if(l||y||(o=a.flatMap(N=>N.subtitles.filter(C=>ue(
+N,C)).map(C=>({row:N,sub:C}))),!o.length))return;n.get("subtitleDeleteList").textContent=o.
+map(({row:N,sub:C})=>`${N.path.slice(0,N.path.lastIndexOf("/")+1)}${C.name}`).join(`
 `),n.get("subtitleDeleteHeading").textContent="确认删除清单（"+o.length+" 项）";const g=n.
-get("subtitleDeletePreview");g.hidden=!1,g.open=!0,oe()},n.get("cancelSubtitleDeletes").onclick=
-q,n.get("confirmSubtitleDeletes").onclick=()=>ce(async()=>{if(y||!o?.length||!s||!i)return;
-const g=o.filter(({row:F,sub:W})=>be(F,W));if(q(),!g.length)return;let E=0;const V=new Set,
-P=[];try{await De();const F=St(g,W=>W.row);await We(F,"删除外置字幕（视频组）",
-ye,async(W,$,me,Z)=>{let ee=!1;for(const{row:te,sub:fe}of W){$(),k(`删除字幕 ${E+P.length+
-1}/${g.length}：${fe.name}`);try{const pe=await s.source.children({id:te.node.parentId});
-$();const G=fe.parentId??te.node.parentId,re=String(G)===String(te.node.parentId),Te=(re?pe:
-await s.source.children({id:G})).find(Ce=>String(Ce.id)===String(fe.id)),qe=pe.find(Ce=>String(
-Ce.id)===String(te.node.id)),ae=(Ce,_e)=>Ce&&!Ce.directory&&String(Ce.id)===String(_e.id)&&
-Ce.name===_e.name&&Ce.size===_e.size&&String(Ce.md5||"").toLowerCase()===String(_e.md5||"").
-toLowerCase(),ge=(re?Gt(pe,te.node.parentId,s.history):await s.readSubtitleLinks?.(Ce=>s.source.
-children({id:Ce})))?.linked.get(String(te.node.id))||[];if(!ae(Te,fe)||!ae(qe,te.node)||!ge.
-some(Ce=>String(Ce.id)===String(fe.id))||!Vt.test(Te.name))throw new Error("字幕或关联视频已变化，未删除\
-；请重新检查目录");if(!de(te,fe))continue;$(),await hr({...Te,parentId:G},s.session,
-s.source),t.invalidate("删除字幕使整理预览失效");try{i.verified?.forget(fe)}catch(Ce){
-C("核验缓存清理失败",`${fe.name} · ${Ce.message}`)}te.subtitles=te.subtitles.filter(
-Ce=>String(Ce.id)!==String(fe.id)),te.siblingNames?.delete(fe.name.toLowerCase()),f.delete(
-String(fe.id)),V.add(te),E++,C("字幕已删除",`${te.node.name} · ${fe.name} · 已移入回收站`)}catch(pe){
-if(pe.pending&&(t.invalidate("字幕删除结果待核对"),m.add(String(fe.id)),f.delete(
-String(fe.id)),te.writeBlocked=!0,te.complete=!1,te.error="字幕删除结果不明，请重新检查目录："+
-pe.message),Z(pe),$(),pe.stop||[401,403].includes(pe.status))throw pe;ee=!0,P.push(`${fe.name}\
-：${pe.message}`),C("字幕删除失败",`${te.node.name} · ${fe.name} · ${pe.message}`)}}
-return ee?"failed":void 0},O,8,"同一视频的字幕按顺序重新验证并处理"),await We(
-[...V],"删除后复查（视频）",ye,async(W,$,me,Z)=>{if(W.writeBlocked)return"skipped";
-await Yn(W,i,b().language,(ee,te)=>C(ee,`${W.node.name} · ${te}`),$,{observe:Z}),await Pe(
-W,$)},O),k(`批量删除结束：已移入回收站 ${E} 个，失败 ${P.length} 个。`+
-(P.length?` ${P.slice(0,5).join("；")}`:""))}catch(F){if(d)for(const W of V)W.writeBlocked||
+get("subtitleDeletePreview");g.hidden=!1,g.open=!0,le()},n.get("cancelSubtitleDeletes").onclick=
+F,n.get("confirmSubtitleDeletes").onclick=()=>ge(async()=>{if(y||!o?.length||!s||!i)return;
+const g=o.filter(({row:V,sub:W})=>ue(V,W));if(F(),!g.length)return;let N=0;const C=new Set,
+q=[];try{await Fe();const V=xt(g,W=>W.row);await We(V,"删除外置字幕（视频组）",
+be,async(W,re,Se,B)=>{let ne=!1;for(const{row:se,sub:fe}of W){re(),k(`删除字幕 ${N+q.length+
+1}/${g.length}：${fe.name}`);try{const he=await s.source.children({id:se.node.parentId});
+re();const G=fe.parentId??se.node.parentId,$=String(G)===String(se.node.parentId),Ke=($?he:
+await s.source.children({id:G})).find(Me=>String(Me.id)===String(fe.id)),qe=he.find(Me=>String(
+Me.id)===String(se.node.id)),ie=(Me,ee)=>Me&&!Me.directory&&String(Me.id)===String(ee.id)&&
+Me.name===ee.name&&Me.size===ee.size&&String(Me.md5||"").toLowerCase()===String(ee.md5||"").
+toLowerCase(),ye=($?Gt(he,se.node.parentId,s.history):await s.readSubtitleLinks?.(Me=>s.source.
+children({id:Me})))?.linked.get(String(se.node.id))||[];if(!ie(Ke,fe)||!ie(qe,se.node)||!ye.
+some(Me=>String(Me.id)===String(fe.id))||!Vt.test(Ke.name))throw new Error("字幕或关联视频已变化，未删除\
+；请重新检查目录");if(!de(se,fe))continue;re(),await hr({...Ke,parentId:G},s.session,
+s.source),t.invalidate("删除字幕使整理预览失效");try{i.verified?.forget(fe)}catch(Me){
+E("核验缓存清理失败",`${fe.name} · ${Me.message}`)}se.subtitles=se.subtitles.filter(
+Me=>String(Me.id)!==String(fe.id)),se.siblingNames?.delete(fe.name.toLowerCase()),f.delete(
+String(fe.id)),C.add(se),N++,E("字幕已删除",`${se.node.name} · ${fe.name} · 已移入回收站`)}catch(he){
+if(he.pending&&(t.invalidate("字幕删除结果待核对"),m.add(String(fe.id)),f.delete(
+String(fe.id)),se.writeBlocked=!0,se.complete=!1,se.error="字幕删除结果不明，请重新检查目录："+
+he.message),B(he),re(),he.stop||[401,403].includes(he.status))throw he;ne=!0,q.push(`${fe.
+name}：${he.message}`),E("字幕删除失败",`${se.node.name} · ${fe.name} · ${he.message}`)}}
+return ne?"failed":void 0},O,8,"同一视频的字幕按顺序重新验证并处理"),await We(
+[...C],"删除后复查（视频）",be,async(W,re,Se,B)=>{if(W.writeBlocked)return"skippe\
+d";await Xn(W,i,b().language,(ne,se)=>E(ne,`${W.node.name} · ${se}`),re,{observe:B}),await Ne(
+W,re)},O),k(`批量删除结束：已移入回收站 ${N} 个，失败 ${q.length} 个。`+
+(q.length?` ${q.slice(0,5).join("；")}`:""))}catch(V){if(d)for(const W of C)W.writeBlocked||
 (W.complete=!1,W.writeBlocked=!0,W.error="请重新检查目录，确认剩余字幕。");
-k(`删除中断：已移入回收站 ${E} 个；${F.message}`)}},!0);const st=()=>ce(async()=>{
-if(y)return;if(h(0,0),!i){k("请先查找字幕。");return}const g=t.videoStates(),E=a.filter(
-Z=>g.get(String(Z.node.id))?.canFill),V=b();if(!E.length){k("当前没有可补齐的字幕候选。");
-return}const P=St(E,Z=>Z.parsed.tv?Z.groupKey:null),F=new Set;A.resetDownloadBatch?.();const W=async Z=>{
-h(0,Z.length),V.reviewCandidates=c;let ee=0,te=0;const fe=Z[0].parsed.tv,pe=new Map;let G=0;
-try{await De();const re=new Map,we=async(ae,Ee,ge)=>{const{name:Ce,verification:_e}=Ee;await Yt(
-re,String(ae.node.parentId||"0"),()=>Oa(i,ae,Ee,Q=>{k(Q+"："+ae.node.name),C("网盘写入",
-ae.node.name+" · "+Q)},ge)),t.invalidate("补齐字幕使整理预览失效"),ae.searchMessage=
-"已补齐，上传内容一致："+Ce+" · "+Jt(_e),ee++,C("补齐成功",ae.node.name+" \
-· 上传字节已核验 "+Ce)},Te=(ae,Ee,ge)=>{if(ge(Ee),ae.error=Ee.message,Ee.pendingUpload&&
-(t.invalidate("字幕上传结果待核对"),ae.writeBlocked=!0),C(d?"已停止":"未补齐",
-ae.node.name+"："+Ee.message),d||Ee.stop||Ee.phase==="drive-auth")throw Ee;te++};if(await We(
-Z,fe?"整季下载与正文检查（视频）":"下载检测及补齐核验（视频）",ye,
-async(ae,Ee,ge,Ce)=>{ae.error="";let _e;try{k(`下载字幕 ${ee+te+1}/${Z.length}：${ae.
-node.name}`);const Q=[ae.selectedCandidate,...(ae.autoCandidates||[]).filter(ve=>ve!==ae.selectedCandidate)];
-C("下载开始",`${ae.node.name} · ${Q.length} 个候选`);let ne=null,Ie=!1;const Ae=[],
-Ve=new Set;for(;(Q.length||ae.sources.some(ve=>ve.deferred||ve.deferredTerms?.length))&&!(!Q.
-length&&(C("来源补查",`${ae.node.name} · 已有候选下载失败，查询此前暂缓的来源`),
-await Ra(ae,V,A,C,Ee,!0),Q.push(...ae.autoCandidates.filter(Me=>!Ve.has(Me))),!Q.length));){
-const ve=Q.shift();if(Ve.add(ve),Ee(),F.has(ve.source)){ve.downloadFailed=!0,Ae.push(ve.source+
-" 本批下载已暂停");continue}try{const Me=bn(ae,ve);if(Me)throw new Error(Me);C("候选下\
-载",`${ae.node.name} · ${Bn(ve)} 开始`);const{result:Fe,bytes:Le}=await A.fetchFile(ve,
-V,($e,xt)=>C($e,`${ae.node.name} · ${xt}`),Ee);Ee();const{text:rt,...vt}=an(ae,Le,Fe.ext,
-V.language,C);C("正文校验",`${ae.node.name} · ${ve.source} 格式与语言通过，${Le.
-length} 字节，${Fe.ext.toUpperCase()} · ${Jt(vt)}`);const wt=Fe.fileName??(At(ve.ext)?
-void 0:ve.name),Ut=Xn(ae,ve,wt,Fe.ext);if(ae.siblingNames?.has(Ut.toLowerCase()))throw new Error(
-"目标目录已有同名项目，待处理："+Ut);const ke=It(Ut).language||ve.language||
-(V.language==="en"?"en":"zh");ne={name:Ut,bytes:Le,verification:vt,language:ke,candidate:ve};
-break}catch(Me){if(Ce(Me),Ee(),Me.phase==="drive-auth"||Me.stop&&!nn(Me))throw Me;ve.downloadFailed=
-!0,Ie||(Ie=!!Me.subtitleSuspicious);const Fe=ae.sources?.find(rt=>rt.name===ve.source);Fe&&
-Ir(Fe,V,{downloadErrors:[Me.message]}),(Me.downloadPaused||nn(Me)&&rn(Me)||Me.phase==="tra\
-nsfer"&&[429,509].includes(Me.status))&&(F.add(ve.source),A.pauseSearchSource?.(ve.source,
-Me.message),Fe&&(Fe.paused=gt(Me.message,V))),zt(ae,V.language),ae.searchMessage=Ar(ae),Ae.
-push(ve.source+" · "+(ve.name||ve.release)+"："+Me.message),C("候选失败",`${ae.node.
-name} · ${ve.source}：${Me.message}`)}}if(!ne)throw Ie&&(ae.coverageUnconfirmed=!0),new Error(
-(Ie?"字幕可疑，待确认：":"候选均未通过下载/正文检查：")+Ae.join("；"));
-if(fe){if(G+ne.bytes.length>Sr)throw new Error("整季字幕超过 64 MiB，请分批导入本地字幕");
-G+=ne.bytes.length,pe.set(ae,ne)}else await we(ae,ne,Ee)}catch(Q){Te(ae,Q,Ce),_e="failed"}
-return!fe&&!_e&&await j(ae,Ee),h((fe?pe.size:ee)+te,Z.length),t.requestRender(),_e},O,8,"单\
+k(`删除中断：已移入回收站 ${N} 个；${V.message}`)}},!0);const st=()=>ge(async()=>{
+if(y)return;if(h(0,0),!i){k("请先查找字幕。");return}const g=t.videoStates(),N=a.filter(
+B=>g.get(String(B.node.id))?.canFill),C=b();if(!N.length){k("当前没有可补齐的字幕候选。");
+return}const q=xt(N,B=>B.parsed.tv?B.groupKey:null),V=new Set;A.resetDownloadBatch?.();const W=async B=>{
+h(0,B.length),C.reviewCandidates=c;let ne=0,se=0;const fe=B[0].parsed.tv,he=new Map;let G=0;
+try{await Fe();const $=new Map,Ae=async(ie,Ie,ye)=>{const{name:Me,verification:ee}=Ie;await Xt(
+$,String(ie.node.parentId||"0"),()=>Oa(i,ie,Ie,Ve=>{k(Ve+"："+ie.node.name),E("网盘写入",
+ie.node.name+" · "+Ve)},ye)),t.invalidate("补齐字幕使整理预览失效"),ie.searchMessage=
+"已补齐，上传内容一致："+Me+" · "+Jt(ee),ne++,E("补齐成功",ie.node.name+" \
+· 上传字节已核验 "+Me)},Ke=(ie,Ie,ye)=>{if(ye(Ie),ie.error=Ie.message,Ie.pendingUpload&&
+(t.invalidate("字幕上传结果待核对"),ie.writeBlocked=!0),E(d?"已停止":"未补齐",
+ie.node.name+"："+Ie.message),d||Ie.stop||Ie.phase==="drive-auth")throw Ie;se++};if(await We(
+B,fe?"整季下载与正文检查（视频）":"下载检测及补齐核验（视频）",be,
+async(ie,Ie,ye,Me)=>{ie.error="";let ee;try{k(`下载字幕 ${ne+se+1}/${B.length}：${ie.
+node.name}`);const Ve=[ie.selectedCandidate,...(ie.autoCandidates||[]).filter(ve=>ve!==ie.
+selectedCandidate)];E("下载开始",`${ie.node.name} · ${Ve.length} 个候选`);let te=null,
+Te=!1;const we=[],Ze=new Set;for(;(Ve.length||ie.sources.some(ve=>ve.deferred||ve.deferredTerms?.
+length))&&!(!Ve.length&&(E("来源补查",`${ie.node.name} · 已有候选下载失败，查询此前暂缓的来源`),
+await Ra(ie,C,A,E,Ie,!0),Ve.push(...ie.autoCandidates.filter(je=>!Ze.has(je))),!Ve.length));){
+const ve=Ve.shift();if(Ze.add(ve),Ie(),V.has(ve.source)){ve.downloadFailed=!0,we.push(ve.source+
+" 本批下载已暂停");continue}try{const je=bn(ie,ve);if(je)throw new Error(je);E("候选下\
+载",`${ie.node.name} · ${Bn(ve)} 开始`);const{result:xe,bytes:nt}=await A.fetchFile(ve,
+C,($e,wt)=>E($e,`${ie.node.name} · ${wt}`),Ie);Ie();const{text:mt,...At}=an(ie,nt,xe.ext,
+C.language,E);E("正文校验",`${ie.node.name} · ${ve.source} 格式与语言通过，${nt.
+length} 字节，${xe.ext.toUpperCase()} · ${Jt(At)}`);const zt=xe.fileName??(It(ve.ext)?
+void 0:ve.name),Ut=Yn(ie,ve,zt,xe.ext);if(ie.siblingNames?.has(Ut.toLowerCase()))throw new Error(
+"目标目录已有同名项目，待处理："+Ut);const Ee=Ct(Ut).language||ve.language||
+(C.language==="en"?"en":"zh");te={name:Ut,bytes:nt,verification:At,language:Ee,candidate:ve};
+break}catch(je){if(Me(je),Ie(),je.phase==="drive-auth"||je.stop&&!nn(je))throw je;ve.downloadFailed=
+!0,Te||(Te=!!je.subtitleSuspicious);const xe=ie.sources?.find(mt=>mt.name===ve.source);xe&&
+Ir(xe,C,{downloadErrors:[je.message]}),(je.downloadPaused||nn(je)&&rn(je)||je.phase==="tra\
+nsfer"&&[429,509].includes(je.status))&&(V.add(ve.source),A.pauseSearchSource?.(ve.source,
+je.message),xe&&(xe.paused=yt(je.message,C))),Ot(ie,C.language),ie.searchMessage=Ar(ie),we.
+push(ve.source+" · "+(ve.name||ve.release)+"："+je.message),E("候选失败",`${ie.node.
+name} · ${ve.source}：${je.message}`)}}if(!te)throw Te&&(ie.coverageUnconfirmed=!0),new Error(
+(Te?"字幕可疑，待确认：":"候选均未通过下载/正文检查：")+we.join("；"));
+if(fe){if(G+te.bytes.length>Sr)throw new Error("整季字幕超过 64 MiB，请分批导入本地字幕");
+G+=te.bytes.length,he.set(ie,te)}else await Ae(ie,te,Ie)}catch(Ve){Ke(ie,Ve,Me),ee="failed"}
+return!fe&&!ee&&await P(ie,Ie),h((fe?he.size:ne)+se,B.length),t.requestRender(),ee},O,8,"单\
 视频依优先级回退，同目录依次核对、上传和读回，网盘与来源沿用原节流"),
-fe){const ae=new Set(Z.filter(ge=>pe.has(ge)).map(ge=>JSON.stringify([ge.node.parentId,pe.
-get(ge).name.toLowerCase()])));let Ee="";if(pe.size!==Z.length){const ge=Gn(Z.filter(Ce=>!pe.
-has(Ce)));Ee="整季校验通过 "+pe.size+"/"+Z.length+" 集"+(ge?"，第 "+ge+"未通过":
-"")+"，本次未上传。"}else if(ae.size!==Z.length)Ee="整季字幕存在目标文件名冲突，本次未上传。";else{
-await De();const ge=Wt(s.source,new Map,O);try{await We(Z,"整季上传前核对目录（视频）",
-ye,async Ce=>{const _e=await ge(Ce.node.parentId);Pa(Ce,pe.get(Ce).name,_e)},O)}catch(Ce){
-if(O(),Ce.stop||Ce.phase==="drive-auth"||[401,403].includes(Ce.status))throw Ce;Ee="整季上传前核\
-对失败，请重新检测或导入字幕："+Ce.message}}if(Ee){for(const ge of Z)ge.selectedCandidate=
-null;return k(Ee),C("整季补齐已拦截",Ee),{done:ee,failed:Z.length}}h(0,Z.length),await We(
-Z,"整季上传与逐项核验（视频）",ye,async(ge,Ce,_e,Q)=>{try{await we(ge,pe.get(
-ge),Ce)}catch(ne){return Te(ge,ne,Q),"failed"}finally{h(ee+te,Z.length),t.requestRender()}
-await j(ge,Ce)},O)}const qe=`已处理 ${ee+te}/${Z.length} · 已补齐 ${ee} · 未补齐 ${te}`;
-return k("补齐结束 · "+qe),C("补齐结束",qe),{done:ee,failed:te}}catch(re){const we=`\
-已处理 ${ee+te}/${Z.length} · 已补齐 ${ee} · ${re.message}`;return k("补齐中断 · "+
-we),C("补齐中断",we),null}};let $=0,me=0;for(const Z of P){const ee=await W(Z);if(!ee)
-return;$+=ee.done,me+=ee.failed}if(P.length>1){const Z="补齐汇总 · 已补齐 "+$+" · \
-未补齐 "+me;k(Z),C("补齐汇总",Z)}},!0);n.get("fillSubtitles").onclick=()=>st(),n.get(
-"stopSubtitles").onclick=()=>{d=!0,t.cancel(),n.get("stopSubtitles").disabled=!0,k("等待当前请求\
-结束后停止…")},n.get("clearSubtitleLog").onclick=()=>{U.length=0,n.get("subtitleLog").
-value="",C("日志","已清空")},le.onchange=()=>{if(!(l||y)){for(const g of J(n.get("sub\
-titleView").value))le.checked?f.add(g):f.delete(g);q(),oe()}},n.get("subtitleView").onchange=
-()=>{w=null,t.closeWork(),se.scrollTop=0,oe()},n.get("openSubtitlesKey").onchange=()=>{A.logout(),
-n.get("subtitleLoginState").textContent="未登录"},n.get("subtitleLanguage").onchange=()=>{
-t.invalidate("字幕语言已更改"),u=null,p=!1,w=null,y=null,I=null,a=[],i=null,s=null,
-r=null,f.clear(),q(),oe(),k("语言已更改，请重新查找。")},n.get("saveSubtitleSe\
-ttings").onclick=()=>{GM_setValue("cross-drive-subtitle-settings",b()),k("设置已保存。")},
-n.get("forgetSubtitleKey").onclick=()=>{(i||Mr({session:e==="光鸭"?{provider:e,token:Xe.
-token}:cn(),source:{}})).verified?.clear(),n.get("openSubtitlesKey").value="",n.get("assrt\
-Key").value="",n.get("subtitlePassword").value="",A.logout(),n.get("subtitleLoginState").textContent=
-"未登录",GM_setValue("cross-drive-subtitle-settings",b()),k("已清除凭证和当前账号的字幕核验记录。")},
-n.get("clearAppCache").onclick=()=>{const g=A.clearCache(),E=gi();let V="未找到当前账号的字幕核验记录";
-try{const P=e==="光鸭"?{provider:e,token:Xe.token}:cn();P?.token&&(V=`已清理当前账号字幕正文核验记录 ${Mr(
-{session:P,source:{}}).verified.clear()} 条`)}catch(P){V="当前账号核验记录未清理："+
-P.message}n.get("cacheClearState").textContent=`已清理运行期缓存 ${g+E} 项（字幕 ${g}\
-，TMDB ${E}）；${V}。`},n.get("loginSubtitles").onclick=()=>ce(async()=>{try{await A.login(
+fe){const ie=new Set(B.filter(ye=>he.has(ye)).map(ye=>JSON.stringify([ye.node.parentId,he.
+get(ye).name.toLowerCase()])));let Ie="";if(he.size!==B.length){const ye=Gn(B.filter(Me=>!he.
+has(Me)));Ie="整季校验通过 "+he.size+"/"+B.length+" 集"+(ye?"，第 "+ye+"未通过":
+"")+"，本次未上传。"}else if(ie.size!==B.length)Ie="整季字幕存在目标文件名冲突，本次未上传。";else{
+await Fe();const ye=Wt(s.source,new Map,O);try{await We(B,"整季上传前核对目录（视频）",
+be,async Me=>{const ee=await ye(Me.node.parentId);Pa(Me,he.get(Me).name,ee)},O)}catch(Me){
+if(O(),Me.stop||Me.phase==="drive-auth"||[401,403].includes(Me.status))throw Me;Ie="整季上传前核\
+对失败，请重新检测或导入字幕："+Me.message}}if(Ie){for(const ye of B)ye.selectedCandidate=
+null;return k(Ie),E("整季补齐已拦截",Ie),{done:ne,failed:B.length}}h(0,B.length),await We(
+B,"整季上传与逐项核验（视频）",be,async(ye,Me,ee,Ve)=>{try{await Ae(ye,he.get(
+ye),Me)}catch(te){return Ke(ye,te,Ve),"failed"}finally{h(ne+se,B.length),t.requestRender()}
+await P(ye,Me)},O)}const qe=`已处理 ${ne+se}/${B.length} · 已补齐 ${ne} · 未补齐 ${se}`;
+return k("补齐结束 · "+qe),E("补齐结束",qe),{done:ne,failed:se}}catch($){const Ae=`\
+已处理 ${ne+se}/${B.length} · 已补齐 ${ne} · ${$.message}`;return k("补齐中断 · "+
+Ae),E("补齐中断",Ae),null}};let re=0,Se=0;for(const B of q){const ne=await W(B);if(!ne)
+return;re+=ne.done,Se+=ne.failed}if(q.length>1){const B="补齐汇总 · 已补齐 "+re+" \
+· 未补齐 "+Se;k(B),E("补齐汇总",B)}},!0);n.get("fillSubtitles").onclick=()=>st(),n.
+get("stopSubtitles").onclick=()=>{d=!0,t.cancel(),n.get("stopSubtitles").disabled=!0,k("等待\
+当前请求结束后停止…")},n.get("clearSubtitleLog").onclick=()=>{D.length=0,n.get(
+"subtitleLog").value="",E("日志","已清空")},ce.onchange=()=>{if(!(l||y)){for(const g of Q(
+n.get("subtitleView").value))ce.checked?f.add(g):f.delete(g);F(),le()}},n.get("subtitleVie\
+w").onchange=()=>{w=null,t.closeWork(),oe.scrollTop=0,le()},n.get("openSubtitlesKey").onchange=
+()=>{A.logout(),n.get("subtitleLoginState").textContent="未登录"},n.get("subtitleLangua\
+ge").onchange=()=>{t.invalidate("字幕语言已更改"),u=null,p=!1,w=null,y=null,I=null,
+a=[],i=null,s=null,r=null,f.clear(),F(),le(),k("语言已更改，请重新查找。")},n.
+get("saveSubtitleSettings").onclick=()=>{GM_setValue("cross-drive-subtitle-settings",b()),
+k("设置已保存。")},n.get("forgetSubtitleKey").onclick=()=>{(i||Mr({session:e==="光鸭"?
+{provider:e,token:Ye.token}:cn(),source:{}})).verified?.clear(),n.get("openSubtitlesKey").
+value="",n.get("assrtKey").value="",n.get("subtitlePassword").value="",A.logout(),n.get("s\
+ubtitleLoginState").textContent="未登录",GM_setValue("cross-drive-subtitle-settings",b()),
+k("已清除凭证和当前账号的字幕核验记录。")},n.get("clearAppCache").onclick=
+()=>{const g=A.clearCache(),N=gi();let C="未找到当前账号的字幕核验记录";try{
+const q=e==="光鸭"?{provider:e,token:Ye.token}:cn();q?.token&&(C=`已清理当前账号字幕正文核验记录 ${Mr(
+{session:q,source:{}}).verified.clear()} 条`)}catch(q){C="当前账号核验记录未清理："+
+q.message}n.get("cacheClearState").textContent=`已清理运行期缓存 ${g+N} 项（字幕 ${g}\
+，TMDB ${N}）；${C}。`},n.get("loginSubtitles").onclick=()=>ge(async()=>{try{await A.login(
 n.get("subtitleUsername").value.trim(),n.get("subtitlePassword").value,b()),O(),n.get("sub\
 titleLoginState").textContent="已登录（仅本页有效）",k("登录成功。")}catch(g){
 d?(A.logout(),n.get("subtitleLoginState").textContent="未登录",k("登录已停止。")):
 k("登录失败："+g.message)}finally{n.get("subtitlePassword").value=""}},!0),n.get("cop\
-ySubtitleLog").onclick=async()=>{try{await navigator.clipboard.writeText(U.join(`
+ySubtitleLog").onclick=async()=>{try{await navigator.clipboard.writeText(D.join(`
 `)||"（暂无字幕运行日志）"),k("运行日志已复制。")}catch(g){k("复制日志失败："+
-g.message)}};let yt=!1,bt=!1,Mt=!1,S=!1;const D=new Map;t.log=C,t.status=k,t.check=()=>{if(yt)
-throw Object.assign(new Error("已停止"),{stop:!0,cancelled:!0})},t.cancel=()=>{yt=!0},t.
-run=Ka(n,(g,E)=>{bt=g,g&&(yt=!1,d=!1);for(const V of t.controls)V(g,E);t.writeLog()}),t.writeLog=
-()=>{Mt=!1;const g=n.get("subtitleLog");g.value=U.join(`
-`),g.scrollTop=g.scrollHeight},t.flushLog=()=>{if(Mt)return;Mt=!0;const g=()=>{Mt&&t.writeLog()};
+g.message)}};let bt=!1,vt=!1,x=!1,L=!1;const H=new Map;t.log=E,t.status=k,t.check=()=>{if(bt)
+throw Object.assign(new Error("已停止"),{stop:!0,cancelled:!0})},t.cancel=()=>{bt=!0},t.
+run=Ka(n,(g,N)=>{vt=g,g&&(bt=!1,d=!1);for(const C of t.controls)C(g,N);t.writeLog()}),t.writeLog=
+()=>{x=!1;const g=n.get("subtitleLog");g.value=D.join(`
+`),g.scrollTop=g.scrollHeight},t.flushLog=()=>{if(x)return;x=!0;const g=()=>{x&&t.writeLog()};
 typeof requestAnimationFrame=="function"?requestAnimationFrame(g):Promise.resolve().then(g)},
-t.requestRender=()=>{if(S)return;S=!0;const g=()=>{S=!1,oe()};typeof requestAnimationFrame==
-"function"?requestAnimationFrame(g):Promise.resolve().then(g)},t.invalidate=g=>{const E=!!n.
-get("mediaPreview").textContent;t.invalidateMedia?.(),g&&C("整理预览",g),E&&g&&(n.get(
+t.requestRender=()=>{if(L)return;L=!0;const g=()=>{L=!1,le()};typeof requestAnimationFrame==
+"function"?requestAnimationFrame(g):Promise.resolve().then(g)},t.invalidate=g=>{const N=!!n.
+get("mediaPreview").textContent;t.invalidateMedia?.(),g&&E("整理预览",g),N&&g&&(n.get(
 "mediaPreview").textContent=g+"，请重新生成整理预览。")},t.showWork=()=>{n.get(
 "subtitleRows").hidden=!0,n.get("subtitleEmpty").hidden=!0,n.get("mediaRows").hidden=!1},t.
-closeWork=()=>{n.get("mediaRows").hidden=!0,n.get("subtitleRows").hidden=!1,oe()},t.previewShown=
-()=>{se.scrollTop=0},t.reset=()=>{t.registryReady=!1,t.recognizing=!0,t.context=null,a=[],
-D.clear(),u=null,s=null,i=null,r=null,p=!1,w=null,y=null,I=null,f.clear(),q(),t.closeWork()};
-const K=g=>{const E=g.media,V=g.parsed;if(E.detail&&E.match&&!E.error){const P=E.type==="t\
-v"?E.seasonEpisodes?.find($=>$.episode_number===E.episode)?.runtime:E.detail.runtime,F=g.node.
-originalName||g.node.name,W=E.type==="tv"?Zn(F,{workResolved:!1}).title:"";Object.assign(V,
-{query:E.title||E.query,year:E.year,tv:E.type==="tv",season:E.season??null,episode:E.episode??
-null,endEpisode:E.endEpisode??null,tmdbId:E.match.split(":")[1],aliases:E.detail.workAliases||
-[],seasons:E.type==="tv"?E.detail.seasons:void 0,runtimeSeconds:P>0?P*60:void 0,workResolved:!0,
-videoReleaseTitle:jt(W,E.year)||tt(F).query})}else Object.assign(V,tt(g.node.name,[...t.context.
-path.split("/").filter(Boolean),...g.node.folders])),Object.assign(V,{tmdbId:void 0,aliases:[],
-seasons:void 0,runtimeSeconds:void 0,workResolved:!1,videoReleaseTitle:void 0}),E.detail&&
-E.type==="tv"&&(V.tv=!0,V.season=E.season??null,V.episode=E.episode??null);g.groupKey=V.tv?
-JSON.stringify(["tv",V.tmdbId||Ye(V.query),V.year,V.season]):JSON.stringify(["video",String(
-g.node.id)])};t.seed=(g,E,V)=>{const P=new Map(V.map(F=>[String(F.node.id),F]));a=E.videos.
-filter(F=>!en(F)).map(F=>{const W={node:F,media:P.get(String(F.id)),parsed:{},checkState:"\
-waiting",complete:!1,subtitles:[...E.linked.get(F.id)||[]],siblingNames:E.namesByParent?.get(
-F.parentId),path:"/"+[g.path,F.path].filter(Boolean).join("/")};return K(W),D.set(String(F.
-id),W),W}),u={scope:"本次范围：/"+g.path+" · 视频 "+a.length},oe()},t.inspect=async(g,E)=>{
-t.recognizing=!1;for(const P of a)P.subtitles=[...E.linked.get(P.node.id)||[]],K(P);const V=await Re(
-g,E);return t.registryReady=V&&a.length>0,t.registryReady&&await t.resolveSubtitleWorks?.(
-a,O),V},t.syncWorks=async(g,E=!0,V=O)=>{t.invalidate("作品信息已修改");const P=new Set(
-g);for(const F of a)if(P.has(F.media)){const W=()=>JSON.stringify([F.parsed.tmdbId,F.parsed.
-query,F.parsed.year,F.parsed.tv,F.parsed.season,F.parsed.episode,F.parsed.endEpisode,F.parsed.
-runtimeSeconds]),$=W();K(F);const me=W();if($===me&&!F.identityRecheck)continue;if(Object.
-assign(F,{selectedCandidate:null,candidates:[],autoCandidates:[],sources:[],cardSearched:!1}),
-!x(F)&&F.subtitles.length){if(F.complete=!1,F.coverageUnconfirmed=!0,F.identityRecheck=!0,
-F.verification=null,F.verifiedSubtitle=null,F.verifiedSubtitleCandidate=null,F.identityClues=
-[],F.searchMessage="作品资料已更新，关联字幕待核验",!E||!i||F.writeBlocked||
-!F.parsed.workResolved)continue;const Z={...F,parsed:{...F.parsed}},ee=Z.subtitles.filter(
-te=>{if([Z.node.name,Z.node.originalName].some(re=>re&&Dt(re,te.name)!==null))return!0;const pe=Qt(
-Z.parsed,[],te.name),G=tt(te.name);return!pe.hardMismatch&&!pe.excluded&&!pe.opaque&&pe.titleMatched&&
-(!Z.parsed.tv||["season","episode","endEpisode"].every(re=>G[re]==null||G[re]===Z.parsed[re]))});
-if(!ee.length){F.subtitles=[],F.searchMessage="原关联字幕与新作品或季集不符，请核对字幕文件",
-C("单视频字幕复核",F.path+" · "+F.searchMessage);continue}if(Z.subtitles=ee,V(),await Yn(
-Z,i,b().language,C,V),V(),W()!==me||!a.includes(F))continue;for(const te of["complete","ve\
+closeWork=()=>{n.get("mediaRows").hidden=!0,n.get("subtitleRows").hidden=!1,le()},t.previewShown=
+()=>{oe.scrollTop=0},t.reset=()=>{t.registryReady=!1,t.recognizing=!0,t.context=null,a=[],
+H.clear(),u=null,s=null,i=null,r=null,p=!1,w=null,y=null,I=null,f.clear(),F(),t.closeWork()};
+const X=g=>{const N=g.media,C=g.parsed;if(N.detail&&N.match&&!N.error){const q=N.type==="t\
+v"?N.seasonEpisodes?.find(re=>re.episode_number===N.episode)?.runtime:N.detail.runtime,V=g.
+node.originalName||g.node.name,W=N.type==="tv"?Zn(V,{workResolved:!1}).title:"";Object.assign(
+C,{query:N.title||N.query,year:N.year,tv:N.type==="tv",season:N.season??null,episode:N.episode??
+null,endEpisode:N.endEpisode??null,tmdbId:N.match.split(":")[1],aliases:N.detail.workAliases||
+[],seasons:N.type==="tv"?N.detail.seasons:void 0,runtimeSeconds:q>0?q*60:void 0,workResolved:!0,
+videoReleaseTitle:Tt(W,N.year)||tt(V).query})}else Object.assign(C,tt(g.node.name,[...t.context.
+path.split("/").filter(Boolean),...g.node.folders])),Object.assign(C,{tmdbId:void 0,aliases:[],
+seasons:void 0,runtimeSeconds:void 0,workResolved:!1,videoReleaseTitle:void 0}),N.detail&&
+N.type==="tv"&&(C.tv=!0,C.season=N.season??null,C.episode=N.episode??null);g.groupKey=C.tv?
+JSON.stringify(["tv",C.tmdbId||Ge(C.query),C.year,C.season]):JSON.stringify(["video",String(
+g.node.id)])};t.seed=(g,N,C)=>{const q=new Map(C.map(V=>[String(V.node.id),V]));a=N.videos.
+filter(V=>!en(V)).map(V=>{const W={node:V,media:q.get(String(V.id)),parsed:{},checkState:"\
+waiting",complete:!1,subtitles:[...N.linked.get(V.id)||[]],siblingNames:N.namesByParent?.get(
+V.parentId),path:"/"+[g.path,V.path].filter(Boolean).join("/")};return X(W),H.set(String(V.
+id),W),W}),u={scope:"本次范围：/"+g.path+" · 视频 "+a.length},le()},t.inspect=async(g,N)=>{
+t.recognizing=!1;for(const q of a)q.subtitles=[...N.linked.get(q.node.id)||[]],X(q);const C=await Re(
+g,N);return t.registryReady=C&&a.length>0,t.registryReady&&await t.resolveSubtitleWorks?.(
+a,O),C},t.syncWorks=async(g,N=!0,C=O)=>{t.invalidate("作品信息已修改");const q=new Set(
+g);for(const V of a)if(q.has(V.media)){const W=()=>JSON.stringify([V.parsed.tmdbId,V.parsed.
+query,V.parsed.year,V.parsed.tv,V.parsed.season,V.parsed.episode,V.parsed.endEpisode,V.parsed.
+runtimeSeconds]),re=W();X(V);const Se=W();if(re===Se&&!V.identityRecheck)continue;if(Object.
+assign(V,{selectedCandidate:null,candidates:[],autoCandidates:[],sources:[],cardSearched:!1}),
+!S(V)&&V.subtitles.length){if(V.complete=!1,V.coverageUnconfirmed=!0,V.identityRecheck=!0,
+V.verification=null,V.verifiedSubtitle=null,V.verifiedSubtitleCandidate=null,V.identityClues=
+[],V.searchMessage="作品资料已更新，关联字幕待核验",!N||!i||V.writeBlocked||
+!V.parsed.workResolved)continue;const B={...V,parsed:{...V.parsed}},ne=B.subtitles.filter(
+se=>{if([B.node.name,B.node.originalName].some($=>$&&Dt($,se.name)!==null))return!0;const he=Qt(
+B.parsed,[],se.name),G=tt(se.name);return!he.hardMismatch&&!he.excluded&&!he.opaque&&he.titleMatched&&
+(!B.parsed.tv||["season","episode","endEpisode"].every($=>G[$]==null||G[$]===B.parsed[$]))});
+if(!ne.length){V.subtitles=[],V.searchMessage="原关联字幕与新作品或季集不符，请核对字幕文件",
+E("单视频字幕复核",V.path+" · "+V.searchMessage);continue}if(B.subtitles=ne,C(),await Xn(
+B,i,b().language,E,C),C(),W()!==Se||!a.includes(V))continue;for(const se of["complete","ve\
 rification","verifiedSubtitle","identityClues","coverageUnconfirmed","searchMessage","erro\
-r"])F[te]=Z[te];F.subtitles=ee,F.identityRecheck=!Z.complete,C("单视频字幕复核",F.path+
-" · "+F.searchMessage)}}E&&oe()},t.interrupt=()=>{t.recognizing=!1,t.registryReady=!1,u&&
-(u.interrupted=!0);for(const g of a)x(g)&&(g.checkState="interrupted");oe()},t.coverage=g=>{
-const E=D.get(String(g));return!E||x(E)||E.writeBlocked||E.organized||E.organizePending?"u\
-nconfirmed":it(E)},t.subtitleWorkHints=g=>{const E=D.get(String(g.node.id));return E&&E.media===
-g&&!E.writeBlocked&&!x(E)?Xi(E):null},t.acceptSubtitleWork=(g,E)=>t.syncWorks([g],!0,E),t.
-videoStates=()=>{const g=new Set(L(a));return new Map(a.map(E=>[String(E.node.id),H(E,g)]))},
-t.sameSubtitles=(g,E)=>{const V=F=>F.map(W=>JSON.stringify([String(W.id),W.name,W.size])).
+r"])V[se]=B[se];V.subtitles=ne,V.identityRecheck=!B.complete,E("单视频字幕复核",V.path+
+" · "+V.searchMessage)}}N&&le()},t.interrupt=()=>{t.recognizing=!1,t.registryReady=!1,u&&
+(u.interrupted=!0);for(const g of a)S(g)&&(g.checkState="interrupted");le()},t.coverage=g=>{
+const N=H.get(String(g));return!N||S(N)||N.writeBlocked||N.organized||N.organizePending?"u\
+nconfirmed":it(N)},t.subtitleWorkHints=g=>{const N=H.get(String(g.node.id));return N&&N.media===
+g&&!N.writeBlocked&&!S(N)?Yi(N):null},t.acceptSubtitleWork=(g,N)=>t.syncWorks([g],!0,N),t.
+videoStates=()=>{const g=new Set(U(a));return new Map(a.map(N=>[String(N.node.id),K(N,g)]))},
+t.sameSubtitles=(g,N)=>{const C=V=>V.map(W=>JSON.stringify([String(W.id),W.name,W.size])).
 sort().join(`
-`),P=D.get(String(g.node.id));return!!P&&V(P.subtitles)===V(E)&&P.subtitles.every(F=>{const W=E.
-find($=>String($.id)===String(F.id));return!F.md5||!W?.md5||F.md5.toLowerCase()===W.md5.toLowerCase()})},
-t.finishOrganizing=(g,E)=>{for(const V of new Set([...g,...E])){const P=D.get(V);P&&(P.organized=
-g.has(V)&&!E.has(V),P.organizePending=E.has(V),P.media.include=!1)}t.closeWork()},t.requireScope=
-async()=>{if(!t.registryReady)throw new Error("请先识别并检查当前选区");await De()};
-const _=async()=>{if(bt||!t.context||r===null)return;const g=t.context;try{const E=await Vn(
-e,g);if(g!==t.context||bt||Je(E))return}catch{if(g!==t.context||bt)return}r=null,t.registryReady=
+`),q=H.get(String(g.node.id));return!!q&&C(q.subtitles)===C(N)&&q.subtitles.every(V=>{const W=N.
+find(re=>String(re.id)===String(V.id));return!V.md5||!W?.md5||V.md5.toLowerCase()===W.md5.
+toLowerCase()})},t.finishOrganizing=(g,N)=>{for(const C of new Set([...g,...N])){const q=H.
+get(C);q&&(q.organized=g.has(C)&&!N.has(C),q.organizePending=N.has(C),q.media.include=!1)}
+t.closeWork()},t.requireScope=async()=>{if(!t.registryReady)throw new Error("请先识别并检查当前选区");
+await Fe()};const Z=async()=>{if(vt||!t.context||r===null)return;const g=t.context;try{const N=await Vn(
+e,g);if(g!==t.context||vt||Xe(N))return}catch{if(g!==t.context||vt)return}r=null,t.registryReady=
 !1,t.invalidate("网盘选区已变化"),n.get("previewMedia").disabled=!0,k("网盘选区已变化，请重新识\
-别并检查。"),oe()};n.onActivate?.(_);let Y;const B=g=>{g.composedPath?.().includes(se.
-getRootNode?.().host)||bt||!t.context||(clearTimeout(Y),Y=setTimeout(_,120))};document.addEventListener?.(
-"click",B),document.addEventListener?.("change",B),Be.addEventListener?.("hashchange",B),Be.
-addEventListener?.("popstate",B)}location.hostname==="www.guangyapan.com"?($r(),$n(()=>{li(),
+别并检查。"),le()};n.onActivate?.(Z);let J;const _=g=>{g.composedPath?.().includes(oe.
+getRootNode?.().host)||vt||!t.context||(clearTimeout(J),J=setTimeout(Z,120))};document.addEventListener?.(
+"click",_),document.addEventListener?.("change",_),Be.addEventListener?.("hashchange",_),Be.
+addEventListener?.("popstate",_)}location.hostname==="www.guangyapan.com"?($r(),$n(()=>{li(),
 Fa("光鸭")})):["pan.baidu.com","yun.baidu.com"].includes(location.hostname)?$n(()=>_r("百\
 度",Qr("百度"))):ar(location.hostname)&&($r(),$n(()=>{_r("123",Qr("123")),Fa("123")}))})();

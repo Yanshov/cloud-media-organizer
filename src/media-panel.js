@@ -199,7 +199,6 @@
             input.onchange = () => label.startsWith('搜索片名') ? undefined : refreshWorks(); return input;
         };
         const key = titleKey;
-        const peers = row => rows.filter(r => r.group === row.group);
         const readyRow = row => {
             if (!row.detail || row.error || !row.type || !row.title || !row.year) return false;
             try { mediaPath(row); return true; } catch { return false; }
@@ -209,13 +208,16 @@
             for (const row of targets) row.include = false;
             invalidate(); render(); progress('已跳过 ' + targets.length + ' 个视频，未修改网盘文件'); await refreshWorks();
         };
-        const seasonPicker = (box, row, wholeGroup = false) => {
+        const seasonPicker = (box, row, targets = [row]) => {
+            const wholeGroup = targets.length > 1;
             const label = document.createElement('label'), select = document.createElement('select');
-            label.textContent = wholeGroup ? '选择季（应用到同组缺少季号的文件）' : '选择季';
+            label.textContent = wholeGroup ? '整组选季（' + targets.length + ' 个文件）' : '选择季（仅此文件）';
             select.setAttribute('data-media-season', wholeGroup ? 'group' : 'file');
-            const blank = document.createElement('option'); blank.value = ''; blank.textContent = '请选择季'; select.appendChild(blank);
             const seasons = [...(row.detail?.seasons || [])].sort((a, b) => a.season_number - b.season_number);
-            if (row.season != null && !seasons.some(s => s.season_number === row.season)) seasons.push({ season_number: row.season });
+            const available = seasons.some(season => season.season_number === row.season);
+            const blank = document.createElement('option'); blank.value = '';
+            blank.textContent = row.season != null && !available ? '原季号 ' + row.season + ' 无可用资料，请重新选择' : '请选择季';
+            select.appendChild(blank);
             for (const season of seasons) {
                 const option = document.createElement('option'); option.value = String(season.season_number);
                 option.textContent = (season.season_number === 0 ? '特别篇' : '第 ' + season.season_number + ' 季')
@@ -223,20 +225,24 @@
                     + (season.episode_count != null ? ' · ' + season.episode_count + ' 集' : '');
                 select.appendChild(option);
             }
-            select.value = wholeGroup ? '' : String(row.season ?? ''); label.appendChild(select); box.appendChild(label);
+            select.value = !wholeGroup && available ? String(row.season) : '';
+            label.appendChild(select); box.appendChild(label);
             select.onchange = () => {
                 if (select.value === '') return;
                 const season = Number(select.value);
-                const targets = wholeGroup ? peers(row).filter(item => item.include && item.type === 'tv' && item.detail?.id === row.detail.id && item.season == null) : [row];
                 return editRows(async () => {
                     await batchStage(targets,'核对新季号（视频）',log,async item => {
                         if (item.episodeInferred) { item.episode = null; item.episodeInferred = false; }
                         item.season = season;
-                        await validateEpisode(item);
+                        item.seasonEpisodes = [];
+                        item.seasonYear = '';
+                        await validateEpisode(item,{matchTitleIfNumberInvalid:true});
                         return item.error ? 'failed' : undefined;
                     },checkStopped,8,'复用同一季资料，TMDB 保持节流');
                     const ready = targets.filter(readyRow).length;
-                    progress('已应用第 ' + season + ' 季：' + ready + ' 个文件就绪，' + (targets.length - ready) + ' 个仍需处理；集号已自动提取或按标题匹配，无法对应的可直接下拉选集');
+                    const seasonLabel = season === 0 ? '特别篇' : '第 ' + season + ' 季';
+                    progress('已选择' + seasonLabel + ' · ' + ready + '/' + targets.length + ' 个文件通过季集核对'
+                        + (ready < targets.length ? ' · 其余文件待确认' : ''));
                 });
             };
         };
@@ -304,7 +310,7 @@
         const resetQuery = (row, value) => {
             Object.assign(row,{query:value,detail:null,match:'',aiType:'',aiAssisted:false,error:'搜索片名已修改，请重新匹配'});
         };
-        const renderFileDetail = (box, item) => {
+        const renderFileDetail = (box, item, hasGroupSeason) => {
             box.append(textElement('p','原位置：' + (item.node.originalPath || item.node.path),'media-file-path'));
             if (item.error) box.append(textElement('p',item.error));
             if (!item.include) return;
@@ -312,12 +318,13 @@
                 const season = item.type === 'tv' && item.season != null ? ' · ' + (item.season ? '第 ' + item.season + ' 季' : '特别篇') : '';
                 box.append(textElement('p','已匹配：' + item.title + '（' + item.year + '）' + season));
                 if (item.type === 'tv') {
-                    seasonPicker(box,item);
+                    if (!hasGroupSeason) seasonPicker(box,item);
                     episodePicker(box,item);
                 }
             }
             const edits = document.createElement('details');
             edits.append(textElement('summary','修改此文件的作品或命名'));
+            if (hasGroupSeason) seasonPicker(edits,item);
             field(edits,'搜索片名（仅本文件）',item.query,value => resetQuery(item,value));
             action(edits,'查询候选作品',() => editRows(async () => {
                 try { item.candidates = await client.search(item.query); }
@@ -357,6 +364,12 @@
             const included = group.filter(row => row.include);
             const pending = included.filter(row => !readyRow(row));
             const reference = pending[0] || included[0];
+            const item = group.includes(detail.file) ? detail.file : reference || group[0];
+            detail.file = item;
+            const seasonReference = (item.include && item.type === 'tv' && item.detail ? item : null)
+                || included.find(row => row.type === 'tv' && row.detail);
+            const seasonTargets = seasonReference ? included.filter(row => row.type === 'tv' && row.detail && row.match === seasonReference.match) : [];
+            if (seasonTargets.length > 1) seasonPicker(box,seasonReference,seasonTargets);
             if (reference && included.length > 1) {
                 const controls = document.createElement('details');
                 controls.open = !!pending.length;
@@ -380,8 +393,6 @@
                         } catch (error) { progress('读取作品失败：' + error.message); }
                     });
                 };
-                const missingSeason = pending.find(row => row.detail && row.type === 'tv' && row.season == null);
-                if (missingSeason) seasonPicker(controls,missingSeason,true);
                 if (reference.detail) {
                     field(controls,'标准片名（整组）',reference.title,value => included.forEach(row => { row.title = value; }));
                     field(controls,'年份（整组，剧集用首播年份）',reference.year,value => included.forEach(row => { row.year = value; }));
@@ -389,8 +400,6 @@
                 action(controls,'跳过本组',() => skipRows(included));
                 box.append(controls);
             }
-            const item = group.includes(detail.file) ? detail.file : pending[0] || included[0] || group[0];
-            detail.file = item;
             if (group.length > 1) {
                 const label = textElement('label','选择文件');
                 const select = document.createElement('select');
@@ -409,7 +418,7 @@
                 label.append(select);
                 box.append(label);
             }
-            renderFileDetail(box,item);
+            renderFileDetail(box,item,seasonTargets.length > 1 && seasonTargets.includes(item));
             host.append(box);
         };
         const render = () => {
@@ -427,7 +436,7 @@
             const [type, id] = match.split(':'); const detail = await mediaWorkDetail(client,type,id,checkStopped);
             row.detail = detail; row.type = type; row.title = detail.title || detail.name; row.year = (detail.release_date || detail.first_air_date || '').slice(0, 4); row.category = mediaCategory(detail, type); row.error = '';
         }
-        async function validateEpisode(row) {
+        async function validateEpisode(row, {matchTitleIfNumberInvalid = false} = {}) {
             checkStopped();
             if (!row.detail) return;
             row.error = '';
@@ -468,14 +477,17 @@
                     if (row.episode == null) {
                         const parsed = parseMediaName(row.node.name, row.node.folders || []);
                         if (parsed.episode != null) { row.episode = parsed.episode; row.endEpisode = parsed.endEpisode; }
-                        else {
-                            const original = key(mediaStem(row.node.name));
-                            const matches = row.seasonEpisodes.filter(ep => (ep.aliases || [ep.name]).some(name => { const title = key(name || ''); return title.length >= 3 && original.includes(title); }));
-                            if (matches.length === 1) { row.episode = matches[0].episode_number; row.episodeInferred = true; }
-                        }
+                    }
+                    const numbers = new Set(row.seasonEpisodes.map(ep => ep.episode_number));
+                    if (row.episode == null || matchTitleIfNumberInvalid && row.endEpisode == null && !numbers.has(row.episode)) {
+                        const original = key(mediaStem(row.node.name));
+                        const matches = row.seasonEpisodes.filter(ep => (ep.aliases || [ep.name]).some(name => {
+                            const title = key(name || '');
+                            return title.length >= 3 && original.includes(title);
+                        }));
+                        if (matches.length === 1) { row.episode = matches[0].episode_number; row.episodeInferred = true; }
                     }
                     if (row.episode == null) throw new Error('已应用季号，但文件名无法唯一对应本季某集，请下拉选择集名');
-                    const numbers = new Set(row.seasonEpisodes.map(ep => ep.episode_number));
                     for (let n = row.episode; n <= (row.endEpisode ?? row.episode); n++)
                         if (!numbers.has(n)) throw new Error((row.detail.source || 'TMDB') + ' 没有对应季集，请确认季号和集号');
                 }
