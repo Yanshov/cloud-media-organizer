@@ -1,6 +1,6 @@
 {
   "name": "cloud-media-organizer",
-  "version": "3.0.33",
+  "version": "3.0.34",
   "private": true,
   "description": "Browser userscript for cloud file manifests, media organization, and subtitles",
   "engines": {
@@ -9,5 +9,8 @@
   "scripts": {
     "build": "node scripts/build.cjs",
     "check": "node scripts/build.cjs --check"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
   }
 }
