@@ -107,8 +107,12 @@
             return {row,needsIdentity:true,releaseWarning};
         return {row,reason:'文件名中的作品归属未确认'};
     }
+    function subtitleTargetHasEpisode(row) {
+        const {parsed,media} = row;
+        return !parsed.tv || parsed.season != null && parsed.episode != null && !(media?.detail && media.seasonPending);
+    }
     function subtitleImportGroups(inventory) {
-        const eligible = inventory.filter(({parsed}) => !parsed.tv || parsed.season != null && parsed.episode != null);
+        const eligible = inventory.filter(subtitleTargetHasEpisode);
         return groupBatch(eligible, row => row.parsed.tv ? row.groupKey : row);
     }
     async function planSubtitleImport(entries, rows, language, confirmed, log, check) {
@@ -244,7 +248,7 @@
         return ranges.length ? ranges.map(([a,b]) => a === b ? pad(a) : pad(a) + '—' + pad(b)).join('、') + ' 集' : '';
     }
     function mergedSubtitleFillTargets(rows,ready,covered) {
-        const groups = groupBatch(rows,row => row.groupKey);
+        const groups = groupBatch(rows.filter(row => !row.media?.detail || !row.media.seasonPending),row => row.groupKey);
         return groups.flatMap(group => {
             const missing = group.filter(row => !covered(row));
             if (!group[0].parsed.tv) return missing.filter(ready);
@@ -368,8 +372,7 @@
             const identity = flow.recognizing ? 'recognizing' : !media ? 'unavailable'
                 : !media.include ? 'skipped' : flow.workReady?.(media) ? 'confirmed' : media.error ? 'blocked' : 'pending';
             const execution = row.organized ? 'complete' : row.organizePending ? 'unconfirmed' : !media?.include ? 'skipped' : 'pending';
-            const canSearch = checkedScope !== null && coverage === 'missing' && execution === 'pending'
-                && (!row.parsed.tv || row.parsed.season != null && row.parsed.episode != null);
+            const canSearch = checkedScope !== null && coverage === 'missing' && execution === 'pending' && subtitleTargetHasEpisode(row);
             const canOrganize = !row.writeBlocked && !row.identityRecheck && identity === 'confirmed' && execution === 'pending'
                 && (coverage === 'complete' || coverage === 'missing' && ui.get('mediaAllowMissing').checked);
             let blocker = '';
@@ -565,7 +568,15 @@
                 }
                 return item;
             };
-            const groups = new Map(groupBatch(inventory, row => row.groupKey).map(rows => [rows[0].groupKey, rows]));
+            const issues = inventory.filter(row => {
+                const state = states.get(String(row.node.id));
+                return row.parsed.tv && state.execution === 'pending' && ['blocked','pending'].includes(state.identity);
+            });
+            const issueRows = new Set(issues);
+            const issueGroups = new Map(groupBatch(issues,row => row.groupKey).map(rows => [rows[0].groupKey,rows]));
+            const cardKey = row => issueRows.has(row) ? JSON.stringify(['work-file',String(row.node.id)]) : row.groupKey;
+            const cardRows = [...inventory.filter(row => !issueRows.has(row)),...issues];
+            const groups = new Map(groupBatch(cardRows,cardKey).map(rows => [cardKey(rows[0]),rows]));
             let visible = 0;
             if (seasonView && !groups.has(seasonView.key)) seasonView = null;
             if (importDraft) {
@@ -597,8 +608,10 @@
                 if (!shown.length) continue;
                 visible += shown.length;
                 const first = rows[0];
-                const season = first.parsed.tv;
-                const title = (first.parsed.query || first.node.name) + (season ? first.parsed.season == null ? ' · 季号待确认' : first.parsed.season === 0 ? ' · 特别篇' : ' · 第 ' + first.parsed.season + ' 季' : '');
+                const issue = issueRows.has(first);
+                const season = first.parsed.tv && !issue;
+                const title = issue ? first.node.name : (first.parsed.query || first.node.name)
+                    + (season ? first.parsed.season == null ? ' · 季号待确认' : first.parsed.season === 0 ? ' · 特别篇' : ' · 第 ' + first.parsed.season + ' 季' : '');
                 const box = document.createElement('section'); box.className = 'sync-item subtitle-card';
                 const heading = document.createElement('h5'); heading.textContent = title; heading.title = title;
                 box.append(heading);
@@ -607,7 +620,11 @@
                 const edit = rows.filter(row => currentStates.get(String(row.node.id))?.identity !== 'confirmed'
                     && !row.organized && !row.organizePending && row.media?.include)
                     .map(row => row.media);
-                if (flow.recognizing || finished || uncertain || edit.length) {
+                if (issue) {
+                    const reason = document.createElement('p');
+                    reason.textContent = safeDiagnostic(first.media.error || '季集或作品待确认');
+                    box.append(reason);
+                } else if (flow.recognizing || finished || uncertain || edit.length) {
                     const work = document.createElement('p');
                     work.textContent = [
                         flow.recognizing ? '正在识别' : edit.length &&
@@ -617,7 +634,12 @@
                     ].filter(Boolean).join(' · ');
                     box.append(work);
                 }
-                if (edit.length && !flow.recognizing)
+                if (issue) {
+                    addButton(box,'修正此文件',JSON.stringify(['work',key]),() => flow.openWork([first.media]));
+                    const peers = issueGroups.get(first.groupKey).filter(row => inView(row,view));
+                    if (peers.length > 1 && peers[0] === first)
+                        addButton(box,'修正整组',JSON.stringify(['work-group',first.groupKey]),() => flow.openWork(peers.map(row => row.media)));
+                } else if (edit.length && !flow.recognizing)
                     addButton(box,season ? '修正作品信息' : '修正片名',JSON.stringify(['work',key]),() => flow.openWork(edit));
                 const open = () => {
                     seasonView = {key,scrollTop:results.scrollTop,focus:JSON.stringify(['delete',key])};
@@ -843,7 +865,8 @@
             meter(0,rows.length);
             diag('查找开始', `v${VERSION} · 视频 ${rows.length}，语言 ${config.language}，启用来源：${[config.assrtKey && '射手网整季包',config.thunder && '迅雷', config.open && config.key && 'OpenSubtitles'].filter(Boolean).join('、') || '无'}`);
             const searchedGroups = new Set(rows.map(row => row.groupKey));
-            const unconfirmed = inventory.filter(row => searchedGroups.has(row.groupKey) && subtitleCoverageState(row) === 'unconfirmed');
+            const unconfirmed = inventory.filter(row => searchedGroups.has(row.groupKey) && subtitleTargetHasEpisode(row)
+                && subtitleCoverageState(row) === 'unconfirmed');
             for (const row of unconfirmed) diag('查找跳过', row.node.name + ' · 字幕检查未确认 · ' + (row.embedded?.message || row.searchMessage || row.error || '请复查已有字幕'));
             if (!config.thunder) diag('来源跳过', '迅雷 已关闭');
             if (!config.open) diag('来源跳过', 'OpenSubtitles 已关闭');
