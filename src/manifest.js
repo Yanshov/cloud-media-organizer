@@ -175,7 +175,11 @@ async function collectTree(roots, source, progress = () => {}, parentPath = '', 
                     path: path + '/' + child.name,
                 }));
             } else {
-                const file = hasFileMetadata(node) ? node : await source.metadata?.(node);
+                const file = source.exportFile
+                    ? await source.exportFile(node, path, verify)
+                    : hasFileMetadata(node)
+                      ? node
+                      : await source.metadata?.(node);
                 if (!hasFileMetadata(file)) skipped.push({ order, path });
                 else {
                     const entry = { path, md5: file.md5.toLowerCase(), size: file.size };
@@ -266,7 +270,77 @@ function baiduNode(file) {
         cid: file.cid,
     };
 }
-function baiduSource(token, { readFlashHashes = false, log = () => {} } = {}) {
+function baiduDownloadUrl(value) {
+    const url = new URL(value);
+    if (
+        url.protocol !== 'https:' ||
+        url.username ||
+        url.password ||
+        url.port ||
+        !/(?:^|\.)(?:baidu\.com|baidupcs\.com)$/i.test(url.hostname)
+    )
+        throw new Error('百度返回了未经识别的下载地址');
+    return url.href;
+}
+function readBaiduDownloadRange(url, size, start, end, check) {
+    return new Promise((resolve, reject) => {
+        let request;
+        let finished = false;
+        const fail = (error) => {
+            if (finished) return;
+            finished = true;
+            clearInterval(timer);
+            reject(error);
+            request?.abort();
+        };
+        const timer = setInterval(() => {
+            try {
+                check();
+            } catch (error) {
+                fail(error);
+            }
+        }, 250);
+        try {
+            request = GM_xmlhttpRequest({
+                url,
+                method: 'GET',
+                headers: { Range: `bytes=${start}-${end - 1}`, Referer: 'https://pan.baidu.com/' },
+                responseType: 'arraybuffer',
+                timeout: 120000,
+                onabort: () => fail(new Error('百度原文件读取已取消')),
+                onerror: () => fail(new Error('百度原文件读取失败')),
+                ontimeout: () => fail(new Error('百度原文件读取超时')),
+                onprogress: (event) => {
+                    if (event.loaded > end - start || (event.lengthComputable && event.total > end - start))
+                        fail(new Error('百度未按请求范围返回文件，已停止读取'));
+                },
+                onload: (response) => {
+                    if (finished) return;
+                    try {
+                        check();
+                        baiduDownloadUrl(response.finalUrl || url);
+                        const range = /^content-range:[ \t]*([^\r\n]+)/im
+                            .exec(response.responseHeaders || '')?.[1]
+                            .trim();
+                        const partial =
+                            response.status === 206 && range === `bytes ${start}-${end - 1}/${size}`;
+                        const whole = response.status === 200 && start === 0 && end === size;
+                        if ((!partial && !whole) || response.response?.byteLength !== end - start)
+                            throw new Error('百度未返回所需原文件范围（HTTP ' + response.status + '）');
+                        finished = true;
+                        clearInterval(timer);
+                        resolve(response.response);
+                    } catch (error) {
+                        fail(error);
+                    }
+                },
+            });
+        } catch (error) {
+            fail(error);
+        }
+    });
+}
+function baiduSource(token, { readFlashHashes = false, hashProgress, log = () => {} } = {}) {
     const get = paced(180, async (endpoint, params) => {
         const query = new URLSearchParams({
             ...params,
@@ -317,7 +391,7 @@ function baiduSource(token, { readFlashHashes = false, log = () => {} } = {}) {
                 },
                 (file) => file.key
             );
-            if (!readFlashHashes) return nodes;
+            if (!readFlashHashes || hashProgress) return nodes;
             const missing = nodes.filter((file) => !file.directory && file.id && !file.gcid);
             for (let index = 0; index < missing.length; index += 100) {
                 checkJsonTask();
@@ -353,6 +427,59 @@ function baiduSource(token, { readFlashHashes = false, log = () => {} } = {}) {
             return roots[0];
         },
     };
+    if (hashProgress) {
+        const queue = new Map();
+        source.exportFile = (node, path, check) =>
+            enqueueByKey(queue, 'baidu-download', async () => {
+                check();
+                let fallback = node;
+                try {
+                    if (!node.id || node.size == null) throw new Error('缺少原文件编号或大小');
+                    const data = await get('/api/filemetas', {
+                        fsids: '[' + node.id + ']',
+                        dlink: '1',
+                        detail: '1',
+                    });
+                    check();
+                    const raw = Array.isArray(data.info) && data.info.length === 1 ? data.info[0] : null;
+                    const detail = raw && baiduNode(raw);
+                    if (
+                        !detail ||
+                        detail.id !== node.id ||
+                        detail.key !== node.key ||
+                        detail.directory ||
+                        detail.size !== node.size ||
+                        (detail.md5 && node.md5 && detail.md5 !== node.md5)
+                    )
+                        throw new Error('原文件详情与选区不一致，请重新选择');
+                    if (hasFileMetadata(detail)) fallback = detail;
+                    if (
+                        hasFileMetadata(detail) &&
+                        /^[a-f0-9]{40}$/i.test(detail.gcid || '') &&
+                        /^[a-f0-9]{40}$/i.test(detail.cid || '')
+                    )
+                        return detail;
+                    if (typeof raw.dlink !== 'string' || !raw.dlink)
+                        throw new Error('百度未给出当前文件的下载地址');
+                    const url = baiduDownloadUrl(raw.dlink);
+                    hashProgress(path, 0, node.size);
+                    const hashes = await guangyaFileHashes(
+                        node.size,
+                        (start, end) => readBaiduDownloadRange(url, node.size, start, end, check),
+                        (done) => hashProgress(path, done, node.size),
+                        check
+                    );
+                    if (node.md5 && hashes.md5 !== node.md5)
+                        log(path + ' · 百度列表 MD5 与原文件不同，已采用原文件实算值');
+                    log(path + ' · 已计算 GCID 和 CID');
+                    return { ...detail, ...hashes };
+                } catch (error) {
+                    check();
+                    log(path + ' · 未能补齐哈希 · ' + error.message);
+                    return fallback;
+                }
+            });
+    }
     return source;
 }
 function routeHashParams(hash) {
@@ -661,13 +788,13 @@ function initExporter(provider) {
             <p id="scope">先在网盘页面选中文件或文件夹，再导出 JSON。</p>
             <textarea id="json" placeholder="导出的 JSON 会显示在这里；导入时也可粘贴 JSON"></textarea>
             <input id="manifest" type="file" accept=".json,application/json" hidden>
-            <div class="panel-actions"><button id="generate">导出 JSON</button><details class="manifest-import" id="manifestImport"><summary>导入清单</summary><div class="manifest-import-actions"><button id="transfer">导入粘贴内容</button><button id="chooseManifest">选择文件并导入</button></div></details></div>
+            <div class="panel-actions"><button id="generate">导出 JSON</button>${provider === '百度' ? '<button id="generateGuangya" title="读取所选原文件的完整内容，计算秒传哈希">导出光鸭清单</button>' : ''}<details class="manifest-import" id="manifestImport"><summary>导入清单</summary><div class="manifest-import-actions"><button id="transfer">导入粘贴内容</button><button id="chooseManifest">选择文件并导入</button></div></details></div>
             <div class="panel-actions" style="padding-top:0;border-top:0;margin-top:0"><button id="save">下载 JSON</button></div>
             <p id="status"></p><p id="progress"></p><div id="log"></div>`
     );
     bindExportHistory(ui, provider);
     ui.get('incremental').closest('label').hidden = true;
-    const generate = async () => {
+    const generate = async (forGuangya = false) => {
         const controls = panelControls(ui);
         ui.busy(true);
         controls.forEach((button) => {
@@ -675,6 +802,7 @@ function initExporter(provider) {
         });
         ui.get('json').value = '';
         ui.get('progress').textContent = '';
+        ui.get('log').textContent = '';
         ui.get('status').textContent = '正在读取…';
         try {
             const selected = selectedItems(provider);
@@ -686,6 +814,12 @@ function initExporter(provider) {
                 const path = selected.some((item) => !item.id) ? currentBaiduPath() : null;
                 source = baiduSource(await getBdstoken(), {
                     readFlashHashes: true,
+                    hashProgress: forGuangya
+                        ? (name, done, size) => {
+                              const percent = size ? Math.floor((done / size) * 100) : 100;
+                              ui.get('progress').textContent = `读取原文件并计算哈希 ${percent}% · ${name}`;
+                          }
+                        : undefined,
                     log: (message) => appendLog(ui, message),
                 });
                 if (selected.some((item) => !item.id)) {
@@ -714,15 +848,17 @@ function initExporter(provider) {
             );
             if (!result.entries.length) throw new Error('没有可导出的文件信息');
             const summary = exportManifestJson(ui, provider, result);
+            const hashed = result.entries.filter((entry) => entry.gcid).length;
+            if (forGuangya)
+                ui.get('progress').textContent =
+                    hashed === result.files && !result.skipped.length
+                        ? `哈希处理完成 · ${hashed} 个文件含 GCID`
+                        : `含 GCID ${hashed}/${result.files} · 跳过 ${result.skipped.length} 项 · 原因见日志`;
             ui.get('status').textContent =
                 `完成（${scope}）：${summary}。` +
                 (!ui.get('json').value ? '没有可导出的内容。' : '请下载 JSON，到目标盘导入。') +
                 (provider === '百度' && result.files
-                    ? ' 含 GCID 的文件 ' +
-                      result.entries.filter((entry) => entry.gcid).length +
-                      '/' +
-                      result.files +
-                      ' 个。'
+                    ? ' 含 GCID 的文件 ' + hashed + '/' + result.files + ' 个。'
                     : '') +
                 (result.skipped.length
                     ? ` 缺少有效 MD5/大小，已跳过 ${result.skipped.length} 项：${result.skipped.slice(0, 5).join('、')}`
@@ -737,6 +873,8 @@ function initExporter(provider) {
         }
     };
     ui.get('generate').onclick = () => generate();
+    const generateGuangya = ui.get('generateGuangya');
+    if (generateGuangya) generateGuangya.onclick = () => generate(true);
     ui.get('save').onclick = () => {
         const value = ui.get('json').value;
         if (!value) {

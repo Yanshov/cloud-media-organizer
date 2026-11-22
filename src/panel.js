@@ -177,6 +177,7 @@ function arrangeToolPane(pane, id) {
     if (id === 'json') take(commands, '#stopJson');
     const commandIcons = {
         generate: 'download',
+        generateGuangya: 'download',
         exportManifest: 'download',
         scanMedia: 'scan-search',
         openMediaCleanup: 'trash-2',
@@ -869,6 +870,7 @@ function panelControls(ui) {
         'manifestLocalFiles',
         'historyFile',
         'generate',
+        'generateGuangya',
         'exportManifest',
         'transfer',
         'start',

@@ -1041,7 +1041,7 @@ async function runGuangyaImportFiles(files, targetId, post, ensureDirectory, exi
     log(`目录检查：读取 ${reads} 次，复用已有项 ${reused} 次；新提交前仍读取最新目录`);
     return counts;
 }
-async function guangyaLocalFileHashes(file, progress, check) {
+async function guangyaFileHashes(size, read, progress, check) {
     const sampleSize = 0x5000;
     const sha1 = (buffer) => crypto.subtle.digest('SHA-1', buffer);
     const hex = (buffer) =>
@@ -1050,36 +1050,39 @@ async function guangyaLocalFileHashes(file, progress, check) {
             .toUpperCase();
     // GCID hashes each block with SHA-1 and hashes the concatenated raw digests.
     let blockSize = 0x40000;
-    while (file.size > 512 * blockSize && blockSize < 0x200000) blockSize *= 2;
-    const digests = new Uint8Array(Math.ceil(file.size / blockSize) * 20);
+    while (size > 512 * blockSize && blockSize < 0x200000) blockSize *= 2;
+    const digests = new Uint8Array(Math.ceil(size / blockSize) * 20);
+    const samples = new Uint8Array(Math.min(size, sampleSize * 3));
+    const sampleStarts = size < sampleSize * 3 ? [0] : [0, Math.floor(size / 3), size - sampleSize];
+    const sampleLength = sampleStarts.length === 1 ? size : sampleSize;
     const md5 = createMd5();
-    for (let offset = 0; offset < file.size; offset += blockSize) {
+    // Read several aligned blocks from the source at once, keeping memory bounded.
+    for (let offset = 0; offset < size; offset += 8 * 1024 * 1024) {
         check();
-        const length = Math.min(blockSize, file.size - offset);
-        const bytes = new Uint8Array(await file.slice(offset, offset + length).arrayBuffer());
+        const end = Math.min(size, offset + 8 * 1024 * 1024);
+        const bytes = new Uint8Array(await read(offset, end));
         check();
-        if (bytes.length !== length) throw new Error('本地文件读取不完整');
+        if (bytes.length !== end - offset) throw new Error('文件内容读取不完整');
         md5.update(bytes);
-        const digest = await sha1(bytes);
-        check();
-        digests.set(new Uint8Array(digest), (offset / blockSize) * 20);
-        progress(offset + length);
+        for (let start = 0; start < bytes.length; start += blockSize) {
+            const digest = await sha1(bytes.subarray(start, start + blockSize));
+            check();
+            digests.set(new Uint8Array(digest), ((offset + start) / blockSize) * 20);
+        }
+        for (const [index, sampleStart] of sampleStarts.entries()) {
+            const start = Math.max(offset, sampleStart);
+            const stop = Math.min(end, sampleStart + sampleLength);
+            if (start < stop)
+                samples.set(
+                    bytes.subarray(start - offset, stop - offset),
+                    index * sampleLength + start - sampleStart
+                );
+        }
+        progress(end);
     }
     const gcid = hex(await sha1(digests));
     check();
-    const samples =
-        file.size < sampleSize * 3
-            ? file
-            : new Blob([
-                  file.slice(0, sampleSize),
-                  file.slice(Math.floor(file.size / 3), Math.floor(file.size / 3) + sampleSize),
-                  file.slice(file.size - sampleSize),
-              ]);
-    const sampleBytes = await samples.arrayBuffer();
-    check();
-    if (sampleBytes.byteLength !== Math.min(file.size, sampleSize * 3))
-        throw new Error('本地文件抽样读取不完整');
-    const cid = hex(await sha1(sampleBytes));
+    const cid = hex(await sha1(samples));
     check();
     return { md5: md5.digest(), gcid, cid };
 }
@@ -1137,8 +1140,9 @@ function initGuangya() {
                 checkJsonTask();
                 const path = relativeParts(file.webkitRelativePath || file.name).join('/');
                 let lastUpdate = 0;
-                const hashes = await guangyaLocalFileHashes(
-                    file,
+                const hashes = await guangyaFileHashes(
+                    file.size,
+                    (start, end) => file.slice(start, end).arrayBuffer(),
                     (processed) => {
                         if (Date.now() - lastUpdate < 150 && processed < file.size) return;
                         lastUpdate = Date.now();
