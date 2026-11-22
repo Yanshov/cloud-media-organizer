@@ -1115,7 +1115,7 @@
         const numbering = stem.split(new RegExp(MEDIA_RESOLUTION_BOUNDARY + '|(?:^|[ ._\\[(-])(?:BluRay|BDRip|WEB[ ._-]?(?:DL|Rip)|REMUX|HDTV|x26[45]|h[ ._-]?26[45]|HEVC|AVC|DTS|AAC|AC3)(?=$|[ ._\\])&+-])','i'))[0];
         const numbered = stem.match(/第\s*(\d{1,3})\s*[集话話]/)
             || stem.match(/(?:^|[ ._\[\]-])(?:EP?|Episode)[ ._-]*(\d{1,3})(?:v\d+)?(?=$|[ ._\]「『(])/i)
-            || stem.match(/\[(\d{1,3})(?:v\d+)?\]/i)
+            || stem.match(/\[(\d{1,3})(?:v\d+)?(?:[ ._-]+end)?\]/i)
             || [...numbering.matchAll(/(?:^|[ ._-]+)(\d{1,3})(?:v\d+)?(?=$|[ ._\]「『(])/gi)].at(-1);
         const marker = markers[0];
         let season = marker ? Number(marker[1]) : named.season;
