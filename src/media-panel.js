@@ -1914,7 +1914,10 @@ function initMediaOrganizer(provider, flow) {
             }
             const units = groupBatch(items, (item) => item.videoId);
             const groups = connectedBatch(units, (unit) =>
-                unit.flatMap((item) => writer.executionKeys?.(item) || [])
+                unit.flatMap((item) => [
+                    'source-parent:' + String(item.node.parentId ?? ''),
+                    ...(writer.executionKeys?.(item) || []),
+                ])
             );
             try {
                 await batchStage(
@@ -1964,7 +1967,7 @@ function initMediaOrganizer(provider, flow) {
                     },
                     checkStopped,
                     8,
-                    '同组先视频后字幕，共享移动目录和文件冲突顺序执行'
+                    '同组先视频后字幕，同一源目录与目标目录依次执行'
                 );
             } catch (error) {
                 interrupted = true;

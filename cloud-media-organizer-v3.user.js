@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v3.0（重构版）
 // @namespace    local.cloud-media-organizer
-// @version      3.0.46
+// @version      3.0.47
 // @description  面向百度网盘、123 云盘和光鸭网盘的浏览器脚本，支持跨盘 JSON 清单、影视整理与字幕补齐。
 // @match        https://pan.baidu.com/*
 // @match        https://yun.baidu.com/*
@@ -198,7 +198,7 @@ SOFTWARE.
             (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))
     )
         return;
-    const VERSION = '3.0.46';
+    const VERSION = '3.0.47';
     let jsonTaskStopped = false;
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
@@ -8953,7 +8953,10 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                 }
                 const units = groupBatch(items, (item) => item.videoId);
                 const groups = connectedBatch(units, (unit) =>
-                    unit.flatMap((item) => writer.executionKeys?.(item) || [])
+                    unit.flatMap((item) => [
+                        'source-parent:' + String(item.node.parentId ?? ''),
+                        ...(writer.executionKeys?.(item) || []),
+                    ])
                 );
                 try {
                     await batchStage(
@@ -9003,7 +9006,7 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                         },
                         checkStopped,
                         8,
-                        '同组先视频后字幕，共享移动目录和文件冲突顺序执行'
+                        '同组先视频后字幕，同一源目录与目标目录依次执行'
                     );
                 } catch (error) {
                     interrupted = true;
