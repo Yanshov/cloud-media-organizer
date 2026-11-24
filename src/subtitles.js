@@ -2855,6 +2855,14 @@ function subtitleAICandidate(result, row, language, onReject = () => {}) {
             episodes.some((episode) => episode.conflict)
         )
             return deny('字幕缺少准确季集或季集冲突');
+        const sameWorkId =
+            parsed.tmdbId && identity?.tmdbId && String(parsed.tmdbId) === String(identity.tmdbId);
+        if (
+            !sameWorkId &&
+            !match.titleMatched &&
+            !subtitleWorkIdentity(parsed, [], candidate.release).titleMatched
+        )
+            return deny('季集号相同，但缺少可核对的作品名称或编号');
     } else if (episodes.some((episode) => episode.season != null && episode.episode != null))
         return deny('电影候选含剧集季集编号');
     const wanted = language.split(',');
@@ -4027,20 +4035,36 @@ function subtitleDrive(context, wait = sleep) {
             if (!/\.mkv$/i.test(node.name)) return { chinese: false, message: '非 MKV 格式，未读取视频' };
             try {
                 let url;
+                let retried = false;
                 const chinese = await inspectMkvSubtitleTracks(
                     node.size,
                     async (start, end) => {
-                        url ||= await downloadUrl(node);
-                        check();
-                        return subtitleBinary(url, {
-                            headers: { Range: `bytes=${start}-${end}` },
-                            range: [start, end, node.size],
-                            limit: end - start + 1,
-                        });
+                        const readRange = async () => {
+                            url ||= await downloadUrl(node);
+                            check();
+                            return subtitleBinary(url, {
+                                headers: { Range: `bytes=${start}-${end}` },
+                                range: [start, end, node.size],
+                                limit: end - start + 1,
+                            });
+                        };
+                        try {
+                            return await readRange();
+                        } catch (error) {
+                            check();
+                            if (retried || error.phase !== 'transfer' || !error.retryable || error.stop)
+                                throw error;
+                            retried = true;
+                            url = undefined;
+                            await wait(500);
+                            check();
+                            return readRange();
+                        }
                     },
                     check
                 );
-                return { chinese, message: chinese ? '有内嵌中文字幕，跳过补齐' : '未发现内嵌中文字幕' };
+                const message = chinese ? '有内嵌中文字幕，跳过补齐' : '未发现内嵌中文字幕';
+                return { chinese, message: retried ? '重试成功 · ' + message : message };
             } catch (error) {
                 check();
                 if (error.stop || error.phase === 'drive-auth') throw error;

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v3.0（重构版）
 // @namespace    local.cloud-media-organizer
-// @version      3.0.47
+// @version      3.0.48
 // @description  面向百度网盘、123 云盘和光鸭网盘的浏览器脚本，支持跨盘 JSON 清单、影视整理与字幕补齐。
 // @match        https://pan.baidu.com/*
 // @match        https://yun.baidu.com/*
@@ -198,7 +198,7 @@ SOFTWARE.
             (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))
     )
         return;
-    const VERSION = '3.0.47';
+    const VERSION = '3.0.48';
     let jsonTaskStopped = false;
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
@@ -11942,6 +11942,14 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                 episodes.some((episode) => episode.conflict)
             )
                 return deny('字幕缺少准确季集或季集冲突');
+            const sameWorkId =
+                parsed.tmdbId && identity?.tmdbId && String(parsed.tmdbId) === String(identity.tmdbId);
+            if (
+                !sameWorkId &&
+                !match.titleMatched &&
+                !subtitleWorkIdentity(parsed, [], candidate.release).titleMatched
+            )
+                return deny('季集号相同，但缺少可核对的作品名称或编号');
         } else if (episodes.some((episode) => episode.season != null && episode.episode != null))
             return deny('电影候选含剧集季集编号');
         const wanted = language.split(',');
@@ -13130,20 +13138,36 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                 if (!/\.mkv$/i.test(node.name)) return { chinese: false, message: '非 MKV 格式，未读取视频' };
                 try {
                     let url;
+                    let retried = false;
                     const chinese = await inspectMkvSubtitleTracks(
                         node.size,
                         async (start, end) => {
-                            url || (url = await downloadUrl(node));
-                            check();
-                            return subtitleBinary(url, {
-                                headers: { Range: `bytes=${start}-${end}` },
-                                range: [start, end, node.size],
-                                limit: end - start + 1,
-                            });
+                            const readRange = async () => {
+                                url || (url = await downloadUrl(node));
+                                check();
+                                return subtitleBinary(url, {
+                                    headers: { Range: `bytes=${start}-${end}` },
+                                    range: [start, end, node.size],
+                                    limit: end - start + 1,
+                                });
+                            };
+                            try {
+                                return await readRange();
+                            } catch (error) {
+                                check();
+                                if (retried || error.phase !== 'transfer' || !error.retryable || error.stop)
+                                    throw error;
+                                retried = true;
+                                url = void 0;
+                                await wait(500);
+                                check();
+                                return readRange();
+                            }
                         },
                         check
                     );
-                    return { chinese, message: chinese ? '有内嵌中文字幕，跳过补齐' : '未发现内嵌中文字幕' };
+                    const message = chinese ? '有内嵌中文字幕，跳过补齐' : '未发现内嵌中文字幕';
+                    return { chinese, message: retried ? '重试成功 · ' + message : message };
                 } catch (error) {
                     check();
                     if (error.stop || error.phase === 'drive-auth') throw error;
