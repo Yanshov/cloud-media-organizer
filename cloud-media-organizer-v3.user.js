@@ -9699,10 +9699,14 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
         const { start, end, rawEnd, events, issues, invalid, priorEnd, longest, visualEnd } = timeline;
         const validDuration = (value) =>
             Number.isFinite(Number(value)) && Number(value) > 0 ? Number(value) : 0;
+        const parsed = row.parsed || {},
+            episodeRange = subtitleEpisodeRange(parsed),
+            episodeCount = episodeRange ? episodeRange.end - episodeRange.start + 1 : 1;
         const driveSeconds = validDuration(row.node.durationSeconds),
-            runtime = validDuration(row.parsed?.runtimeSeconds);
-        const duration = driveSeconds || runtime;
-        const source = driveSeconds ? '视频文件时长' : runtime ? 'TMDB 作品时长参考' : '无时长参考';
+            runtime = validDuration(parsed.runtimeSeconds),
+            runtimeReference = runtime * episodeCount;
+        const duration = driveSeconds || runtimeReference;
+        const source = driveSeconds ? '视频文件时长' : runtimeReference ? 'TMDB 作品时长参考' : '无时长参考';
         const counts = Object.entries(issues)
             .map(([reason, count]) => reason + ' ' + count)
             .join('、');
@@ -9746,9 +9750,8 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
             throw uncertain('字幕时间轴与视频文件时长冲突，待确认');
         if (driveSeconds && end < driveSeconds * 0.5)
             throw uncertain('字幕不完整：对白只到 ' + end.toFixed(1) + ' 秒（' + source + '），待确认');
-        if (!driveSeconds && runtime >= 1200 && end <= Math.min(480, runtime * 0.2))
+        if (!driveSeconds && runtimeReference >= 1200 && end <= Math.min(480, runtimeReference * 0.2))
             throw uncertain('字幕不完整：对白只到 ' + end.toFixed(1) + ' 秒（' + source + '），待确认', true);
-        const parsed = row.parsed || {};
         const ordinaryEpisode =
             parsed.tv &&
             parsed.season > 0 &&
@@ -9778,9 +9781,9 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
             );
         const evidence = driveSeconds
             ? 'file'
-            : !runtime
+            : !runtimeReference
               ? 'unknown'
-              : Math.abs(end - runtime) >= Math.max(120, runtime * 0.2)
+              : Math.abs(end - runtimeReference) >= Math.max(120, runtimeReference * 0.2)
                 ? 'reference-difference'
                 : 'reference';
         return { start, end, rawEnd, visualEnd, events, issues, duration, source, evidence };
