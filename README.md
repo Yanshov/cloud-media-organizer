@@ -2,7 +2,7 @@
 
 在网盘网页里整理影视文件、补齐字幕，并在支持的网盘之间导入和导出 JSON 文件清单。
 
-**当前版本 v3.0.48** · [安装脚本](https://raw.githubusercontent.com/Yanshov/cloud-media-organizer/main/cloud-media-organizer-v3.user.js) · [GitHub 发布页](https://github.com/Yanshov/cloud-media-organizer/releases)
+**当前版本 v3.0.49** · [安装脚本](https://raw.githubusercontent.com/Yanshov/cloud-media-organizer/main/cloud-media-organizer-v3.user.js) · [GitHub 发布页](https://github.com/Yanshov/cloud-media-organizer/releases)
 
 | 功能 | 百度网盘 | 123 云盘 | 光鸭网盘 |
 | --- | --- | --- | --- |
@@ -33,6 +33,7 @@
 使用 Node.js 20 或以上。源码在 `src/`，构建产物为 `cloud-media-organizer-v3.user.js`。
 
 ```sh
+npm ci
 npm ci
 npm run build
 ```

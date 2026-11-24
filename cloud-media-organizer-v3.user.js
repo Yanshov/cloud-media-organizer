@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v3.0（重构版）
 // @namespace    local.cloud-media-organizer
-// @version      3.0.48
+// @version      3.0.49
 // @description  面向百度网盘、123 云盘和光鸭网盘的浏览器脚本，支持跨盘 JSON 清单、影视整理与字幕补齐。
 // @match        https://pan.baidu.com/*
 // @match        https://yun.baidu.com/*
@@ -198,7 +198,7 @@ SOFTWARE.
             (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))
     )
         return;
-    const VERSION = '3.0.48';
+    const VERSION = '3.0.49';
     let jsonTaskStopped = false;
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
@@ -10293,8 +10293,7 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                     !parsed.tv ||
                     !subtitleQueryTitle(parsed.query, parsed.year) ||
                     parsed.season == null ||
-                    parsed.episode == null ||
-                    (parsed.endEpisode && parsed.endEpisode !== parsed.episode)
+                    parsed.episode == null
                 )
                     return [];
                 return this.thunderSearch(
@@ -10313,8 +10312,6 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                 if (!title) throw subtitleSourceError('缺少可搜索的作品名');
                 if (parsed.tv && (parsed.season == null || parsed.episode == null))
                     throw subtitleSourceError('缺少明确季集，未按片名搜索');
-                if (parsed.endEpisode && parsed.endEpisode !== parsed.episode)
-                    throw subtitleSourceError('合并多集视频需单独选字幕');
                 const chapter = subtitleReleaseChapter(parsed);
                 const seasonKey = parsed.tv
                     ? JSON.stringify([
@@ -10327,10 +10324,24 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                       ])
                     : '';
                 let items, attempts;
+                const episodeRange = subtitleEpisodeRange(parsed);
+                const episodeSuffix = episodeRange
+                    ? 'E' +
+                      String(episodeRange.start).padStart(2, '0') +
+                      (episodeRange.end !== episodeRange.start
+                          ? '-E' + String(episodeRange.end).padStart(2, '0')
+                          : '')
+                    : '';
+                const episodeLabel = episodeRange
+                    ? String(episodeRange.start).padStart(2, '0') +
+                      (episodeRange.end !== episodeRange.start
+                          ? '-' + String(episodeRange.end).padStart(2, '0')
+                          : '')
+                    : '';
                 const suffix = parsed.tv
                     ? ' S' +
                       String(parsed.season).padStart(2, '0') +
-                      (config.seasonSearch ? '' : 'E' + String(parsed.episode).padStart(2, '0'))
+                      (config.seasonSearch ? '' : episodeSuffix)
                     : '';
                 const names = subtitleSearchNames(parsed);
                 const original = row.node?.originalName || row.node?.name || '';
@@ -10341,13 +10352,9 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                     ) ||
                         (parsed.tv && /\b(?:2160p|1080p|720p)\b/i.test(original)));
                 const plainQueries = names.map((name) => name + suffix);
-                const chapterQuery =
-                    chapter &&
-                    chapter + (config.seasonSearch ? '' : ' ' + String(parsed.episode).padStart(2, '0'));
+                const chapterQuery = chapter && chapter + (config.seasonSearch ? '' : ' ' + episodeLabel);
                 const chapterEpisodeQuery =
-                    chapter &&
-                    !config.seasonSearch &&
-                    chapter + ' S' + parsed.season + 'E' + String(parsed.episode).padStart(2, '0');
+                    chapter && !config.seasonSearch && chapter + ' S' + parsed.season + episodeSuffix;
                 const queries = [
                     ...new Set(
                         [
@@ -10677,125 +10684,151 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                 if (!title) throw subtitleSourceError('无法从文件名识别作品名称');
                 if (parsed.tv && (parsed.season === null || parsed.episode === null))
                     throw subtitleSourceError('缺少明确季集，请先在影视整理中确认季集并重命名');
-                if (parsed.endEpisode && parsed.endEpisode !== parsed.episode)
-                    throw subtitleSourceError('合并多集视频需要单独匹配字幕，本次未自动查询');
-                const params = new URLSearchParams({
+                const baseParams = new URLSearchParams({
                     query: title,
                     languages: config.language,
                     order_by: 'download_count',
                     order_direction: 'desc',
                 });
-                if (parsed.tmdbId) params.set(parsed.tv ? 'parent_tmdb_id' : 'tmdb_id', parsed.tmdbId);
+                if (parsed.tmdbId) baseParams.set(parsed.tv ? 'parent_tmdb_id' : 'tmdb_id', parsed.tmdbId);
                 if (parsed.tv) {
-                    params.set('season_number', parsed.season);
-                    params.set('episode_number', parsed.episode);
-                    params.set('type', 'episode');
+                    baseParams.set('season_number', parsed.season);
+                    baseParams.set('type', 'episode');
                 } else {
-                    params.set('type', 'movie');
-                    if (parsed.year) params.set('year', parsed.year);
+                    baseParams.set('type', 'movie');
+                    if (parsed.year) baseParams.set('year', parsed.year);
                 }
-                const cacheKey = JSON.stringify([config.key, params.toString()]);
-                if (!searchCache.has(cacheKey))
-                    searchCache.set(
-                        cacheKey,
-                        request('/subtitles?' + params, config).catch((error) => {
-                            searchCache.delete(cacheKey);
-                            throw error;
-                        })
-                    );
-                const attempt = { term: params.toString() };
-                let result;
-                try {
-                    result = await searchCache.get(cacheKey);
-                    if (!Array.isArray(result?.data)) throw subtitleSourceError('搜索返回格式异常');
-                } catch (error) {
-                    attempt.error = error.message;
-                    report({ queries: [attempt] });
-                    throw error;
+                const range = subtitleEpisodeRange(parsed),
+                    episodes =
+                        parsed.tv && range && range.end !== range.start
+                            ? [range.start, range.end]
+                            : [parsed.episode],
+                    attempts = [],
+                    results = [];
+                for (const episode of episodes) {
+                    const params = new URLSearchParams(baseParams);
+                    if (parsed.tv) params.set('episode_number', episode);
+                    const cacheKey = JSON.stringify([config.key, params.toString()]);
+                    if (!searchCache.has(cacheKey))
+                        searchCache.set(
+                            cacheKey,
+                            request('/subtitles?' + params, config).catch((error) => {
+                                searchCache.delete(cacheKey);
+                                throw error;
+                            })
+                        );
+                    const attempt = { term: params.toString() };
+                    attempts.push(attempt);
+                    try {
+                        const result = await searchCache.get(cacheKey);
+                        if (!Array.isArray(result?.data)) throw subtitleSourceError('搜索返回格式异常');
+                        attempt.rawCount = result.data.length;
+                        results.push(result);
+                    } catch (error) {
+                        attempt.error = error.message;
+                        report({ queries: attempts });
+                        throw error;
+                    }
                 }
-                attempt.rawCount = result.data.length;
+                const rawCount = results.reduce((count, result) => count + result.data.length, 0);
                 const candidates = [],
                     excluded = { 作品: 0, 年份: 0, 季集: 0, 格式: 0, 上限: 0 };
-                for (const item of result.data) {
-                    const attrs = item.attributes || {},
-                        feature = attrs.feature_details || {};
-                    const identity = parsed.tv ? feature.parent_tmdb_id : feature.tmdb_id;
-                    const yearMatches =
-                        parsed.tv ||
-                        !parsed.year ||
-                        !feature.year ||
-                        String(feature.year) === String(parsed.year);
-                    const titleMatched =
-                        [feature.title, feature.movie_name].some(
-                            (value) => titleKey(value) === titleKey(title)
-                        ) && yearMatches;
-                    if (parsed.tmdbId && identity && String(identity) !== String(parsed.tmdbId)) {
-                        excluded.作品++;
-                        continue;
-                    }
-                    if (!parsed.tv && /episode|tvshow/i.test(feature.feature_type || '')) {
-                        excluded.作品++;
-                        continue;
-                    }
-                    if (
-                        parsed.tv &&
-                        (Number(feature.season_number) !== parsed.season ||
-                            Number(feature.episode_number) !== parsed.episode)
-                    ) {
-                        excluded.季集++;
-                        continue;
-                    }
-                    if (!Array.isArray(attrs.files) || !attrs.files.length) {
-                        excluded.格式++;
-                        continue;
-                    }
-                    for (const file of attrs.files) {
-                        if (!Number.isSafeInteger(file?.file_id) || file.file_id <= 0) {
+                for (const result of results)
+                    for (const item of result.data) {
+                        const attrs = item.attributes || {},
+                            feature = attrs.feature_details || {};
+                        const identity = parsed.tv ? feature.parent_tmdb_id : feature.tmdb_id;
+                        const yearMatches =
+                            parsed.tv ||
+                            !parsed.year ||
+                            !feature.year ||
+                            String(feature.year) === String(parsed.year);
+                        const titleMatched =
+                            [feature.title, feature.movie_name].some(
+                                (value) => titleKey(value) === titleKey(title)
+                            ) && yearMatches;
+                        if (parsed.tmdbId && identity && String(identity) !== String(parsed.tmdbId)) {
+                            excluded.作品++;
+                            continue;
+                        }
+                        if (!parsed.tv && /episode|tvshow/i.test(feature.feature_type || '')) {
+                            excluded.作品++;
+                            continue;
+                        }
+                        if (
+                            parsed.tv &&
+                            (Number(feature.season_number) !== parsed.season ||
+                                !episodes.includes(Number(feature.episode_number)))
+                        ) {
+                            excluded.季集++;
+                            continue;
+                        }
+                        if (!Array.isArray(attrs.files) || !attrs.files.length) {
                             excluded.格式++;
                             continue;
                         }
-                        const name = file.file_name || '',
-                            ext = name.split('.').pop().toLowerCase();
-                        const match = subtitleWorkIdentity(
-                            parsed,
-                            [feature.title, feature.movie_name],
-                            file.file_name || 'subtitle'
-                        );
-                        candidates.push({
-                            source: 'OpenSubtitles',
-                            fileId: file.file_id,
-                            ...subtitleFileInfo(file.file_name || attrs.release || '', attrs.language || ''),
-                            release: [feature.movie_name || feature.title, attrs.release]
-                                .filter(Boolean)
-                                .join(' · '),
-                            name,
-                            ext,
-                            parsed: { ...parsed },
-                            archiveFields: [feature.title, feature.movie_name, attrs.release],
-                            archiveSeason: subtitlePackSeason([name, attrs.release], feature.season_number),
-                            workIdentity: {
-                                tmdbId: identity,
-                                year: feature.year,
-                                tv: parsed.tv,
-                                season: feature.season_number,
-                                episode: feature.episode_number,
-                            },
-                            hardMismatch: !yearMatches || !!match.hardMismatch,
-                            titleMatched: titleMatched && match.titleMatched,
-                            identityMatched:
-                                yearMatches &&
-                                match.titleMatched &&
-                                !!parsed.tmdbId &&
-                                String(identity) === String(parsed.tmdbId),
-                            matchReason: !yearMatches ? '作品年份与视频不符' : match.matchReason,
-                        });
+                        for (const file of attrs.files) {
+                            if (!Number.isSafeInteger(file?.file_id) || file.file_id <= 0) {
+                                excluded.格式++;
+                                continue;
+                            }
+                            const name = file.file_name || '',
+                                ext = name.split('.').pop().toLowerCase();
+                            if (
+                                parsed.tv &&
+                                range &&
+                                range.end !== range.start &&
+                                !exactSubtitleEpisode(name, parsed)
+                            ) {
+                                excluded.季集++;
+                                continue;
+                            }
+                            const match = subtitleWorkIdentity(
+                                parsed,
+                                [feature.title, feature.movie_name],
+                                file.file_name || 'subtitle'
+                            );
+                            candidates.push({
+                                source: 'OpenSubtitles',
+                                fileId: file.file_id,
+                                ...subtitleFileInfo(
+                                    file.file_name || attrs.release || '',
+                                    attrs.language || ''
+                                ),
+                                release: [feature.movie_name || feature.title, attrs.release]
+                                    .filter(Boolean)
+                                    .join(' · '),
+                                name,
+                                ext,
+                                parsed: { ...parsed },
+                                archiveFields: [feature.title, feature.movie_name, attrs.release],
+                                archiveSeason: subtitlePackSeason(
+                                    [name, attrs.release],
+                                    feature.season_number
+                                ),
+                                workIdentity: {
+                                    tmdbId: identity,
+                                    year: feature.year,
+                                    tv: parsed.tv,
+                                    season: feature.season_number,
+                                    episode: feature.episode_number,
+                                },
+                                hardMismatch: !yearMatches || !!match.hardMismatch,
+                                titleMatched: titleMatched && match.titleMatched,
+                                identityMatched:
+                                    yearMatches &&
+                                    match.titleMatched &&
+                                    !!parsed.tmdbId &&
+                                    String(identity) === String(parsed.tmdbId),
+                                matchReason: !yearMatches ? '作品年份与视频不符' : match.matchReason,
+                            });
+                        }
                     }
-                }
                 excluded.上限 = Math.max(0, candidates.length - 12);
                 const kept = candidates.slice(0, 12);
                 report({
-                    queries: [attempt],
-                    rawCount: attempt.rawCount,
+                    queries: attempts,
+                    rawCount,
                     unit: '资源',
                     keptCount: kept.length,
                     excluded,
@@ -11095,13 +11128,7 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
     }
     function subtitleArchiveChoices(index, candidate, language) {
         const parsed = candidate.parsed;
-        if (
-            parsed.tv &&
-            (parsed.season == null ||
-                parsed.episode == null ||
-                (parsed.endEpisode && parsed.endEpisode !== parsed.episode))
-        )
-            return [];
+        if (parsed.tv && (parsed.season == null || parsed.episode == null)) return [];
         const files = [];
         for (const file of index.files) {
             if (!file.length || file.length > SUBTITLE_LIMIT) continue;
@@ -11532,22 +11559,34 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                       .replace(/「[^」]*」|『[^』]*』/g, '{episodeTitle}');
         return { stem, named, markers, season, episode, title, pattern };
     }
+    function subtitleEpisodeRange(parsed) {
+        if (!parsed || parsed.episode == null) return null;
+        const start = Number(parsed.episode),
+            end = Number(parsed.endEpisode ?? parsed.episode);
+        if (!Number.isInteger(start) || !Number.isInteger(end) || end < start) return null;
+        return { start, end };
+    }
     function subtitleEpisodeIdentity(name, parsed, seasonContext = null) {
         const detail = subtitleEpisodeName(name, parsed);
         const { stem, named, markers, title, pattern } = detail;
         let season = detail.season ?? seasonContext,
             episode = detail.episode;
+        const targetRange = subtitleEpisodeRange(parsed),
+            candidateEndEpisode = named.endEpisode ?? episode,
+            exactRange =
+                !!targetRange && episode === targetRange.start && candidateEndEpisode === targetRange.end;
         const multiple =
             markers.some(
                 (mark) =>
                     Number(mark[1]) !== season ||
                     Number(mark[2]) !== episode ||
-                    /^(?:[ ._-]*E\d|[ ._-]*[-~][ ._-]*(?:EP?)?\d)/i.test(
-                        stem.slice(mark.index + mark[0].length)
-                    )
+                    (!exactRange &&
+                        /^(?:[ ._-]*E\d|[ ._-]*[-~][ ._-]*(?:EP?)?\d)/i.test(
+                            stem.slice(mark.index + mark[0].length)
+                        ))
             ) ||
-            /(?:^|[ ._\[(])\d{1,3}[ ._]*[-~][ ._]*(?:EP?)?\d{1,3}(?!\d)/i.test(stem) ||
-            (named.endEpisode != null && named.endEpisode !== episode);
+            (!exactRange && /(?:^|[ ._\[(])\d{1,3}[ ._]*[-~][ ._]*(?:EP?)?\d{1,3}(?!\d)/i.test(stem)) ||
+            (named.endEpisode != null && named.endEpisode !== episode && !exactRange);
         const seasonTags = [
             ...stem.matchAll(
                 /(?:\bSeason[ ._-]*|(?:^|[^a-z0-9])SE?)(\d{1,2})(?=E\d|[^0-9]|$)|第\s*([零〇一二两三四五六七八九十\d]+)\s*季/gi
@@ -11558,6 +11597,7 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
             conflict,
             season,
             episode,
+            endEpisode: candidateEndEpisode,
             title,
             pattern,
         });
@@ -11600,37 +11640,35 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
         const matched =
             parsed.tv &&
             parsed.season != null &&
-            parsed.episode != null &&
-            (parsed.endEpisode == null || parsed.endEpisode === parsed.episode) &&
+            targetRange &&
             season === parsed.season &&
-            episode === parsed.episode;
+            episode === targetRange.start &&
+            candidateEndEpisode === targetRange.end &&
+            !multiple;
         return result(
             matched,
-            season != null &&
+            (season != null &&
                 parsed.season != null &&
-                (season !== parsed.season || episode !== parsed.episode)
+                (season !== parsed.season || episode !== parsed.episode)) ||
+                (!!targetRange && candidateEndEpisode !== targetRange.end)
         );
     }
     function exactSubtitleEpisode(name, parsed) {
         return subtitleEpisodeIdentity(name, parsed).matched;
     }
     function subtitleReleaseEpisodeMatch(node, parsed, name) {
-        if (
-            !parsed.tv ||
-            parsed.season == null ||
-            parsed.episode == null ||
-            (parsed.endEpisode != null && parsed.endEpisode !== parsed.episode)
-        )
-            return false;
+        const targetRange = subtitleEpisodeRange(parsed);
+        if (!parsed.tv || parsed.season == null || !targetRange) return false;
         for (const video of [node?.originalName, node?.name]) {
             if (!video || !/^\s*\[[^\]]+\]\s*\[[^\]]+\]\s*\[\d{1,3}(?:v\d+)?\]/i.test(video)) continue;
             if (mediaSubtitleSuffix(video, name) === null) continue;
             const source = parseMediaName(video);
+            const sourceRange = subtitleEpisodeRange(source);
             if (
                 source.query &&
-                source.episode === parsed.episode &&
+                sourceRange?.start === targetRange.start &&
+                sourceRange.end === targetRange.end &&
                 (source.season == null || source.season === parsed.season) &&
-                source.endEpisode == null &&
                 (!source.year || !parsed.year || source.year === String(parsed.year))
             )
                 return true;
@@ -11908,7 +11946,8 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
         if (candidate.mainTitleFallback || candidate.opaque)
             return deny('仅主名搜索或来源文件名不含可识别片名，需要手动确认');
         const parsed = row.parsed,
-            identity = candidate.workIdentity;
+            identity = candidate.workIdentity,
+            targetRange = subtitleEpisodeRange(parsed);
         const match = subtitleWorkIdentity(parsed, [candidate.release], candidate.name || '');
         if (match.hardMismatch) return deny(match.matchReason || '作品信息冲突');
         if (subtitleNetworkEditionMismatch(parsed, [candidate.name, candidate.release]))
@@ -11926,15 +11965,11 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
             .filter(Boolean)
             .map((name) => subtitleEpisodeIdentity(name, parsed));
         if (parsed.tv) {
-            if (
-                parsed.season == null ||
-                parsed.episode == null ||
-                (parsed.endEpisode && parsed.endEpisode !== parsed.episode)
-            )
-                return deny('目标季集不完整或为多集文件');
+            if (parsed.season == null || !targetRange) return deny('目标季集不完整');
             if (
                 identity &&
-                (Number(identity.season) !== parsed.season || Number(identity.episode) !== parsed.episode)
+                (Number(identity.season) !== parsed.season ||
+                    ![targetRange.start, targetRange.end].includes(Number(identity.episode)))
             )
                 return deny('接口季集冲突');
             if (
