@@ -2761,6 +2761,16 @@ function subtitleCoverageState(row) {
         ? 'unconfirmed'
         : 'missing';
 }
+function subtitleCanSupplement(row) {
+    return !subtitleCovered(row) && !row.writeBlocked && !row.identityRecheck;
+}
+function subtitleCheckIncomplete(row) {
+    return !!(
+        row.writeBlocked ||
+        row.coverageUnconfirmed ||
+        (row.embedded?.unconfirmed && !row.embedded.metadataUnconfirmed && !row.embedded.unsupported)
+    );
+}
 const subtitleSearchLabels = {
     unsearched: '尚未查找',
     ready: '待补齐',
@@ -4149,7 +4159,13 @@ function subtitleDrive(context, wait = sleep) {
         assertReady,
         verified,
         async inspectEmbedded(node, check = () => {}) {
-            if (!/\.mkv$/i.test(node.name)) return { chinese: false, message: '非 MKV 格式，未读取视频' };
+            if (!/\.mkv$/i.test(node.name))
+                return {
+                    chinese: false,
+                    unconfirmed: true,
+                    unsupported: true,
+                    message: '当前格式尚未检测内嵌字幕，可继续查找或导入外置字幕',
+                };
             try {
                 return await inspectEmbeddedTracks(node, check);
             } catch (error) {
@@ -4158,6 +4174,7 @@ function subtitleDrive(context, wait = sleep) {
                 return {
                     chinese: false,
                     unconfirmed: true,
+                    metadataUnconfirmed: !!error.embeddedTracks,
                     tracks: error.embeddedTracks,
                     message:
                         (error.embeddedTracks ? '内嵌字幕语言未确认：' : '未读取到 MKV 字幕轨：') +

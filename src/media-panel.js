@@ -1014,13 +1014,6 @@ function initMediaOrganizer(provider, flow) {
             for (let offset = 0; offset < group.length; offset += 12) {
                 checkStopped();
                 const chunk = group.slice(offset, offset + 12);
-                for (const row of chunk) {
-                    row.query = '';
-                    row.detail = null;
-                    row.match = '';
-                    row.candidates = [];
-                    row.aiAssisted = false;
-                }
                 progress(`AI 翻译完整作品名：${offset + 1}–${offset + chunk.length}/${group.length}`);
                 try {
                     const results = await identifyMediaAIFiles(chunk, createMediaAI(aiSettings()));
@@ -1093,7 +1086,7 @@ function initMediaOrganizer(provider, flow) {
                         (theatrical
                             ? c.media_type === 'movie' && preference.type !== 'tv'
                             : !preference.type || c.media_type === preference.type) &&
-                        [c.title, c.name, c.original_title, c.original_name]
+                        [c.title, c.name, c.original_title, c.original_name, ...(c.titleAliases || [])]
                             .filter(Boolean)
                             .some((title) =>
                                 theatrical
@@ -1149,6 +1142,34 @@ function initMediaOrganizer(provider, flow) {
                 lookupError = error.message;
             }
             let exact = await reliable(candidates);
+            if (!exact.length && !lookupError && candidates.length) {
+                const preference = mediaCandidatePreference(reference);
+                const possible = candidates
+                    .filter((candidate) => !preference.type || candidate.media_type === preference.type)
+                    .slice(0, 5);
+                for (const candidate of possible) {
+                    verify();
+                    try {
+                        const aliases = await client.get(
+                            '/' + candidate.media_type + '/' + candidate.id + '/alternative_titles'
+                        );
+                        verify();
+                        candidate.titleAliases = [
+                            ...new Set(
+                                [
+                                    ...(candidate.titleAliases || []),
+                                    ...(aliases.results || aliases.titles || []).map((item) => item.title),
+                                ].filter(Boolean)
+                            ),
+                        ];
+                    } catch (error) {
+                        if (error.stop) throw error;
+                        verify();
+                        log('作品别名读取失败：' + candidate.id + ' · ' + error.message);
+                    }
+                }
+                exact = await reliable(candidates);
+            }
             if (!exact.length && !lookupError && /剧场版|劇場版/.test(query)) {
                 const shorter = mediaTheatricalQuery(query);
                 if (
@@ -1178,7 +1199,10 @@ function initMediaOrganizer(provider, flow) {
             }
             if (!exact.length && !lookupError && reference.tv && !reference.standalone) {
                 const regionalTitle = query.match(/^(.+)\s+(UK|US|AU|CA|NZ)$/i);
-                const parts = query.split(/\s*[:：·｜|]\s*|\s+[-–—]\s+|\s+/u).filter(Boolean);
+                // Keep complete word-based titles. Only a marked suffix or region can be removed.
+                const parts = regionalTitle
+                    ? [regionalTitle[1], regionalTitle[2]]
+                    : query.split(/\s*[｜|]\s*|\s+[-–—]\s+/u).filter(Boolean);
                 for (let length = parts.length - 1; length > 0; length--) {
                     const shorter = parts.slice(0, length).join(' ').trim();
                     if (key(shorter).length < 2 || key(shorter) === key(query)) continue;
@@ -1227,6 +1251,15 @@ function initMediaOrganizer(provider, flow) {
                 }
             }
             for (const row of group) row.candidates = candidates;
+            log(
+                '作品搜索核对：' +
+                    query +
+                    ' · 返回 ' +
+                    candidates.length +
+                    ' 个候选 · 片名、类型、年份符合 ' +
+                    exact.length +
+                    ' 个'
+            );
             if (exact.length !== 1) {
                 const failure = exact.length > 1 ? 'ambiguous' : lookupError ? 'lookup-error' : 'unmatched';
                 group.forEach((row) => {
@@ -1268,6 +1301,34 @@ function initMediaOrganizer(provider, flow) {
         const failed = group.filter(mediaNeedsAI);
         if (failed.length && aiSettings().enabled)
             await enqueueByKey(identityAIQueue, 'ai', () => matchGroup(failed, '', true, null, verify));
+        const identities = new Map();
+        for (const row of group) {
+            if (!readyRow(row) || row.type !== 'tv' || row.standalone) continue;
+            identities.set(row.match, row);
+        }
+        if (identities.size !== 1) return;
+        const [match, confirmed] = identities.entries().next().value;
+        const remaining = group.filter(
+            (row) =>
+                !readyRow(row) &&
+                row.tv &&
+                !row.standalone &&
+                !mediaCandidatePreference(row).conflict &&
+                (!mediaCandidatePreference(row).type || mediaCandidatePreference(row).type === 'tv')
+        );
+        if (!remaining.length) return;
+        for (const row of remaining) {
+            verify();
+            await choose(row, match);
+            row.query = confirmed.query;
+            row.aiType = 'tv';
+            row.aiAssisted = confirmed.aiAssisted;
+            row.sourceYear = row.explicitYear || confirmed.sourceYear;
+            verify();
+            await validateEpisode(row);
+            if (readyRow(row))
+                log('复用同组已确认作品：' + row.node.name + ' → ' + row.title + '（逐集核对通过）');
+        }
     }
     async function recoverWorkFromSubtitle(row, verify) {
         if (!client || readyRow(row)) return;
@@ -1808,7 +1869,7 @@ function initMediaOrganizer(provider, flow) {
                     .join('\n\n');
                 await flow.requireScope();
                 for (const id of changingVideos)
-                    if (flow.coverage(String(id)) === 'missing') without.push(String(id));
+                    if (flow.coverage(String(id)) !== 'complete') without.push(String(id));
                 const note = without.length
                     ? '允许无字幕整理（' +
                       without.length +

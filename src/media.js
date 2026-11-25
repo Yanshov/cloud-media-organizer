@@ -883,20 +883,51 @@ function tmdbClient(credential) {
             return size;
         },
         async search(query, earlyStop = null) {
-            const first = await get('/search/multi', { query, include_adult: 'false' });
-            const results = [...first.results],
-                maxPage = Math.min(first.total_pages || 1, 5);
-            for (let page = 2; !(earlyStop && (await earlyStop(results))) && page <= maxPage; page++) {
-                const next = await get('/search/multi', { query, include_adult: 'false', page });
-                results.push(...next.results);
+            const candidates = new Map();
+            const searchLanguage = async (language) => {
+                const params = { query, include_adult: 'false', language };
+                const first = await get('/search/multi', params);
+                const append = (results) => {
+                    for (const item of results) {
+                        if (!['movie', 'tv'].includes(item.media_type)) continue;
+                        const id = item.media_type + ':' + item.id;
+                        const previous = candidates.get(id);
+                        const titleAliases = [
+                            ...new Set(
+                                [
+                                    ...(previous?.titleAliases || []),
+                                    item.title,
+                                    item.name,
+                                    item.original_title,
+                                    item.original_name,
+                                ].filter(Boolean)
+                            ),
+                        ];
+                        candidates.set(id, { ...(previous || item), titleAliases });
+                    }
+                };
+                append(first.results || []);
+                const maxPage = Math.min(first.total_pages || 1, 5);
+                for (let page = 2; page <= maxPage; page++) {
+                    if (earlyStop && (await earlyStop([...candidates.values()]))) break;
+                    const next = await get('/search/multi', { ...params, page });
+                    append(next.results || []);
+                }
+            };
+            await searchLanguage('zh-CN');
+            const exactTitle = () =>
+                [...candidates.values()].some((item) =>
+                    item.titleAliases.some((title) => titleKey(title) === titleKey(query))
+                );
+            // An English search alias may be absent from the localized and original names.
+            if (!exactTitle()) {
+                try {
+                    await searchLanguage('en-US');
+                } catch (error) {
+                    if (error.stop || !candidates.size) throw error;
+                }
             }
-            return [
-                ...new Map(
-                    results
-                        .filter((r) => ['movie', 'tv'].includes(r.media_type))
-                        .map((r) => [r.media_type + ':' + r.id, r])
-                ).values(),
-            ];
+            return [...candidates.values()];
         },
     };
     tmdbClients.set(credential, client);

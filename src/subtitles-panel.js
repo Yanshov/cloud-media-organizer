@@ -654,7 +654,7 @@ function initSubtitles(provider, flow) {
         !covered(row) &&
         !row.organized &&
         !row.organizePending &&
-        !row.writeBlocked &&
+        subtitleCanSupplement(row) &&
         !!row.selectedCandidate &&
         !row.selectedCandidate.downloadFailed &&
         !row.selectedCandidate.opaque &&
@@ -686,7 +686,8 @@ function initSubtitles(provider, flow) {
                 : 'pending';
         const canSearch =
             checkedScope !== null &&
-            coverage === 'missing' &&
+            !awaitingCheck(row) &&
+            subtitleCanSupplement(row) &&
             execution === 'pending' &&
             subtitleTargetHasEpisode(row);
         const canOrganize =
@@ -694,7 +695,8 @@ function initSubtitles(provider, flow) {
             !row.identityRecheck &&
             identity === 'confirmed' &&
             execution === 'pending' &&
-            (coverage === 'complete' || (coverage === 'missing' && ui.get('mediaAllowMissing').checked));
+            !awaitingCheck(row) &&
+            (coverage === 'complete' || ui.get('mediaAllowMissing').checked);
         let blocker = '';
         if (execution === 'complete') blocker = '视频已整理';
         else if (execution === 'unconfirmed') blocker = '上次整理结果待核对';
@@ -705,8 +707,10 @@ function initSubtitles(provider, flow) {
         else if (identity !== 'confirmed') blocker = media?.error || '作品匹配未确认';
         else if (coverage === 'waiting' || coverage === 'checking' || coverage === 'interrupted')
             blocker = '字幕检查未完成';
-        else if (coverage === 'unconfirmed')
-            blocker = row.searchMessage || row.embedded?.message || '字幕覆盖未确认';
+        else if (coverage === 'unconfirmed' && !ui.get('mediaAllowMissing').checked)
+            blocker =
+                (row.embedded?.message || row.searchMessage || '字幕覆盖未确认') +
+                '；可查找或导入字幕，也可勾选“允许无字幕整理”';
         else if (coverage === 'missing' && !ui.get('mediaAllowMissing').checked)
             blocker = '缺少可用字幕；勾选“允许无字幕整理”后可执行';
         return {
@@ -946,9 +950,9 @@ function initSubtitles(provider, flow) {
         const coverage = [
             '有字幕 ' + checked.filter(covered).length,
             ...(ready ? ['待补齐 ' + ready] : []),
-            '没字幕 ' +
+            '未发现中文字幕 ' +
                 checked.filter((row) => subtitleCoverageState(row) === 'missing' && !pendingFill(row)).length,
-            '检查未确认 ' + checked.filter((row) => subtitleCoverageState(row) === 'unconfirmed').length,
+            '字幕情况未确认 ' + checked.filter((row) => subtitleCoverageState(row) === 'unconfirmed').length,
         ].join(' · ');
         const identitySummary =
             ' · 作品已确认 ' +
@@ -1011,8 +1015,8 @@ function initSubtitles(provider, flow) {
             const embedded = pending ? null : row.embedded;
             const label = {
                 complete: '有字幕',
-                missing: '缺可用字幕',
-                unconfirmed: '检查未确认',
+                missing: '未发现中文字幕',
+                unconfirmed: '字幕情况未确认',
                 waiting: '待检查',
                 checking: '检查中',
                 interrupted: '未检查完成',
@@ -1028,8 +1032,11 @@ function initSubtitles(provider, flow) {
                 ? '已找到字幕 · 待补齐'
                 : embedded?.chinese
                   ? '内嵌中文 · 已补齐'
-                  : (label === '缺可用字幕' && !searching ? '没字幕' : label) +
-                    (state && coverage !== 'complete' ? ' · ' + state : '');
+                  : coverage !== 'complete' && embedded?.metadataUnconfirmed
+                    ? '有字幕轨 · 中文待确认' + (state ? ' · ' + state : '')
+                    : coverage !== 'complete' && embedded?.unsupported
+                      ? '内嵌字幕尚未检测' + (state ? ' · ' + state : '')
+                      : label + (state && coverage !== 'complete' ? ' · ' + state : '');
             if (row.parsed.episode != null && mode) {
                 const episode = document.createElement('strong');
                 episode.textContent = subtitleEpisodeRangeSummary([row]);
@@ -1242,8 +1249,8 @@ function initSubtitles(provider, flow) {
                     const stillMissing = missing.filter(
                         (row) => !pendingFill(row) && !(row.cardSearched && row.autoCandidates?.length)
                     );
-                    if (stillMissing.length) count('没字幕', stillMissing);
-                    if (unknown.length) count('检查未确认', unknown);
+                    if (stillMissing.length) count('未发现中文字幕', stillMissing);
+                    if (unknown.length) count('字幕情况未确认', unknown);
                     if (unchecked.length)
                         count(scan?.interrupted ? '未检查完成' : '待检查／检查中', unchecked);
                 }
@@ -1252,13 +1259,14 @@ function initSubtitles(provider, flow) {
                         (row) =>
                             !row.organized &&
                             !row.organizePending &&
-                            !covered(row) &&
-                            subtitleCoverageState(row) === 'missing'
+                            !awaitingCheck(row) &&
+                            subtitleCanSupplement(row)
                     );
                     const unconfirmed = rows.filter(
                         (row) =>
                             !row.organized &&
                             !row.organizePending &&
+                            !subtitleCanSupplement(row) &&
                             !covered(row) &&
                             subtitleCoverageState(row) === 'unconfirmed'
                     );
@@ -1296,7 +1304,7 @@ function initSubtitles(provider, flow) {
                                 (actionRows.length + unconfirmed.length) +
                                 ' 集 · ' +
                                 (unconfirmed.length
-                                    ? unconfirmed.length + ' 集字幕检查未确认，请复查已有字幕'
+                                    ? unconfirmed.length + ' 集字幕写入或关联待核对，请查看日志'
                                     : foundCount < actionRows.length
                                       ? '整季候选不完整，可导入字幕'
                                       : blocked
@@ -1331,7 +1339,9 @@ function initSubtitles(provider, flow) {
                         !row.organizePending &&
                         (row.subtitles.length ||
                             row.writeBlocked ||
-                            subtitleCoverageState(row) === 'unconfirmed')
+                            (row.embedded?.unconfirmed &&
+                                !row.embedded.metadataUnconfirmed &&
+                                !row.embedded.unsupported))
                 );
                 if (checkedScope !== null && auditRows.length)
                     addButton(box, '复查已有字幕', JSON.stringify(['audit', key]), () =>
@@ -1612,7 +1622,7 @@ function initSubtitles(provider, flow) {
         }, true);
     const searchRows = async (rows) => {
         meter(0, 0);
-        rows = rows.filter((row) => !awaitingCheck(row) && subtitleCoverageState(row) === 'missing');
+        rows = rows.filter((row) => !awaitingCheck(row) && subtitleCanSupplement(row));
         if (!rows.length) {
             status(
                 inventory.length ? '本次检查范围内没有可查找的缺字幕项目。' : '本次检查范围内没有正片视频。'
@@ -1635,6 +1645,7 @@ function initSubtitles(provider, flow) {
             (row) =>
                 searchedGroups.has(row.groupKey) &&
                 subtitleTargetHasEpisode(row) &&
+                !subtitleCanSupplement(row) &&
                 subtitleCoverageState(row) === 'unconfirmed'
         );
         for (const row of unconfirmed)
@@ -1706,10 +1717,7 @@ function initSubtitles(provider, flow) {
                 (group) =>
                     group[0].parsed.tv &&
                     searchedGroups.has(group[0].groupKey) &&
-                    group.some(
-                        (row) =>
-                            subtitleCoverageState(row) === 'missing' && !subtitleReleaseChapter(row.parsed)
-                    )
+                    group.some((row) => subtitleCanSupplement(row) && !subtitleReleaseChapter(row.parsed))
             );
             const oldClues = releaseGroups
                 .flat()
@@ -1909,7 +1917,7 @@ function initSubtitles(provider, flow) {
                 ' · 可补齐 ' +
                 eligibleFill(rows).length +
                 (unconfirmed.length
-                    ? ' · 同组字幕检查未确认 ' + unconfirmed.length + ' 项，请复查已有字幕'
+                    ? ' · 同组字幕写入或关联待核对 ' + unconfirmed.length + ' 项，请查看日志'
                     : '');
             status('查找结束 · ' + message);
             diag('查找结束', message);
@@ -2062,7 +2070,7 @@ function initSubtitles(provider, flow) {
                     }
                     try {
                         await inspectEmbedded(row, verify, currentDrive);
-                        if (row.embedded?.unconfirmed) observe(row.embedded.message);
+                        if (subtitleCheckIncomplete(row)) observe(row.embedded?.message || row.searchMessage);
                     } catch (error) {
                         observe(error);
                         verify();
@@ -2075,7 +2083,7 @@ function initSubtitles(provider, flow) {
                     row.checkState = 'done';
                     meter(++done, rows.length);
                     refresh();
-                    return subtitleCoverageState(row) === 'unconfirmed' ? 'failed' : undefined;
+                    return subtitleCheckIncomplete(row) ? 'failed' : undefined;
                 },
                 verifyScan,
                 limit,
@@ -2092,9 +2100,9 @@ function initSubtitles(provider, flow) {
                   done +
                   '/' +
                   total +
-                  ' · 有字幕 ' +
+                  ' · 已确认中文字幕 ' +
                   rows.filter(covered).length +
-                  (unconfirmed ? ' · 检查未确认 ' + unconfirmed : '')
+                  (unconfirmed ? ' · 字幕情况未确认 ' + unconfirmed : '')
                 : emptyMessage;
             status(message);
             diag('字幕检查', message + ' · 耗时 ' + ((Date.now() - started) / 1000).toFixed(2) + ' 秒');
@@ -2245,7 +2253,7 @@ function initSubtitles(provider, flow) {
                         updated.push(row);
                         meter(++done, rows.length);
                         render();
-                        return subtitleCoverageState(next) === 'unconfirmed' ? 'failed' : undefined;
+                        return subtitleCheckIncomplete(next) ? 'failed' : undefined;
                     },
                     check,
                     8,
@@ -2255,7 +2263,7 @@ function initSubtitles(provider, flow) {
                 const unconfirmed = updated.filter(
                     (row) => subtitleCoverageState(row) === 'unconfirmed'
                 ).length;
-                status('重新检测完成 · ' + done + '/' + rows.length + ' · 检查未确认 ' + unconfirmed);
+                status('重新检测完成 · ' + done + '/' + rows.length + ' · 字幕情况未确认 ' + unconfirmed);
             } catch (error) {
                 if (error.pendingUpload || error.stop || error.phase === 'drive-auth') checkedScope = null;
                 status('重新检测中断 · ' + done + '/' + rows.length + ' · ' + error.message);
