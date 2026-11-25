@@ -525,13 +525,14 @@ function initSubtitles(flow) {
             `
             <div class="panel-actions"><button id="readSubtitles">查找字幕</button><button id="fillSubtitles" disabled>补齐字幕</button><button id="reviewSubtitleDeletes" disabled>删除字幕</button><button id="importSubtitles" type="button">导入字幕</button><button id="stopSubtitles" hidden>停止</button></div>
             <input id="subtitleImportFiles" type="file" accept=".srt,.ass,.ssa,.vtt,.zip,.rar" multiple hidden>
+            <p id="subtitleTask">等待操作</p>
             <p id="subtitleScope"></p>
             <p id="subtitleProgress" role="status">先在网页勾选视频或文件夹。</p>
             <progress id="subtitleMeter" max="1" value="0" hidden style="width:100%;accent-color:#666"></progress>
             <div id="subtitleFilters"><label><input id="selectAllSubtitleDeletes" type="checkbox" disabled>全选</label><select id="subtitleView" aria-label="筛选字幕检查结果"><option id="subtitleViewAll" value="all">全部</option><option id="subtitleViewIncomplete" value="incomplete">未补齐</option><option id="subtitleViewReady" value="ready">待补齐</option><option id="subtitleViewComplete" value="complete">有字幕</option></select><span id="subtitleDeleteSelectionCount" role="status" hidden></span></div>
             <div id="subtitleResults" role="region" aria-labelledby="subtitleResultsTitle" tabindex="0">
                 <div id="subtitleSummary" hidden class="sync-preview"></div>
-                <p id="subtitleEmpty">先勾选目录或视频，再点击“检查目录字幕”。</p>
+                <p id="subtitleEmpty">先勾选目录或视频，再点击“查找字幕”。</p>
                 <div id="subtitleRows"></div>
             </div>
             <details id="subtitleDeletePreview" name="subtitleFooter" hidden><summary id="subtitleDeleteHeading">确认删除清单</summary><div id="subtitleDeleteList" style="white-space:pre-wrap"></div><div class="panel-actions"><button id="confirmSubtitleDeletes">确认并移入回收站</button><button id="cancelSubtitleDeletes">取消</button></div></details>
@@ -606,8 +607,20 @@ function initSubtitles(flow) {
         }
         return clean;
     };
+    const inferSubtitleTask = (text) => {
+        if (/手动识别/.test(text)) return '手动识别';
+        if (/导入/.test(text)) return '字幕导入';
+        if (/删除/.test(text)) return '删除字幕';
+        if (/补齐/.test(text)) return '补齐字幕';
+        if (/查找/.test(text)) return '查找字幕';
+        if (/检查|复查/.test(text)) return '字幕检查';
+        if (/识别|整理|匹配|核对|预览|作品|TMDB|重命名|改名|移动|季|集/.test(text)) return '影视整理';
+        return '等待操作';
+    };
     const status = (text) => {
-        ui.get('subtitleProgress').textContent = safeDiagnostic(text);
+        const clean = safeDiagnostic(text);
+        ui.get('subtitleTask').textContent = inferSubtitleTask(clean);
+        ui.get('subtitleProgress').textContent = clean;
     };
     const clearDeletePreview = () => {
         deletePlan = null;
@@ -1495,7 +1508,19 @@ function initSubtitles(flow) {
                         entry.label + (entry.row ? ' → ' + entry.row.path : '') + ' · ' + outcome
                     );
                 }
-                status('字幕正文检查结束，请核对导入预览。');
+                const importCounts = plan.reduce(
+                    (counts, entry) => {
+                        if (entry.state === 'ready') counts.ready++;
+                        else if (entry.state === 'skip') counts.skip++;
+                        else if (entry.state === 'invalid') counts.invalid++;
+                        else if (entry.state === 'unmatched') counts.unmatched++;
+                        return counts;
+                    },
+                    { ready: 0, skip: 0, invalid: 0, unmatched: 0 }
+                );
+                status(
+                    `导入检测完成 · 可导入 ${importCounts.ready} · 已跳过 ${importCounts.skip} · 检测失败 ${importCounts.invalid} · 待匹配 ${importCounts.unmatched}`
+                );
             } catch (error) {
                 status('导入检测结束 · ' + error.message);
                 diag('导入检测结束', error.message);
@@ -2344,6 +2369,7 @@ function initSubtitles(flow) {
         preview.hidden = false;
         preview.open = true;
         render();
+        status(`待确认删除 · ${deletePlan.length} 项字幕`);
     };
     ui.get('cancelSubtitleDeletes').onclick = clearDeletePreview;
     ui.get('confirmSubtitleDeletes').onclick = () =>
@@ -2352,7 +2378,10 @@ function initSubtitles(flow) {
             const targets = deletePlan.filter(({ row, sub }) => selectedForDelete(row, sub));
             clearDeletePreview();
             if (!targets.length) return;
-            let deleted = 0;
+            let deleted = 0,
+                failed = 0,
+                pending = 0,
+                processed = 0;
             const touched = new Set(),
                 failures = [];
             try {
@@ -2366,9 +2395,8 @@ function initSubtitles(flow) {
                         let failedGroup = false;
                         for (const { row, sub } of group) {
                             verify();
-                            status(
-                                `删除字幕 ${deleted + failures.length + 1}/${targets.length}：${sub.name}`
-                            );
+                            processed++;
+                            status(`删除字幕 ${processed}/${targets.length}：${sub.name}`);
                             try {
                                 const siblings = await subtitleContext.source.children({
                                     id: row.node.parentId,
@@ -2435,7 +2463,8 @@ function initSubtitles(flow) {
                                     row.writeBlocked = true;
                                     row.complete = false;
                                     row.error = '字幕删除结果不明，请重新检查目录：' + error.message;
-                                }
+                                    pending++;
+                                } else failed++;
                                 observe(error);
                                 verify();
                                 if (error.stop || [401, 403].includes(error.status)) throw error;
@@ -2469,7 +2498,7 @@ function initSubtitles(flow) {
                     check
                 );
                 status(
-                    `批量删除结束：已移入回收站 ${deleted} 个，失败 ${failures.length} 个。` +
+                    `删除结束 · 已移入回收站 ${deleted} · 失败 ${failed} · 待核对 ${pending}` +
                         (failures.length ? ` ${failures.slice(0, 5).join('；')}` : '')
                 );
             } catch (error) {
@@ -2480,7 +2509,9 @@ function initSubtitles(flow) {
                             row.writeBlocked = true;
                             row.error = '请重新检查目录，确认剩余字幕。';
                         }
-                status(`删除中断：已移入回收站 ${deleted} 个；${error.message}`);
+                status(
+                    `删除中断 · 已处理 ${processed}/${targets.length} · 已移入回收站 ${deleted} · 失败 ${failed} · 待核对 ${pending} · ${error.message}`
+                );
             }
         }, true);
     const fillCard = () =>

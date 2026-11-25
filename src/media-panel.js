@@ -603,6 +603,20 @@ function initMediaOrganizer(flow) {
         host = ui.get('mediaRows');
     let detail = null;
     const rowStateLabel = (row) => (!row.include ? '已跳过' : readyRow(row) ? '已匹配' : '待确认');
+    const updateCorrectionStatus = () => {
+        if (!detail) return;
+        const group = detail.group || [];
+        const currentIndex = Math.max(0, group.indexOf(detail.file)) + 1;
+        const confirmed = group.filter(readyRow).length;
+        const pending = group.filter((row) => row.include && !readyRow(row)).length;
+        const skipped = group.filter((row) => !row.include).length;
+        const currentName = detail.file?.node?.name || '';
+        progress(
+            `手动识别 · 当前文件 ${currentIndex}/${group.length} · 已确认 ${confirmed} · 待确认 ${pending}` +
+                (skipped ? ` · 已跳过 ${skipped}` : '') +
+                (currentName ? ` · ${currentName}` : '')
+        );
+    };
     const textElement = (tag, text, className = '') => {
         const el = document.createElement(tag);
         el.textContent = text;
@@ -862,6 +876,7 @@ function initMediaOrganizer(flow) {
         const { group } = detail;
         renderDetail(group);
         updateRowControls();
+        updateCorrectionStatus();
     };
     async function choose(row, match) {
         checkStopped();

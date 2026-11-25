@@ -114,7 +114,7 @@ function arrangeToolPane(pane) {
     const layout = create('div', 'tool-layout');
     const main = create('div', 'tool-main');
     const status = create('section', 'tool-status-text');
-    const statusIds = ['subtitleScope', 'subtitleProgress', 'subtitleMeter'];
+    const statusIds = ['subtitleTask', 'subtitleScope', 'subtitleProgress', 'subtitleMeter'];
     for (const name of statusIds) take(status, '#' + name);
     const heading = create('div', 'tool-list-heading');
     const headingTitle = create('h3', '', '字幕检查结果');
@@ -204,10 +204,9 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 .sync-item{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;margin:12px 0;min-width:0}
 :is(#subtitlePane,#mediaPane) :is(.tool-layout,.tool-main){display:flex;min-height:0}:is(#subtitlePane,#mediaPane) .tool-main{flex:1;flex-direction:column}:is(#subtitlePane,#mediaPane) .tool-list-heading{flex:none}#subtitleFilters :focus-visible{outline-offset:-2px}
 #subtitleFilters{display:flex;align-items:center;gap:8px;flex:0 0 auto;max-width:100%}#subtitleFilters label{align-items:center;gap:5px;margin:0;font-size:15px;white-space:nowrap;flex:none}#subtitleFilters input[type=checkbox]{margin:0}
-#subtitleResults{flex:1 1 0;min-height:0;overflow:auto;overscroll-behavior:contain;overflow-anchor:none;scrollbar-gutter:stable;container-type:size}#subtitleResults:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+#subtitleResults{flex:none;min-height:auto;overflow:visible;overflow-anchor:none;container-type:size}#subtitleResults:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 #subtitleSummary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;flex:none;padding:10px 12px;font-size:15px;overflow-wrap:anywhere}
 .subtitle-summary-group{display:grid;gap:4px;min-width:0;padding:9px 11px;border:1px solid var(--border);border-radius:6px;background:var(--surface)}.subtitle-summary-group strong{font-size:14px;color:var(--text)}.subtitle-summary-value{color:var(--muted);line-height:1.5}
-:is(#subtitlePane,#mediaPane) .tool-surface{overflow:hidden}
 :is(#subtitleRows,#mediaRows){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:stretch;align-content:start}
 .subtitle-card{margin:0;overflow-wrap:anywhere}
 #mediaRows>.media-detail{grid-column:1/-1;margin:0;padding:clamp(14px,2.5cqw,28px);overflow-wrap:anywhere}
@@ -265,14 +264,14 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 .tool-statusbar:has(.tool-utilities>details[open]){display:block}.tool-utilities:has(>details[open]){display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin-top:10px}.tool-utilities>details[open]{grid-column:1/-1;color:var(--text);min-width:0}
 :is(#subtitlePane,#mediaPane) .tool-statusbar{align-items:flex-end;margin-top:10px}
 :is(#subtitlePane,#mediaPane) .tool-status-text{min-width:0}
-#subtitleProgress{max-height:3.8em;overflow:auto;scrollbar-width:none;overflow-wrap:anywhere}
+#subtitleTask{color:var(--text);font-size:15px;font-weight:650;line-height:1.45}#subtitleScope,#subtitleProgress{overflow-wrap:anywhere}
 
 #subtitleMeter{display:block;width:100%;border:0;appearance:none;background:var(--border)}
 #subtitleMeter::-webkit-progress-bar{background:var(--border)}
 #subtitleMeter::-webkit-progress-value{background:var(--text)}
 #subtitleMeter::-moz-progress-bar{background:var(--text)}
-#subtitleScope{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#subtitlePane .tool-statusbar:has(.tool-utilities>details[open]){max-height:40%;overflow:auto;scrollbar-width:none}#subtitleDeleteList{overflow-wrap:anywhere}
+#subtitleScope{overflow-wrap:anywhere}
+#subtitleDeleteList{overflow-wrap:anywhere}
 #log{white-space:pre-wrap;overflow-wrap:anywhere;font:14px/1.7 Consolas,"Microsoft YaHei",monospace;max-height:180px;overflow:auto}#log:empty{display:none}#log>div+div{margin-top:6px}
 #subtitlePane .tool-statusbar:has(#subtitleDiagnostics[open]){max-height:58%}#subtitleDiagnostics .panel-actions{margin:4px 0 8px}
 #subtitleLog{display:block;width:100%;height:clamp(40px,calc(37cqh - 163px),150px);resize:none;overflow:auto;scrollbar-width:none;overscroll-behavior:contain}

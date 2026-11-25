@@ -672,7 +672,7 @@ SOFTWARE.
         const layout = create('div', 'tool-layout');
         const main = create('div', 'tool-main');
         const status = create('section', 'tool-status-text');
-        const statusIds = ['subtitleScope', 'subtitleProgress', 'subtitleMeter'];
+        const statusIds = ['subtitleTask', 'subtitleScope', 'subtitleProgress', 'subtitleMeter'];
         for (const name of statusIds) take(status, '#' + name);
         const heading = create('div', 'tool-list-heading');
         const headingTitle = create('h3', '', '字幕检查结果');
@@ -761,10 +761,9 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 .sync-item{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;margin:12px 0;min-width:0}
 :is(#subtitlePane,#mediaPane) :is(.tool-layout,.tool-main){display:flex;min-height:0}:is(#subtitlePane,#mediaPane) .tool-main{flex:1;flex-direction:column}:is(#subtitlePane,#mediaPane) .tool-list-heading{flex:none}#subtitleFilters :focus-visible{outline-offset:-2px}
 #subtitleFilters{display:flex;align-items:center;gap:8px;flex:0 0 auto;max-width:100%}#subtitleFilters label{align-items:center;gap:5px;margin:0;font-size:15px;white-space:nowrap;flex:none}#subtitleFilters input[type=checkbox]{margin:0}
-#subtitleResults{flex:1 1 0;min-height:0;overflow:auto;overscroll-behavior:contain;overflow-anchor:none;scrollbar-gutter:stable;container-type:size}#subtitleResults:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+#subtitleResults{flex:none;min-height:auto;overflow:visible;overflow-anchor:none;container-type:size}#subtitleResults:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 #subtitleSummary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;flex:none;padding:10px 12px;font-size:15px;overflow-wrap:anywhere}
 .subtitle-summary-group{display:grid;gap:4px;min-width:0;padding:9px 11px;border:1px solid var(--border);border-radius:6px;background:var(--surface)}.subtitle-summary-group strong{font-size:14px;color:var(--text)}.subtitle-summary-value{color:var(--muted);line-height:1.5}
-:is(#subtitlePane,#mediaPane) .tool-surface{overflow:hidden}
 :is(#subtitleRows,#mediaRows){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:stretch;align-content:start}
 .subtitle-card{margin:0;overflow-wrap:anywhere}
 #mediaRows>.media-detail{grid-column:1/-1;margin:0;padding:clamp(14px,2.5cqw,28px);overflow-wrap:anywhere}
@@ -822,14 +821,14 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 .tool-statusbar:has(.tool-utilities>details[open]){display:block}.tool-utilities:has(>details[open]){display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin-top:10px}.tool-utilities>details[open]{grid-column:1/-1;color:var(--text);min-width:0}
 :is(#subtitlePane,#mediaPane) .tool-statusbar{align-items:flex-end;margin-top:10px}
 :is(#subtitlePane,#mediaPane) .tool-status-text{min-width:0}
-#subtitleProgress{max-height:3.8em;overflow:auto;scrollbar-width:none;overflow-wrap:anywhere}
+#subtitleTask{color:var(--text);font-size:15px;font-weight:650;line-height:1.45}#subtitleScope,#subtitleProgress{overflow-wrap:anywhere}
 
 #subtitleMeter{display:block;width:100%;border:0;appearance:none;background:var(--border)}
 #subtitleMeter::-webkit-progress-bar{background:var(--border)}
 #subtitleMeter::-webkit-progress-value{background:var(--text)}
 #subtitleMeter::-moz-progress-bar{background:var(--text)}
-#subtitleScope{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#subtitlePane .tool-statusbar:has(.tool-utilities>details[open]){max-height:40%;overflow:auto;scrollbar-width:none}#subtitleDeleteList{overflow-wrap:anywhere}
+#subtitleScope{overflow-wrap:anywhere}
+#subtitleDeleteList{overflow-wrap:anywhere}
 #log{white-space:pre-wrap;overflow-wrap:anywhere;font:14px/1.7 Consolas,"Microsoft YaHei",monospace;max-height:180px;overflow:auto}#log:empty{display:none}#log>div+div{margin-top:6px}
 #subtitlePane .tool-statusbar:has(#subtitleDiagnostics[open]){max-height:58%}#subtitleDiagnostics .panel-actions{margin:4px 0 8px}
 #subtitleLog{display:block;width:100%;height:clamp(40px,calc(37cqh - 163px),150px);resize:none;overflow:auto;scrollbar-width:none;overscroll-behavior:contain}
@@ -4712,6 +4711,20 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             host = ui.get('mediaRows');
         let detail = null;
         const rowStateLabel = (row) => (!row.include ? '已跳过' : readyRow(row) ? '已匹配' : '待确认');
+        const updateCorrectionStatus = () => {
+            if (!detail) return;
+            const group = detail.group || [];
+            const currentIndex = Math.max(0, group.indexOf(detail.file)) + 1;
+            const confirmed = group.filter(readyRow).length;
+            const pending = group.filter((row) => row.include && !readyRow(row)).length;
+            const skipped = group.filter((row) => !row.include).length;
+            const currentName = detail.file?.node?.name || '';
+            progress(
+                `手动识别 · 当前文件 ${currentIndex}/${group.length} · 已确认 ${confirmed} · 待确认 ${pending}` +
+                    (skipped ? ` · 已跳过 ${skipped}` : '') +
+                    (currentName ? ` · ${currentName}` : '')
+            );
+        };
         const textElement = (tag, text, className = '') => {
             const el = document.createElement(tag);
             el.textContent = text;
@@ -4970,6 +4983,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             const { group } = detail;
             renderDetail(group);
             updateRowControls();
+            updateCorrectionStatus();
         };
         async function choose(row, match) {
             checkStopped();
@@ -11189,13 +11203,14 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                 `
             <div class="panel-actions"><button id="readSubtitles">查找字幕</button><button id="fillSubtitles" disabled>补齐字幕</button><button id="reviewSubtitleDeletes" disabled>删除字幕</button><button id="importSubtitles" type="button">导入字幕</button><button id="stopSubtitles" hidden>停止</button></div>
             <input id="subtitleImportFiles" type="file" accept=".srt,.ass,.ssa,.vtt,.zip,.rar" multiple hidden>
+            <p id="subtitleTask">等待操作</p>
             <p id="subtitleScope"></p>
             <p id="subtitleProgress" role="status">先在网页勾选视频或文件夹。</p>
             <progress id="subtitleMeter" max="1" value="0" hidden style="width:100%;accent-color:#666"></progress>
             <div id="subtitleFilters"><label><input id="selectAllSubtitleDeletes" type="checkbox" disabled>全选</label><select id="subtitleView" aria-label="筛选字幕检查结果"><option id="subtitleViewAll" value="all">全部</option><option id="subtitleViewIncomplete" value="incomplete">未补齐</option><option id="subtitleViewReady" value="ready">待补齐</option><option id="subtitleViewComplete" value="complete">有字幕</option></select><span id="subtitleDeleteSelectionCount" role="status" hidden></span></div>
             <div id="subtitleResults" role="region" aria-labelledby="subtitleResultsTitle" tabindex="0">
                 <div id="subtitleSummary" hidden class="sync-preview"></div>
-                <p id="subtitleEmpty">先勾选目录或视频，再点击“检查目录字幕”。</p>
+                <p id="subtitleEmpty">先勾选目录或视频，再点击“查找字幕”。</p>
                 <div id="subtitleRows"></div>
             </div>
             <details id="subtitleDeletePreview" name="subtitleFooter" hidden><summary id="subtitleDeleteHeading">确认删除清单</summary><div id="subtitleDeleteList" style="white-space:pre-wrap"></div><div class="panel-actions"><button id="confirmSubtitleDeletes">确认并移入回收站</button><button id="cancelSubtitleDeletes">取消</button></div></details>
@@ -11270,8 +11285,20 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
             }
             return clean;
         };
+        const inferSubtitleTask = (text) => {
+            if (/手动识别/.test(text)) return '手动识别';
+            if (/导入/.test(text)) return '字幕导入';
+            if (/删除/.test(text)) return '删除字幕';
+            if (/补齐/.test(text)) return '补齐字幕';
+            if (/查找/.test(text)) return '查找字幕';
+            if (/检查|复查/.test(text)) return '字幕检查';
+            if (/识别|整理|匹配|核对|预览|作品|TMDB|重命名|改名|移动|季|集/.test(text)) return '影视整理';
+            return '等待操作';
+        };
         const status = (text) => {
-            ui.get('subtitleProgress').textContent = safeDiagnostic(text);
+            const clean = safeDiagnostic(text);
+            ui.get('subtitleTask').textContent = inferSubtitleTask(clean);
+            ui.get('subtitleProgress').textContent = clean;
         };
         const clearDeletePreview = () => {
             deletePlan = null;
@@ -12175,7 +12202,19 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                             entry.label + (entry.row ? ' → ' + entry.row.path : '') + ' · ' + outcome
                         );
                     }
-                    status('字幕正文检查结束，请核对导入预览。');
+                    const importCounts = plan.reduce(
+                        (counts, entry) => {
+                            if (entry.state === 'ready') counts.ready++;
+                            else if (entry.state === 'skip') counts.skip++;
+                            else if (entry.state === 'invalid') counts.invalid++;
+                            else if (entry.state === 'unmatched') counts.unmatched++;
+                            return counts;
+                        },
+                        { ready: 0, skip: 0, invalid: 0, unmatched: 0 }
+                    );
+                    status(
+                        `导入检测完成 · 可导入 ${importCounts.ready} · 已跳过 ${importCounts.skip} · 检测失败 ${importCounts.invalid} · 待匹配 ${importCounts.unmatched}`
+                    );
                 } catch (error) {
                     status('导入检测结束 · ' + error.message);
                     diag('导入检测结束', error.message);
@@ -13034,6 +13073,7 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
             preview.hidden = false;
             preview.open = true;
             render();
+            status(`待确认删除 · ${deletePlan.length} 项字幕`);
         };
         ui.get('cancelSubtitleDeletes').onclick = clearDeletePreview;
         ui.get('confirmSubtitleDeletes').onclick = () =>
@@ -13042,7 +13082,10 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                 const targets = deletePlan.filter(({ row, sub }) => selectedForDelete(row, sub));
                 clearDeletePreview();
                 if (!targets.length) return;
-                let deleted = 0;
+                let deleted = 0,
+                    failed = 0,
+                    pending = 0,
+                    processed = 0;
                 const touched = /* @__PURE__ */ new Set(),
                     failures = [];
                 try {
@@ -13056,9 +13099,8 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                             let failedGroup = false;
                             for (const { row, sub } of group) {
                                 verify();
-                                status(
-                                    `删除字幕 ${deleted + failures.length + 1}/${targets.length}：${sub.name}`
-                                );
+                                processed++;
+                                status(`删除字幕 ${processed}/${targets.length}：${sub.name}`);
                                 try {
                                     const siblings = await subtitleContext.source.children({
                                         id: row.node.parentId,
@@ -13129,7 +13171,8 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                                         row.writeBlocked = true;
                                         row.complete = false;
                                         row.error = '字幕删除结果不明，请重新检查目录：' + error.message;
-                                    }
+                                        pending++;
+                                    } else failed++;
                                     observe(error);
                                     verify();
                                     if (error.stop || [401, 403].includes(error.status)) throw error;
@@ -13163,7 +13206,7 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                         check
                     );
                     status(
-                        `批量删除结束：已移入回收站 ${deleted} 个，失败 ${failures.length} 个。` +
+                        `删除结束 · 已移入回收站 ${deleted} · 失败 ${failed} · 待核对 ${pending}` +
                             (failures.length ? ` ${failures.slice(0, 5).join('；')}` : '')
                     );
                 } catch (error) {
@@ -13175,7 +13218,9 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                                 row.error = '请重新检查目录，确认剩余字幕。';
                             }
                     }
-                    status(`删除中断：已移入回收站 ${deleted} 个；${error.message}`);
+                    status(
+                        `删除中断 · 已处理 ${processed}/${targets.length} · 已移入回收站 ${deleted} · 失败 ${failed} · 待核对 ${pending} · ${error.message}`
+                    );
                 }
             }, true);
         const fillCard = () =>
