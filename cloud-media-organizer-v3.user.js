@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v1.0
 // @namespace    local.cloud-media-organizer
-// @version      1.0.3
+// @version      1.0.4
 // @description  面向光鸭网盘的影视整理与字幕补齐工具。
 // @match        https://www.guangyapan.com/*
 // @match        https://guangyapan.com/*
@@ -186,7 +186,7 @@ SOFTWARE.
             (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))
     )
         return;
-    const VERSION = '1.0.3';
+    const VERSION = '1.0.4';
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
     const capture = { token: '' };
@@ -6431,6 +6431,10 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
             .trim();
     }
     const subtitleTitleKey = (value) => titleKey(String(value || '').replace(/[ː∶]/g, ':'));
+    const SUBTITLE_EPISODE_MAPPING_KEY = 'subtitle-episode-mappings-v1';
+    const SUBTITLE_RELEASE_EPISODE_MAP = {
+        65944: { title: 'Sakamoto desu ga', episode: 13, target: [0, 1] },
+    };
     const SUBTITLE_SEASON_ALIASES = {
         '82739:2': [
             '青春猪头少年不会梦到圣诞服女郎',
@@ -6611,9 +6615,12 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
             ...[
                 subtitleQueryTitle(parsed.query, parsed.year),
                 ...(parsed.aliases || []),
+                parsed.tv && parsed.workResolved && SUBTITLE_RELEASE_EPISODE_MAP[parsed.tmdbId]?.title,
                 ...subtitleSeasonTitles(parsed),
                 subtitleReleaseChapter(parsed),
-            ].flatMap(variants),
+            ]
+                .filter(Boolean)
+                .flatMap(variants),
         ]);
         let packMatched = false;
         const splitMixed = (part) => {
@@ -8006,11 +8013,13 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                             }
                             const name = file.file_name || '',
                                 ext = name.split('.').pop().toLowerCase();
+                            const episodeIdentity = parsed.tv ? subtitleEpisodeIdentity(name, parsed) : null;
                             if (
-                                parsed.tv &&
-                                range &&
-                                range.end !== range.start &&
-                                !exactSubtitleEpisode(name, parsed)
+                                (episodeIdentity?.sourceSeason != null && episodeIdentity.conflict) ||
+                                (episodeIdentity &&
+                                    range &&
+                                    range.end !== range.start &&
+                                    !episodeIdentity.matched)
                             ) {
                                 excluded.季集++;
                                 continue;
@@ -8367,25 +8376,14 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
             const { name } = file;
             let identityName = name;
             if (parsed.tv) {
-                const folders = file.path.replace(/\\/g, '/').split('/').slice(0, -1);
-                const seasons = folders.flatMap((folder) =>
-                    [...folder.matchAll(/(?:^|[^a-z])(?:Season[ ._-]*|S)(\d{1,2})(?!\d)/gi)].map((match2) =>
-                        Number(match2[1])
-                    )
-                );
-                if (
-                    seasons.some((season) => season !== parsed.season) ||
-                    folders.some((folder) => /^(?:extras?|specials?|bonus|特典|花絮)$/i.test(folder))
-                )
-                    continue;
-                const seasonContext = candidate.titleMatched
-                    ? (candidate.archiveSeason ?? seasons[0] ?? null)
-                    : null;
-                const bare = name.match(
-                    /^(?:E(?:P)?[ ._-]*)?(\d{1,3})(?:[ ._-](?:chs|cht|zh|zh-cn|zh-tw|简体|繁体|简中|繁中))?\.(?:srt|ass|ssa|vtt)$/i
-                );
-                if (bare && seasonContext === parsed.season) {
-                    if (!subtitleEpisodeIdentity(name, parsed, seasonContext).matched) continue;
+                const match2 = subtitleArchiveEpisodeMatch(name, parsed, {
+                    fields: candidate.archiveFields,
+                    season: candidate.archiveSeason,
+                    path: file.path,
+                    trustedWork: candidate.titleMatched,
+                });
+                if (!match2.matched) continue;
+                if (match2.generic) {
                     identityName =
                         parsed.query +
                         '.S' +
@@ -8394,7 +8392,7 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                         String(parsed.episode).padStart(2, '0') +
                         '.' +
                         file.ext;
-                } else if (!subtitleEpisodeIdentity(name, parsed, seasonContext).matched) continue;
+                }
             }
             const match = subtitleCandidateFilter(parsed, candidate.archiveFields || [], identityName);
             const info = subtitleFileInfo(name, candidate.language);
@@ -8728,7 +8726,8 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
             stem.match(/\[(\d{1,3})(?:v\d+)?(?:[ ._-]+end)?\]/i) ||
             [...numbering.matchAll(/(?:^|[ ._-]+)(\d{1,3})(?:v\d+)?(?=$|[ ._\]「『(])/gi)].at(-1);
         const marker = markers[0];
-        let season = marker ? Number(marker[1]) : named.season;
+        const sourceSeason = marker ? Number(marker[1]) : named.season;
+        let season = sourceSeason;
         const episode = marker ? Number(marker[2]) : numbered ? Number(numbered[1]) : named.episode;
         let title = marker ? stem.slice(0, marker.index) : numbered ? stem.slice(0, numbered.index) : '';
         const withoutGroup = title.replace(/^\s*\[[^\]]+\][ ._-]*/, '').trim();
@@ -8797,7 +8796,7 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                   stem
                       .slice(episodeAt + (marker ? marker[2] : numbered[1]).length)
                       .replace(/「[^」]*」|『[^』]*』/g, '{episodeTitle}');
-        return { stem, named, markers, season, episode, title, pattern };
+        return { stem, named, markers, sourceSeason, season, episode, title, pattern };
     }
     function subtitleEpisodeRange(parsed) {
         if (!parsed || parsed.episode == null) return null;
@@ -8806,15 +8805,49 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
         if (!Number.isInteger(start) || !Number.isInteger(end) || end < start) return null;
         return { start, end };
     }
-    function subtitleEpisodeIdentity(name, parsed, seasonContext = null) {
+    function subtitleEpisodeMappingKey(detail, parsed) {
+        if (
+            !parsed.tv ||
+            !parsed.workResolved ||
+            !parsed.tmdbId ||
+            detail.sourceSeason != null ||
+            !detail.title
+        )
+            return null;
+        return JSON.stringify([String(parsed.tmdbId), detail.stem.toLowerCase()]);
+    }
+    function rememberSubtitleEpisodeMapping(name, parsed) {
         const detail = subtitleEpisodeName(name, parsed);
-        const { stem, named, markers, title, pattern } = detail;
-        let season = detail.season ?? seasonContext,
-            episode = detail.episode;
+        const key = subtitleEpisodeMappingKey(detail, parsed);
+        const range = subtitleEpisodeRange(parsed);
+        if (
+            !key ||
+            parsed.season == null ||
+            !range ||
+            range.start !== range.end ||
+            detail.episode == null ||
+            !subtitleWorkIdentity(parsed, [], name).titleMatched ||
+            subtitleEpisodeIdentity(name, parsed).matched
+        )
+            return;
+        const mappings = new Map(GM_getValue(SUBTITLE_EPISODE_MAPPING_KEY, []));
+        mappings.delete(key);
+        mappings.set(key, [parsed.season, range.start]);
+        evict(mappings, 300);
+        GM_setValue(SUBTITLE_EPISODE_MAPPING_KEY, [...mappings]);
+    }
+    function subtitleEpisodeIdentity(name, parsed, seasonContext = null) {
+        return resolveSubtitleEpisode(subtitleEpisodeName(name, parsed), parsed, seasonContext);
+    }
+    function resolveSubtitleEpisode(detail, parsed, seasonContext) {
+        const { stem, named, markers, title, pattern, sourceSeason, episode: sourceEpisode } = detail;
+        let season = sourceSeason ?? seasonContext ?? detail.season,
+            episode = sourceEpisode,
+            evidence = sourceSeason != null ? 'filename' : seasonContext != null ? 'context' : 'inferred';
         const targetRange = subtitleEpisodeRange(parsed),
-            candidateEndEpisode = named.endEpisode ?? episode,
+            sourceEndEpisode = named.endEpisode ?? sourceEpisode,
             exactRange =
-                !!targetRange && episode === targetRange.start && candidateEndEpisode === targetRange.end;
+                !!targetRange && episode === targetRange.start && sourceEndEpisode === targetRange.end;
         const multiple =
             markers.some(
                 (mark) =>
@@ -8833,7 +8866,10 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
             conflict,
             season,
             episode,
-            endEpisode: candidateEndEpisode,
+            endEpisode: sourceEndEpisode == null ? null : sourceEndEpisode + (episode - sourceEpisode),
+            sourceSeason,
+            sourceEpisode,
+            evidence,
             title,
             pattern,
         });
@@ -8844,6 +8880,25 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
             (parsed.tv && parsed.season > 0 && named.standalone && !markers.length)
         )
             return result(false, true);
+        if (sourceSeason != null && seasonContext != null && sourceSeason !== seasonContext)
+            return result(false, true);
+        const mappingKey =
+            sourceEpisode != null &&
+            sourceEndEpisode === sourceEpisode &&
+            subtitleEpisodeMappingKey(detail, parsed);
+        const known = mappingKey && SUBTITLE_RELEASE_EPISODE_MAP[parsed.tmdbId];
+        const recognized =
+            known &&
+            subtitleTitleKey(known.title) === subtitleTitleKey(title) &&
+            known.episode === sourceEpisode;
+        const mappedEpisode =
+            (recognized && known.target) ||
+            (mappingKey &&
+                GM_getValue(SUBTITLE_EPISODE_MAPPING_KEY, []).find(([key]) => key === mappingKey)?.[1]);
+        if (mappedEpisode) {
+            [season, episode] = mappedEpisode;
+            evidence = recognized ? 'release-mapping' : 'manual-mapping';
+        }
         if (season != null && parsed.season != null && season !== parsed.season) return result(false, true);
         if (episode == null) return result(false, false);
         const seasons = parsed.seasons || [];
@@ -8868,11 +8923,16 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                     return result(false, false);
                 season = parsed.season;
                 episode -= offset;
+                evidence = 'absolute';
             }
-        } else {
+        } else if (!mappedEpisode && sourceEndEpisode === sourceEpisode) {
             const mapped = mediaMapAbsoluteSeasonEpisode(seasons, season, episode);
-            if (mapped) episode = mapped.episode;
+            if (mapped) {
+                episode = mapped.episode;
+                evidence = 'absolute';
+            }
         }
+        const candidateEndEpisode = sourceEndEpisode + (episode - sourceEpisode);
         const matched =
             parsed.tv &&
             parsed.season != null &&
@@ -8888,6 +8948,65 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                 (season !== parsed.season || episode !== parsed.episode)) ||
                 (!!targetRange && candidateEndEpisode !== targetRange.end)
         );
+    }
+    function subtitleArchiveEpisodeMatch(
+        name,
+        parsed,
+        {
+            fields = [],
+            season = null,
+            path = '',
+            selectedSeason = false,
+            trustedWork = false,
+            sameVideo = false,
+        } = {}
+    ) {
+        const folders = path.replace(/\\/g, '/').split('/').slice(0, -1);
+        const folderSeasons = new Set(folders.map(mediaSeasonNumber).filter((number) => number != null));
+        const numbering = subtitleEpisodeName(name, parsed);
+        const generic =
+            !numbering.title ||
+            /^(?:subtitles?|字幕|中文|简中|繁中|chs|cht|zh(?:[-_. ]?(?:cn|tw))?)[ ._-]*$/i.test(
+                numbering.title
+            );
+        const work = subtitleWorkIdentity(parsed, generic ? fields : [], name);
+        const packageMatched =
+            trustedWork ||
+            fields.some((field) => {
+                const title = String(field)
+                    .replace(/\.(?:zip|rar)$/i, '')
+                    .replace(/(?:^|[ ._-])(?:TV[ ._-]*)?\d{1,3}\s*[-~]\s*\d{1,3}(?=$|[ ._-]).*$/i, '');
+                return subtitleWorkIdentity(parsed, [], title).titleMatched;
+            });
+        const hasWork = !work.hardMismatch && (sameVideo || work.titleMatched || (generic && packageMatched));
+        const context = folderSeasons.values().next().value ?? season;
+        const numbers = resolveSubtitleEpisode(
+            numbering,
+            parsed,
+            context ?? (generic && selectedSeason && parsed.season > 0 ? parsed.season : null)
+        );
+        const folderMismatch =
+            folderSeasons.size > 1 ||
+            (folderSeasons.size === 1 && season != null && context !== season) ||
+            folders.some(
+                (folder) =>
+                    /^(?:extras?|bonus|特典|花絮)$/i.test(folder) ||
+                    (parsed.season !== 0 && /^(?:specials?|特别篇|特別篇)$/i.test(folder))
+            );
+        const matched = !folderMismatch && numbers.matched && hasWork;
+        return {
+            ...numbers,
+            matched,
+            generic,
+            needsIdentity: !folderMismatch && numbers.matched && generic && !hasWork && !work.hardMismatch,
+            outOfScope:
+                hasWork &&
+                (folderMismatch ||
+                    (numbers.conflict &&
+                        numbers.sourceEpisode != null &&
+                        (parsed.season > 0 || numbers.evidence !== 'inferred'))),
+            workReason: work.hardMismatch ? work.matchReason : !generic && !hasWork ? work.matchReason : '',
+        };
     }
     function exactSubtitleEpisode(name, parsed) {
         return subtitleEpisodeIdentity(name, parsed).matched;
@@ -10726,11 +10845,16 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
         check();
         return extracted.bytes;
     }
-    function matchSubtitleImport(name, rows, archiveName = '', { manual = false, target = null } = {}) {
+    function matchSubtitleImport(
+        name,
+        rows,
+        archiveName = '',
+        { manual = false, target = null, path = '' } = {}
+    ) {
         const stem = mediaStem(name).normalize('NFKC');
         const marks = [...stem.matchAll(/(?:^|[^\dA-Z])S(\d{1,2})[ ._-]*E(\d{1,3})(?!\d)/gi)];
         const parsed = parseMediaName(name);
-        let episodeMatched = false;
+        let episodeMatch;
         if (
             marks.length > 1 ||
             (parsed.endEpisode && parsed.endEpisode !== parsed.episode) ||
@@ -10756,67 +10880,28 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                 : name;
         if (rows[0].parsed.tv) {
             const archiveSeason = archiveName ? subtitlePackSeason([archiveName]) : null;
-            targets = rows.filter(
-                (row2) => subtitleEpisodeIdentity(matchName, row2.parsed, archiveSeason).matched
+            const matches = rows.map((row2) =>
+                subtitleArchiveEpisodeMatch(matchName, row2.parsed, {
+                    fields: archiveName ? [archiveName] : [],
+                    season: archiveSeason,
+                    selectedSeason: manual && !!archiveName,
+                    path,
+                    sameVideo: mediaSubtitleSuffix(row2.node.name, name) !== null,
+                })
             );
-            const detail = subtitleEpisodeName(matchName, rows[0].parsed);
-            if (!targets.length && archiveName && detail.episode != null) {
-                const season = detail.season ?? archiveSeason;
-                targets = rows.filter(
-                    (row2) =>
-                        row2.parsed.episode === detail.episode &&
-                        (season == null || row2.parsed.season === season)
-                );
-                if (!targets.length && season == null && detail.episode > 0) {
-                    const specialRows = rows.filter(
-                        (row2) => row2.parsed.season === 0 && row2.parsed.episode != null
-                    );
-                    const regularSeason = rows[0].media?.detail?.seasons?.find(
-                        (item) => item.season_number === 1
-                    );
-                    const range = /(?:^|[^\d])(\d{1,3})\s*[-~]\s*(\d{1,3})(?!\d)/.exec(archiveName);
-                    if (
-                        specialRows.length === 1 &&
-                        regularSeason?.episode_count &&
-                        detail.episode === Number(regularSeason.episode_count) + 1 &&
-                        range &&
-                        Number(range[1]) === 1 &&
-                        Number(range[2]) === detail.episode
-                    )
-                        targets = specialRows;
-                }
-                episodeMatched = targets.length === 1;
-            }
-            if (!targets.length && archiveName) {
-                const range = /\bTV[ _.-]*(\d{1,3})\s*[-~]\s*(\d{1,3})(?!\d)/i.exec(archiveName);
-                const numbered = /^(.+?)\s+-\s+(\d{1,3})$/.exec(stem);
-                const seasons = rows[0].media?.detail?.seasons?.filter((item) => item.season_number > 0);
-                if (
-                    range &&
-                    numbered &&
-                    seasons?.length === 1 &&
-                    Number(range[1]) === 1 &&
-                    Number(range[2]) === seasons[0].episode_count &&
-                    Number(numbered[2]) >= 1 &&
-                    Number(numbered[2]) <= Number(range[2]) &&
-                    subtitleWorkIdentity(rows[0].parsed, [], numbered[1]).titleMatched
-                ) {
-                    targets = rows.filter(
-                        (row2) =>
-                            row2.parsed.season === seasons[0].season_number &&
-                            row2.parsed.episode === Number(numbered[2])
-                    );
-                }
-            }
+            targets = rows.filter((_row, index) => matches[index].matched || matches[index].needsIdentity);
             if (targets.length !== 1)
                 return {
-                    outOfScope: !!archiveName && detail.episode != null && !targets.length,
+                    outOfScope:
+                        !!archiveName && !targets.length && matches.every((match) => match.outOfScope),
                     reason: targets.length
                         ? '同一集有多个目标版本'
-                        : '季集与所选目标不符或缺少可验证的季集标记',
+                        : matches.find((match) => match.workReason)?.workReason ||
+                          '季集与所选目标不符或缺少可验证的季集标记',
                 };
             if (targets[0].parsed.endEpisode && targets[0].parsed.endEpisode !== targets[0].parsed.episode)
                 return { reason: '暂不支持导入到合并多集视频' };
+            episodeMatch = matches[rows.indexOf(targets[0])];
         } else if (parsed.tv || marks.length) return { reason: '剧集字幕与电影目标不符' };
         if (targets.length !== 1) return { reason: '请选择一个明确的视频' };
         const row = targets[0];
@@ -10856,13 +10941,11 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                 [subtitleRelease, videoRelease].some((value) => /^hd(?:cam|ts)$/.test(value)))
         )
             return { row, reason: releaseWarning };
-        const identityName =
-            archiveName && row.parsed.tv && !marks.length
-                ? mediaStem(matchName).replace(/\s+-\s+\d{1,3}$/, '')
-                : matchName;
-        const identity = subtitleWorkIdentity(row.parsed, [], identityName);
+        if (episodeMatch)
+            return { row, releaseWarning, needsIdentity: episodeMatch.needsIdentity, episodeMatch };
+        const identity = subtitleWorkIdentity(row.parsed, [], matchName);
         if (identity.hardMismatch) return { row, reason: identity.matchReason };
-        if (identity.titleMatched || mediaSubtitleSuffix(row.node.name, name) !== null || episodeMatched)
+        if (identity.titleMatched || mediaSubtitleSuffix(row.node.name, name) !== null)
             return { row, releaseWarning };
         const title = (marks.length ? stem.slice(0, marks[0].index) : stem).trim();
         if (
@@ -10918,6 +11001,7 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
             const match = matchSubtitleImport(entry.name, autoTargets, entry.archiveName, {
                     manual: true,
                     target,
+                    path: entry.archiveEntry?.path,
                 }),
                 { row, releaseWarning } = match;
             if (match.outOfScope && !target) {
@@ -10993,6 +11077,7 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                     name,
                     language: suffix,
                     releaseWarning,
+                    episodeMatch: match.episodeMatch,
                 });
             } catch (error) {
                 check();
@@ -11598,6 +11683,11 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                                   : '时间轴未验证' +
                                     (entry.verification.duration ? '（TMDB 仅作作品时长参考）' : ''))
                             : entry.reason;
+                    const pairing =
+                        entry.episodeMatch?.evidence === 'release-mapping' ||
+                        entry.episodeMatch?.evidence === 'manual-mapping'
+                            ? ' · 发行集号 ' + entry.episodeMatch.sourceEpisode + ' 已映射到目标季集'
+                            : '';
                     detail.textContent = safeDiagnostic(
                         entry.label +
                             (entry.row ? ' → ' + entry.row.path : '') +
@@ -11605,6 +11695,7 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                             label[entry.state] +
                             ' · ' +
                             timing +
+                            pairing +
                             (entry.state === 'ready' && entry.releaseWarning
                                 ? ' · ' + entry.releaseWarning
                                 : '')
@@ -12398,6 +12489,13 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                                     '已导入，上传内容一致 · ' + subtitleVerificationMessage(verification);
                                 done++;
                                 diag('导入成功', row.path + ' · 上传字节一致 · 未核对播放同步');
+                                if (entry.target) {
+                                    try {
+                                        rememberSubtitleEpisodeMapping(entry.name, row.parsed);
+                                    } catch (error) {
+                                        diag('发行编号映射保存失败', error.message);
+                                    }
+                                }
                             } catch (error) {
                                 observe(error);
                                 outcome = 'failed';

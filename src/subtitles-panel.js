@@ -77,11 +77,16 @@ async function subtitleImportBytes(entry, check) {
     check();
     return extracted.bytes;
 }
-function matchSubtitleImport(name, rows, archiveName = '', { manual = false, target = null } = {}) {
+function matchSubtitleImport(
+    name,
+    rows,
+    archiveName = '',
+    { manual = false, target = null, path = '' } = {}
+) {
     const stem = mediaStem(name).normalize('NFKC');
     const marks = [...stem.matchAll(/(?:^|[^\dA-Z])S(\d{1,2})[ ._-]*E(\d{1,3})(?!\d)/gi)];
     const parsed = parseMediaName(name);
-    let episodeMatched = false;
+    let episodeMatch;
     if (
         marks.length > 1 ||
         (parsed.endEpisode && parsed.endEpisode !== parsed.episode) ||
@@ -108,62 +113,27 @@ function matchSubtitleImport(name, rows, archiveName = '', { manual = false, tar
             : name;
     if (rows[0].parsed.tv) {
         const archiveSeason = archiveName ? subtitlePackSeason([archiveName]) : null;
-        targets = rows.filter((row) => subtitleEpisodeIdentity(matchName, row.parsed, archiveSeason).matched);
-        const detail = subtitleEpisodeName(matchName, rows[0].parsed);
-        if (!targets.length && archiveName && detail.episode != null) {
-            const season = detail.season ?? archiveSeason;
-            targets = rows.filter(
-                (row) =>
-                    row.parsed.episode === detail.episode && (season == null || row.parsed.season === season)
-            );
-            if (!targets.length && season == null && detail.episode > 0) {
-                const specialRows = rows.filter(
-                    (row) => row.parsed.season === 0 && row.parsed.episode != null
-                );
-                const regularSeason = rows[0].media?.detail?.seasons?.find(
-                    (item) => item.season_number === 1
-                );
-                const range = /(?:^|[^\d])(\d{1,3})\s*[-~]\s*(\d{1,3})(?!\d)/.exec(archiveName);
-                if (
-                    specialRows.length === 1 &&
-                    regularSeason?.episode_count &&
-                    detail.episode === Number(regularSeason.episode_count) + 1 &&
-                    range &&
-                    Number(range[1]) === 1 &&
-                    Number(range[2]) === detail.episode
-                )
-                    targets = specialRows;
-            }
-            episodeMatched = targets.length === 1;
-        }
-        if (!targets.length && archiveName) {
-            const range = /\bTV[ _.-]*(\d{1,3})\s*[-~]\s*(\d{1,3})(?!\d)/i.exec(archiveName);
-            const numbered = /^(.+?)\s+-\s+(\d{1,3})$/.exec(stem);
-            const seasons = rows[0].media?.detail?.seasons?.filter((item) => item.season_number > 0);
-            if (
-                range &&
-                numbered &&
-                seasons?.length === 1 &&
-                Number(range[1]) === 1 &&
-                Number(range[2]) === seasons[0].episode_count &&
-                Number(numbered[2]) >= 1 &&
-                Number(numbered[2]) <= Number(range[2]) &&
-                subtitleWorkIdentity(rows[0].parsed, [], numbered[1]).titleMatched
-            ) {
-                targets = rows.filter(
-                    (row) =>
-                        row.parsed.season === seasons[0].season_number &&
-                        row.parsed.episode === Number(numbered[2])
-                );
-            }
-        }
+        const matches = rows.map((row) =>
+            subtitleArchiveEpisodeMatch(matchName, row.parsed, {
+                fields: archiveName ? [archiveName] : [],
+                season: archiveSeason,
+                selectedSeason: manual && !!archiveName,
+                path,
+                sameVideo: mediaSubtitleSuffix(row.node.name, name) !== null,
+            })
+        );
+        targets = rows.filter((_row, index) => matches[index].matched || matches[index].needsIdentity);
         if (targets.length !== 1)
             return {
-                outOfScope: !!archiveName && detail.episode != null && !targets.length,
-                reason: targets.length ? '同一集有多个目标版本' : '季集与所选目标不符或缺少可验证的季集标记',
+                outOfScope: !!archiveName && !targets.length && matches.every((match) => match.outOfScope),
+                reason: targets.length
+                    ? '同一集有多个目标版本'
+                    : matches.find((match) => match.workReason)?.workReason ||
+                      '季集与所选目标不符或缺少可验证的季集标记',
             };
         if (targets[0].parsed.endEpisode && targets[0].parsed.endEpisode !== targets[0].parsed.episode)
             return { reason: '暂不支持导入到合并多集视频' };
+        episodeMatch = matches[rows.indexOf(targets[0])];
     } else if (parsed.tv || marks.length) return { reason: '剧集字幕与电影目标不符' };
     if (targets.length !== 1) return { reason: '请选择一个明确的视频' };
     const row = targets[0];
@@ -203,13 +173,10 @@ function matchSubtitleImport(name, rows, archiveName = '', { manual = false, tar
             [subtitleRelease, videoRelease].some((value) => /^hd(?:cam|ts)$/.test(value)))
     )
         return { row, reason: releaseWarning };
-    const identityName =
-        archiveName && row.parsed.tv && !marks.length
-            ? mediaStem(matchName).replace(/\s+-\s+\d{1,3}$/, '')
-            : matchName;
-    const identity = subtitleWorkIdentity(row.parsed, [], identityName);
+    if (episodeMatch) return { row, releaseWarning, needsIdentity: episodeMatch.needsIdentity, episodeMatch };
+    const identity = subtitleWorkIdentity(row.parsed, [], matchName);
     if (identity.hardMismatch) return { row, reason: identity.matchReason };
-    if (identity.titleMatched || mediaSubtitleSuffix(row.node.name, name) !== null || episodeMatched)
+    if (identity.titleMatched || mediaSubtitleSuffix(row.node.name, name) !== null)
         return { row, releaseWarning };
     const title = (marks.length ? stem.slice(0, marks[0].index) : stem).trim();
     if (!title || /^(?:subtitles?|字幕|中文|简中|繁中|chs|cht|zh(?:[-_. ]?(?:cn|tw))?)[ ._-]*$/i.test(title))
@@ -262,6 +229,7 @@ async function planSubtitleImport({ entries, language, confirmed, assignments },
         const match = matchSubtitleImport(entry.name, autoTargets, entry.archiveName, {
                 manual: true,
                 target,
+                path: entry.archiveEntry?.path,
             }),
             { row, releaseWarning } = match;
         if (match.outOfScope && !target) {
@@ -321,6 +289,7 @@ async function planSubtitleImport({ entries, language, confirmed, assignments },
                 name,
                 language: suffix,
                 releaseWarning,
+                episodeMatch: match.episodeMatch,
             });
         } catch (error) {
             check();
@@ -917,6 +886,11 @@ function initSubtitles(flow) {
                               : '时间轴未验证' +
                                 (entry.verification.duration ? '（TMDB 仅作作品时长参考）' : ''))
                         : entry.reason;
+                const pairing =
+                    entry.episodeMatch?.evidence === 'release-mapping' ||
+                    entry.episodeMatch?.evidence === 'manual-mapping'
+                        ? ' · 发行集号 ' + entry.episodeMatch.sourceEpisode + ' 已映射到目标季集'
+                        : '';
                 detail.textContent = safeDiagnostic(
                     entry.label +
                         (entry.row ? ' → ' + entry.row.path : '') +
@@ -924,6 +898,7 @@ function initSubtitles(flow) {
                         label[entry.state] +
                         ' · ' +
                         timing +
+                        pairing +
                         (entry.state === 'ready' && entry.releaseWarning ? ' · ' + entry.releaseWarning : '')
                 );
                 box.append(detail);
@@ -1703,6 +1678,13 @@ function initSubtitles(flow) {
                                 '已导入，上传内容一致 · ' + subtitleVerificationMessage(verification);
                             done++;
                             diag('导入成功', row.path + ' · 上传字节一致 · 未核对播放同步');
+                            if (entry.target) {
+                                try {
+                                    rememberSubtitleEpisodeMapping(entry.name, row.parsed);
+                                } catch (error) {
+                                    diag('发行编号映射保存失败', error.message);
+                                }
+                            }
                         } catch (error) {
                             observe(error);
                             outcome = 'failed';

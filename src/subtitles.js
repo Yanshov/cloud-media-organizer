@@ -210,6 +210,12 @@ function mediaTheatricalQuery(value) {
         .trim();
 }
 const subtitleTitleKey = (value) => titleKey(String(value || '').replace(/[ː∶]/g, ':'));
+const SUBTITLE_EPISODE_MAPPING_KEY = 'subtitle-episode-mappings-v1';
+// TBS lists the Blu-ray bonus episode as episode 13. TMDB catalogs it as S00E01.
+// https://www.tbs.co.jp/anime/sakamoto/disc/
+const SUBTITLE_RELEASE_EPISODE_MAP = {
+    65944: { title: 'Sakamoto desu ga', episode: 13, target: [0, 1] },
+};
 // TMDB also lists these as work aliases, which carry no season number on their own.
 const SUBTITLE_SEASON_ALIASES = {
     '82739:2': [
@@ -395,9 +401,12 @@ function subtitleWorkIdentity(parsed, fields, name) {
         ...[
             subtitleQueryTitle(parsed.query, parsed.year),
             ...(parsed.aliases || []),
+            parsed.tv && parsed.workResolved && SUBTITLE_RELEASE_EPISODE_MAP[parsed.tmdbId]?.title,
             ...subtitleSeasonTitles(parsed),
             subtitleReleaseChapter(parsed),
-        ].flatMap(variants),
+        ]
+            .filter(Boolean)
+            .flatMap(variants),
     ]);
     let packMatched = false;
     const splitMixed = (part) => {
@@ -1756,11 +1765,13 @@ function createSubtitleService({ wait = (ms) => sleep(ms), check = () => {}, log
                         }
                         const name = file.file_name || '',
                             ext = name.split('.').pop().toLowerCase();
+                        const episodeIdentity = parsed.tv ? subtitleEpisodeIdentity(name, parsed) : null;
                         if (
-                            parsed.tv &&
-                            range &&
-                            range.end !== range.start &&
-                            !exactSubtitleEpisode(name, parsed)
+                            (episodeIdentity?.sourceSeason != null && episodeIdentity.conflict) ||
+                            (episodeIdentity &&
+                                range &&
+                                range.end !== range.start &&
+                                !episodeIdentity.matched)
                         ) {
                             excluded.季集++;
                             continue;
@@ -2108,25 +2119,14 @@ function subtitleArchiveChoices(index, candidate, language) {
         const { name } = file;
         let identityName = name;
         if (parsed.tv) {
-            const folders = file.path.replace(/\\/g, '/').split('/').slice(0, -1);
-            const seasons = folders.flatMap((folder) =>
-                [...folder.matchAll(/(?:^|[^a-z])(?:Season[ ._-]*|S)(\d{1,2})(?!\d)/gi)].map((match) =>
-                    Number(match[1])
-                )
-            );
-            if (
-                seasons.some((season) => season !== parsed.season) ||
-                folders.some((folder) => /^(?:extras?|specials?|bonus|特典|花絮)$/i.test(folder))
-            )
-                continue;
-            const seasonContext = candidate.titleMatched
-                ? (candidate.archiveSeason ?? seasons[0] ?? null)
-                : null;
-            const bare = name.match(
-                /^(?:E(?:P)?[ ._-]*)?(\d{1,3})(?:[ ._-](?:chs|cht|zh|zh-cn|zh-tw|简体|繁体|简中|繁中))?\.(?:srt|ass|ssa|vtt)$/i
-            );
-            if (bare && seasonContext === parsed.season) {
-                if (!subtitleEpisodeIdentity(name, parsed, seasonContext).matched) continue;
+            const match = subtitleArchiveEpisodeMatch(name, parsed, {
+                fields: candidate.archiveFields,
+                season: candidate.archiveSeason,
+                path: file.path,
+                trustedWork: candidate.titleMatched,
+            });
+            if (!match.matched) continue;
+            if (match.generic) {
                 identityName =
                     parsed.query +
                     '.S' +
@@ -2135,7 +2135,7 @@ function subtitleArchiveChoices(index, candidate, language) {
                     String(parsed.episode).padStart(2, '0') +
                     '.' +
                     file.ext;
-            } else if (!subtitleEpisodeIdentity(name, parsed, seasonContext).matched) continue;
+            }
         }
         const match = subtitleCandidateFilter(parsed, candidate.archiveFields || [], identityName);
         const info = subtitleFileInfo(name, candidate.language);
@@ -2465,7 +2465,8 @@ function subtitleEpisodeName(name, parsed) {
         stem.match(/\[(\d{1,3})(?:v\d+)?(?:[ ._-]+end)?\]/i) ||
         [...numbering.matchAll(/(?:^|[ ._-]+)(\d{1,3})(?:v\d+)?(?=$|[ ._\]「『(])/gi)].at(-1);
     const marker = markers[0];
-    let season = marker ? Number(marker[1]) : named.season;
+    const sourceSeason = marker ? Number(marker[1]) : named.season;
+    let season = sourceSeason;
     const episode = marker ? Number(marker[2]) : numbered ? Number(numbered[1]) : named.episode;
     let title = marker ? stem.slice(0, marker.index) : numbered ? stem.slice(0, numbered.index) : '';
     const withoutGroup = title.replace(/^\s*\[[^\]]+\][ ._-]*/, '').trim();
@@ -2532,7 +2533,7 @@ function subtitleEpisodeName(name, parsed) {
               stem
                   .slice(episodeAt + (marker ? marker[2] : numbered[1]).length)
                   .replace(/「[^」]*」|『[^』]*』/g, '{episodeTitle}');
-    return { stem, named, markers, season, episode, title, pattern };
+    return { stem, named, markers, sourceSeason, season, episode, title, pattern };
 }
 function subtitleEpisodeRange(parsed) {
     if (!parsed || parsed.episode == null) return null;
@@ -2541,15 +2542,46 @@ function subtitleEpisodeRange(parsed) {
     if (!Number.isInteger(start) || !Number.isInteger(end) || end < start) return null;
     return { start, end };
 }
-function subtitleEpisodeIdentity(name, parsed, seasonContext = null) {
+/** Keys a user-confirmed mapping by work ID and the original release filename stem. */
+function subtitleEpisodeMappingKey(detail, parsed) {
+    if (!parsed.tv || !parsed.workResolved || !parsed.tmdbId || detail.sourceSeason != null || !detail.title)
+        return null;
+    return JSON.stringify([String(parsed.tmdbId), detail.stem.toLowerCase()]);
+}
+/** Saves a manual assignment after a verified upload for the same work and filename. */
+function rememberSubtitleEpisodeMapping(name, parsed) {
     const detail = subtitleEpisodeName(name, parsed);
-    const { stem, named, markers, title, pattern } = detail;
-    let season = detail.season ?? seasonContext,
-        episode = detail.episode;
+    const key = subtitleEpisodeMappingKey(detail, parsed);
+    const range = subtitleEpisodeRange(parsed);
+    if (
+        !key ||
+        parsed.season == null ||
+        !range ||
+        range.start !== range.end ||
+        detail.episode == null ||
+        !subtitleWorkIdentity(parsed, [], name).titleMatched ||
+        subtitleEpisodeIdentity(name, parsed).matched
+    )
+        return;
+    const mappings = new Map(GM_getValue(SUBTITLE_EPISODE_MAPPING_KEY, []));
+    mappings.delete(key);
+    mappings.set(key, [parsed.season, range.start]);
+    evict(mappings, 300);
+    GM_setValue(SUBTITLE_EPISODE_MAPPING_KEY, [...mappings]);
+}
+/** Resolves the release's numbering without changing the numbers read from the filename. */
+function subtitleEpisodeIdentity(name, parsed, seasonContext = null) {
+    return resolveSubtitleEpisode(subtitleEpisodeName(name, parsed), parsed, seasonContext);
+}
+/** Applies numbering rules to parsed filename evidence. */
+function resolveSubtitleEpisode(detail, parsed, seasonContext) {
+    const { stem, named, markers, title, pattern, sourceSeason, episode: sourceEpisode } = detail;
+    let season = sourceSeason ?? seasonContext ?? detail.season,
+        episode = sourceEpisode,
+        evidence = sourceSeason != null ? 'filename' : seasonContext != null ? 'context' : 'inferred';
     const targetRange = subtitleEpisodeRange(parsed),
-        candidateEndEpisode = named.endEpisode ?? episode,
-        exactRange =
-            !!targetRange && episode === targetRange.start && candidateEndEpisode === targetRange.end;
+        sourceEndEpisode = named.endEpisode ?? sourceEpisode,
+        exactRange = !!targetRange && episode === targetRange.start && sourceEndEpisode === targetRange.end;
     const multiple =
         markers.some(
             (mark) =>
@@ -2568,7 +2600,10 @@ function subtitleEpisodeIdentity(name, parsed, seasonContext = null) {
         conflict,
         season,
         episode,
-        endEpisode: candidateEndEpisode,
+        endEpisode: sourceEndEpisode == null ? null : sourceEndEpisode + (episode - sourceEpisode),
+        sourceSeason,
+        sourceEpisode,
+        evidence,
         title,
         pattern,
     });
@@ -2579,6 +2614,23 @@ function subtitleEpisodeIdentity(name, parsed, seasonContext = null) {
         (parsed.tv && parsed.season > 0 && named.standalone && !markers.length)
     )
         return result(false, true);
+    if (sourceSeason != null && seasonContext != null && sourceSeason !== seasonContext)
+        return result(false, true);
+    const mappingKey =
+        sourceEpisode != null &&
+        sourceEndEpisode === sourceEpisode &&
+        subtitleEpisodeMappingKey(detail, parsed);
+    const known = mappingKey && SUBTITLE_RELEASE_EPISODE_MAP[parsed.tmdbId];
+    const recognized =
+        known && subtitleTitleKey(known.title) === subtitleTitleKey(title) && known.episode === sourceEpisode;
+    const mappedEpisode =
+        (recognized && known.target) ||
+        (mappingKey &&
+            GM_getValue(SUBTITLE_EPISODE_MAPPING_KEY, []).find(([key]) => key === mappingKey)?.[1]);
+    if (mappedEpisode) {
+        [season, episode] = mappedEpisode;
+        evidence = recognized ? 'release-mapping' : 'manual-mapping';
+    }
     if (season != null && parsed.season != null && season !== parsed.season) return result(false, true);
     if (episode == null) return result(false, false);
     const seasons = parsed.seasons || [];
@@ -2604,11 +2656,16 @@ function subtitleEpisodeIdentity(name, parsed, seasonContext = null) {
                 return result(false, false);
             season = parsed.season;
             episode -= offset;
+            evidence = 'absolute';
         }
-    } else {
+    } else if (!mappedEpisode && sourceEndEpisode === sourceEpisode) {
         const mapped = mediaMapAbsoluteSeasonEpisode(seasons, season, episode);
-        if (mapped) episode = mapped.episode;
+        if (mapped) {
+            episode = mapped.episode;
+            evidence = 'absolute';
+        }
     }
+    const candidateEndEpisode = sourceEndEpisode + (episode - sourceEpisode);
     const matched =
         parsed.tv &&
         parsed.season != null &&
@@ -2624,6 +2681,65 @@ function subtitleEpisodeIdentity(name, parsed, seasonContext = null) {
             (season !== parsed.season || episode !== parsed.episode)) ||
             (!!targetRange && candidateEndEpisode !== targetRange.end)
     );
+}
+/** Matches a package member using the same numbering as standalone search results. */
+function subtitleArchiveEpisodeMatch(
+    name,
+    parsed,
+    {
+        fields = [],
+        season = null,
+        path = '',
+        selectedSeason = false,
+        trustedWork = false,
+        sameVideo = false,
+    } = {}
+) {
+    const folders = path.replace(/\\/g, '/').split('/').slice(0, -1);
+    // A parent may label a multi-season bundle. A single-season subfolder supplies member context.
+    const folderSeasons = new Set(folders.map(mediaSeasonNumber).filter((number) => number != null));
+    const numbering = subtitleEpisodeName(name, parsed);
+    const generic =
+        !numbering.title ||
+        /^(?:subtitles?|字幕|中文|简中|繁中|chs|cht|zh(?:[-_. ]?(?:cn|tw))?)[ ._-]*$/i.test(numbering.title);
+    const work = subtitleWorkIdentity(parsed, generic ? fields : [], name);
+    const packageMatched =
+        trustedWork ||
+        fields.some((field) => {
+            const title = String(field)
+                .replace(/\.(?:zip|rar)$/i, '')
+                .replace(/(?:^|[ ._-])(?:TV[ ._-]*)?\d{1,3}\s*[-~]\s*\d{1,3}(?=$|[ ._-]).*$/i, '');
+            return subtitleWorkIdentity(parsed, [], title).titleMatched;
+        });
+    const hasWork = !work.hardMismatch && (sameVideo || work.titleMatched || (generic && packageMatched));
+    const context = folderSeasons.values().next().value ?? season;
+    const numbers = resolveSubtitleEpisode(
+        numbering,
+        parsed,
+        context ?? (generic && selectedSeason && parsed.season > 0 ? parsed.season : null)
+    );
+    const folderMismatch =
+        folderSeasons.size > 1 ||
+        (folderSeasons.size === 1 && season != null && context !== season) ||
+        folders.some(
+            (folder) =>
+                /^(?:extras?|bonus|特典|花絮)$/i.test(folder) ||
+                (parsed.season !== 0 && /^(?:specials?|特别篇|特別篇)$/i.test(folder))
+        );
+    const matched = !folderMismatch && numbers.matched && hasWork;
+    return {
+        ...numbers,
+        matched,
+        generic,
+        needsIdentity: !folderMismatch && numbers.matched && generic && !hasWork && !work.hardMismatch,
+        outOfScope:
+            hasWork &&
+            (folderMismatch ||
+                (numbers.conflict &&
+                    numbers.sourceEpisode != null &&
+                    (parsed.season > 0 || numbers.evidence !== 'inferred'))),
+        workReason: work.hardMismatch ? work.matchReason : !generic && !hasWork ? work.matchReason : '',
+    };
 }
 function exactSubtitleEpisode(name, parsed) {
     return subtitleEpisodeIdentity(name, parsed).matched;
