@@ -663,10 +663,14 @@ function subtitleCheckDuration(row, timeline, log) {
     const { start, end, rawEnd, events, issues, invalid, priorEnd, longest, visualEnd } = timeline;
     const validDuration = (value) =>
         Number.isFinite(Number(value)) && Number(value) > 0 ? Number(value) : 0;
+    const parsed = row.parsed || {},
+        episodeRange = subtitleEpisodeRange(parsed),
+        episodeCount = episodeRange ? episodeRange.end - episodeRange.start + 1 : 1;
     const driveSeconds = validDuration(row.node.durationSeconds),
-        runtime = validDuration(row.parsed?.runtimeSeconds);
-    const duration = driveSeconds || runtime;
-    const source = driveSeconds ? '视频文件时长' : runtime ? 'TMDB 作品时长参考' : '无时长参考';
+        runtime = validDuration(parsed.runtimeSeconds),
+        runtimeReference = runtime * episodeCount;
+    const duration = driveSeconds || runtimeReference;
+    const source = driveSeconds ? '视频文件时长' : runtimeReference ? 'TMDB 作品时长参考' : '无时长参考';
     const counts = Object.entries(issues)
         .map(([reason, count]) => reason + ' ' + count)
         .join('、');
@@ -709,9 +713,8 @@ function subtitleCheckDuration(row, timeline, log) {
         throw uncertain('字幕时间轴与视频文件时长冲突，待确认');
     if (driveSeconds && end < driveSeconds * 0.5)
         throw uncertain('字幕不完整：对白只到 ' + end.toFixed(1) + ' 秒（' + source + '），待确认');
-    if (!driveSeconds && runtime >= 1200 && end <= Math.min(480, runtime * 0.2))
+    if (!driveSeconds && runtimeReference >= 1200 && end <= Math.min(480, runtimeReference * 0.2))
         throw uncertain('字幕不完整：对白只到 ' + end.toFixed(1) + ' 秒（' + source + '），待确认', true);
-    const parsed = row.parsed || {};
     const ordinaryEpisode =
         parsed.tv &&
         parsed.season > 0 &&
@@ -742,9 +745,9 @@ function subtitleCheckDuration(row, timeline, log) {
         );
     const evidence = driveSeconds
         ? 'file'
-        : !runtime
+        : !runtimeReference
           ? 'unknown'
-          : Math.abs(end - runtime) >= Math.max(120, runtime * 0.2)
+          : Math.abs(end - runtimeReference) >= Math.max(120, runtimeReference * 0.2)
             ? 'reference-difference'
             : 'reference';
     return { start, end, rawEnd, visualEnd, events, issues, duration, source, evidence };
@@ -3905,6 +3908,41 @@ function subtitleDrive(context, wait = sleep) {
     };
     const retryable = (error) =>
         !error.stop && /连接|超时|网络|fetch|network|HTTP\s*(?:401|403|408|429|5\d\d)/i.test(error.message);
+    // Hold the slot for the complete track inspection, including backoff and URL renewal.
+    const inspectEmbeddedTracks = subtitleRequestPool(0, 2, async (node, check) => {
+        check();
+        let url,
+            retries = 0;
+        const chinese = await inspectMkvSubtitleTracks(
+            node.size,
+            async (start, end) => {
+                for (let attempt = 0; ; attempt++) {
+                    check();
+                    try {
+                        url ||= await downloadUrl(node);
+                        check();
+                        const bytes = await subtitleBinary(url, {
+                            headers: { Range: `bytes=${start}-${end}` },
+                            range: [start, end, node.size],
+                            limit: end - start + 1,
+                        });
+                        check();
+                        return bytes;
+                    } catch (error) {
+                        check();
+                        if (attempt >= 2 || retries >= 4 || !retryable(error)) throw error;
+                        retries++;
+                        url = undefined;
+                        await wait(1000 * (attempt + 1));
+                    }
+                }
+            },
+            check
+        );
+        check();
+        const message = chinese ? '有内嵌中文字幕，跳过补齐' : '未发现内嵌中文字幕';
+        return { chinese, message: retries ? `自动重试 ${retries} 次成功 · ${message}` : message };
+    });
     const read = async (node, progress = () => {}, check = () => {}, limit = SUBTITLE_LIMIT) => {
         if (node.size > limit) throw new Error('字幕文件超过读取大小上限');
         for (let attempt = 0; attempt < 3; attempt++) {
@@ -4072,37 +4110,7 @@ function subtitleDrive(context, wait = sleep) {
         async inspectEmbedded(node, check = () => {}) {
             if (!/\.mkv$/i.test(node.name)) return { chinese: false, message: '非 MKV 格式，未读取视频' };
             try {
-                let url;
-                let retried = false;
-                const chinese = await inspectMkvSubtitleTracks(
-                    node.size,
-                    async (start, end) => {
-                        const readRange = async () => {
-                            url ||= await downloadUrl(node);
-                            check();
-                            return subtitleBinary(url, {
-                                headers: { Range: `bytes=${start}-${end}` },
-                                range: [start, end, node.size],
-                                limit: end - start + 1,
-                            });
-                        };
-                        try {
-                            return await readRange();
-                        } catch (error) {
-                            check();
-                            if (retried || error.phase !== 'transfer' || !error.retryable || error.stop)
-                                throw error;
-                            retried = true;
-                            url = undefined;
-                            await wait(500);
-                            check();
-                            return readRange();
-                        }
-                    },
-                    check
-                );
-                const message = chinese ? '有内嵌中文字幕，跳过补齐' : '未发现内嵌中文字幕';
-                return { chinese, message: retried ? '重试成功 · ' + message : message };
+                return await inspectEmbeddedTracks(node, check);
             } catch (error) {
                 check();
                 if (error.stop || error.phase === 'drive-auth') throw error;

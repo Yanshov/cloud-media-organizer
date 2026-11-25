@@ -183,6 +183,16 @@ function parseMediaName(name, folders = []) {
         simple =
             stem.match(/(?:^|[. _-])(?:EP?|Episode)[. _-]*(\d{1,3})(?:$|[. _-])/i) ||
             stem.match(/^(\d{1,3})$/);
+    // Common anime releases put the episode after a spaced dash, before technical tags.
+    const dashEpisode = stem.match(/\s+-\s+(\d{1,3})(?:v\d+)?\s*((?:\[[^\]]+\]\s*)*)$/i);
+    const numberedEpisode =
+        dashEpisode &&
+        (!dashEpisode[2].trim() ||
+            [...dashEpisode[2].matchAll(/\[([^\]]+)\]/g)].every((match) =>
+                isReleaseTag(match[1].trim().split(/\s+/)[0])
+            ))
+            ? dashEpisode
+            : null;
     const seasonHint =
         [stem, ...[...folders].reverse()].map(mediaSeasonNumber).find((value) => value !== null) ?? null;
     const episode = ep
@@ -193,7 +203,9 @@ function parseMediaName(name, folders = []) {
             ? Number(simple[1])
             : bracketEpisode
               ? Number(bracketEpisode.match(/\d+/)[0])
-              : null;
+              : numberedEpisode
+                ? Number(numberedEpisode[1])
+                : null;
     const season = ep ? Number(ep[1]) : seasonHint;
     // Prefer the last plausible release year: 2049 and 2001 can be part of a title.
     const yearMatch = [...stem.matchAll(/(?:^|[. _（(\[-])((?:19|20)\d{2})(?=$|[. _）)\]-])/g)]
@@ -201,6 +213,7 @@ function parseMediaName(name, folders = []) {
         .at(-1);
     const cut = (value) => {
         let text = value.replace(/\[[^\]]*\]/g, ' ');
+        if (numberedEpisode && value === stem) text = text.replace(/\s+-\s+\d{1,3}(?:v\d+)?\s*$/i, '');
         if (yearMatch) {
             const release = new RegExp('(?:^|[. _（(\\[-])' + yearMatch[1] + '(?=$|[. _）)\\]-])').exec(text);
             if (release && text.slice(0, release.index).trim()) text = text.slice(0, release.index);

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v3.0（重构版）
 // @namespace    local.cloud-media-organizer
-// @version      3.0.49
+// @version      3.0.50
 // @description  面向百度网盘、123 云盘和光鸭网盘的浏览器脚本，支持跨盘 JSON 清单、影视整理与字幕补齐。
 // @match        https://pan.baidu.com/*
 // @match        https://yun.baidu.com/*
@@ -198,7 +198,7 @@ SOFTWARE.
             (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))
     )
         return;
-    const VERSION = '3.0.49';
+    const VERSION = '3.0.50';
     let jsonTaskStopped = false;
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
@@ -4740,6 +4740,15 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             simple =
                 stem.match(/(?:^|[. _-])(?:EP?|Episode)[. _-]*(\d{1,3})(?:$|[. _-])/i) ||
                 stem.match(/^(\d{1,3})$/);
+        const dashEpisode = stem.match(/\s+-\s+(\d{1,3})(?:v\d+)?\s*((?:\[[^\]]+\]\s*)*)$/i);
+        const numberedEpisode =
+            dashEpisode &&
+            (!dashEpisode[2].trim() ||
+                [...dashEpisode[2].matchAll(/\[([^\]]+)\]/g)].every((match) =>
+                    isReleaseTag(match[1].trim().split(/\s+/)[0])
+                ))
+                ? dashEpisode
+                : null;
         const seasonHint =
             [stem, ...[...folders].reverse()].map(mediaSeasonNumber).find((value) => value !== null) ?? null;
         const episode = ep
@@ -4750,13 +4759,16 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 ? Number(simple[1])
                 : bracketEpisode
                   ? Number(bracketEpisode.match(/\d+/)[0])
-                  : null;
+                  : numberedEpisode
+                    ? Number(numberedEpisode[1])
+                    : null;
         const season = ep ? Number(ep[1]) : seasonHint;
         const yearMatch = [...stem.matchAll(/(?:^|[. _（(\[-])((?:19|20)\d{2})(?=$|[. _）)\]-])/g)]
             .filter((match) => Number(match[1]) <= /* @__PURE__ */ new Date().getFullYear() + 1)
             .at(-1);
         const cut = (value) => {
             let text = value.replace(/\[[^\]]*\]/g, ' ');
+            if (numberedEpisode && value === stem) text = text.replace(/\s+-\s+\d{1,3}(?:v\d+)?\s*$/i, '');
             if (yearMatch) {
                 const release = new RegExp('(?:^|[. _（(\\[-])' + yearMatch[1] + '(?=$|[. _）)\\]-])').exec(
                     text
@@ -13008,6 +13020,40 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
         const retryable = (error) =>
             !error.stop &&
             /连接|超时|网络|fetch|network|HTTP\s*(?:401|403|408|429|5\d\d)/i.test(error.message);
+        const inspectEmbeddedTracks = subtitleRequestPool(0, 2, async (node, check) => {
+            check();
+            let url,
+                retries = 0;
+            const chinese = await inspectMkvSubtitleTracks(
+                node.size,
+                async (start, end) => {
+                    for (let attempt = 0; ; attempt++) {
+                        check();
+                        try {
+                            url || (url = await downloadUrl(node));
+                            check();
+                            const bytes = await subtitleBinary(url, {
+                                headers: { Range: `bytes=${start}-${end}` },
+                                range: [start, end, node.size],
+                                limit: end - start + 1,
+                            });
+                            check();
+                            return bytes;
+                        } catch (error) {
+                            check();
+                            if (attempt >= 2 || retries >= 4 || !retryable(error)) throw error;
+                            retries++;
+                            url = void 0;
+                            await wait(1e3 * (attempt + 1));
+                        }
+                    }
+                },
+                check
+            );
+            check();
+            const message = chinese ? '有内嵌中文字幕，跳过补齐' : '未发现内嵌中文字幕';
+            return { chinese, message: retries ? `自动重试 ${retries} 次成功 · ${message}` : message };
+        });
         const read = async (node, progress = () => {}, check = () => {}, limit = SUBTITLE_LIMIT) => {
             if (node.size > limit) throw new Error('字幕文件超过读取大小上限');
             for (let attempt = 0; attempt < 3; attempt++) {
@@ -13175,37 +13221,7 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
             async inspectEmbedded(node, check = () => {}) {
                 if (!/\.mkv$/i.test(node.name)) return { chinese: false, message: '非 MKV 格式，未读取视频' };
                 try {
-                    let url;
-                    let retried = false;
-                    const chinese = await inspectMkvSubtitleTracks(
-                        node.size,
-                        async (start, end) => {
-                            const readRange = async () => {
-                                url || (url = await downloadUrl(node));
-                                check();
-                                return subtitleBinary(url, {
-                                    headers: { Range: `bytes=${start}-${end}` },
-                                    range: [start, end, node.size],
-                                    limit: end - start + 1,
-                                });
-                            };
-                            try {
-                                return await readRange();
-                            } catch (error) {
-                                check();
-                                if (retried || error.phase !== 'transfer' || !error.retryable || error.stop)
-                                    throw error;
-                                retried = true;
-                                url = void 0;
-                                await wait(500);
-                                check();
-                                return readRange();
-                            }
-                        },
-                        check
-                    );
-                    const message = chinese ? '有内嵌中文字幕，跳过补齐' : '未发现内嵌中文字幕';
-                    return { chinese, message: retried ? '重试成功 · ' + message : message };
+                    return await inspectEmbeddedTracks(node, check);
                 } catch (error) {
                     check();
                     if (error.stop || error.phase === 'drive-auth') throw error;
@@ -13889,7 +13905,7 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
             return error.message;
         }
     }
-    function subtitleEpisodeRange(rows) {
+    function subtitleEpisodeRangeSummary(rows) {
         const ranges = [];
         const episodes = rows
             .map(({ parsed }) => [parsed.episode, parsed.endEpisode ?? parsed.episode])
@@ -14251,7 +14267,7 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                 summary.textContent = Object.entries(label)
                     .map(([state, text]) => {
                         const found = draft.plan.filter((entry) => entry.state === state);
-                        const range = subtitleEpisodeRange(
+                        const range = subtitleEpisodeRangeSummary(
                             found.filter((entry) => entry.row).map((entry) => entry.row)
                         );
                         return text + ' ' + found.length + ' 项' + (range ? '（' + range + '）' : '');
@@ -14480,7 +14496,7 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                         (state && coverage2 !== 'complete' ? ' · ' + state : '');
                 if (row.parsed.episode != null && mode) {
                     const episode = document.createElement('strong');
-                    episode.textContent = subtitleEpisodeRange([row]);
+                    episode.textContent = subtitleEpisodeRangeSummary([row]);
                     text.append(episode);
                 }
                 text.append(badge);
@@ -14685,7 +14701,7 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                             const line = document.createElement('p');
                             const range =
                                 includeRange && first.parsed.season != null
-                                    ? subtitleEpisodeRange(subset)
+                                    ? subtitleEpisodeRangeSummary(subset)
                                     : '';
                             line.textContent =
                                 label + ' ' + subset.length + ' 集' + (range ? ' · ' + range : '');
@@ -15639,6 +15655,7 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                     review = ai ? createSubtitleBodyReviewer(ai, diag, check) : null;
                 const children = cachedDriveChildren(context.source, /* @__PURE__ */ new Map(), check);
                 const links = /* @__PURE__ */ new Map();
+                const updated = [];
                 let done = 0;
                 meter(0, rows.length);
                 diag(
@@ -15701,23 +15718,27 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                                 deleteSelection.delete(String(sub.id));
                                 pendingDeletes.delete(String(sub.id));
                             }
+                            if (!updated.length) flow.invalidate('字幕复查后需要重新生成整理预览');
                             Object.assign(row, next, {
                                 selectedCandidate: null,
                                 candidates: [],
                                 autoCandidates: [],
                                 sources: [],
                             });
-                            flow.invalidate('字幕复查后需要重新生成整理预览');
-                            await resolveSubtitleWork(row, verify);
+                            updated.push(row);
                             meter(++done, rows.length);
                             render();
                             return subtitleCoverageState(next) === 'unconfirmed' ? 'failed' : void 0;
                         },
                         check,
                         8,
-                        '网盘正文沿用原节流，AI 正文复查保持排队'
+                        '内嵌轨道最多同时检查 2 个视频，连接失败自动重试；AI 正文复查保持排队'
                     );
-                    status('重新检测完成 · ' + done + '/' + rows.length);
+                    await flow.resolveSubtitleWorks?.(updated, check);
+                    const unconfirmed = updated.filter(
+                        (row) => subtitleCoverageState(row) === 'unconfirmed'
+                    ).length;
+                    status('重新检测完成 · ' + done + '/' + rows.length + ' · 检查未确认 ' + unconfirmed);
                 } catch (error) {
                     if (error.pendingUpload || error.stop || error.phase === 'drive-auth')
                         checkedScope = null;
@@ -16132,7 +16153,9 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                             );
                             let preflightError = '';
                             if (staged.size !== rows.length) {
-                                const missing = subtitleEpisodeRange(rows.filter((row) => !staged.has(row)));
+                                const missing = subtitleEpisodeRangeSummary(
+                                    rows.filter((row) => !staged.has(row))
+                                );
                                 preflightError =
                                     '整季校验通过 ' +
                                     staged.size +

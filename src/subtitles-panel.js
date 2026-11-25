@@ -445,7 +445,7 @@ function subtitleCandidateNameIssue(row, candidate) {
         return error.message;
     }
 }
-function subtitleEpisodeRange(rows) {
+function subtitleEpisodeRangeSummary(rows) {
     const ranges = [];
     const episodes = rows
         .map(({ parsed }) => [parsed.episode, parsed.endEpisode ?? parsed.episode])
@@ -806,7 +806,7 @@ function initSubtitles(provider, flow) {
             summary.textContent = Object.entries(label)
                 .map(([state, text]) => {
                     const found = draft.plan.filter((entry) => entry.state === state);
-                    const range = subtitleEpisodeRange(
+                    const range = subtitleEpisodeRangeSummary(
                         found.filter((entry) => entry.row).map((entry) => entry.row)
                     );
                     return text + ' ' + found.length + ' 项' + (range ? '（' + range + '）' : '');
@@ -1032,7 +1032,7 @@ function initSubtitles(provider, flow) {
                     (state && coverage !== 'complete' ? ' · ' + state : '');
             if (row.parsed.episode != null && mode) {
                 const episode = document.createElement('strong');
-                episode.textContent = subtitleEpisodeRange([row]);
+                episode.textContent = subtitleEpisodeRangeSummary([row]);
                 text.append(episode);
             }
             text.append(badge);
@@ -1231,7 +1231,9 @@ function initSubtitles(provider, flow) {
                     const count = (label, subset, includeRange = true) => {
                         const line = document.createElement('p');
                         const range =
-                            includeRange && first.parsed.season != null ? subtitleEpisodeRange(subset) : '';
+                            includeRange && first.parsed.season != null
+                                ? subtitleEpisodeRangeSummary(subset)
+                                : '';
                         line.textContent = label + ' ' + subset.length + ' 集' + (range ? ' · ' + range : '');
                         box.append(line);
                     };
@@ -2170,6 +2172,7 @@ function initSubtitles(provider, flow) {
                 review = ai ? createSubtitleBodyReviewer(ai, diag, check) : null;
             const children = cachedDriveChildren(context.source, new Map(), check);
             const links = new Map();
+            const updated = [];
             let done = 0;
             meter(0, rows.length);
             diag(
@@ -2232,23 +2235,27 @@ function initSubtitles(provider, flow) {
                             deleteSelection.delete(String(sub.id));
                             pendingDeletes.delete(String(sub.id));
                         }
+                        if (!updated.length) flow.invalidate('字幕复查后需要重新生成整理预览');
                         Object.assign(row, next, {
                             selectedCandidate: null,
                             candidates: [],
                             autoCandidates: [],
                             sources: [],
                         });
-                        flow.invalidate('字幕复查后需要重新生成整理预览');
-                        await resolveSubtitleWork(row, verify);
+                        updated.push(row);
                         meter(++done, rows.length);
                         render();
                         return subtitleCoverageState(next) === 'unconfirmed' ? 'failed' : undefined;
                     },
                     check,
                     8,
-                    '网盘正文沿用原节流，AI 正文复查保持排队'
+                    '内嵌轨道最多同时检查 2 个视频，连接失败自动重试；AI 正文复查保持排队'
                 );
-                status('重新检测完成 · ' + done + '/' + rows.length);
+                await flow.resolveSubtitleWorks?.(updated, check);
+                const unconfirmed = updated.filter(
+                    (row) => subtitleCoverageState(row) === 'unconfirmed'
+                ).length;
+                status('重新检测完成 · ' + done + '/' + rows.length + ' · 检查未确认 ' + unconfirmed);
             } catch (error) {
                 if (error.pendingUpload || error.stop || error.phase === 'drive-auth') checkedScope = null;
                 status('重新检测中断 · ' + done + '/' + rows.length + ' · ' + error.message);
@@ -2638,7 +2645,9 @@ function initSubtitles(provider, flow) {
                         );
                         let preflightError = '';
                         if (staged.size !== rows.length) {
-                            const missing = subtitleEpisodeRange(rows.filter((row) => !staged.has(row)));
+                            const missing = subtitleEpisodeRangeSummary(
+                                rows.filter((row) => !staged.has(row))
+                            );
                             preflightError =
                                 '整季校验通过 ' +
                                 staged.size +
