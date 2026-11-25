@@ -203,6 +203,22 @@ function subtitleImportGroups(inventory) {
         return row.groupKey;
     });
 }
+function subtitleImportPreference(entry, language) {
+    const info = subtitleFileInfo(entry.name);
+    let preference = 0;
+    if (language === 'en') {
+        preference = info.language === 'en' ? (info.bilingual ? 500 : 600) : 0;
+    } else if (language === 'zh-tw') {
+        preference = info.language === 'zh-tw' ? (info.bilingual ? 400 : 500) : 0;
+    } else if (info.language === 'zh-cn') {
+        preference = info.bilingual ? 500 : 600;
+    } else if (info.language === 'zh-tw') {
+        preference = info.bilingual ? 300 : 400;
+    } else if (info.language === 'zh') {
+        preference = 200;
+    }
+    return preference * 10 + (entry.ext?.toLowerCase() === 'srt' ? 1 : 0);
+}
 async function planSubtitleImport({ entries, language, confirmed, assignments }, rows, log, check) {
     const planned = [];
     const autoTargets = rows.filter(subtitleTargetHasEpisode);
@@ -283,7 +299,7 @@ async function planSubtitleImport({ entries, language, confirmed, assignments },
             (entry) => entry.digest
         )) {
             if (copies.length < 2) continue;
-            const preference = (entry) => subtitlePreference(entry, language);
+            const preference = (entry) => subtitleImportPreference(entry, language);
             const assigned = copies.filter((entry) => entry.target);
             const options = assigned.length ? assigned : copies;
             const best = Math.max(...options.map(preference));
@@ -308,9 +324,7 @@ async function planSubtitleImport({ entries, language, confirmed, assignments },
                 }
             continue;
         }
-        const preferences = group.map((entry) =>
-            subtitlePreference({ name: entry.name || entry.label, language: entry.language || '' }, language)
-        );
+        const preferences = group.map((entry) => subtitleImportPreference(entry, language));
         const best = Math.max(...preferences);
         const preferred = group.filter((entry, index) => preferences[index] === best);
         if (

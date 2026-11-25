@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v1.0
 // @namespace    local.cloud-media-organizer
-// @version      1.0.2
+// @version      1.0.3
 // @description  面向光鸭网盘的影视整理与字幕补齐工具。
 // @match        https://www.guangyapan.com/*
 // @match        https://guangyapan.com/*
@@ -186,7 +186,7 @@ SOFTWARE.
             (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))
     )
         return;
-    const VERSION = '1.0.2';
+    const VERSION = '1.0.3';
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
     const capture = { token: '' };
@@ -10813,6 +10813,22 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
             return row.groupKey;
         });
     }
+    function subtitleImportPreference(entry, language) {
+        const info = subtitleFileInfo(entry.name);
+        let preference = 0;
+        if (language === 'en') {
+            preference = info.language === 'en' ? (info.bilingual ? 500 : 600) : 0;
+        } else if (language === 'zh-tw') {
+            preference = info.language === 'zh-tw' ? (info.bilingual ? 400 : 500) : 0;
+        } else if (info.language === 'zh-cn') {
+            preference = info.bilingual ? 500 : 600;
+        } else if (info.language === 'zh-tw') {
+            preference = info.bilingual ? 300 : 400;
+        } else if (info.language === 'zh') {
+            preference = 200;
+        }
+        return preference * 10 + (entry.ext?.toLowerCase() === 'srt' ? 1 : 0);
+    }
     async function planSubtitleImport({ entries, language, confirmed, assignments }, rows, log, check) {
         const planned = [];
         const autoTargets = rows.filter(subtitleTargetHasEpisode);
@@ -10909,7 +10925,7 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                 (entry) => entry.digest
             )) {
                 if (copies.length < 2) continue;
-                const preference = (entry) => subtitlePreference(entry, language);
+                const preference = (entry) => subtitleImportPreference(entry, language);
                 const assigned2 = copies.filter((entry) => entry.target);
                 const options = assigned2.length ? assigned2 : copies;
                 const best2 = Math.max(...options.map(preference));
@@ -10935,12 +10951,7 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                     }
                 continue;
             }
-            const preferences = group.map((entry) =>
-                subtitlePreference(
-                    { name: entry.name || entry.label, language: entry.language || '' },
-                    language
-                )
-            );
+            const preferences = group.map((entry) => subtitleImportPreference(entry, language));
             const best = Math.max(...preferences);
             const preferred = group.filter((entry, index) => preferences[index] === best);
             if (
