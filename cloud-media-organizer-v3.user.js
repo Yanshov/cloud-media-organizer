@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v3.0（重构版）
 // @namespace    local.cloud-media-organizer
-// @version      3.0.50
+// @version      3.0.51
 // @description  面向百度网盘、123 云盘和光鸭网盘的浏览器脚本，支持跨盘 JSON 清单、影视整理与字幕补齐。
 // @match        https://pan.baidu.com/*
 // @match        https://yun.baidu.com/*
@@ -198,7 +198,7 @@ SOFTWARE.
             (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))
     )
         return;
-    const VERSION = '3.0.50';
+    const VERSION = '3.0.51';
     let jsonTaskStopped = false;
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
@@ -12651,18 +12651,33 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
             : '未发现可用外置字幕';
     }
     function mkvChineseSubtitle(tag, name) {
-        if (tag) {
-            try {
-                const { language } = new Intl.Locale(tag);
-                if (language && language !== 'und' && language !== 'mul')
-                    return language === 'zh' || language === 'yue';
-            } catch {
-                return false;
-            }
+        const chineseLabel =
+            /中文|汉语|漢語|中英|[简簡繁][体體中英]|\b(?:chinese|mandarin|cantonese|chs|cht|zh(?:[-_](?:cn|tw|hk|hans|hant))?)\b/i;
+        if (chineseLabel.test(name || '')) return true;
+        const normalized = String(tag || '')
+            .trim()
+            .replace(/_/g, '-');
+        if (/^(?:zh|chi|zho|cmn|yue|nan|hak|wuu|gan|hsn|lzh|chs|cht)(?:-|$)/i.test(normalized)) return true;
+        if (!normalized) return null;
+        try {
+            const { language } = new Intl.Locale(normalized);
+            if (!language || ['und', 'mul', 'zxx'].includes(language)) return null;
+            return language === 'zh' || language === 'yue';
+        } catch {
+            return null;
         }
-        return /中文|汉语|漢語|中英|[简簡繁][体體中英]|\b(?:chinese|mandarin|cantonese)\b/i.test(name);
     }
-    async function inspectMkvSubtitleTracks(size, readRange, check = () => {}) {
+    function mkvSubtitleTrackSummary(tracks) {
+        const clean = (text) =>
+            String(text || '未标注')
+                .replace(/[\r\n\t]+/g, ' ')
+                .slice(0, 100);
+        const labels = tracks.map((track, index) => {
+            return `${index + 1}）语言=${clean(track.language)}，BCP47=${clean(track.languageBCP47)}，名称=${clean(track.name)}${track.enabled ? '' : '，轨道已禁用'}`;
+        });
+        return '字幕轨 ' + tracks.length + (labels.length ? ' · ' + labels.join('；') : '');
+    }
+    async function inspectMkvSubtitleTracks(size, readRange, check = () => {}, report = () => {}) {
         if (!Number.isSafeInteger(size) || size < 1) throw new Error('视频大小未知，无法安全分段读取');
         const windowSize = 4 * 1024,
             maxWindows = 128,
@@ -12760,7 +12775,9 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
         }
         const readTracks = async (tracks) => {
             let chinese = false,
+                unconfirmed = false,
                 entries = 0;
+            const subtitleTracks = [];
             for await (const entry of childrenAt(tracks.data, tracks.end)) {
                 if (entry.id !== 174) continue;
                 entries++;
@@ -12773,11 +12790,12 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                 const bytes = await read(type.data, type.end - type.data);
                 if (bytes.at(-1) !== 17 || !bytes.subarray(0, -1).every((value) => value === 0)) continue;
                 const enabled = fields.find((item) => item.id === 185);
+                let trackEnabled = true;
                 if (enabled) {
                     if (enabled.end - enabled.data < 1 || enabled.end - enabled.data > 8)
                         throw new Error('MKV 轨道启用信息无效');
                     if ((await read(enabled.data, enabled.end - enabled.data)).every((value) => value === 0))
-                        continue;
+                        trackEnabled = false;
                 }
                 const readText = async (field) => {
                     if (!field) return '';
@@ -12787,17 +12805,22 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                         .replace(/\0+$/, '')
                         .trim();
                 };
-                const tag =
-                    fields.find((item) => item.id === 2274717) || fields.find((item) => item.id === 2274716);
-                if (
-                    mkvChineseSubtitle(
-                        await readText(tag),
-                        await readText(fields.find((item) => item.id === 21358))
-                    )
-                )
-                    chinese = true;
+                const language = await readText(fields.find((item) => item.id === 2274716)),
+                    languageBCP47 = await readText(fields.find((item) => item.id === 2274717)),
+                    name = await readText(fields.find((item) => item.id === 21358));
+                let chineseTrack = mkvChineseSubtitle(languageBCP47 || language, name);
+                if (languageBCP47 && chineseTrack === false && mkvChineseSubtitle(language, '') === true)
+                    chineseTrack = null;
+                subtitleTracks.push({ language, languageBCP47, name, enabled: trackEnabled });
+                if (trackEnabled && chineseTrack === true) chinese = true;
+                if (chineseTrack === null || (!trackEnabled && chineseTrack === true)) unconfirmed = true;
             }
             if (!entries) throw new Error('MKV 轨道表没有有效轨道');
+            report(subtitleTracks);
+            if (!chinese && unconfirmed)
+                throw Object.assign(new Error('已发现字幕轨，语言标记缺失、冲突或中文轨道已禁用'), {
+                    embeddedTracks: subtitleTracks,
+                });
             return chinese;
         };
         const ebml = await at(0, size);
@@ -13023,7 +13046,8 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
         const inspectEmbeddedTracks = subtitleRequestPool(0, 2, async (node, check) => {
             check();
             let url,
-                retries = 0;
+                retries = 0,
+                tracks = [];
             const chinese = await inspectMkvSubtitleTracks(
                 node.size,
                 async (start, end) => {
@@ -13048,11 +13072,26 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                         }
                     }
                 },
-                check
+                check,
+                (found) => {
+                    tracks = found;
+                }
             );
             check();
-            const message = chinese ? '有内嵌中文字幕，跳过补齐' : '未发现内嵌中文字幕';
-            return { chinese, message: retries ? `自动重试 ${retries} 次成功 · ${message}` : message };
+            const message = chinese
+                ? '有内嵌中文字幕，跳过补齐'
+                : tracks.length
+                  ? '已读取字幕轨，未识别到中文标记'
+                  : '未发现内嵌字幕轨';
+            return {
+                chinese,
+                tracks,
+                message:
+                    (retries ? `自动重试 ${retries} 次成功 · ` : '') +
+                    message +
+                    ' · ' +
+                    mkvSubtitleTrackSummary(tracks),
+            };
         });
         const read = async (node, progress = () => {}, check = () => {}, limit = SUBTITLE_LIMIT) => {
             if (node.size > limit) throw new Error('字幕文件超过读取大小上限');
@@ -13228,7 +13267,13 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                     return {
                         chinese: false,
                         unconfirmed: true,
-                        message: '未读取到 MKV 字幕轨：' + error.message,
+                        tracks: error.embeddedTracks,
+                        message:
+                            (error.embeddedTracks ? '内嵌字幕语言未确认：' : '未读取到 MKV 字幕轨：') +
+                            error.message +
+                            (error.embeddedTracks
+                                ? ' · ' + mkvSubtitleTrackSummary(error.embeddedTracks)
+                                : ''),
                     };
                 }
             },
