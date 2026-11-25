@@ -1,10 +1,8 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v3.0（重构版）
 // @namespace    local.cloud-media-organizer
-// @version      3.0.55
-// @description  面向百度网盘、123 云盘和光鸭网盘的浏览器脚本，支持跨盘 JSON 清单、影视整理与字幕补齐。
-// @match        https://pan.baidu.com/*
-// @match        https://yun.baidu.com/*
+// @version      3.0.56
+// @description  面向 123 云盘和光鸭网盘的影视整理与字幕补齐工具。
 // @match        https://www.guangyapan.com/*
 // @match        https://*.123pan.com/*
 // @match        https://123pan.com/*
@@ -22,7 +20,6 @@
 // @connect      api-shoulei-ssl.xunlei.com
 // @connect      subtitle.v.geilijiasu.com
 // @connect      *
-// @grant        GM_download
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @updateURL    https://raw.githubusercontent.com/Yanshov/cloud-media-organizer/main/cloud-media-organizer-v3.user.js
@@ -198,12 +195,11 @@ SOFTWARE.
             (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))
     )
         return;
-    const VERSION = '3.0.55';
-    let jsonTaskStopped = false;
+    const VERSION = '3.0.56';
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
-    const capture = { token: '', parent: '', token123: '', parent123: null, base123: '', loginUuid123: '' };
-    const API = {
+    const capture = { token: '', token123: '', parent123: null, base123: '', loginUuid123: '' };
+    const GUANGYA_API = {
         create: '/userres/v2/get_res_center_token',
         check: '/userres/v1/check_can_flash_upload',
         info: '/userres/v1/file/get_info_by_task_id',
@@ -212,7 +208,6 @@ SOFTWARE.
         remove: '/userres/v1/file/delete_file',
         task: '/userres/v1/get_task_status',
     };
-    let refreshStatus = () => {};
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     function paced(interval, request) {
         let last = 0,
@@ -553,32 +548,10 @@ SOFTWARE.
             file.size >= 0
         );
     }
-    function existingFileMessage(existing, file) {
-        if (existing.directory) throw new Error('同名文件夹占用了文件位置：' + file.path);
-        if (existing.size != null && existing.size !== file.size)
-            throw new Error('同名文件大小不同，未覆盖：' + file.path);
-        if (/^[a-f0-9]{32}$/i.test(existing.md5 || '') && existing.md5.toLowerCase() !== file.md5)
-            throw new Error('同名文件 MD5 不同，未覆盖：' + file.path);
-        return hasFileMetadata(existing) ? '目标已有相同文件，跳过' : '目标已有同名文件，内容无法核对，跳过';
-    }
     function ready(fn) {
         if (document.readyState === 'loading')
             document.addEventListener('DOMContentLoaded', fn, { once: true });
         else fn();
-    }
-    function decodeMd5(value) {
-        const s = typeof value === 'string' ? value.trim().toLowerCase() : '';
-        if (/^[0-9a-f]{32}$/.test(s)) return s;
-        if (s.length !== 32) return '';
-        const offset = s.charCodeAt(9) - 'g'.charCodeAt(0);
-        if (offset < 0 || offset > 15) return '';
-        const chars = s.split('');
-        chars[9] = offset.toString(16);
-        if (!/^[0-9a-f]{32}$/.test(chars.join(''))) return '';
-        const d = chars.map((ch, i) => (parseInt(ch, 16) ^ (i & 15)).toString(16));
-        return (
-            d.slice(8, 16).join('') + d.slice(0, 8).join('') + d.slice(24).join('') + d.slice(16, 24).join('')
-        );
     }
     function relativeParts(value) {
         if (typeof value !== 'string') throw new Error('缺少相对路径');
@@ -586,63 +559,6 @@ SOFTWARE.
         if (parts.some((part) => !part.trim() || part === '.' || part === '..' || /[\x00-\x1f]/.test(part)))
             throw new Error('路径包含空名称、控制字符或 . / ..');
         return parts;
-    }
-    function normalizeFiles(parsed) {
-        const items = Array.isArray(parsed) ? parsed : parsed && parsed.files;
-        if (!Array.isArray(items) || !items.length)
-            throw new Error('JSON 必须是非空文件数组，或包含 files 数组的对象');
-        const paths = /* @__PURE__ */ new Map(),
-            unique = [];
-        for (let i = 0; i < items.length; i++) {
-            const f = items[i];
-            const prefix = `第 ${i + 1} 项：`;
-            if (!f || typeof f !== 'object' || Array.isArray(f)) throw new Error(prefix + '不是文件对象');
-            const rawName = f.path ?? f.name;
-            if (typeof rawName !== 'string') throw new Error(prefix + '缺少文件名');
-            let parts;
-            try {
-                parts = relativeParts(rawName);
-            } catch (error) {
-                throw new Error(prefix + error.message);
-            }
-            const name = parts.at(-1),
-                path = parts.join('/');
-            let item = { name, path, type: 'directory' };
-            if (f.type !== 'directory') {
-                if (f.type != null && f.type !== 'file') throw new Error(prefix + '未知项目类型');
-                const rawMd5 = f.md5 ?? f.etag;
-                if (typeof rawMd5 !== 'string' || !/^[0-9a-f]{32}$/i.test(rawMd5.trim()))
-                    throw new Error(prefix + 'MD5 必须是 32 位十六进制字符串');
-                const size = nonNegativeInteger(f.size);
-                if (size == null) throw new Error(prefix + '文件大小必须是非负安全整数');
-                item = { name, path, type: 'file', md5: rawMd5.trim().toLowerCase(), size };
-                if (f.gcid != null || f.cid != null) {
-                    if (typeof f.gcid !== 'string' || !/^[0-9a-f]{40}$/i.test(f.gcid.trim()))
-                        throw new Error(prefix + 'GCID 必须是 40 位十六进制字符串');
-                    item.gcid = f.gcid.trim().toUpperCase();
-                    if (f.cid != null) {
-                        if (typeof f.cid !== 'string' || !/^[0-9a-f]{40}$/i.test(f.cid.trim()))
-                            throw new Error(prefix + 'CID 必须是 40 位十六进制字符串');
-                        item.cid = f.cid.trim().toUpperCase();
-                    }
-                }
-            }
-            const type = paths.get(path);
-            if (type) {
-                if (type === 'directory' && item.type === 'directory') continue;
-                throw new Error('JSON 包含重复或类型冲突的路径：' + path);
-            }
-            paths.set(path, item.type);
-            unique.push(item);
-        }
-        for (const item of unique) {
-            const parts = item.path.split('/');
-            for (let i = 1; i < parts.length; i++) {
-                const prefix = parts.slice(0, i).join('/');
-                if (paths.get(prefix) === 'file') throw new Error('文件不能作为父目录：' + prefix);
-            }
-        }
-        return unique;
     }
     function apiCode(data) {
         const value = data?.code;
@@ -675,129 +591,7 @@ SOFTWARE.
         if (typeof value === 'number' && Number.isSafeInteger(value)) return String(value);
         return '';
     }
-    function confirmedFile(data, file, parentId) {
-        const info = data?.fileInfo ?? data;
-        const hasId =
-            typeof info?.fileId === 'string'
-                ? !!info.fileId.trim() && info.fileId.trim() !== '0'
-                : Number.isSafeInteger(info?.fileId) && info.fileId > 0;
-        if (!hasId || info.fileName !== file.name || nonNegativeInteger(info.fileSize) !== file.size)
-            return null;
-        if (info.parentId != null) {
-            if (typeof info.parentId === 'number' && !Number.isSafeInteger(info.parentId)) return null;
-            const actualParent = String(info.parentId);
-            if ((actualParent === '0' ? '' : actualParent) !== parentId) return null;
-        }
-        if (
-            typeof info.md5 === 'string' &&
-            /^[a-f0-9]{32}$/i.test(info.md5) &&
-            info.md5.toLowerCase() !== file.md5
-        )
-            return null;
-        return info;
-    }
-    async function importFile(file, targetId, post, wait = sleep) {
-        const parentId = targetId === '0' ? '' : targetId;
-        const res = { md5: file.md5, fileSize: file.size };
-        if (file.gcid) res.gcid = file.gcid;
-        if (file.cid) res.cid = file.cid;
-        let first;
-        try {
-            first = await post(API.create, { capacity: 30, res, name: file.name, parentId });
-        } catch (error) {
-            return {
-                status: 'pending',
-                message: '创建请求异常，结果未确认：' + error.message + '；先刷新目录核对，避免重复提交',
-                stop: error.stop,
-            };
-        }
-        const code = guangyaCode(first);
-        if (code !== 0 && code !== 156) throw apiError('创建任务', first);
-        const inline = confirmedFile(first.data, file, parentId);
-        if (inline)
-            return {
-                status: 'saved',
-                message: `已确认生成文件：${inline.fileName}；文件 ID：${inline.fileId}`,
-            };
-        let taskId = taskIdOf(first.data);
-        if (!taskId)
-            return {
-                status: 'pending',
-                message: '创建接口没有返回有效 taskId，结果无法确认；请先刷新目录核对',
-            };
-        if (code === 0) {
-            if (!file.gcid)
-                return {
-                    status: 'miss',
-                    message: `MD5 未直接命中，清单缺少 GCID。可从本地原文件生成清单再试。任务 ID：${taskId}`,
-                };
-            let second;
-            try {
-                const hashes = { taskId, gcid: file.gcid };
-                if (file.cid) hashes.cid = file.cid;
-                second = await post(API.check, hashes);
-            } catch (error) {
-                return {
-                    status: 'pending',
-                    message: '秒传检查请求异常，结果未确认：' + error.message,
-                    stop: error.stop,
-                };
-            }
-            if (guangyaCode(second) !== 0) throw apiError('秒传检查', second);
-            if (second.data?.canFlashUpload === false)
-                return { status: 'miss', message: 'GCID 秒传未命中，需要上传原文件' };
-            if (second.data?.canFlashUpload !== true)
-                return { status: 'pending', message: '秒传接口未返回明确结果，请先核对目录' };
-            taskId = taskIdOf(second.data) || taskId;
-        }
-        for (let attempt = 0; attempt < 8; attempt++) {
-            if (attempt) await wait(1e3);
-            let result;
-            try {
-                result = await post(API.info, { taskId });
-            } catch (error) {
-                return {
-                    status: 'pending',
-                    message: `接口已报告秒传命中，但查询文件失败：${error.message}；任务 ID：${taskId}`,
-                    stop: error.stop,
-                };
-            }
-            const resultCode = guangyaCode(result);
-            if (resultCode === 0) {
-                const info = confirmedFile(result.data, file, parentId);
-                return info
-                    ? {
-                          status: 'saved',
-                          message: `已确认生成文件：${info.fileName}；文件 ID：${info.fileId}`,
-                      }
-                    : {
-                          status: 'pending',
-                          message: `任务返回的文件信息不完整或与输入不符，待人工核对；任务 ID：${taskId}`,
-                      };
-            }
-            if (resultCode !== 147) {
-                const error = apiError('查询任务文件', result);
-                return {
-                    status: 'pending',
-                    message: error.message + `；任务 ID：${taskId}`,
-                    stop: error.stop,
-                };
-            }
-        }
-        return {
-            status: 'pending',
-            message: `接口已报告秒传命中，8 次查询仍在处理；请稍后刷新目录核对。任务 ID：${taskId}`,
-        };
-    }
-    function checkJsonTask() {
-        if (jsonTaskStopped)
-            throw Object.assign(new Error('已停止后续请求；已提交的操作请刷新目录核对'), {
-                stop: true,
-                cancelled: true,
-            });
-    }
     async function requestJson(url, options = {}) {
-        checkJsonTask();
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 3e4);
         try {
@@ -821,8 +615,6 @@ SOFTWARE.
         settings:
             '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" /><circle cx="12" cy="12" r="3" />',
         upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" x2="12" y1="3" y2="15" />',
-        download:
-            '<path d="M12 15V3" /><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m7 10 5 5 5-5" />',
         'scan-search':
             '<path d="M3 7V5a2 2 0 0 1 2-2h2" /><path d="M17 3h2a2 2 0 0 1 2 2v2" /><path d="M21 17v2a2 2 0 0 1-2 2h-2" /><path d="M7 21H5a2 2 0 0 1-2-2v-2" /><circle cx="12" cy="12" r="3" /><path d="m16 16-1.9-1.9" />',
         search: '<circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />',
@@ -838,11 +630,8 @@ SOFTWARE.
         languages:
             '<path d="m5 8 6 6" /><path d="m4 14 6-6 2-3" /><path d="M2 5h12" /><path d="M7 2h1" /><path d="m22 22-5-10-5 10" /><path d="M14 18h6" />',
         cloud: '<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />',
-        files: '<path d="M15 2h-4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8" /><path d="M16.706 2.706A2.4 2.4 0 0 0 15 2v5a1 1 0 0 0 1 1h5a2.4 2.4 0 0 0-.706-1.706z" /><path d="M5 7a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h8a2 2 0 0 0 1.732-1" />',
         'arrow-left': '<path d="m12 19-7-7 7-7" /><path d="M19 12H5" />',
         cpu: '<path d="M12 20v2" /><path d="M12 2v2" /><path d="M17 20v2" /><path d="M17 2v2" /><path d="M2 12h2" /><path d="M2 17h2" /><path d="M2 7h2" /><path d="M20 12h2" /><path d="M20 17h2" /><path d="M20 7h2" /><path d="M7 20v2" /><path d="M7 2v2" /><rect x="4" y="4" width="16" height="16" rx="2" /><rect x="8" y="8" width="8" height="8" rx="1" />',
-        'folder-open':
-            '<path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2" />',
     };
     function workspaceIcon(name, className = '') {
         const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -860,51 +649,7 @@ SOFTWARE.
         icon.innerHTML = workspaceIcons[name];
         return icon;
     }
-    function saveJsonFile(value, filename, report) {
-        try {
-            normalizeFiles(JSON.parse(value));
-        } catch (_) {
-            report('保存失败：文本框不是有效的跨盘 JSON 清单，请先导出文件清单');
-            return;
-        }
-        const url = URL.createObjectURL(new Blob([value], { type: 'application/json;charset=utf-8' }));
-        report('正在保存 JSON 清单…');
-        if (typeof GM_download === 'function') {
-            try {
-                GM_download({
-                    url,
-                    name: filename,
-                    saveAs: true,
-                    onload: () => {
-                        URL.revokeObjectURL(url);
-                        report(`已保存：${filename}`);
-                    },
-                    onerror: (error) => {
-                        URL.revokeObjectURL(url);
-                        report(`保存失败：${error?.error || error?.message || '浏览器拒绝下载'}`);
-                    },
-                    onabort: () => {
-                        URL.revokeObjectURL(url);
-                        report('已取消保存');
-                    },
-                });
-            } catch (error) {
-                URL.revokeObjectURL(url);
-                report('保存失败：' + error.message);
-            }
-            return;
-        }
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = filename;
-        link.style.display = 'none';
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 6e4);
-        report(`已触发下载：${filename}；请检查浏览器下载列表`);
-    }
-    function arrangeToolPane(pane, id) {
+    function arrangeToolPane(pane) {
         const create = (tag, className, text) => {
             const node = document.createElement(tag);
             node.className = className;
@@ -919,28 +664,17 @@ SOFTWARE.
         take(intro, 'h3');
         const description = pane.querySelector(':scope > p:not([id]), #scope');
         if (description) {
-            description.id || (description.id = id + 'Instructions');
+            description.id || (description.id = 'subtitleInstructions');
             pane.setAttribute('aria-describedby', description.id);
             intro.append(description);
         }
-        if (id === 'json') {
-            const source = intro
-                .querySelector('h3')
-                .textContent.replace(/\s*跨盘\s*JSON.*$/, '')
-                .trim();
-            intro.querySelector('h3').textContent = '跨盘文件清单';
-            if (!description) intro.append(create('p', '', '导出当前网盘的文件清单，或导入清单恢复文件。'));
-            const context = create('span', 'tool-context', source);
-            intro.querySelector('h3').append(context);
-        } else {
-            const title = intro.querySelector('h3'),
-                source = title.textContent.replace(/\s+(?:字幕|影视整理).*$/, '').trim();
-            title.textContent = '影视整理';
-            title.append(create('span', 'tool-context', source));
-        }
+        const title = intro.querySelector('h3'),
+            source = title.textContent.replace(/\s+(?:字幕|影视整理).*$/, '').trim();
+        title.textContent = '影视整理';
+        title.append(create('span', 'tool-context', source));
         const commands = create('div', 'tool-commandbar');
         const firstAction = pane.querySelector(':scope > .panel-actions');
-        const merged = id === 'subtitle' && pane.querySelector('#previewMedia');
+        const merged = pane.querySelector('#previewMedia');
         if (firstAction) commands.append(firstAction);
         if (merged) {
             const actions = pane.querySelector('#stopSubtitles').parentElement;
@@ -948,11 +682,7 @@ SOFTWARE.
             actions.remove();
             pane.classList.add('merged-media');
         }
-        if (id === 'json') take(commands, '#stopJson');
         const commandIcons = {
-            generate: 'download',
-            generateGuangya: 'download',
-            exportManifest: 'download',
             scanMedia: 'scan-search',
             openMediaCleanup: 'trash-2',
             readSubtitles: 'search',
@@ -962,77 +692,33 @@ SOFTWARE.
         };
         for (const [name, glyph] of Object.entries(commandIcons))
             commands.querySelector('#' + name)?.prepend(workspaceIcon(glyph, 'command-icon'));
-        commands
-            .querySelector('.manifest-import > summary')
-            ?.prepend(workspaceIcon('upload', 'command-icon'));
         const layout = create('div', 'tool-layout');
         const main = create('div', 'tool-main');
         const status = create('section', 'tool-status-text');
-        const statusIds =
-            id === 'subtitle'
-                ? ['subtitleScope', 'subtitleProgress', 'subtitleMeter']
-                : ['status', 'target', 'progress'];
+        const statusIds = ['subtitleScope', 'subtitleProgress', 'subtitleMeter'];
         for (const name of statusIds) take(status, '#' + name);
         const heading = create('div', 'tool-list-heading');
-        const headingTitle = create('h4', '', id === 'subtitle' ? '字幕检查结果' : 'JSON 文件清单');
+        const headingTitle = create('h4', '', '字幕检查结果');
         heading.append(headingTitle);
-        if (id === 'subtitle') {
-            headingTitle.id = 'subtitleResultsTitle';
-            if (merged) headingTitle.textContent = '作品与字幕';
-            take(heading, '#subtitleFilters');
-        }
+        headingTitle.id = 'subtitleResultsTitle';
+        if (merged) headingTitle.textContent = '作品与字幕';
+        take(heading, '#subtitleFilters');
         main.append(heading);
-        if (id === 'json') {
-            take(main, '#syncPreview');
-            take(main, '#json');
-            const editor = main.querySelector('#json');
-            editor?.setAttribute('aria-label', 'JSON 文件清单');
-            if (editor) {
-                const surface2 = create('div', 'json-editor');
-                editor.before(surface2);
-                surface2.append(editor);
-                const empty = create('div', 'json-editor-empty');
-                empty.setAttribute('aria-hidden', 'true');
-                empty.append(workspaceIcon('folder-open'));
-                empty.append(
-                    create('strong', '', '从一份文件清单开始'),
-                    create('p', '', '点击上方导出，或在这里粘贴 JSON 清单'),
-                    create('span', '', '清单仅包含文件信息，不包含视频内容')
-                );
-                surface2.append(empty);
-            }
-            const fileActions = create('div', 'editor-actions');
-            for (const selector of ['#save', '#saveJson', '#copyJson']) take(fileActions, selector);
-            for (const button of fileActions.children)
-                button.prepend(
-                    workspaceIcon(button.id === 'copyJson' ? 'files' : 'download', 'command-icon')
-                );
-            if (fileActions.children.length) heading.append(fileActions);
-        } else if (id === 'subtitle') {
-            take(main, '#subtitleSummary');
-            take(main, '#subtitleResults');
-            if (merged) {
-                take(heading, '#allowWithoutSubtitles');
-                const results = main.querySelector('#subtitleResults');
-                const preview = create('details', 'sync-preview');
-                preview.id = 'mediaPreviewPanel';
-                preview.append(create('summary', '', '查看整理预览'));
-                take(preview, '#mediaPreview');
-                results.prepend(preview);
-                results.prepend(pane.querySelector('#mediaCleanup'));
-                take(results, '#mediaRows');
-                results.querySelector('#mediaRows').hidden = true;
-            }
+        take(main, '#subtitleSummary');
+        take(main, '#subtitleResults');
+        if (merged) {
+            take(heading, '#allowWithoutSubtitles');
+            const results = main.querySelector('#subtitleResults');
+            const preview = create('details', 'sync-preview');
+            preview.id = 'mediaPreviewPanel';
+            preview.append(create('summary', '', '查看整理预览'));
+            take(preview, '#mediaPreview');
+            results.prepend(preview);
+            results.prepend(pane.querySelector('#mediaCleanup'));
+            take(results, '#mediaRows');
+            results.querySelector('#mediaRows').hidden = true;
         }
         const utilities = create('div', 'tool-utilities');
-        const auxiliary = id === 'json' ? create('section', 'tool-import-options') : utilities;
-        if (id !== 'subtitle') {
-            for (const node of [
-                ...pane.querySelectorAll(':scope > .panel-actions, :scope > .export-options'),
-            ])
-                auxiliary.append(node);
-            if (id === 'json') commands.append(auxiliary);
-        }
         for (const node of [...pane.children]) {
             if (node.id.endsWith('Settings') || (node.tagName === 'INPUT' && node.hidden)) continue;
             node.classList.add('tool-card');
@@ -1046,7 +732,8 @@ SOFTWARE.
         pane.append(surface);
     }
     let toolWorkspace = null;
-    function makePanel(title, html, id = 'json') {
+    function makePanel(title, html) {
+        const id = 'subtitle';
         if (!toolWorkspace) {
             const host = document.createElement('div');
             host.id = 'cloud-media-organizer-tools';
@@ -1091,24 +778,16 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 .panel-actions,.tool-commandbar{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
 .panel-actions{margin:12px 0}.tool-commandbar{margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--border)}
 .tool-commandbar>.panel-actions{margin:0}
-.tool-commandbar button,.tool-commandbar .manifest-import>summary{min-height:38px;padding:7px 11px;font-size:15px}
+.tool-commandbar button{min-height:38px;padding:7px 11px;font-size:15px}
 .command-icon{display:inline-block;width:16px;height:16px;margin-right:6px;vertical-align:-3px;pointer-events:none}
-.manifest-import{position:relative}.manifest-import>summary{margin:0;border:1px solid var(--border);border-radius:7px;padding:8px 12px;background:var(--surface);line-height:1.5}
-.manifest-import-actions{position:absolute;top:100%;left:0;z-index:2;width:max-content;margin-top:6px;display:grid;gap:8px;padding:10px;background:var(--panel);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 14px #0002}.manifest-import-actions label{margin:0;align-items:center}.manifest-import-actions input[type=checkbox]{margin:0}
-:is(#generate,#exportManifest,#scanMedia,#readSubtitles,#runMedia,#fillSubtitles,#confirmSync){background:var(--button);border-color:var(--button);color:var(--button-text);font-weight:600}
-:is(#generate,#exportManifest,#scanMedia,#readSubtitles,#runMedia,#fillSubtitles,#confirmSync):hover:not(:disabled){background:var(--button-hover);border-color:var(--button-hover)}
+:is(#scanMedia,#readSubtitles,#runMedia,#fillSubtitles){background:var(--button);border-color:var(--button);color:var(--button-text);font-weight:600}
+:is(#scanMedia,#readSubtitles,#runMedia,#fillSubtitles):hover:not(:disabled){background:var(--button-hover);border-color:var(--button-hover)}
 :is(#runMedia,#fillSubtitles):disabled{background:var(--surface);border-color:var(--border);color:var(--muted)}
 :is(#reviewSubtitleDeletes,#confirmSubtitleDeletes){color:var(--danger)}
-.tool-import-options{color:var(--muted);font-size:15px}.tool-import-options .export-options,.tool-import-options label{margin:0}.panel-actions:empty,.tool-import-options:not(:has(input,select,button)){display:none}
+.panel-actions:empty{display:none}
 .tool-layout{flex:1;min-width:0;min-height:auto}.tool-main{min-width:0}.tool-list-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:34px;margin-bottom:12px}
 .tool-list-heading select{width:auto;max-width:210px;margin:0;font-size:15px;padding:7px 10px}
 .tool-list-heading h4{font-size:19px;font-weight:650}.editor-actions{display:flex;gap:8px}.editor-actions button{background:var(--surface);color:var(--text);border-color:var(--border);padding:4px 9px;font-size:13px;min-height:30px}
-#jsonPane .tool-main{height:100%;display:flex;flex-direction:column;min-height:280px}#jsonPane .tool-main>:not(.json-editor){flex-shrink:0}
-.json-editor{position:relative;display:flex;flex:1;min-height:220px;border:1px solid var(--border);border-radius:8px;background:var(--surface);overflow:hidden;isolation:isolate}
-.json-editor:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--tint)}.json-editor>#json{width:100%;height:100%;flex:1;min-height:0;max-height:none;margin:0;border:0;border-radius:0;background:transparent;resize:none;outline:none;padding:20px;font:16px/1.8 Consolas,"Microsoft YaHei",monospace}
-.json-editor>#json::placeholder{color:transparent}.json-editor-empty{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;padding:24px;text-align:center;color:var(--muted)}
-.json-editor:has(#json:placeholder-shown:not(:focus))>.json-editor-empty{display:flex}.json-editor-empty svg{width:44px;height:44px;padding:8px;border-radius:8px;background:var(--tint);color:var(--muted);margin-bottom:12px}.json-editor-empty strong{color:var(--text);font-size:15px;font-weight:600}.json-editor-empty p{font-size:13px;margin:4px 0 6px}.json-editor-empty span{font-size:12px}
-#jsonPane .tool-main:has(#syncPreview:not([hidden]))>.json-editor{flex:0 0 140px;min-height:140px}#jsonPane:has(#syncPreview:not([hidden])) .tool-layout{flex:none}#jsonPane .tool-main:has(#syncPreview:not([hidden])){height:auto}
 
 .sync-item{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;margin:12px 0;min-width:0}
 :is(#subtitlePane,#mediaPane) :is(.tool-layout,.tool-main){display:flex;min-height:0}:is(#subtitlePane,#mediaPane) .tool-main{flex:1;flex-direction:column}:is(#subtitlePane,#mediaPane) .tool-list-heading{flex:none}#subtitleFilters :focus-visible{outline-offset:-2px}
@@ -1196,8 +875,8 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
     #subtitleRows .subtitle-result select{padding-block:4px}
     #subtitleLog{height:38px}
 }
-.sync-preview{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px}.sync-preview h4{margin:0 0 8px}.sync-preview p{margin:6px 0}#syncList{overflow-wrap:anywhere;font-size:15px}#syncDestination{font-weight:600}
-.export-options{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin:12px 0}.export-options input{width:auto}.export-options button{font-size:14px;padding:7px 12px}.credential-head{display:flex;justify-content:space-between;align-items:center;gap:12px}.credential-head a{font-size:15px;flex-shrink:0}
+.sync-preview{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px}.sync-preview h4{margin:0 0 8px}.sync-preview p{margin:6px 0}
+.credential-head{display:flex;justify-content:space-between;align-items:center;gap:12px}.credential-head a{font-size:15px;flex-shrink:0}
 .source-result{margin:12px 0;padding:12px;border:1px solid var(--border);border-radius:8px}.source-result button{margin:8px 8px 0 0;font-size:16px}
 #workspaceSettings{grid-template-rows:minmax(0,1fr);overflow:auto;scrollbar-width:none;overscroll-behavior:contain}
 .settings-main{display:flex;flex-direction:column;min-width:0;min-height:0;padding:25px var(--surface-pad);background:var(--surface)}
@@ -1265,7 +944,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         </style><button id="toggle" type="button" title="打开云盘工具" aria-label="打开云盘工具" aria-haspopup="dialog" aria-expanded="false" aria-controls="toolDialog"></button>
         <div class="workspace-overlay" hidden><div class="box" id="toolDialog" role="dialog" aria-modal="false" aria-labelledby="workspaceTitle" tabindex="-1">
         <header class="workspace-header"><div class="workspace-brand"><h2 id="workspaceTitle"><span class="workspace-brand-mark" aria-hidden="true"></span>云盘工具</h2><span class="workspace-location" id="workspaceLocation"></span><p id="windowHint">拖动标题栏移动 · 可同时操作网页</p></div><div class="workspace-window-actions"><button id="settingsWorkspace" type="button">设置</button><button id="pinWorkspace" type="button" aria-pressed="false" title="锁定窗口位置">固定位置</button><button id="closeWorkspace" type="button" aria-label="关闭面板" title="关闭"></button></div></header>
-        <div class="workspace-toolbar"><div class="workspace-tabs" role="tablist" aria-label="功能分类"><button id="jsonTab" type="button" role="tab" aria-selected="false" aria-controls="jsonPane" tabindex="-1" disabled>跨盘清单</button><button id="subtitleTab" type="button" role="tab" aria-selected="false" aria-controls="subtitlePane" tabindex="-1" disabled title="当前网盘暂不支持字幕检查">影视整理</button></div>
+        <div class="workspace-toolbar"><div class="workspace-tabs" role="tablist" aria-label="功能分类"><button id="subtitleTab" type="button" role="tab" aria-selected="false" aria-controls="subtitlePane" tabindex="-1" disabled>影视整理</button></div>
         <label class="theme-row">窗口尺寸<select id="workspaceSize" aria-label="窗口尺寸"><option value="960x600">960 × 600</option><option value="1280x800" selected>1280 × 800（默认）</option><option value="1440x900">1440 × 900</option><option value="1600x1000">1600 × 1000</option></select></label>
         <label class="theme-row">外观<select id="theme"><option value="auto">跟随页面</option><option value="light">浅色</option><option value="dark">深色</option></select></label></div>
         <div class="workspace-body"><section id="workspaceSettings" class="tool-pane" hidden><div class="settings-main"><div class="settings-heading"><h3>设置</h3><div id="settingsAppearance" class="settings-appearance"></div><button id="backToTools">返回工具</button></div><div class="settings-column" id="settingsBasics"></div><div class="settings-column" id="settingsModels"></div></div></section></div></div></div>`;
@@ -1294,7 +973,6 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             navFooter.append(version);
             navigation.append(navFooter);
             const icons = {
-                jsonTab: 'files',
                 subtitleTab: 'film',
                 settingsWorkspace: 'settings',
                 closeWorkspace: 'x',
@@ -1313,8 +991,8 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             const tabs2 = /* @__PURE__ */ new Map();
             let active = null,
                 returnFocus = null;
-            const layoutKey = 'cross-drive-window-layout';
-            const saved = GM_getValue(layoutKey, {});
+            const layoutKey = 'media-workspace-layout';
+            const saved = GM_getValue(layoutKey, GM_getValue('cross-drive-window-layout', {}));
             const sizes = /* @__PURE__ */ new Map([
                 ['960x600', [960, 600]],
                 ['1280x800', [1280, 800]],
@@ -1523,31 +1201,14 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         const { root, tabs, activate } = toolWorkspace;
         if (tabs.has(id)) return tabs.get(id).ui;
         const pane = document.createElement('section');
-        pane.id = id + 'Pane';
+        pane.id = 'subtitlePane';
         pane.className = 'tool-pane';
         pane.setAttribute('role', 'tabpanel');
-        pane.setAttribute('aria-labelledby', id + 'Tab');
+        pane.setAttribute('aria-labelledby', 'subtitleTab');
         pane.tabIndex = 0;
         pane.hidden = true;
-        pane.innerHTML = `<h3></h3>${id !== 'json' ? '' : `<details id="exportHistory"><summary title="复用导出记录，加快读取与续传">导出记录</summary><div class="export-options"><label><input id="incremental" type="checkbox" checked>复用旧记录，加快读取</label></div><p id="historySummary" style="padding:8px;border:1px solid var(--border);border-radius:4px"></p><div class="export-options"><button id="importHistory">导入旧清单</button><button id="resetHistory">重置导出记录</button><input id="historyFile" type="file" accept=".json,application/json" hidden></div></details>`}${html}`;
+        pane.innerHTML = '<h3></h3>' + html;
         pane.querySelector('h3').textContent = title;
-        let stopJson;
-        if (id === 'json') {
-            stopJson = document.createElement('button');
-            stopJson.id = 'stopJson';
-            stopJson.textContent = '停止当前任务';
-            stopJson.hidden = true;
-            stopJson.onclick = () => {
-                jsonTaskStopped = true;
-                stopJson.disabled = true;
-                const cancel = pane.querySelector('#cancelSync');
-                if (cancel && !pane.querySelector('#syncPreview').hidden) cancel.click();
-                const progress = pane.querySelector('#progress');
-                if (progress)
-                    progress.textContent = '等待当前请求结束，停止后续操作；已提交项目请刷新目录核对。';
-            };
-            pane.appendChild(stopJson);
-        }
         const log = pane.querySelector('#log');
         if (log) {
             const detail = document.createElement('details'),
@@ -1568,9 +1229,9 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             log.before(detail);
             detail.append(summary, copy, log);
         }
-        arrangeToolPane(pane, id);
+        arrangeToolPane(pane);
         root.querySelector('.workspace-body').appendChild(pane);
-        const button = root.querySelector('#' + id + 'Tab'),
+        const button = root.querySelector('#subtitleTab'),
             elements = /* @__PURE__ */ new Map();
         button.disabled = false;
         button.removeAttribute('title');
@@ -1616,11 +1277,6 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                         throw new Error('另一个任务正在运行，请等待完成或先停止');
                     toolWorkspace.owner = id;
                 } else if (toolWorkspace.owner === id) toolWorkspace.owner = null;
-                if (id === 'json') {
-                    jsonTaskStopped = false;
-                    stopJson.hidden = !value;
-                    stopJson.disabled = !value;
-                }
                 for (const [name, tab] of tabs) {
                     const blocked = !!toolWorkspace.owner && name !== toolWorkspace.owner;
                     tab.button.disabled = blocked;
@@ -1653,32 +1309,6 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             }
         };
     }
-    function panelControls(ui) {
-        return [
-            'json',
-            'manifest',
-            'jsonFile',
-            'manifestLocalFiles',
-            'historyFile',
-            'generate',
-            'generateGuangya',
-            'exportManifest',
-            'transfer',
-            'start',
-            'chooseManifest',
-            'chooseJsonFile',
-            'hashManifestFolder',
-            'copyJson',
-            'save',
-            'saveJson',
-            'incremental',
-            'resetHistory',
-            'importHistory',
-            'syncExisting',
-        ]
-            .map(ui.get)
-            .filter(Boolean);
-    }
     function appendLog(ui, message) {
         const line = document.createElement('div');
         line.textContent = message;
@@ -1690,26 +1320,9 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         }
         box.scrollTop = box.scrollHeight;
     }
-    async function copyManifest(ui) {
-        const area = ui.get('json');
-        if (!area.value) {
-            ui.get('status').textContent = '没有 JSON 可复制，请先导出或载入清单';
-            return;
-        }
-        try {
-            await navigator.clipboard.writeText(area.value);
-            ui.get('status').textContent = 'JSON 已复制';
-        } catch (_) {
-            area.focus();
-            area.select();
-            ui.get('status').textContent = document.execCommand('copy')
-                ? 'JSON 已复制'
-                : '自动复制失败，请按 Ctrl+C';
-        }
-    }
     function bindPanelTheme(host, root) {
         const select = root.querySelector('#theme');
-        select.value = GM_getValue('cross-drive-theme', 'auto');
+        select.value = GM_getValue('media-workspace-theme', GM_getValue('cross-drive-theme', 'auto'));
         const baseStyle = host.style.cssText;
         const media = page.matchMedia?.('(prefers-color-scheme: dark)');
         let queued = false;
@@ -1759,229 +1372,13 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     : ';--scheme:light;--panel:#fafafa;--surface:#fff;--rail:#eee;--text:#171717;--muted:#515151;--field:#fff;--border:#dedede;--edge:#adadad;--accent:#161616;--tint:#ebebeb;--hover:#eee;--button:#171717;--button-text:#fff;--button-hover:#373737;--danger:#111');
         }
         select.onchange = () => {
-            GM_setValue('cross-drive-theme', select.value);
+            GM_setValue('media-workspace-theme', select.value);
             update();
         };
         media?.addEventListener('change', schedule);
         page.addEventListener('popstate', schedule);
         page.addEventListener('hashchange', schedule);
         update();
-    }
-    function exportHistoryKey(provider) {
-        return 'cross-drive-export-history-v1:' + provider;
-    }
-    function readExportHistory(provider) {
-        const key = exportHistoryKey(provider);
-        return GM_getValue(key, {});
-    }
-    function writeExportHistory(provider, history) {
-        const key = exportHistoryKey(provider);
-        GM_setValue(key, history);
-    }
-    function bindExportHistory(ui, provider) {
-        refreshHistorySummary(ui, provider);
-        ui.get('importHistory').onclick = () => ui.get('historyFile').click();
-        ui.get('historyFile').onchange = async (event) => {
-            const file = event.target.files?.[0];
-            if (!file) return;
-            const controls = panelControls(ui);
-            ui.busy(true);
-            controls.forEach((control) => {
-                control.disabled = true;
-            });
-            try {
-                const files = normalizeFiles(JSON.parse(await file.text()));
-                const count = importExportHistory(provider, files);
-                refreshHistorySummary(ui, provider);
-                ui.get('status').textContent =
-                    `已合并 ${count} 项旧记录。下次自动对照更新，生成所选内容的完整 JSON。`;
-            } catch (error) {
-                ui.get('status').textContent = '导入历史失败：' + error.message;
-            } finally {
-                ui.get('historyFile').value = '';
-                controls.forEach((control) => {
-                    control.disabled = false;
-                });
-                ui.busy(false);
-            }
-        };
-        ui.get('resetHistory').onclick = () => {
-            writeExportHistory(provider, {});
-            historyImportInfo(provider, null);
-            refreshHistorySummary(ui, provider);
-            ui.get('status').textContent = '已重置导出记录，下次将导出所有选中内容';
-        };
-    }
-    function refreshHistorySummary(ui, provider, history = readExportHistory(provider)) {
-        const count = Object.keys(history).length;
-        const imported = historyImportInfo(provider);
-        ui.get('historySummary').textContent =
-            (imported
-                ? `旧清单已导入：${imported.count} 项（${new Date(imported.time).toLocaleString()}）。`
-                : '') +
-            (count ? `已载入历史记录：${count} 项 · 刷新后仍保留` : '暂无历史记录 · 可导入以前保存的 JSON');
-    }
-    function historyImportInfo(provider, value) {
-        const key = exportHistoryKey(provider) + ':last-import';
-        if (arguments.length === 2) {
-            GM_setValue(key, value);
-        }
-        return GM_getValue(key, null);
-    }
-    function importExportHistory(provider, files) {
-        const next = { ...readExportHistory(provider) };
-        for (const file of files) {
-            const path = file.path;
-            const entry =
-                file.type === 'directory'
-                    ? { path, type: 'directory' }
-                    : { path, md5: file.md5, size: file.size };
-            if (file.gcid) entry.gcid = file.gcid;
-            if (file.cid) entry.cid = file.cid;
-            Object.defineProperty(next, path, {
-                value: JSON.stringify(entry),
-                enumerable: true,
-                configurable: true,
-                writable: true,
-            });
-        }
-        writeExportHistory(provider, next);
-        historyImportInfo(provider, { count: files.length, time: Date.now() });
-        return files.length;
-    }
-    function exportManifestJson(ui, provider, result) {
-        const previous = readExportHistory(provider),
-            next = { ...previous };
-        const has = (path) => Object.prototype.hasOwnProperty.call(previous, path);
-        let unchanged = 0,
-            directories = 0;
-        const entries = result.entries;
-        for (const entry of entries) {
-            const signature = JSON.stringify(entry);
-            const key = entry.path;
-            const changed = !has(key) || previous[key] !== signature;
-            if (!changed) unchanged++;
-            Object.defineProperty(next, key, {
-                value: signature,
-                enumerable: true,
-                configurable: true,
-                writable: true,
-            });
-            if (entry.type === 'directory') directories++;
-        }
-        const text = entries.length ? JSON.stringify(entries, null, 2) : '';
-        writeExportHistory(provider, next);
-        ui.get('json').value = text;
-        refreshHistorySummary(ui, provider, next);
-        return `本次导出 ${entries.length - directories} 个文件、${directories} 个目录（完整清单）；未变化 ${unchanged} 项，新增或更新 ${entries.length - unchanged} 项`;
-    }
-    async function getBdstoken() {
-        const readers = [
-            () => page.locals && page.locals.bdstoken,
-            () => page.locals && typeof page.locals.get === 'function' && page.locals.get('bdstoken'),
-            () => page.yunData && page.yunData.MYBDSTOKEN,
-        ];
-        for (const read of readers) {
-            try {
-                const value = read();
-                if (typeof value === 'string' && value) return value;
-            } catch (_) {}
-        }
-        const params = new URLSearchParams({
-            clienttype: '0',
-            app_id: '250528',
-            web: '1',
-            fields: '["bdstoken"]',
-        });
-        const data = await requestJson(`${location.origin}/api/gettemplatevariable?${params}`, {
-            credentials: 'include',
-        });
-        if (
-            nonNegativeInteger(data.errno) === 0 &&
-            typeof data.result?.bdstoken === 'string' &&
-            data.result.bdstoken
-        )
-            return data.result.bdstoken;
-        throw new Error('没有获取到 bdstoken，请确认已登录百度网盘');
-    }
-    async function collectTree(roots, source, progress = () => {}, parentPath = '', check = () => {}, log) {
-        const start = roots.map((node) => ({
-            node,
-            path: relativeParts(
-                node.exportPath || (parentPath ? parentPath + '/' + node.name : node.name)
-            ).join('/'),
-        }));
-        const paths = /* @__PURE__ */ new Map(),
-            entries = [],
-            skipped = [];
-        let files = 0,
-            directories = 0,
-            lastProgress = 0,
-            lastPath = '',
-            reportedPath = '';
-        const report = (path) => {
-            progress({ files, directories, skipped: skipped.length, path });
-            lastProgress = Date.now();
-            reportedPath = path;
-        };
-        await walkTree(
-            start,
-            ({ node }) => {
-                if (relativeParts(node.name).length !== 1)
-                    throw new Error('云盘返回了包含路径分隔符的文件名');
-                if (!node.key) throw new Error('文件列表缺少项目 ID');
-                return node.key;
-            },
-            async ({ node, path }, verify, order) => {
-                if (paths.has(path) && paths.get(path) !== node.key)
-                    throw new Error(`不同项目导出为同一路径：${path}；请分开导出`);
-                paths.set(path, node.key);
-                let children;
-                if (node.directory) {
-                    entries.push({ order, entry: { path, type: 'directory' } });
-                    directories++;
-                    children = (await source.children(node)).map((child) => ({
-                        node: child,
-                        path: path + '/' + child.name,
-                    }));
-                } else {
-                    const file = source.exportFile
-                        ? await source.exportFile(node, path, verify)
-                        : hasFileMetadata(node)
-                          ? node
-                          : await source.metadata?.(node);
-                    if (!hasFileMetadata(file)) skipped.push({ order, path });
-                    else {
-                        const entry = { path, md5: file.md5.toLowerCase(), size: file.size };
-                        if (typeof file.gcid === 'string' && /^[a-f0-9]{40}$/i.test(file.gcid)) {
-                            entry.gcid = file.gcid.toUpperCase();
-                            if (typeof file.cid === 'string' && /^[a-f0-9]{40}$/i.test(file.cid))
-                                entry.cid = file.cid.toUpperCase();
-                        }
-                        entries.push({ order, entry });
-                        files++;
-                    }
-                }
-                verify();
-                lastPath = path;
-                if (Date.now() - lastProgress >= 100) report(path);
-                return children;
-            },
-            check,
-            log,
-            source.exportFile
-                ? '清单项目读取（含目录和仅 MD5 项目）'
-                : '清单扫描与导出（目录/文件，分页按服务顺序）'
-        );
-        if (lastPath !== reportedPath) report(lastPath);
-        entries.sort((a, b) => compareTreeOrder(a.order, b.order));
-        skipped.sort((a, b) => compareTreeOrder(a.order, b.order));
-        return {
-            entries: entries.map((item) => item.entry),
-            files,
-            directories,
-            skipped: skipped.map((item) => item.path),
-        };
     }
     async function readPages(load, keyOf) {
         const items = [],
@@ -2022,287 +1419,6 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
     function decimalId(value) {
         if (typeof value === 'number' && !Number.isSafeInteger(value)) return '';
         return /^(0|[1-9]\d*)$/.test(String(value)) ? String(value) : '';
-    }
-    function baiduNode(file) {
-        if (
-            !file ||
-            typeof file.path !== 'string' ||
-            !file.path.startsWith('/') ||
-            typeof file.server_filename !== 'string' ||
-            ![0, 1].includes(nonNegativeInteger(file.isdir))
-        )
-            throw new Error('百度文件元数据不完整');
-        return {
-            key: file.path,
-            name: file.server_filename,
-            directory: Number(file.isdir) === 1,
-            md5: decodeMd5(file.md5),
-            size: nonNegativeInteger(file.size),
-            id: decimalId(file.fs_id),
-            gcid: file.gcid,
-            cid: file.cid,
-        };
-    }
-    function baiduDownloadUrl(value) {
-        const url = new URL(value);
-        if (
-            url.protocol !== 'https:' ||
-            url.username ||
-            url.password ||
-            url.port ||
-            !/(?:^|\.)(?:baidu\.com|baidupcs\.com)$/i.test(url.hostname)
-        )
-            throw new Error('百度返回了未经识别的下载地址');
-        return url.href;
-    }
-    function readBaiduDownloadRange(url, size, start, end, check) {
-        return new Promise((resolve, reject) => {
-            let request;
-            let finished = false;
-            const fail = (error) => {
-                if (finished) return;
-                finished = true;
-                clearInterval(timer);
-                reject(error);
-                request?.abort();
-            };
-            const timer = setInterval(() => {
-                try {
-                    check();
-                } catch (error) {
-                    fail(error);
-                }
-            }, 250);
-            try {
-                request = GM_xmlhttpRequest({
-                    url,
-                    method: 'GET',
-                    headers: {
-                        Range: `bytes=${start}-${end - 1}`,
-                        Referer: 'https://pan.baidu.com/',
-                        'User-Agent': 'pan.baidu.com',
-                    },
-                    responseType: 'arraybuffer',
-                    timeout: 12e4,
-                    onabort: () => fail(new Error('百度原文件读取已取消')),
-                    onerror: () => fail(new Error('百度原文件读取失败')),
-                    ontimeout: () => fail(new Error('百度原文件读取超时')),
-                    onprogress: (event) => {
-                        if (
-                            event.loaded > end - start ||
-                            (event.lengthComputable && event.total > end - start)
-                        )
-                            fail(new Error('百度未按请求范围返回文件，已停止读取'));
-                    },
-                    onload: (response) => {
-                        if (finished) return;
-                        try {
-                            check();
-                            baiduDownloadUrl(response.finalUrl || url);
-                            if (response.status < 200 || response.status >= 300) {
-                                let code;
-                                if (response.response?.byteLength <= 8192) {
-                                    try {
-                                        const body = JSON.parse(new TextDecoder().decode(response.response));
-                                        code = [body.errno, body.error_code, body.code].find((value) =>
-                                            /^-?\d{1,9}$/.test(String(value))
-                                        );
-                                    } catch {}
-                                }
-                                const signatureRejected = response.status === 403 && Number(code) === 31362;
-                                const suffix = code == null ? '' : '，百度错误码 ' + code;
-                                const reason = signatureRejected ? '百度拒绝下载签名' : '百度拒绝读取原文件';
-                                throw Object.assign(
-                                    new Error(reason + '（HTTP ' + response.status + suffix + '）'),
-                                    {
-                                        signatureRejected,
-                                    }
-                                );
-                            }
-                            const range = /^content-range:[ \t]*([^\r\n]+)/im
-                                .exec(response.responseHeaders || '')?.[1]
-                                .trim();
-                            const partial =
-                                response.status === 206 && range === `bytes ${start}-${end - 1}/${size}`;
-                            const whole = response.status === 200 && start === 0 && end === size;
-                            if ((!partial && !whole) || response.response?.byteLength !== end - start)
-                                throw new Error('百度未返回所需原文件范围（HTTP ' + response.status + '）');
-                            finished = true;
-                            clearInterval(timer);
-                            resolve(response.response);
-                        } catch (error) {
-                            fail(error);
-                        }
-                    },
-                });
-            } catch (error) {
-                fail(error);
-            }
-        });
-    }
-    function baiduSource(token, { readFlashHashes = false, hashProgress, log = () => {} } = {}) {
-        const get = paced(180, async (endpoint, params, options = {}) => {
-            const query = new URLSearchParams({
-                ...params,
-                channel: 'chunlei',
-                web: '1',
-                app_id: '250528',
-                bdstoken: token,
-            });
-            const data = await requestJson(`${location.origin}${endpoint}?${query}`, {
-                credentials: 'include',
-                ...options,
-            });
-            if (nonNegativeInteger(data.errno) !== 0)
-                throw new Error(`百度接口错误：${data.errno ?? '未知'}`);
-            return data;
-        });
-        const source = {
-            async selected(ids) {
-                const roots = [];
-                for (let i = 0; i < ids.length; i += 100) {
-                    const data = await get('/api/filemetas', {
-                        fsids: `[${ids.slice(i, i + 100).join(',')}]`,
-                        dlink: '0',
-                        detail: '1',
-                    });
-                    if (!Array.isArray(data.info) || data.info.length !== ids.slice(i, i + 100).length)
-                        throw new Error('选中项目的元数据返回不完整，请重新选择');
-                    roots.push(...data.info.map(baiduNode));
-                }
-                const directories = new Set(roots.filter((node) => node.directory).map((node) => node.key));
-                return roots.filter((node) => {
-                    let parent = node.key;
-                    while ((parent = parent.slice(0, parent.lastIndexOf('/'))))
-                        if (directories.has(parent)) return false;
-                    return true;
-                });
-            },
-            async children(node) {
-                const nodes = await readPages(
-                    async (pageNumber) => {
-                        const data = await get('/api/list', {
-                            dir: node.key,
-                            num: '1000',
-                            page: String(pageNumber),
-                            order: 'name',
-                            desc: '0',
-                        });
-                        if (!Array.isArray(data.list)) throw new Error('百度没有返回目录列表');
-                        const more =
-                            data.has_more != null ? Number(data.has_more) === 1 : data.list.length >= 1e3;
-                        return { items: data.list.map(baiduNode), more };
-                    },
-                    (file) => file.key
-                );
-                if (!readFlashHashes || hashProgress) return nodes;
-                const missing = nodes.filter((file) => !file.directory && file.id && !file.gcid);
-                for (let index = 0; index < missing.length; index += 100) {
-                    checkJsonTask();
-                    const batch = missing.slice(index, index + 100);
-                    try {
-                        const details = await source.selected(batch.map((file) => file.id));
-                        checkJsonTask();
-                        const byId = new Map(details.map((file) => [file.id, file]));
-                        for (const file of batch) {
-                            const detail = byId.get(file.id);
-                            if (
-                                detail?.gcid &&
-                                detail.key === file.key &&
-                                detail.size === file.size &&
-                                detail.md5 === file.md5
-                            ) {
-                                file.gcid = detail.gcid;
-                                file.cid = detail.cid;
-                            }
-                        }
-                    } catch (error) {
-                        checkJsonTask();
-                        log('百度文件详情读取失败，保留已取得的清单数据：' + error.message);
-                        break;
-                    }
-                }
-                return nodes;
-            },
-            async metadata(node) {
-                if (!node.id) return null;
-                const roots = await source.selected([node.id]);
-                if (roots[0]?.key !== node.key) throw new Error('读取期间文件发生变化，请重新导出');
-                return roots[0];
-            },
-        };
-        if (hashProgress) {
-            const queue = /* @__PURE__ */ new Map();
-            let downloadBlocked = false;
-            source.exportFile = (node, path, check) =>
-                enqueueByKey(queue, 'baidu-download', async () => {
-                    check();
-                    let fallback = node;
-                    try {
-                        if (downloadBlocked)
-                            return hasFileMetadata(node) ? node : await source.metadata(node);
-                        if (!node.id || node.size == null) throw new Error('缺少原文件编号或大小');
-                        const data = await get(
-                            '/api/filemetas',
-                            { target: JSON.stringify([node.key]), dlink: '1', detail: '1', clienttype: '0' },
-                            { referrer: location.origin + '/disk/main' }
-                        );
-                        check();
-                        const raw = Array.isArray(data.info) && data.info.length === 1 ? data.info[0] : null;
-                        const detail = raw && baiduNode(raw);
-                        if (
-                            !detail ||
-                            detail.id !== node.id ||
-                            detail.key !== node.key ||
-                            detail.directory ||
-                            detail.size !== node.size ||
-                            (detail.md5 && node.md5 && detail.md5 !== node.md5)
-                        )
-                            throw new Error('原文件详情与选区不一致，请重新选择');
-                        if (hasFileMetadata(detail)) fallback = detail;
-                        if (
-                            hasFileMetadata(detail) &&
-                            /^[a-f0-9]{40}$/i.test(detail.gcid || '') &&
-                            /^[a-f0-9]{40}$/i.test(detail.cid || '')
-                        )
-                            return detail;
-                        if (typeof raw.dlink !== 'string' || !raw.dlink)
-                            throw new Error('百度未给出当前文件的下载地址');
-                        const url = baiduDownloadUrl(raw.dlink);
-                        hashProgress(path, 0, node.size);
-                        const hashes = await guangyaFileHashes(
-                            node.size,
-                            (start, end) => readBaiduDownloadRange(url, node.size, start, end, check),
-                            (done) => hashProgress(path, done, node.size),
-                            check
-                        );
-                        if (node.md5 && hashes.md5 !== node.md5)
-                            log(path + ' · 百度列表 MD5 与原文件不同，已采用原文件实算值');
-                        log(path + ' · 已计算 GCID 和 CID');
-                        return { ...detail, ...hashes };
-                    } catch (error) {
-                        check();
-                        log(path + ' · 未能补齐哈希 · ' + error.message);
-                        if (error.signatureRejected) {
-                            downloadBlocked = true;
-                            log('百度拒绝了本批的下载签名，后续文件仅导出可用的元数据。');
-                        }
-                        return fallback;
-                    }
-                });
-        }
-        return source;
-    }
-    function routeHashParams(hash) {
-        const query = hash.indexOf('?');
-        return new URLSearchParams(hash.slice(query < 0 ? 1 : query + 1));
-    }
-    function currentBaiduPath() {
-        const fromHash = routeHashParams(location.hash || '').get('path');
-        const path = fromHash ?? new URLSearchParams(location.search).get('path');
-        if (path == null || !path.startsWith('/'))
-            throw new Error('未识别到当前目录路径，请勾选文件或文件夹后点“导出 JSON”');
-        return path === '/' ? path : path.replace(/\/$/, '');
     }
     const pan123Domains = ['123pan.com', '123pan.cn', '123865.com', '123684.com', '123912.com'];
     const is123Host = (host) =>
@@ -2348,7 +1464,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         if (capture.parent123 != null) return capture.parent123;
         throw new Error('未识别到当前目录，请打开“全部文件”中的目标文件夹');
     }
-    async function export123ParentPath(source, breadcrumbs) {
+    async function media123ParentPath(source, breadcrumbs) {
         if (source.parentId === '0') return '';
         const url = new URL(location.href);
         const raw = url.searchParams.get('homeFilePath') ?? routeHashParams(url.hash).get('homeFilePath');
@@ -2357,7 +1473,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             .map((id) => decimalId(id.trim()))
             .filter((id) => id !== '0');
         if (ids.some((id) => !id) || ids.at(-1) !== source.parentId)
-            throw new Error('无法确认源目录路径，请重新打开源文件夹后导出');
+            throw new Error('无法确认当前目录路径，请重新打开文件夹后重试');
         let parent = '0';
         const names = [];
         for (const id of ids) {
@@ -2365,7 +1481,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 (item) => item.id === id && item.directory
             );
             if (!folder || relativeParts(folder.name).length !== 1)
-                throw new Error('无法读取完整源目录树，请从网盘根目录逐层打开源文件夹后导出');
+                throw new Error('无法读取完整源目录树，请从网盘根目录逐层打开文件夹后重试');
             names.push(folder.name);
             breadcrumbs?.push({ id, name: folder.name });
             parent = id;
@@ -2401,7 +1517,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             url.searchParams.get('search') ||
             hashParams.get('search')
         )
-            throw new Error('请先进入“全部文件”的实际文件夹，再导入或导出；分类、搜索和回收站页面不支持');
+            throw new Error('请先进入“全部文件”的实际文件夹；分类、搜索和回收站页面不支持');
         const headers = { Authorization: `Bearer ${token}`, platform: 'web', 'app-version': '3' };
         const loginUuid = read123Storage('LoginUuid') || capture.loginUuid123;
         if (loginUuid) headers.LoginUuid = loginUuid;
@@ -2508,34 +1624,26 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         }
         return null;
     }
-    function selectedItems(provider) {
-        if (provider === '123') {
-            const state = selected123State();
-            if (state !== null) {
-                if (state.some((item) => !item.id)) throw new Error('选中项目缺少有效 ID，请重新选择');
-                return state;
-            }
+    function selected123Items() {
+        const state = selected123State();
+        if (state !== null) {
+            if (state.some((item) => !item.id)) throw new Error('选中项目缺少有效 ID，请重新选择');
+            return state;
         }
-        const baidu = provider === '百度';
         const rows = new Set(
             document.querySelectorAll(
-                baidu
-                    ? '.mouse-choose-item.selected, .mouse-choose-item[aria-selected="true"], .wp-s-pan-table__body-row.selected, .wp-s-pan-table__body-row[aria-selected="true"], tr.selected[data-id], tr[aria-selected="true"][data-row-key]'
-                    : '.ant-table-row-selected, .ant-table-row[aria-selected="true"], tr[aria-selected="true"][data-row-key], .file-wrapper.selected[data-file], .file-wrapper[aria-selected="true"][data-file]'
+                '.ant-table-row-selected, .ant-table-row[aria-selected="true"], tr[aria-selected="true"][data-row-key], .file-wrapper.selected[data-file], .file-wrapper[aria-selected="true"][data-file]'
             )
         );
-        const rowSelector = baidu
-            ? '.mouse-choose-item, .wp-s-pan-table__body-row, tr[data-id], tr[data-fs-id], tr[data-row-key]'
-            : '.ant-table-row, tr[data-row-key], .file-wrapper[data-file]';
         for (const checkbox of document.querySelectorAll(
             'input[type="checkbox"]:checked, [role="checkbox"][aria-checked="true"]'
         )) {
-            const row = checkbox.closest(rowSelector);
+            const row = checkbox.closest('.ant-table-row, tr[data-row-key], .file-wrapper[data-file]');
             if (row) rows.add(row);
         }
         const items = /* @__PURE__ */ new Map();
         for (const row of rows) {
-            const id = ['data-row-key', 'data-id', 'data-fs-id', 'data-file-id', 'data-file']
+            const id = ['data-row-key', 'data-id', 'data-file-id', 'data-file']
                 .map((key) => decimalId(row.getAttribute(key)))
                 .find(Boolean);
             const names = id
@@ -2570,145 +1678,12 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         }
         throw new Error('无法读取光鸭文件列表，请刷新页面后重试');
     }
-    function matchSelected(nodes, selected) {
-        const byId = /* @__PURE__ */ new Map(),
-            byName = /* @__PURE__ */ new Map();
-        for (const node of nodes) {
-            byId.set(node.id, node);
-            byName.set(node.name, byName.has(node.name) ? null : node);
-        }
-        const roots = /* @__PURE__ */ new Map();
-        for (const item of selected) {
-            if (!item.id && item.names.some((name) => byName.has(name) && byName.get(name) === null))
-                throw new Error('选中项目存在同名歧义，请切换列表视图后重试');
-            const matches = item.id
-                ? [byId.get(item.id)].filter(Boolean)
-                : [...new Set(item.names.map((name) => byName.get(name)).filter(Boolean))];
-            if (matches.length !== 1) throw new Error('选中项目无法唯一匹配，请重新勾选后重试');
-            roots.set(matches[0].key, matches[0]);
-        }
-        return [...roots.values()];
-    }
-    function initExporter(provider) {
-        const ui = makePanel(
-            `${provider} 跨盘 JSON ${VERSION}`,
-            `
-            <p id="scope">先在网盘页面选中文件或文件夹，再导出 JSON。</p>
-            <textarea id="json" placeholder="导出的 JSON 会显示在这里；导入时也可粘贴 JSON"></textarea>
-            <input id="manifest" type="file" accept=".json,application/json" hidden>
-            <div class="panel-actions"><button id="generate">导出 JSON</button>${provider === '百度' ? '<button id="generateGuangya" title="读取所选原文件的完整内容，计算秒传哈希">导出光鸭清单</button>' : ''}<details class="manifest-import" id="manifestImport"><summary>导入清单</summary><div class="manifest-import-actions"><button id="transfer">导入粘贴内容</button><button id="chooseManifest">选择文件并导入</button></div></details></div>
-            <div class="panel-actions" style="padding-top:0;border-top:0;margin-top:0"><button id="save">下载 JSON</button></div>
-            <p id="status"></p><p id="progress"></p><div id="log"></div>`
-        );
-        bindExportHistory(ui, provider);
-        ui.get('incremental').closest('label').hidden = true;
-        const generate = async (forGuangya = false) => {
-            const controls = panelControls(ui);
-            ui.busy(true);
-            controls.forEach((button) => {
-                button.disabled = true;
-            });
-            ui.get('json').value = '';
-            ui.get('progress').textContent = '';
-            ui.get('log').textContent = '';
-            ui.get('status').textContent = '正在读取…';
-            try {
-                const selected = selectedItems(provider);
-                if (!selected.length)
-                    throw new Error('没有识别到选中项，请先勾选文件或文件夹；未导出任何内容');
-                let source,
-                    roots,
-                    parentPath = '';
-                if (provider === '百度') {
-                    const path = selected.some((item) => !item.id) ? currentBaiduPath() : null;
-                    source = baiduSource(await getBdstoken(), {
-                        readFlashHashes: true,
-                        hashProgress: forGuangya
-                            ? (name, done, size) => {
-                                  const percent = size ? Math.floor((done / size) * 100) : 100;
-                                  ui.get('progress').textContent =
-                                      `读取原文件并计算哈希 ${percent}% · ${name}`;
-                              }
-                            : void 0,
-                        log: (message) => appendLog(ui, message),
-                    });
-                    if (selected.some((item) => !item.id)) {
-                        roots = await source.children({ key: path, directory: true });
-                        roots = matchSelected(roots, selected);
-                    } else roots = await source.selected([...new Set(selected.map((item) => item.id))]);
-                    roots = roots.map((node) => ({ ...node, exportPath: node.key.slice(1) }));
-                } else {
-                    source = pan123Source();
-                    if (source.parentId !== '0') parentPath = await export123ParentPath(source);
-                    roots = await source.children({ id: source.parentId });
-                    roots = matchSelected(roots, selected);
-                }
-                const scope = `选中 ${roots.length} 项（含子目录）`;
-                if (!roots.length) throw new Error('当前目录没有可导出的项目');
-                const result = await collectTree(
-                    roots,
-                    source,
-                    (state) => {
-                        ui.get('status').textContent =
-                            `范围：${scope}；已读 ${state.files} 个文件、${state.directories} 个目录，跳过 ${state.skipped} 项；正在处理：${state.path}`;
-                    },
-                    parentPath,
-                    checkJsonTask,
-                    (message) => appendLog(ui, message)
-                );
-                if (!result.entries.length) throw new Error('没有可导出的文件信息');
-                const summary = exportManifestJson(ui, provider, result);
-                const hashed = result.entries.filter((entry) => entry.gcid).length;
-                if (forGuangya) {
-                    const total = result.files + result.skipped.length;
-                    const status = `光鸭清单 · 含 GCID ${hashed}/${total} 个文件 · 仅 MD5 ${result.files - hashed} 个 · 未导出 ${result.skipped.length} 个`;
-                    ui.get('progress').textContent =
-                        hashed < total
-                            ? status + '。可用百度客户端下载原文件，再到光鸭用本地文件夹生成清单。'
-                            : status;
-                    appendLog(ui, status);
-                }
-                ui.get('status').textContent =
-                    `完成（${scope}）：${summary}。` +
-                    (!ui.get('json').value ? '没有可导出的内容。' : '请下载 JSON，到目标盘导入。') +
-                    (provider === '百度' && result.files
-                        ? ' 含 GCID 的文件 ' + hashed + '/' + result.files + ' 个。'
-                        : '') +
-                    (result.skipped.length
-                        ? ` 缺少有效 MD5/大小，已跳过 ${result.skipped.length} 项：${result.skipped.slice(0, 5).join('、')}`
-                        : '');
-            } catch (error) {
-                ui.get('status').textContent = '失败：' + error.message;
-            } finally {
-                controls.forEach((button) => {
-                    button.disabled = false;
-                });
-                ui.busy(false);
-            }
-        };
-        ui.get('generate').onclick = () => generate();
-        const generateGuangya = ui.get('generateGuangya');
-        if (generateGuangya) generateGuangya.onclick = () => generate(true);
-        ui.get('save').onclick = () => {
-            const value = ui.get('json').value;
-            if (!value) {
-                ui.get('status').textContent = '请先生成 JSON';
-                return;
-            }
-            saveJsonFile(value, `${provider}-跨盘清单-${Date.now()}.json`, (message) => {
-                ui.get('status').textContent = message;
-            });
-        };
-        return ui;
-    }
     function inspectRequest(target, headers, body) {
         const pan123 = is123ApiUrl(target);
         const tokenKey = pan123 ? 'token123' : 'token';
         const auth = headers.get('authorization');
-        let changed = false;
         if (auth && /^Bearer\s+\S+/i.test(auth)) {
             const token = auth.replace(/^Bearer\s+/i, '').trim();
-            changed = capture[tokenKey] !== token;
             capture[tokenKey] = token;
         }
         if (pan123) {
@@ -2717,7 +1692,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         }
         const isList = pan123
             ? /\/(?:[ab]\/)?api\/file\/list(?:\/new)?$/.test(target.pathname)
-            : target.pathname === API.list;
+            : target.pathname === GUANGYA_API.list;
         if (isList) {
             const key = pan123 ? 'parentFileId' : 'parentId';
             let parent = target.searchParams.get(key);
@@ -2731,425 +1706,16 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 )
                     parent = new URLSearchParams(body).get(key);
             } else if (body && typeof body.get === 'function') parent = body.get(key) ?? parent;
-            const id = !pan123 && parent === '' ? '0' : decimalId(parent);
-            if (id) {
-                const parentKey = pan123 ? 'parent123' : 'parent';
-                changed = changed || capture[parentKey] !== id;
-                capture[parentKey] = id;
-                if (pan123)
-                    capture.base123 = target.origin + target.pathname.replace(/\/file\/list(?:\/new)?$/, '');
+            const id = parent === '' ? '0' : decimalId(parent);
+            if (pan123 && id) {
+                capture.parent123 = id;
+                capture.base123 = target.origin + target.pathname.replace(/\/file\/list(?:\/new)?$/, '');
             }
         }
-        if (!pan123 && changed) refreshStatus();
         return isList;
     }
-    function initManifestImporter(provider, ui) {
-        const controls = panelControls(ui);
-        const log = (message) => appendLog(ui, message);
-        ui.get('manifest').onchange = (event) => {
-            const file = event.target.files?.[0];
-            if (file) return runImport(file);
-        };
-        ui.get('chooseManifest').onclick = () => ui.get('manifest').click();
-        const runImport = async (file) => {
-            ui.get('manifestImport').open = false;
-            ui.busy(true);
-            controls.forEach((control) => {
-                control.disabled = true;
-            });
-            ui.get('log').textContent = '';
-            try {
-                if (file) {
-                    ui.get('json').value = await file.text();
-                    ui.get('status').textContent = `已载入：${file.name}，正在导入…`;
-                }
-                const files = normalizeFiles(JSON.parse(ui.get('json').value));
-                ui.get('progress').textContent = `准备导入 ${files.length} 项…`;
-                const target = { id: provider === '123' ? current123Parent() : currentBaiduPath() };
-                const prepareManifestEntry = async (file2, ensure) => {
-                    const parts = relativeParts(file2.path),
-                        name = parts.pop();
-                    const parent = await ensure(file2.type === 'directory' ? file2.path : parts.join('/'));
-                    return { name, parent };
-                };
-                const runBatch = async (label, reason, importEntry) => {
-                    let failed = 0,
-                        processed = 0;
-                    try {
-                        await batchStage(
-                            files,
-                            label,
-                            log,
-                            async (file2, verify, _index, observe) => {
-                                try {
-                                    return await importEntry(file2, verify);
-                                } catch (error) {
-                                    failed++;
-                                    observe(error);
-                                    log(file2.path + '：单项失败；' + error.message);
-                                    if (error.stop) throw error;
-                                    return 'failed';
-                                } finally {
-                                    processed++;
-                                    ui.get('progress').textContent =
-                                        '导入进度：' + processed + '/' + files.length;
-                                }
-                            },
-                            checkJsonTask,
-                            8,
-                            reason
-                        );
-                    } catch (error) {
-                        log('导入中断：' + error.message);
-                    }
-                    return { failed, processed };
-                };
-                if (provider === '123') {
-                    const session = recover123Session(),
-                        { base, headers } = session;
-                    const post = paced(750, (path, body) =>
-                        requestJson(`${base}${path}`, {
-                            method: 'POST',
-                            credentials: 'omit',
-                            headers: { ...headers, 'Content-Type': 'application/json' },
-                            body: JSON.stringify(body),
-                        })
-                    );
-                    const source = pan123Source(session),
-                        children = cachedDriveChildren(source, /* @__PURE__ */ new Map(), checkJsonTask);
-                    const dirs = /* @__PURE__ */ new Map([['', target.id]]);
-                    const ensure = (path) => {
-                        const key = path.toLowerCase();
-                        if (!dirs.has(key))
-                            dirs.set(
-                                key,
-                                (async () => {
-                                    const parts = relativeParts(path),
-                                        name = parts.pop(),
-                                        parent = await ensure(parts.join('/'));
-                                    checkJsonTask();
-                                    const find = (nodes) => {
-                                        const matches = nodes.filter(
-                                            (item) => item.name.toLowerCase() === name.toLowerCase()
-                                        );
-                                        if (
-                                            matches.length > 1 ||
-                                            (matches.length &&
-                                                (!matches[0].directory ||
-                                                    matches[0].id === '0' ||
-                                                    matches[0].id === parent))
-                                        )
-                                            throw new Error('同名项目挡住目标目录：' + path);
-                                        return matches[0]?.id;
-                                    };
-                                    const existing = find(await children(parent));
-                                    if (existing) return existing;
-                                    checkJsonTask();
-                                    const result = await post('/file/upload_request', {
-                                        driveId: 0,
-                                        parentFileId: parent,
-                                        fileName: name,
-                                        type: 1,
-                                        size: 0,
-                                        duplicate: 0,
-                                    });
-                                    if (![0, 200, 5060].includes(apiCode(result)))
-                                        throw apiError('123 创建目录', result);
-                                    const created = decimalId(result.data?.FileId ?? result.data?.fileId);
-                                    if (created && created !== '0' && created !== parent) return created;
-                                    for (let attempt = 0; attempt < 3; attempt++) {
-                                        if (attempt) await sleep(350);
-                                        checkJsonTask();
-                                        const confirmed = find(await source.children({ id: parent }));
-                                        if (confirmed) return confirmed;
-                                    }
-                                    throw new Error('目录创建结果待核对，未重复提交：' + path);
-                                })()
-                            );
-                        return dirs.get(key);
-                    };
-                    let saved = 0,
-                        missed = 0,
-                        skipped = 0,
-                        pending = 0;
-                    const names = /* @__PURE__ */ new Map();
-                    const { failed, processed } = await runBatch(
-                        '123 导入预检、转存与验证（清单项目）',
-                        '123 写入沿用 750ms 节流，共享路径复用在途建目录',
-                        (file2, verify) =>
-                            enqueueByKey(names, file2.path.toLowerCase(), async () => {
-                                verify();
-                                const { name, parent } = await prepareManifestEntry(file2, ensure);
-                                if (file2.type === 'directory') return;
-                                verify();
-                                const sameName = (await source.children({ id: parent })).filter(
-                                    (item) => item.name.toLowerCase() === name.toLowerCase()
-                                );
-                                if (sameName.length > 1)
-                                    throw new Error('目标存在多个同名项目，无法确认：' + file2.path);
-                                const old = sameName[0];
-                                if (old) {
-                                    const message = existingFileMessage(old, file2);
-                                    skipped++;
-                                    log(`${file2.path}：${message}`);
-                                    return 'skipped';
-                                }
-                                verify();
-                                const response = await post('/file/upload_request', {
-                                    driveId: 0,
-                                    parentFileId: parent,
-                                    fileName: name,
-                                    type: 0,
-                                    size: file2.size,
-                                    etag: file2.md5,
-                                    duplicate: 0,
-                                });
-                                if (apiCode(response) === 5060) {
-                                    const refreshed = await source.children({ id: parent });
-                                    const matches = refreshed.filter((item) => item.name === name);
-                                    if (matches.length > 1)
-                                        throw new Error('目标存在多个同名项目，无法确认：' + file2.path);
-                                    const existing = matches[0];
-                                    if (existing) {
-                                        const message = existingFileMessage(existing, file2);
-                                        skipped++;
-                                        log(`${file2.path}：${message}`);
-                                        return 'skipped';
-                                    }
-                                }
-                                if (![0, 200].includes(apiCode(response)))
-                                    throw apiError('123 秒传', response);
-                                if (response.data?.Reuse === true || response.data?.reuse === true) {
-                                    let verified = false;
-                                    for (let attempt = 0; attempt < 5; attempt++) {
-                                        if (attempt) await sleep(500);
-                                        verify();
-                                        const matches = (await source.children({ id: parent })).filter(
-                                            (item) => item.name === name
-                                        );
-                                        if (!matches.length) continue;
-                                        if (matches.length !== 1)
-                                            throw new Error('目标存在多个同名项目，无法验证：' + file2.path);
-                                        existingFileMessage(matches[0], file2);
-                                        if (hasFileMetadata(matches[0])) {
-                                            verified = true;
-                                            break;
-                                        }
-                                    }
-                                    if (verified) saved++;
-                                    else {
-                                        pending++;
-                                        log(
-                                            `${file2.path}：接口报告复用，但尚未在目标目录验证到完整文件信息，结果待确认`
-                                        );
-                                        return 'failed';
-                                    }
-                                } else {
-                                    missed++;
-                                    log(`${file2.path}：哈希未命中，需文件本体，未上传`);
-                                    return 'failed';
-                                }
-                            })
-                    );
-                    ui.get('status').textContent =
-                        processed < files.length
-                            ? '导入已停止'
-                            : missed + failed + pending
-                              ? '导入结束，含未完成项'
-                              : '导入完成';
-                    ui.get('progress').textContent =
-                        `导入结束：已处理 ${processed}/${files.length} 项；确认复用 ${saved}，未完成 ${missed}，待确认 ${pending}，同名跳过 ${skipped}，单项失败 ${failed}，未处理 ${files.length - processed}`;
-                } else {
-                    const token = await getBdstoken();
-                    const source = baiduSource(token),
-                        rootPath = target.id;
-                    const create = async (body) => {
-                        const response = await requestJson(
-                            `${location.origin}/api/create?${new URLSearchParams({ channel: 'chunlei', web: '1', app_id: '250528', bdstoken: token })}`,
-                            {
-                                method: 'POST',
-                                credentials: 'include',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify(body),
-                            }
-                        );
-                        if (nonNegativeInteger(response.errno) !== 0)
-                            throw new Error(`百度创建失败：${response.errno ?? '未知错误'}`);
-                    };
-                    const folders = /* @__PURE__ */ new Map([['', rootPath]]);
-                    const children = (path) => source.children({ key: path || '/', directory: true });
-                    const ensure = (path) => {
-                        if (!folders.has(path))
-                            folders.set(
-                                path,
-                                (async () => {
-                                    const parts = relativeParts(path),
-                                        name = parts.pop(),
-                                        parent = await ensure(parts.join('/'));
-                                    checkJsonTask();
-                                    const matches = (await children(parent)).filter(
-                                        (item) => item.name === name
-                                    );
-                                    if (matches.length > 1 || (matches.length && !matches[0].directory))
-                                        throw new Error('同名项目挡住目录：' + path);
-                                    if (matches.length) return matches[0].key;
-                                    const fullPath = parent.replace(/\/$/, '') + '/' + name;
-                                    checkJsonTask();
-                                    await create({ path: fullPath, isdir: 1, size: 0, block_list: '[]' });
-                                    return fullPath;
-                                })()
-                            );
-                        return folders.get(path);
-                    };
-                    let saved = 0,
-                        missed = 0,
-                        skipped = 0;
-                    const { failed, processed } = await runBatch(
-                        '百度导入预检与转存（清单项目）',
-                        '共享路径复用在途建目录，百度分页顺序读取',
-                        async (file2, verify) => {
-                            const { name, parent } = await prepareManifestEntry(file2, ensure);
-                            if (file2.type === 'directory') return;
-                            verify();
-                            const entries = await children(parent);
-                            if (entries.some((item) => item.name === name)) {
-                                skipped++;
-                                log(`${file2.path}：目标已有同名项目，跳过`);
-                                return 'skipped';
-                            }
-                            if (file2.size > 256 * 1024) {
-                                missed++;
-                                log(`${file2.path}：百度需要前 256 KB 分片哈希；清单不含原文件，未提交`);
-                                return 'skipped';
-                            }
-                            const path = `${parent.replace(/\/$/, '')}/${name}`;
-                            const params = new URLSearchParams({
-                                channel: 'chunlei',
-                                web: '1',
-                                app_id: '250528',
-                                bdstoken: token,
-                                clienttype: '0',
-                                async: '2',
-                            });
-                            verify();
-                            const response = await requestJson(
-                                `${location.origin}/api/rapidupload?${params}`,
-                                {
-                                    method: 'POST',
-                                    credentials: 'include',
-                                    headers: {
-                                        'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
-                                    },
-                                    body: new URLSearchParams({
-                                        path,
-                                        'content-md5': file2.md5,
-                                        'slice-md5': file2.md5,
-                                        'content-length': String(file2.size),
-                                        isdir: '0',
-                                        rtype: '3',
-                                    }).toString(),
-                                }
-                            );
-                            if (nonNegativeInteger(response.errno) === 0) {
-                                saved++;
-                                log(`${file2.path}：百度秒传接口已接受`);
-                            } else {
-                                missed++;
-                                log(
-                                    `${file2.path}：百度未命中秒传（${response.errno ?? '未知错误'}），需要原文件`
-                                );
-                                return 'failed';
-                            }
-                        }
-                    );
-                    ui.get('status').textContent =
-                        processed < files.length ? '导入已停止' : failed ? '导入结束，含失败项' : '导入完成';
-                    ui.get('progress').textContent =
-                        `导入结束：${processed}/${files.length} 项；失败 ${failed}，百度接口接受 ${saved}，未完成 ${missed}，同名跳过 ${skipped}；大于 256 KB 的项目需原文件分片哈希`;
-                }
-            } catch (error) {
-                ui.get('status').textContent = '失败：' + error.message;
-                ui.get('progress').textContent = '导入失败：' + error.message;
-            } finally {
-                ui.get('manifest').value = '';
-                controls.forEach((control) => {
-                    control.disabled = false;
-                });
-                ui.busy(false);
-            }
-        };
-        ui.get('transfer').onclick = () => runImport();
-    }
-    function installHooks() {
-        const pan123 = is123Host(location.hostname);
-        const targetOf = (value) => {
-            const url = new URL(value, location.href);
-            return (pan123 ? is123ApiUrl(url) : url.origin === 'https://api.guangyapan.com') ? url : null;
-        };
-        page.fetch = function (input, init) {
-            try {
-                const isRequest = input && typeof input === 'object' && typeof input.url === 'string';
-                const target = targetOf(isRequest ? input.url : String(input));
-                if (target) {
-                    const headers = new page.Headers(
-                        init?.headers !== void 0 ? init.headers : isRequest ? input.headers : void 0
-                    );
-                    const isList = inspectRequest(target, headers, init?.body);
-                    if (
-                        isList &&
-                        isRequest &&
-                        init?.body === void 0 &&
-                        input.body &&
-                        !input.bodyUsed &&
-                        /json|x-www-form-urlencoded/i.test(headers.get('content-type') || '')
-                    ) {
-                        input
-                            .clone()
-                            .text()
-                            .then((body) => inspectRequest(target, headers, body))
-                            .catch(() => {});
-                    }
-                }
-            } catch (_) {}
-            return nativeFetch(...arguments);
-        };
-        const proto = page.XMLHttpRequest?.prototype;
-        if (!proto) return;
-        const metadata = /* @__PURE__ */ new WeakMap();
-        const open = proto.open,
-            setHeader = proto.setRequestHeader,
-            send = proto.send;
-        proto.open = function (_method, url) {
-            const result = open.apply(this, arguments);
-            metadata.delete(this);
-            try {
-                const target = targetOf(String(url));
-                if (target) metadata.set(this, { target, headers: new page.Headers() });
-            } catch (_) {}
-            return result;
-        };
-        proto.setRequestHeader = function (name, value) {
-            const result = setHeader.apply(this, arguments);
-            const item = metadata.get(this);
-            if (item) {
-                try {
-                    item.headers.append(name, value);
-                } catch (_) {}
-            }
-            return result;
-        };
-        proto.send = function (body) {
-            const item = metadata.get(this);
-            if (item) {
-                try {
-                    inspectRequest(item.target, item.headers, body);
-                } catch (_) {}
-            }
-            return send.apply(this, arguments);
-        };
-    }
     async function guangyaListPage(post, parentId, page2, loaded = 0) {
-        const response = await post(API.list, {
+        const response = await post(GUANGYA_API.list, {
             parentId: parentId === '0' ? '' : parentId,
             page: page2 - 1,
             pageSize: 100,
@@ -3180,70 +1746,6 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                   : items.length >= 100;
         return { items, more, total };
     }
-    function directoryResolver(rootId, post, log = () => {}) {
-        const folders = /* @__PURE__ */ new Map([['', Promise.resolve(rootId === '0' ? '' : rootId)]]);
-        const listings = /* @__PURE__ */ new Map();
-        async function children(parentId) {
-            if (!listings.has(parentId))
-                listings.set(
-                    parentId,
-                    readPages(
-                        (number, count) => guangyaListPage(post, parentId, number, count),
-                        (file) => decimalId(file.fileId)
-                    ).then((items) => {
-                        const names = /* @__PURE__ */ new Map();
-                        for (const item of items)
-                            names.set(item.fileName, names.has(item.fileName) ? null : item);
-                        return names;
-                    })
-                );
-            return listings.get(parentId);
-        }
-        async function ensure(path) {
-            if (folders.has(path)) return folders.get(path);
-            const parts = relativeParts(path);
-            const pending = (async () => {
-                const parentId = await ensure(parts.slice(0, -1).join('/'));
-                const name = parts.at(-1);
-                const names = await children(parentId);
-                if (names.has(name)) {
-                    const item = names.get(name);
-                    if (!item || Number(item.resType) !== 2)
-                        throw new Error('同名文件或多个同名目录，无法确定目标：' + path);
-                    const id2 = decimalId(item.fileId);
-                    if (!id2 || id2 === '0' || id2 === parentId) throw new Error('目标目录 ID 无效：' + path);
-                    log('使用已有目录：' + path);
-                    return id2;
-                }
-                let response;
-                try {
-                    response = await post(API.mkdir, { parentId, dirName: name, failIfNameExist: true });
-                } catch (error) {
-                    throw Object.assign(
-                        new Error(
-                            '创建目录请求异常，结果待核对：' +
-                                path +
-                                '；' +
-                                error.message +
-                                '；该目录下的后续项目将跳过'
-                        ),
-                        { stop: error.stop }
-                    );
-                }
-                if (guangyaCode(response) !== 0) throw apiError('创建目录 ' + path, response);
-                const id = decimalId(response.data?.fileId);
-                if (!id || id === '0' || id === parentId)
-                    throw new Error('创建目录未返回有效 ID，请刷新核对：' + path);
-                names.set(name, { fileId: id, fileName: name, resType: 2 });
-                listings.set(id, Promise.resolve(/* @__PURE__ */ new Map()));
-                log('已创建目录：' + path);
-                return id;
-            })();
-            folders.set(path, pending);
-            return pending;
-        }
-        return ensure;
-    }
     function currentGuangyaFolder() {
         const url = new URL(location.href);
         const route = url.hash.startsWith('#/')
@@ -3267,36 +1769,11 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         return {
             id: breadcrumbs.at(-1)?.id ?? '0',
             path: names.length ? names.join(' / ') : '根目录',
-            exportPath: names.join('/'),
+            relativePath: names.join('/'),
             breadcrumbs,
         };
     }
-    function alignGuangyaImport(files, target) {
-        const prefix = target.exportPath;
-        if (
-            !prefix ||
-            !files.every(
-                (file) =>
-                    file.path.startsWith(prefix + '/') ||
-                    (file.type === 'directory' &&
-                        (file.path === prefix || prefix.startsWith(file.path + '/')))
-            )
-        )
-            return { files, alignedPath: '' };
-        return {
-            files: files
-                .filter((file) => file.path.startsWith(prefix + '/'))
-                .map((file) => ({ ...file, path: file.path.slice(prefix.length + 1) })),
-            alignedPath: prefix,
-        };
-    }
-    function guangyaSource(token, reuseHistory = true) {
-        const knownContent = /* @__PURE__ */ new Map();
-        for (const signature of Object.values(reuseHistory ? readExportHistory('光鸭') : {})) {
-            const entry = JSON.parse(signature);
-            if (hasFileMetadata(entry) && /^[a-f0-9]{40}$/i.test(entry.gcid || ''))
-                knownContent.set(entry.gcid.toUpperCase(), entry);
-        }
+    function guangyaSource(token) {
         const post = paced(180, requestGuangya.bind(null, token));
         const node = (file) => {
             const id = decimalId(file?.fileId);
@@ -3323,13 +1800,6 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 );
             },
             async metadata(file) {
-                const cached = knownContent.get(String(file.gcid || '').toUpperCase());
-                if (
-                    cached &&
-                    cached.size === file.size &&
-                    (!file.cid || String(file.cid).toUpperCase() === cached.cid)
-                )
-                    return cached;
                 const response = await post('/userres/v1/file/get_file_detail', { fileId: file.id });
                 if (guangyaCode(response) !== 0) throw apiError('读取光鸭文件详情', response);
                 const info = response.data?.fileInfo ?? response.data;
@@ -3342,347 +1812,10 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             },
         };
     }
-    function replacementJournalKey(target) {
-        return 'cross-drive-replacement-v1:' + target.id + ':' + (target.exportPath || '');
-    }
-    function readReplacementJournal(target) {
-        const key = replacementJournalKey(target);
-        return GM_getValue(key, {});
-    }
-    function writeReplacementJournal(target, journal) {
-        const key = replacementJournalKey(target);
-        GM_setValue(key, journal);
-    }
-    const replacementKey = (file) => JSON.stringify([file.path, file.md5, file.size]);
-    async function buildGuangyaReplacementPlan(
-        files,
-        target,
-        source,
-        progress = () => {},
-        history = readExportHistory('光鸭'),
-        journal = readReplacementJournal(target),
-        check = () => {},
-        log
-    ) {
-        const byPath = /* @__PURE__ */ new Map(),
-            byContent = /* @__PURE__ */ new Map(),
-            seen = /* @__PURE__ */ new Set(),
-            unverified = [];
-        const contentKey = (file) => file.md5.toLowerCase() + ':' + file.size;
-        const neededDirectories = /* @__PURE__ */ new Set(['']),
-            fileParents = /* @__PURE__ */ new Set();
-        const includeParents = (path, isFile) => {
-            const parts = relativeParts(path);
-            for (let i = 1; i < parts.length; i++) neededDirectories.add(parts.slice(0, i).join('/'));
-            if (isFile) fileParents.add(parts.slice(0, -1).join('/'));
-        };
-        for (const file of files) includeParents(file.path, file.type !== 'directory');
-        const wantedContent = new Set(files.filter((file) => file.type !== 'directory').map(contentKey)),
-            historicalPaths = /* @__PURE__ */ new Map();
-        const wantedSizes = new Set(
-            files.filter((file) => file.type !== 'directory').map((file) => file.size)
-        );
-        for (const signature of Object.values(history)) {
-            const old = JSON.parse(signature);
-            if (!hasFileMetadata(old) || !wantedContent.has(contentKey(old))) continue;
-            const path = target.exportPath
-                ? old.path.startsWith(target.exportPath + '/')
-                    ? old.path.slice(target.exportPath.length + 1)
-                    : ''
-                : target.id === '0'
-                  ? old.path
-                  : '';
-            if (path) {
-                includeParents(path, true);
-                const key = contentKey(old);
-                if (!historicalPaths.has(key)) historicalPaths.set(key, []);
-                historicalPaths.get(key).push(path);
-            }
-        }
-        for (const file of files) {
-            const record = journal[replacementKey(file)];
-            if (record?.old) includeParents(record.old.path, true);
-            for (const node of record?.directories || []) includeParents(node.path + '/placeholder', true);
-        }
-        const directoryKey = (path) =>
-            path
-                .split('/')
-                .map(
-                    (name) =>
-                        name
-                            .normalize('NFKC')
-                            .toLowerCase()
-                            .replace(/[\p{P}\p{Z}\s]/gu, '') || name
-                )
-                .join('/');
-        const directoryKeys = new Set([...neededDirectories].map(directoryKey));
-        const fileParentKeys = new Set([...fileParents].map(directoryKey));
-        const root = { id: target.id, path: '' };
-        const metadataFiles = [];
-        await walkTree(
-            [root],
-            (folder) => folder.id,
-            async (folder, verify) => {
-                const descendants = [];
-                progress('正在核对 JSON 对应目录：' + (folder.path || target.path));
-                for (const node of await source.children(folder)) {
-                    verify();
-                    if (
-                        !node.id ||
-                        node.id === '0' ||
-                        relativeParts(node.name).length !== 1 ||
-                        seen.has(node.id)
-                    )
-                        throw new Error('目标目录结构异常，请刷新后重新预览');
-                    seen.add(node.id);
-                    const path = folder.path ? folder.path + '/' + node.name : node.name;
-                    if (byPath.has(path)) throw new Error('目标存在多个同名项目：' + path);
-                    const entry = { ...node, path, parentId: folder.id };
-                    byPath.set(path, entry);
-                    if (entry.directory) {
-                        if (directoryKeys.has(directoryKey(path))) descendants.push(entry);
-                        continue;
-                    }
-                    if (!fileParentKeys.has(directoryKey(folder.path))) continue;
-                    if (entry.size != null && !wantedSizes.has(entry.size)) continue;
-                    metadataFiles.push(entry);
-                }
-                return descendants;
-            },
-            check,
-            log,
-            '光鸭替换目录预览（目录）'
-        );
-        await batchStage(
-            metadataFiles,
-            '光鸭替换内容预检（文件）',
-            log,
-            async (entry, verify, _index, observe) => {
-                let metadata;
-                try {
-                    metadata = hasFileMetadata(entry) ? entry : await source.metadata(entry);
-                } catch (error) {
-                    observe(error);
-                    verify();
-                    if (error.stop) throw error;
-                    unverified.push(entry);
-                    return 'failed';
-                }
-                verify();
-                if (!hasFileMetadata(metadata)) {
-                    unverified.push(entry);
-                    return 'skipped';
-                }
-                Object.assign(entry, { md5: metadata.md5.toLowerCase(), size: metadata.size });
-                const key = contentKey(entry);
-                if (!byContent.has(key)) byContent.set(key, []);
-                byContent.get(key).push(entry);
-            },
-            check,
-            8,
-            '文件详情沿用光鸭节流'
-        );
-        const requestedPaths = new Set(files.map((file) => file.path));
-        const demand = /* @__PURE__ */ new Map();
-        for (const file of files) {
-            if (file.type !== 'directory') {
-                const key = contentKey(file);
-                demand.set(key, (demand.get(key) || 0) + 1);
-            }
-        }
-        const plan = /* @__PURE__ */ new Map();
-        for (const file of files) {
-            const parts = relativeParts(file.path);
-            let blocked = false;
-            for (let i = 1; i < parts.length; i++) {
-                const ancestor = byPath.get(parts.slice(0, i).join('/'));
-                if (ancestor && !ancestor.directory) {
-                    blocked = true;
-                    break;
-                }
-            }
-            const existing = byPath.get(file.path);
-            let action;
-            if (blocked) action = { kind: 'conflict', reason: '父目录位置被文件占用' };
-            else if (file.type === 'directory')
-                action =
-                    existing && !existing.directory
-                        ? { kind: 'conflict', reason: '目录位置被文件占用' }
-                        : { kind: 'directory', node: existing };
-            else if (
-                existing &&
-                (existing.directory ||
-                    !hasFileMetadata(existing) ||
-                    contentKey(existing) !== contentKey(file))
-            )
-                action = { kind: 'conflict', reason: '目标同名项目内容不同或无法验证，不覆盖' };
-            else if (unverified.some((node) => node.size == null || node.size === file.size))
-                action = {
-                    kind: 'conflict',
-                    reason: '相关目录有文件无法核对内容，旧版对应关系不确定，跳过且不删除',
-                };
-            else {
-                const key = contentKey(file);
-                const candidates = (byContent.get(key) || []).filter(
-                    (node) => !requestedPaths.has(node.path)
-                );
-                const record = journal[replacementKey(file)];
-                if (
-                    record?.old &&
-                    !candidates.some((node) => node.id === record.old.id) &&
-                    !byPath.has(record.old.path) &&
-                    !requestedPaths.has(record.old.path)
-                )
-                    candidates.push(record.old);
-                if (candidates.length > 1 || (candidates.length && demand.get(key) > 1))
-                    action = { kind: 'conflict', reason: '旧文件无法唯一对应，跳过且不删除' };
-                else {
-                    const old = candidates[0];
-                    action = {
-                        kind: existing ? (old ? 'reuse-cleanup' : 'reuse') : old ? 'replace' : 'import',
-                        node: existing,
-                        old,
-                    };
-                }
-            }
-            plan.set(file.path, action);
-        }
-        const protectedDirectories = /* @__PURE__ */ new Set(['']);
-        for (const file of files) {
-            const parts = relativeParts(file.path);
-            const depth = file.type === 'directory' ? parts.length : parts.length - 1;
-            for (let i = 1; i <= depth; i++) protectedDirectories.add(parts.slice(0, i).join('/'));
-        }
-        for (const file of files.filter((file2) => file2.type !== 'directory')) {
-            const action = plan.get(file.path);
-            if (action.kind === 'conflict' || action.old) continue;
-            const dirs = new Map(
-                (journal[replacementKey(file)]?.directories || []).map((node) => [node.id, node])
-            );
-            for (const path of historicalPaths.get(contentKey(file)) || []) {
-                if (byPath.has(path)) continue;
-                const parts = relativeParts(path);
-                for (let i = 1; i < parts.length; i++) {
-                    const parent = parts.slice(0, i).join('/'),
-                        node = byPath.get(parent);
-                    if (node?.directory && !protectedDirectories.has(parent) && node.id !== target.id)
-                        dirs.set(node.id, node);
-                }
-            }
-            action.cleanupDirectories = [...dirs.values()].filter(
-                (node) => !protectedDirectories.has(node.path)
-            );
-        }
-        return {
-            actions: plan,
-            directories: new Map([...byPath].filter(([, node]) => node.directory)),
-            protectedDirectories,
-        };
-    }
-    function confirmGuangyaReplacement(ui, plan, target) {
-        const preview = ui.get('syncPreview'),
-            list = ui.get('syncList');
-        list.textContent = '';
-        const counts = { replace: 0, 'reuse-cleanup': 0, reuse: 0, import: 0, conflict: 0, directory: 0 };
-        const basePath = target.exportPath ? '/' + target.exportPath : target.id === '0' ? '' : target.path;
-        const fullPath = (path) => basePath + '/' + path;
-        const labels = {
-            replace: '导入并替换',
-            'reuse-cleanup': '复用新版并清理旧版',
-            reuse: '复用已有新版',
-            import: '仅导入',
-            conflict: '跳过',
-        };
-        for (const [path, action] of plan.actions) {
-            counts[action.kind]++;
-            const item = document.createElement('div'),
-                heading = document.createElement('strong');
-            item.className = 'sync-item';
-            heading.textContent =
-                action.kind === 'directory'
-                    ? action.node
-                        ? '复用目录'
-                        : '新建目标目录'
-                    : labels[action.kind];
-            item.appendChild(heading);
-            const location2 = (label, value) => {
-                const row = document.createElement('div'),
-                    caption = document.createElement('span'),
-                    text = document.createElement('span');
-                row.className = 'sync-location';
-                caption.textContent = label;
-                text.textContent = value;
-                row.appendChild(caption);
-                row.appendChild(text);
-                item.appendChild(row);
-            };
-            if (action.kind === 'conflict') {
-                location2('清单要求位置', fullPath(path));
-                location2('跳过原因', action.reason);
-            } else {
-                location2('新版位置', fullPath(path));
-                if (action.kind !== 'directory')
-                    location2('成功后删除', action.old ? fullPath(action.old.path) : '无；保留其他现有内容');
-                if (action.cleanupDirectories?.length)
-                    location2(
-                        '空目录清理',
-                        action.cleanupDirectories.map((node) => fullPath(node.path)).join('\n')
-                    );
-            }
-            list.appendChild(item);
-        }
-        ui.get('syncDestination').textContent = '导入到：光鸭 ' + (basePath || '/（根目录）');
-        ui.get('syncSummary').textContent =
-            `导入替换 ${counts.replace} 项 · 复用并清理 ${counts['reuse-cleanup']} 项 · 复用 ${counts.reuse} 项 · 仅导入 ${counts.import} 项 · 跳过 ${counts.conflict} 项 · 目录 ${counts.directory} 项`;
-        preview.hidden = false;
-        return new Promise((resolve) => {
-            const finish = (accepted) => {
-                preview.hidden = true;
-                ui.get('confirmSync').onclick = ui.get('cancelSync').onclick = null;
-                resolve(accepted);
-            };
-            ui.get('confirmSync').onclick = () => finish(true);
-            ui.get('cancelSync').onclick = () => finish(false);
-        });
-    }
-    async function checkedGuangyaContent(node, file, source) {
-        const metadata = hasFileMetadata(node) ? node : await source.metadata(node);
-        if (
-            node.directory ||
-            !hasFileMetadata(metadata) ||
-            metadata.md5.toLowerCase() !== file.md5 ||
-            metadata.size !== file.size
-        )
-            throw new Error('文件 MD5 或大小不符，或无法验证：' + (node.path || node.name));
-        return {
-            ...node,
-            ...metadata,
-            id: node.id,
-            parentId: node.parentId,
-            path: node.path,
-            name: node.name,
-            md5: metadata.md5.toLowerCase(),
-        };
-    }
-    async function readGuangyaDestination(file, target, source) {
-        const parts = relativeParts(file.path);
-        let parentId = target.id;
-        for (let i = 0; i < parts.length; i++) {
-            const matches = (await source.children({ id: parentId })).filter(
-                (node2) => node2.name === parts[i]
-            );
-            if (!matches.length) return null;
-            if (matches.length !== 1) throw new Error('目标路径存在多个同名项目：' + file.path);
-            const node = { ...matches[0], parentId, path: parts.slice(0, i + 1).join('/') };
-            if (i === parts.length - 1) return checkedGuangyaContent(node, file, source);
-            if (!node.directory) throw new Error('目标父目录被文件占用：' + node.path);
-            parentId = node.id;
-        }
-    }
     async function waitGuangyaDelete(taskId, post, wait = sleep, stage = '删除') {
         for (let attempt = 0; attempt < 30; attempt++) {
             if (attempt) await wait(1e3);
-            const response = await post(API.task, { taskId });
+            const response = await post(GUANGYA_API.task, { taskId });
             if (guangyaCode(response) !== 0) throw apiError('查询' + stage + '任务', response);
             const status = nonNegativeInteger(response.data?.status),
                 detail = response.data?.detail;
@@ -3697,8 +1830,8 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
     }
     async function removeGuangyaNode(node, source, post, wait, saveTask, taskId = '') {
         if (!taskId) {
-            const response = await post(API.remove, { fileIds: [node.id] });
-            if (guangyaCode(response) !== 0) throw apiError('删除旧版', response);
+            const response = await post(GUANGYA_API.remove, { fileIds: [node.id] });
+            if (guangyaCode(response) !== 0) throw apiError('移入回收站', response);
             taskId = taskIdOf(response.data);
             saveTask(taskId);
         }
@@ -3707,846 +1840,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             if (attempt) await wait(500);
             if (!(await source.children({ id: node.parentId })).some((item) => item.id === node.id)) return;
         }
-        throw Object.assign(new Error('删除请求已提交，但旧项目仍存在；ID：' + node.id), { terminal: true });
-    }
-    async function replaceGuangyaFile(
-        file,
-        action,
-        target,
-        plan,
-        source,
-        post,
-        ensureDirectory,
-        journal,
-        progress,
-        wait = sleep,
-        check = () => {}
-    ) {
-        const key = replacementKey(file),
-            old = action.old;
-        let original = null;
-        if (old) {
-            const current = (await source.children({ id: old.parentId })).find((node) => node.id === old.id);
-            if (current) {
-                if (current.name !== old.name) throw new Error('预览后旧文件已改名，请重新预览：' + old.path);
-                original = await checkedGuangyaContent(
-                    { ...current, parentId: old.parentId, path: old.path },
-                    file,
-                    source
-                );
-            } else if (!journal[key]) throw new Error('预览后旧文件已变化，请重新预览：' + old.path);
-        }
-        let destination = await readGuangyaDestination(file, target, source);
-        const reused = !!destination;
-        if (!destination) {
-            if (old && !original) throw new Error('新版和记录中的旧文件均未找到，保留待核对记录');
-            let input = file;
-            if (original && !file.gcid) {
-                let metadata = original;
-                if (!/^[a-f0-9]{40}$/i.test(metadata.gcid || '')) metadata = await source.metadata(original);
-                if (
-                    !hasFileMetadata(metadata) ||
-                    metadata.md5.toLowerCase() !== file.md5 ||
-                    metadata.size !== file.size
-                )
-                    throw new Error('旧文件详情无法核对，未提交新版');
-                if (/^[a-f0-9]{40}$/i.test(metadata.gcid || '')) {
-                    input = { ...file, gcid: metadata.gcid.toUpperCase() };
-                    if (/^[a-f0-9]{40}$/i.test(metadata.cid || '')) input.cid = metadata.cid.toUpperCase();
-                }
-            }
-            progress('导入中：' + file.path);
-            check();
-            const parent = await ensureDirectory(relativeParts(file.path).slice(0, -1).join('/'));
-            check();
-            const result = await importFile(input, parent || '0', post, wait);
-            if (result.status !== 'saved')
-                return { status: result.status, message: result.message + '；旧版保留', stop: result.stop };
-            progress('验证中：' + file.path);
-            for (let attempt = 0; attempt < 5 && !destination; attempt++) {
-                if (attempt) await wait(500);
-                destination = await readGuangyaDestination(file, target, source);
-            }
-            if (!destination)
-                return { status: 'pending', message: '目录已创建，但未在目标路径验证到新文件；旧版保留' };
-        }
-        progress('验证中：' + file.path);
-        if (!old || old.id === destination.id) {
-            if (action.cleanupDirectories?.length) {
-                journal[key] = {
-                    ...journal[key],
-                    file,
-                    old: null,
-                    newFileId: destination.id,
-                    stage: 'old-deleted',
-                    directories: action.cleanupDirectories,
-                };
-                writeReplacementJournal(target, journal);
-                return {
-                    status: 'done',
-                    reused,
-                    cleanupKey: key,
-                    message: '新版已验证，继续检查对应的空旧目录',
-                };
-            }
-            return { status: 'done', reused, message: '新版已在目标路径验证，未删除其他文件' };
-        }
-        check();
-        const directories = new Map((journal[key]?.directories || []).map((node) => [node.id, node]));
-        const parts = relativeParts(old.path);
-        for (let i = 1; i < parts.length; i++) {
-            const path = parts.slice(0, i).join('/'),
-                node = plan.directories.get(path);
-            if (node && !plan.protectedDirectories.has(path) && node.id !== target.id)
-                directories.set(node.id, node);
-        }
-        const record = (journal[key] = {
-            ...journal[key],
-            file,
-            old,
-            newFileId: destination.id,
-            directories: [...directories.values()],
-        });
-        writeReplacementJournal(target, journal);
-        try {
-            const checked = await readGuangyaDestination(file, target, source);
-            if (!checked || checked.id !== destination.id || checked.id === old.id)
-                throw new Error('目标文件已变化');
-        } catch (error) {
-            return {
-                status: 'pending',
-                message: '新版在清理前无法再次验证，旧版保留：' + error.message,
-                stop: error.stop,
-            };
-        }
-        try {
-            const current = (await source.children({ id: old.parentId })).find((node) => node.id === old.id);
-            if (current) {
-                if (current.name !== old.name) throw new Error('旧文件名称已变化，未删除');
-                await checkedGuangyaContent({ ...current, path: old.path }, file, source);
-                check();
-                progress('清理旧版：' + old.path);
-                await removeGuangyaNode(
-                    old,
-                    source,
-                    post,
-                    wait,
-                    (taskId) => {
-                        record.taskId = taskId;
-                        record.stage = 'delete-pending';
-                        writeReplacementJournal(target, journal);
-                    },
-                    record.stage === 'delete-pending' ? record.taskId : ''
-                );
-            } else if (record.stage === 'delete-pending' && record.taskId)
-                await waitGuangyaDelete(record.taskId, post, wait);
-            record.stage = 'old-deleted';
-            record.taskId = '';
-            writeReplacementJournal(target, journal);
-            return {
-                status: 'done',
-                reused,
-                deleted: true,
-                cleanupKey: key,
-                message: '新版验证成功，对应旧文件已删除',
-            };
-        } catch (error) {
-            if (record.stage !== 'delete-pending' || error.terminal) {
-                record.stage = 'cleanup-failed';
-                record.taskId = '';
-            }
-            writeReplacementJournal(target, journal);
-            return {
-                status: 'cleanup-failed',
-                reused,
-                message: '新版已就绪，旧版清理失败：' + error.message,
-                stop: error.stop,
-            };
-        }
-    }
-    async function cleanupGuangyaOldDirectories(
-        keys,
-        target,
-        plan,
-        source,
-        post,
-        journal,
-        progress,
-        log,
-        wait = sleep,
-        check = () => {}
-    ) {
-        const candidates = /* @__PURE__ */ new Map(),
-            failed = /* @__PURE__ */ new Set(),
-            retained = /* @__PURE__ */ new Set();
-        try {
-            await batchStage(
-                [...keys],
-                '旧目录清理前核验（新版文件）',
-                log,
-                async (key, verify, _index, observe) => {
-                    const record = journal[key];
-                    try {
-                        const destination = await readGuangyaDestination(record.file, target, source);
-                        verify();
-                        if (!destination || destination.id !== record.newFileId)
-                            throw new Error('新版已变化，保留旧目录待核对');
-                        for (const node of record.directories)
-                            if (!plan.protectedDirectories.has(node.path) && node.id !== target.id) {
-                                if (!candidates.has(node.id)) candidates.set(node.id, { node, keys: [] });
-                                candidates.get(node.id).keys.push(key);
-                            }
-                    } catch (error) {
-                        failed.add(key);
-                        log(record.file.path + '：新版已就绪，旧目录清理失败：' + error.message);
-                        observe(error);
-                        if (error.stop) throw error;
-                        return 'failed';
-                    }
-                },
-                check
-            );
-        } catch (error) {
-            log('旧目录核验中断：' + error.message);
-            writeReplacementJournal(target, journal);
-            return { removed: 0, failed: keys.size };
-        }
-        let removed = 0;
-        const layers = groupBatch(
-            [...candidates.values()].sort(
-                (a, b) => relativeParts(b.node.path).length - relativeParts(a.node.path).length
-            ),
-            (entry) => relativeParts(entry.node.path).length
-        );
-        try {
-            for (const layer of layers) {
-                await batchStage(
-                    layer,
-                    '空旧目录清理（同层目录）',
-                    log,
-                    async ({ node, keys: related }, verify, _index, observe) => {
-                        if (related.some((key) => failed.has(key))) return 'skipped';
-                        try {
-                            const current = (await source.children({ id: node.parentId })).find(
-                                (item) => item.id === node.id
-                            );
-                            verify();
-                            if (!current) return 'skipped';
-                            if (!current.directory || current.name !== node.name)
-                                throw new Error('旧目录已变化，保留待核对：' + node.path);
-                            let children = await source.children({ id: node.id });
-                            for (let attempt = 0; children.length && attempt < 3; attempt++) {
-                                await wait(500);
-                                verify();
-                                children = await source.children({ id: node.id });
-                            }
-                            if (children.length) {
-                                for (const key of related) retained.add(key);
-                                log('旧目录仍有内容，保留并记录待清理：' + node.path);
-                                return 'skipped';
-                            }
-                            progress('清理空旧目录：' + node.path);
-                            verify();
-                            const first = journal[related[0]],
-                                taskId = first.directoryTasks?.[node.id] || '';
-                            await removeGuangyaNode(
-                                node,
-                                source,
-                                post,
-                                wait,
-                                (taskId2) => {
-                                    var _a;
-                                    for (const key of related)
-                                        ((_a = journal[key]).directoryTasks || (_a.directoryTasks = {}))[
-                                            node.id
-                                        ] = taskId2;
-                                    writeReplacementJournal(target, journal);
-                                },
-                                taskId
-                            );
-                            removed++;
-                            log('已清理空旧目录：' + node.path);
-                        } catch (error) {
-                            for (const key of related) failed.add(key);
-                            if (error.terminal)
-                                for (const key of related) delete journal[key].directoryTasks?.[node.id];
-                            log('旧目录清理失败：' + node.path + '；' + error.message);
-                            observe(error);
-                            if (error.stop) throw error;
-                            return 'failed';
-                        }
-                    },
-                    check,
-                    8,
-                    '先处理深层目录，清理前重新确认当前目录为空'
-                );
-            }
-        } catch (error) {
-            log('旧目录清理中断：' + error.message);
-            writeReplacementJournal(target, journal);
-            return { removed, failed: keys.size };
-        }
-        for (const key of keys) if (!failed.has(key) && !retained.has(key)) delete journal[key];
-        writeReplacementJournal(target, journal);
-        return { removed, failed: failed.size };
-    }
-    async function runGuangyaReplacement(
-        files,
-        target,
-        plan,
-        source,
-        post,
-        ensureDirectory,
-        progress,
-        log,
-        wait = sleep,
-        check = () => {}
-    ) {
-        const journal = readReplacementJournal(target),
-            cleanupKeys = /* @__PURE__ */ new Set();
-        const verifiedEntries = [],
-            fileDirectories = /* @__PURE__ */ new Set();
-        let stopped = false;
-        for (const file of files)
-            if (file.type !== 'directory') {
-                const parts = relativeParts(file.path);
-                for (let i = 1; i < parts.length; i++) fileDirectories.add(parts.slice(0, i).join('/'));
-            }
-        const counts = {
-            processed: 0,
-            verified: 0,
-            imported: 0,
-            reused: 0,
-            deleted: 0,
-            pending: 0,
-            missed: 0,
-            failed: 0,
-            skipped: 0,
-            cleanupFailed: 0,
-            directories: 0,
-        };
-        try {
-            await batchStage(
-                files,
-                '光鸭替换与验证（清单项目）',
-                log,
-                async (file, verify, i, observe) => {
-                    const action = plan.actions.get(file.path),
-                        label = `[${i + 1}/${files.length}] ${file.path}`;
-                    try {
-                        verify();
-                        if (action.kind === 'conflict') {
-                            counts.skipped++;
-                            log(label + '：跳过；' + action.reason);
-                            return 'skipped';
-                        }
-                        if (file.type === 'directory') {
-                            if (!fileDirectories.has(file.path)) await ensureDirectory(file.path);
-                            return;
-                        }
-                        const result = await replaceGuangyaFile(
-                            file,
-                            action,
-                            target,
-                            plan,
-                            source,
-                            post,
-                            ensureDirectory,
-                            journal,
-                            (message) => progress(`[${i + 1}/${files.length}] ${message}`),
-                            wait,
-                            verify
-                        );
-                        log(label + '：' + result.message);
-                        if (result.status === 'done' || result.status === 'cleanup-failed') {
-                            counts.verified++;
-                            counts[result.reused ? 'reused' : 'imported']++;
-                            verifiedEntries.push({
-                                path: target.exportPath ? target.exportPath + '/' + file.path : file.path,
-                                md5: file.md5,
-                                size: file.size,
-                            });
-                            if (result.deleted) counts.deleted++;
-                            if (result.cleanupKey) cleanupKeys.add(result.cleanupKey);
-                            if (result.status === 'cleanup-failed') counts.cleanupFailed++;
-                        } else counts[result.status === 'miss' ? 'missed' : 'pending']++;
-                        if (result.stop)
-                            throw Object.assign(new Error(result.message), { stop: true, recorded: true });
-                        return result.status === 'done' ? void 0 : 'failed';
-                    } catch (error) {
-                        observe(error);
-                        if (!error.recorded) counts.failed++;
-                        log(label + '：未完成；' + error.message);
-                        if (error.stop || error.cancelled) throw error;
-                        return 'failed';
-                    } finally {
-                        counts.processed++;
-                    }
-                },
-                check,
-                8,
-                '同一项先转存和验证，新旧版本任务记录逐项保存'
-            );
-        } catch (error) {
-            stopped = true;
-            log('替换中断：' + error.message);
-        }
-        const cleanup = stopped
-            ? { removed: 0, failed: cleanupKeys.size }
-            : await cleanupGuangyaOldDirectories(
-                  cleanupKeys,
-                  target,
-                  plan,
-                  source,
-                  post,
-                  journal,
-                  progress,
-                  log,
-                  wait,
-                  check
-              );
-        if (stopped) log('任务已停止，不再执行后续替换和旧目录清理；保留任务记录供下次核对');
-        counts.directories = cleanup.removed;
-        counts.cleanupFailed += cleanup.failed;
-        if (verifiedEntries.length) {
-            const history = { ...readExportHistory('光鸭') };
-            for (const entry of verifiedEntries)
-                Object.defineProperty(history, entry.path, {
-                    value: JSON.stringify(entry),
-                    enumerable: true,
-                    configurable: true,
-                    writable: true,
-                });
-            writeExportHistory('光鸭', history);
-        }
-        return counts;
-    }
-    async function runGuangyaImportFiles(files, targetId, post, ensureDirectory, existingSource, log, check) {
-        const counts = {
-            saved: 0,
-            pending: 0,
-            missed: 0,
-            failed: 0,
-            directories: 0,
-            skipped: 0,
-            processed: 0,
-        };
-        const listings = /* @__PURE__ */ new Map(),
-            paths = /* @__PURE__ */ new Map();
-        let reads = 0,
-            reused = 0;
-        const list = (parentId) => {
-            const promise = (async () => {
-                reads++;
-                const names = /* @__PURE__ */ new Map();
-                for (const node of await existingSource.children({ id: parentId })) {
-                    const name = node.name.toLowerCase();
-                    names.set(name, names.has(name) ? null : node);
-                }
-                return names;
-            })();
-            listings.set(parentId, promise);
-            promise.catch(() => {
-                if (listings.get(parentId) === promise) listings.delete(parentId);
-            });
-            return promise;
-        };
-        try {
-            await batchStage(
-                files,
-                '光鸭导入预检、转存与核验（清单项目）',
-                log,
-                async (file, verify, i, observe) => {
-                    const label = `[${i + 1}/${files.length}] ${file.path}`;
-                    try {
-                        return await enqueueByKey(paths, file.path.toLowerCase(), async () => {
-                            verify();
-                            log(label, { index: i + 1, total: files.length, path: file.path });
-                            if (file.type === 'directory') {
-                                await ensureDirectory(file.path);
-                                counts.directories++;
-                                log(label + '：目录已就绪');
-                            } else {
-                                const parent = await ensureDirectory(
-                                    relativeParts(file.path).slice(0, -1).join('/')
-                                );
-                                verify();
-                                const parentId = parent || (targetId === '0' ? '' : targetId);
-                                const name = file.name.toLowerCase();
-                                const cached = listings.get(parentId);
-                                let names = await (cached || list(parentId));
-                                if (cached && !names.has(name)) names = await list(parentId);
-                                else if (cached) reused++;
-                                verify();
-                                if (names.has(name)) {
-                                    const existing = names.get(name);
-                                    if (!existing) throw new Error('目标存在多个同名项目，未上传');
-                                    const message = existingFileMessage(existing, file);
-                                    counts.skipped++;
-                                    log(label + '：' + message);
-                                    return 'skipped';
-                                } else {
-                                    verify();
-                                    listings.delete(parentId);
-                                    const result = await importFile(file, parent || targetId, post);
-                                    if (result.status === 'saved') counts.saved++;
-                                    else if (result.status === 'pending') counts.pending++;
-                                    else counts.missed++;
-                                    log(label + '：' + result.message);
-                                    if (result.stop)
-                                        throw Object.assign(new Error(result.message), {
-                                            stop: true,
-                                            recorded: true,
-                                        });
-                                    return result.status === 'saved' ? void 0 : 'failed';
-                                }
-                            }
-                        });
-                    } catch (error) {
-                        observe(error);
-                        if (!error.recorded) counts.failed++;
-                        log(label + '：失败，' + error.message);
-                        if (error.stop || error.cancelled) throw error;
-                        return 'failed';
-                    } finally {
-                        counts.processed++;
-                    }
-                },
-                check,
-                8,
-                '同目录同名串行，光鸭写入与任务轮询沿用 650ms 节流'
-            );
-        } catch (error) {
-            log('导入中断：' + error.message);
-        }
-        log(`目录检查：读取 ${reads} 次，复用已有项 ${reused} 次；新提交前仍读取最新目录`);
-        return counts;
-    }
-    async function guangyaFileHashes(size, read, progress, check) {
-        const sampleSize = 20480;
-        const sha1 = (buffer) => crypto.subtle.digest('SHA-1', buffer);
-        const hex = (buffer) =>
-            Array.from(new Uint8Array(buffer), (byte) => byte.toString(16).padStart(2, '0'))
-                .join('')
-                .toUpperCase();
-        let blockSize = 262144;
-        while (size > 512 * blockSize && blockSize < 2097152) blockSize *= 2;
-        const digests = new Uint8Array(Math.ceil(size / blockSize) * 20);
-        const samples = new Uint8Array(Math.min(size, sampleSize * 3));
-        const sampleStarts = size < sampleSize * 3 ? [0] : [0, Math.floor(size / 3), size - sampleSize];
-        const sampleLength = sampleStarts.length === 1 ? size : sampleSize;
-        const md5 = createMd5();
-        for (let offset = 0; offset < size; offset += 8 * 1024 * 1024) {
-            check();
-            const end = Math.min(size, offset + 8 * 1024 * 1024);
-            const bytes = new Uint8Array(await read(offset, end));
-            check();
-            if (bytes.length !== end - offset) throw new Error('文件内容读取不完整');
-            md5.update(bytes);
-            for (let start = 0; start < bytes.length; start += blockSize) {
-                const digest = await sha1(bytes.subarray(start, start + blockSize));
-                check();
-                digests.set(new Uint8Array(digest), ((offset + start) / blockSize) * 20);
-            }
-            for (const [index, sampleStart] of sampleStarts.entries()) {
-                const start = Math.max(offset, sampleStart);
-                const stop = Math.min(end, sampleStart + sampleLength);
-                if (start < stop)
-                    samples.set(
-                        bytes.subarray(start - offset, stop - offset),
-                        index * sampleLength + start - sampleStart
-                    );
-            }
-            progress(end);
-        }
-        const gcid = hex(await sha1(digests));
-        check();
-        const cid = hex(await sha1(samples));
-        check();
-        return { md5: md5.digest(), gcid, cid };
-    }
-    function initGuangya() {
-        const ui = makePanel(
-            `光鸭跨盘 JSON ${VERSION}`,
-            `
-            <p id="status"></p><p id="target"></p><p id="progress"></p>
-            <textarea id="json" placeholder="导出的 JSON 会显示在这里；也可粘贴待导入 JSON"></textarea>
-            <input id="jsonFile" type="file" accept=".json,application/json" hidden>
-            <input id="manifestLocalFiles" type="file" webkitdirectory multiple hidden>
-            <div id="syncPreview" class="sync-preview" hidden><h4>导入预览</h4><p id="syncDestination"></p><p id="syncSummary"></p><div id="syncList"></div><div class="sync-actions"><button id="confirmSync">确认执行</button><button id="cancelSync">取消</button></div></div>
-            <div class="panel-actions"><button id="exportManifest">导出 JSON</button><details class="manifest-import" id="manifestImport"><summary>导入清单</summary><div class="manifest-import-actions"><label><input id="syncExisting" type="checkbox">替换旧版（核验新版后清理旧版）</label><button id="start">导入粘贴内容</button><button id="chooseJsonFile">选择文件并导入</button><button id="hashManifestFolder">用本地文件夹生成清单</button></div></details></div>
-            <div class="panel-actions" style="padding-top:0;border-top:0;margin-top:0"><button id="saveJson">下载 JSON</button><button id="copyJson">复制 JSON</button></div>
-            <div id="log"></div>`
-        );
-        bindExportHistory(ui, '光鸭');
-        const controls = panelControls(ui);
-        let lockedTarget = null;
-        refreshStatus = () => {
-            ui.get('status').textContent = capture.token
-                ? '已捕获登录凭证（不显示凭证内容）'
-                : '未捕获凭证：请在光鸭网页里切换文件夹后重试';
-            const target = lockedTarget || currentGuangyaFolder();
-            ui.get('target').textContent = target
-                ? `${lockedTarget ? '本次固定目标' : '当前导入目标'}：${target.path}；ID：${target.id}`
-                : '请先进入“全部”中的目标文件夹；最近、搜索和分类页没有唯一目标目录';
-        };
-        refreshStatus();
-        for (const event of ['hashchange', 'popstate']) page.addEventListener(event, refreshStatus);
-        for (const method of ['pushState', 'replaceState']) {
-            const original = page.history[method];
-            page.history[method] = function () {
-                const result = original.apply(this, arguments);
-                refreshStatus();
-                return result;
-            };
-        }
-        ui.onActivate(refreshStatus);
-        const log = (message) => appendLog(ui, message);
-        const localFiles = ui.get('manifestLocalFiles');
-        ui.get('hashManifestFolder').onclick = () => localFiles.click();
-        localFiles.onchange = async () => {
-            const files = Array.from(localFiles.files || []);
-            localFiles.value = '';
-            if (!files.length) return;
-            ui.get('manifestImport').open = false;
-            ui.busy(true);
-            for (const control of controls) control.disabled = true;
-            ui.get('log').textContent = '';
-            const progress = ui.get('progress');
-            try {
-                const entries = [];
-                for (const [index, file] of files.entries()) {
-                    checkJsonTask();
-                    const path = relativeParts(file.webkitRelativePath || file.name).join('/');
-                    let lastUpdate = 0;
-                    const hashes = await guangyaFileHashes(
-                        file.size,
-                        (start, end) => file.slice(start, end).arrayBuffer(),
-                        (processed) => {
-                            if (Date.now() - lastUpdate < 150 && processed < file.size) return;
-                            lastUpdate = Date.now();
-                            const percent = Math.floor((processed / file.size) * 100);
-                            progress.textContent = `计算哈希 ${index + 1}/${files.length} · ${percent}% · ${path}`;
-                        },
-                        checkJsonTask
-                    );
-                    entries.push({ path, size: file.size, ...hashes });
-                }
-                const manifest = normalizeFiles(entries);
-                ui.get('json').value = JSON.stringify(manifest, null, 2);
-                progress.textContent = `已生成 ${manifest.length} 个文件的清单。打开目标目录，再点「导入粘贴内容」。`;
-            } catch (error) {
-                progress.textContent = '未生成本地清单：' + error.message;
-                log(progress.textContent);
-            } finally {
-                for (const control of controls) control.disabled = false;
-                ui.busy(false);
-            }
-        };
-        ui.get('exportManifest').onclick = async () => {
-            ui.busy(true);
-            controls.forEach((control) => {
-                control.disabled = true;
-            });
-            ui.get('json').value = '';
-            ui.get('progress').textContent = '';
-            ui.get('status').textContent = '正在读取选中项目…';
-            try {
-                const target = currentGuangyaFolder();
-                if (!target) throw new Error('请先进入“全部”中的目标目录');
-                if (!capture.token) throw new Error('未捕获光鸭登录状态，请刷新页面后重试');
-                const selected = selectedGuangyaItems();
-                if (!selected.length)
-                    throw new Error('没有识别到选中项，请先勾选要导出的文件或文件夹；未导出任何内容');
-                const source = guangyaSource(capture.token, ui.get('incremental').checked);
-                const children = await source.children({ id: target.id, name: target.path, directory: true });
-                const roots = matchSelected(children, selected);
-                if (!roots.length) throw new Error('选中项目不在当前目录中，请重新选择');
-                const result = await collectTree(
-                    roots,
-                    source,
-                    (state) => {
-                        ui.get('status').textContent =
-                            `正在导出：${state.path}；文件 ${state.files}，目录 ${state.directories}`;
-                    },
-                    target.exportPath,
-                    checkJsonTask,
-                    log
-                );
-                if (!result.entries.length) throw new Error('没有可导出的项目');
-                const summary = exportManifestJson(ui, '光鸭', result);
-                ui.get('status').textContent =
-                    `导出完成：选中 ${roots.length} 项，${summary}；缺少有效 MD5 的文件 ${result.skipped.length} 个。` +
-                    (!ui.get('json').value ? '没有可导出的内容。' : '');
-            } catch (error) {
-                ui.get('status').textContent = '导出失败：' + error.message;
-            } finally {
-                controls.forEach((control) => {
-                    control.disabled = false;
-                });
-                ui.busy(false);
-            }
-        };
-        ui.get('copyJson').onclick = () => copyManifest(ui);
-        ui.get('saveJson').onclick = () => {
-            const value = ui.get('json').value;
-            if (!value) {
-                ui.get('status').textContent = '请先导出 JSON';
-                return;
-            }
-            saveJsonFile(value, `光鸭-跨盘-${Date.now()}.json`, (message) => {
-                ui.get('status').textContent = message;
-            });
-        };
-        ui.get('jsonFile').onchange = (event) => {
-            const file = event.target.files?.[0];
-            if (file) return startImport(file);
-        };
-        ui.get('chooseJsonFile').onclick = () => ui.get('jsonFile').click();
-        const startImport = async (file) => {
-            const replaceExisting = ui.get('syncExisting').checked;
-            ui.get('syncExisting').checked = false;
-            ui.get('manifestImport').open = false;
-            ui.busy(true);
-            controls.forEach((control) => {
-                control.disabled = true;
-            });
-            try {
-                if (file) {
-                    ui.get('json').value = await file.text();
-                }
-                await importIntoTarget(replaceExisting);
-            } catch (error) {
-                log('导入失败：' + error.message);
-                ui.get('progress').textContent = '导入失败：' + error.message;
-            } finally {
-                ui.get('jsonFile').value = '';
-                controls.forEach((control) => {
-                    control.disabled = false;
-                });
-                ui.busy(false);
-            }
-        };
-        const importIntoTarget = async (replaceExisting) => {
-            const target = currentGuangyaFolder();
-            const parentId = target?.id;
-            let files, alignedPath;
-            ui.get('log').textContent = '';
-            try {
-                if (!capture.token) throw new Error('尚未捕获 Token，请在光鸭网页里切换文件夹');
-                if (!target) throw new Error('请先打开“全部”中的目标文件夹，再开始导入');
-                ({ files, alignedPath } = alignGuangyaImport(
-                    normalizeFiles(JSON.parse(ui.get('json').value)),
-                    target
-                ));
-            } catch (error) {
-                log('无法开始：' + error.message);
-                ui.get('progress').textContent = '导入失败：' + error.message;
-                return;
-            }
-            if (alignedPath) log(`清单中的 /${alignedPath} 就是当前目录，直接复用，不再重复嵌套`);
-            if (!files.length) {
-                ui.get('progress').textContent = '清单目录就是当前目录，没有需要导入的子项目';
-                return;
-            }
-            let counts = null;
-            let cancelled = false,
-                setupError = '',
-                replacementCounts = null;
-            const token = capture.token;
-            const post = paced(650, requestGuangya.bind(null, token));
-            const ensureDirectory = directoryResolver(parentId, post, log);
-            const existingSource = guangyaSource(token, false);
-            lockedTarget = target;
-            refreshStatus();
-            log(`开始处理 ${files.length} 个项目；固定目标：${target.path}；目录 ID：${parentId}`);
-            ui.get('progress').textContent = `准备导入 ${files.length} 项…`;
-            try {
-                if (replaceExisting) {
-                    const plan = await buildGuangyaReplacementPlan(
-                        files,
-                        target,
-                        existingSource,
-                        (message) => {
-                            ui.get('progress').textContent = message;
-                        },
-                        void 0,
-                        void 0,
-                        checkJsonTask,
-                        log
-                    );
-                    ui.get('progress').textContent = '预览已生成，等待确认；尚未修改网盘文件';
-                    if (!(await confirmGuangyaReplacement(ui, plan, target))) {
-                        cancelled = true;
-                        return;
-                    }
-                    replacementCounts = await runGuangyaReplacement(
-                        files,
-                        target,
-                        plan,
-                        existingSource,
-                        post,
-                        ensureDirectory,
-                        (message) => {
-                            ui.get('progress').textContent = message;
-                        },
-                        log,
-                        sleep,
-                        checkJsonTask
-                    );
-                    refreshHistorySummary(ui, '光鸭');
-                    return;
-                }
-                counts = await runGuangyaImportFiles(
-                    files,
-                    parentId,
-                    post,
-                    ensureDirectory,
-                    existingSource,
-                    (message, event) => {
-                        if (event)
-                            ui.get('progress').textContent =
-                                `导入进度：${event.index}/${event.total}（已处理 ${Math.floor(((event.index - 1) * 100) / event.total)}%） ${event.path}`;
-                        log(message);
-                    },
-                    checkJsonTask
-                );
-            } catch (error) {
-                setupError = error.message;
-                log('导入未完成：' + setupError);
-            } finally {
-                if (replacementCounts) {
-                    const c = replacementCounts;
-                    const incomplete =
-                        c.pending +
-                        c.missed +
-                        c.failed +
-                        c.skipped +
-                        c.cleanupFailed +
-                        files.length -
-                        c.processed;
-                    ui.get('progress').textContent =
-                        `${incomplete ? '未全部完成' : '完成'}：新版已验证 ${c.verified}，新导入 ${c.imported}，复用 ${c.reused}，旧文件已删除 ${c.deleted}，空旧目录已清理 ${c.directories}；待确认 ${c.pending}，未命中 ${c.missed}，失败 ${c.failed}，跳过 ${c.skipped}，旧版清理失败 ${c.cleanupFailed}，未处理 ${files.length - c.processed}。`;
-                } else if (counts) {
-                    const { saved, pending, missed, failed, processed, directories, skipped } = counts;
-                    ui.get('progress').textContent =
-                        `导入结束：已处理 ${processed}/${files.length} 项；确认生成 ${saved}，同名跳过 ${skipped}，待确认 ${pending}，未命中 ${missed}，失败 ${failed}，目录就绪 ${directories}。`;
-                } else
-                    ui.get('progress').textContent = cancelled
-                        ? '已取消，未修改网盘文件'
-                        : setupError
-                          ? '导入未完成：' + setupError
-                          : '导入未开始';
-                if (counts)
-                    log(
-                        `结束：文件已确认生成 ${counts.saved}，同名跳过 ${counts.skipped}，待确认 ${counts.pending}，秒传未命中 ${counts.missed}；目录就绪 ${counts.directories}，失败项目 ${counts.failed}，未处理 ${files.length - counts.processed}。`
-                    );
-                if (!cancelled) log('请刷新目录核对结果；未完成项目保留旧版，已验证的新版可在下次复用。');
-                lockedTarget = null;
-                refreshStatus();
-            }
-        };
-        ui.get('start').onclick = () => startImport();
+        throw Object.assign(new Error('回收请求已提交，但文件仍存在；ID：' + node.id), { terminal: true });
     }
     const MEDIA_VIDEO = /\.(mkv|mp4|avi|mov|wmv|m4v|ts|m2ts|mpg|mpeg|webm|iso)$/i;
     const MEDIA_SUB = /\.(srt|ass|ssa|vtt|sub|idx)$/i;
@@ -5525,7 +2819,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         };
         const write = paced(writeInterval, request),
             read = paced(180, request);
-        return (endpoint, body) => (endpoint === API.task ? read : write)(endpoint, body);
+        return (endpoint, body) => (endpoint === GUANGYA_API.task ? read : write)(endpoint, body);
     }
     async function mediaContext(provider, previous) {
         if (provider === '123') {
@@ -5536,8 +2830,8 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             source2.mediaBreadcrumbs = sameFolder ? previous.source?.mediaBreadcrumbs || [] : [];
             const path = sameFolder
                 ? previous.path
-                : await export123ParentPath(source2, source2.mediaBreadcrumbs);
-            return { session, source: source2, path, selected: selectedItems('123') };
+                : await media123ParentPath(source2, source2.mediaBreadcrumbs);
+            return { session, source: source2, path, selected: selected123Items() };
         }
         const folder = currentGuangyaFolder();
         if (!folder) throw new Error('请先打开光鸭“全部”中的文件夹');
@@ -5548,7 +2842,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         return {
             session: { provider: '光鸭', token: capture.token, parent: folder.id },
             source,
-            path: folder.exportPath,
+            path: folder.relativePath,
             selected: selectedGuangyaItems(),
         };
     }
@@ -5930,7 +3224,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             if (!matches.length) {
                 verify();
                 if (guangya)
-                    await post(API.mkdir, {
+                    await post(GUANGYA_API.mkdir, {
                         parentId: parentId === '0' ? '' : parentId,
                         dirName: name,
                         failIfNameExist: true,
@@ -13536,7 +10830,7 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                 try {
                     if (guangya) {
                         const result = await post(
-                            API.create,
+                            GUANGYA_API.create,
                             {
                                 capacity: 2,
                                 name,
@@ -13555,7 +10849,11 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                         for (let attempt = 0; attempt < 20; attempt++) {
                             check();
                             progress('等待网盘处理字幕');
-                            const task = await post(API.info, { taskId }, [0, 145, 146, 147, 155, 163]);
+                            const task = await post(
+                                GUANGYA_API.info,
+                                { taskId },
+                                [0, 145, 146, 147, 155, 163]
+                            );
                             if (task.data?.fileId || task.data?.fileInfo?.fileId) break;
                             if (attempt < 19) await wait(1e3);
                         }
@@ -15605,11 +12903,11 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                     diag(
                         '整季候选缺集',
                         group[0].parsed.query +
-                            ' · 可靠候选覆盖 ' +
+                            ' · 已确认可用中文字幕 ' +
                             (targets.length - missing.length) +
                             '/' +
                             targets.length +
-                            ' · 仍缺字幕：' +
+                            ' · 未找到可用中文字幕：' +
                             episodes.join('、') +
                             ' · 已保留已确认候选，可先补齐可用集，其余集可导入字幕或继续单独查找'
                     );
@@ -19116,17 +16414,9 @@ r('fu`,
     ].join('');
     if (location.hostname === 'www.guangyapan.com') {
         installHooks();
-        ready(() => {
-            initGuangya();
-            initMergedMedia('光鸭');
-        });
-    } else if (['pan.baidu.com', 'yun.baidu.com'].includes(location.hostname))
-        ready(() => initManifestImporter('百度', initExporter('百度')));
-    else if (is123Host(location.hostname)) {
+        ready(() => initMergedMedia('光鸭'));
+    } else if (is123Host(location.hostname)) {
         installHooks();
-        ready(() => {
-            initManifestImporter('123', initExporter('123'));
-            initMergedMedia('123');
-        });
+        ready(() => initMergedMedia('123'));
     }
 })();

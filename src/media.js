@@ -963,7 +963,7 @@ function mediaGuangyaPost(token, writeInterval = 650) {
     };
     const write = paced(writeInterval, request),
         read = paced(180, request);
-    return (endpoint, body) => (endpoint === API.task ? read : write)(endpoint, body);
+    return (endpoint, body) => (endpoint === GUANGYA_API.task ? read : write)(endpoint, body);
 }
 async function mediaContext(provider, previous) {
     if (provider === '123') {
@@ -972,8 +972,8 @@ async function mediaContext(provider, previous) {
         const sameFolder =
             previous?.session.token === session.token && previous.session.parent === session.parent;
         source.mediaBreadcrumbs = sameFolder ? previous.source?.mediaBreadcrumbs || [] : [];
-        const path = sameFolder ? previous.path : await export123ParentPath(source, source.mediaBreadcrumbs);
-        return { session, source, path, selected: selectedItems('123') };
+        const path = sameFolder ? previous.path : await media123ParentPath(source, source.mediaBreadcrumbs);
+        return { session, source, path, selected: selected123Items() };
     }
     const folder = currentGuangyaFolder();
     if (!folder) throw new Error('请先打开光鸭“全部”中的文件夹');
@@ -984,7 +984,7 @@ async function mediaContext(provider, previous) {
     return {
         session: { provider: '光鸭', token: capture.token, parent: folder.id },
         source,
-        path: folder.exportPath,
+        path: folder.relativePath,
         selected: selectedGuangyaItems(),
     };
 }
@@ -1368,7 +1368,7 @@ function mediaOrganizerWriter(session, source, readSubtitleLinks) {
         if (!matches.length) {
             verify();
             if (guangya)
-                await post(API.mkdir, {
+                await post(GUANGYA_API.mkdir, {
                     parentId: parentId === '0' ? '' : parentId,
                     dirName: name,
                     failIfNameExist: true,

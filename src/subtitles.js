@@ -4289,7 +4289,7 @@ function subtitleDrive(context, wait = sleep) {
             try {
                 if (guangya) {
                     const result = await post(
-                        API.create,
+                        GUANGYA_API.create,
                         {
                             capacity: 2,
                             name,
@@ -4308,7 +4308,7 @@ function subtitleDrive(context, wait = sleep) {
                     for (let attempt = 0; attempt < 20; attempt++) {
                         check();
                         progress('等待网盘处理字幕');
-                        const task = await post(API.info, { taskId }, [0, 145, 146, 147, 155, 163]);
+                        const task = await post(GUANGYA_API.info, { taskId }, [0, 145, 146, 147, 155, 163]);
                         if (task.data?.fileId || task.data?.fileInfo?.fileId) break;
                         if (attempt < 19) await wait(1000);
                     }

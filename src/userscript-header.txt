@@ -1,10 +1,8 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v3.0（重构版）
 // @namespace    local.cloud-media-organizer
-// @version      3.0.55
-// @description  面向百度网盘、123 云盘和光鸭网盘的浏览器脚本，支持跨盘 JSON 清单、影视整理与字幕补齐。
-// @match        https://pan.baidu.com/*
-// @match        https://yun.baidu.com/*
+// @version      3.0.56
+// @description  面向 123 云盘和光鸭网盘的影视整理与字幕补齐工具。
 // @match        https://www.guangyapan.com/*
 // @match        https://*.123pan.com/*
 // @match        https://123pan.com/*
@@ -22,7 +20,6 @@
 // @connect      api-shoulei-ssl.xunlei.com
 // @connect      subtitle.v.geilijiasu.com
 // @connect      *
-// @grant        GM_download
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @updateURL    https://raw.githubusercontent.com/Yanshov/cloud-media-organizer/main/cloud-media-organizer-v3.user.js

@@ -1,8 +1,8 @@
 [
   "core.js",
   "panel.js",
-  "manifest.js",
-  "guangya.js",
+  "media-sources.js",
+  "media-guangya.js",
   "media.js",
   "works.js",
   "media-panel.js",

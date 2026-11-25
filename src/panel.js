@@ -3,8 +3,6 @@ const workspaceIcons = {
     settings:
         '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" /><circle cx="12" cy="12" r="3" />',
     upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" x2="12" y1="3" y2="15" />',
-    download:
-        '<path d="M12 15V3" /><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m7 10 5 5 5-5" />',
     'scan-search':
         '<path d="M3 7V5a2 2 0 0 1 2-2h2" /><path d="M17 3h2a2 2 0 0 1 2 2v2" /><path d="M21 17v2a2 2 0 0 1-2 2h-2" /><path d="M7 21H5a2 2 0 0 1-2-2v-2" /><circle cx="12" cy="12" r="3" /><path d="m16 16-1.9-1.9" />',
     search: '<circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />',
@@ -20,11 +18,8 @@ const workspaceIcons = {
     languages:
         '<path d="m5 8 6 6" /><path d="m4 14 6-6 2-3" /><path d="M2 5h12" /><path d="M7 2h1" /><path d="m22 22-5-10-5 10" /><path d="M14 18h6" />',
     cloud: '<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />',
-    files: '<path d="M15 2h-4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8" /><path d="M16.706 2.706A2.4 2.4 0 0 0 15 2v5a1 1 0 0 0 1 1h5a2.4 2.4 0 0 0-.706-1.706z" /><path d="M5 7a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h8a2 2 0 0 0 1.732-1" />',
     'arrow-left': '<path d="m12 19-7-7 7-7" /><path d="M19 12H5" />',
     cpu: '<path d="M12 20v2" /><path d="M12 2v2" /><path d="M17 20v2" /><path d="M17 2v2" /><path d="M2 12h2" /><path d="M2 17h2" /><path d="M2 7h2" /><path d="M20 12h2" /><path d="M20 17h2" /><path d="M20 7h2" /><path d="M7 20v2" /><path d="M7 2v2" /><rect x="4" y="4" width="16" height="16" rx="2" /><rect x="8" y="8" width="8" height="8" rx="1" />',
-    'folder-open':
-        '<path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2" />',
 };
 /*
     ISC License
@@ -85,52 +80,8 @@ function workspaceIcon(name, className = '') {
     icon.innerHTML = workspaceIcons[name];
     return icon;
 }
-function saveJsonFile(value, filename, report) {
-    try {
-        normalizeFiles(JSON.parse(value));
-    } catch (_) {
-        report('保存失败：文本框不是有效的跨盘 JSON 清单，请先导出文件清单');
-        return;
-    }
-    const url = URL.createObjectURL(new Blob([value], { type: 'application/json;charset=utf-8' }));
-    report('正在保存 JSON 清单…');
-    if (typeof GM_download === 'function') {
-        try {
-            GM_download({
-                url,
-                name: filename,
-                saveAs: true,
-                onload: () => {
-                    URL.revokeObjectURL(url);
-                    report(`已保存：${filename}`);
-                },
-                onerror: (error) => {
-                    URL.revokeObjectURL(url);
-                    report(`保存失败：${error?.error || error?.message || '浏览器拒绝下载'}`);
-                },
-                onabort: () => {
-                    URL.revokeObjectURL(url);
-                    report('已取消保存');
-                },
-            });
-        } catch (error) {
-            URL.revokeObjectURL(url);
-            report('保存失败：' + error.message);
-        }
-        return;
-    }
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    link.style.display = 'none';
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
-    report(`已触发下载：${filename}；请检查浏览器下载列表`);
-}
-// Keep existing controls and handlers; only arrange their presentation.
-function arrangeToolPane(pane, id) {
+// Keep existing media and subtitle controls while arranging their presentation.
+function arrangeToolPane(pane) {
     const create = (tag, className, text) => {
         const node = document.createElement(tag);
         node.className = className;
@@ -145,28 +96,17 @@ function arrangeToolPane(pane, id) {
     take(intro, 'h3');
     const description = pane.querySelector(':scope > p:not([id]), #scope');
     if (description) {
-        description.id ||= id + 'Instructions';
+        description.id ||= 'subtitleInstructions';
         pane.setAttribute('aria-describedby', description.id);
         intro.append(description);
     }
-    if (id === 'json') {
-        const source = intro
-            .querySelector('h3')
-            .textContent.replace(/\s*跨盘\s*JSON.*$/, '')
-            .trim();
-        intro.querySelector('h3').textContent = '跨盘文件清单';
-        if (!description) intro.append(create('p', '', '导出当前网盘的文件清单，或导入清单恢复文件。'));
-        const context = create('span', 'tool-context', source);
-        intro.querySelector('h3').append(context);
-    } else {
-        const title = intro.querySelector('h3'),
-            source = title.textContent.replace(/\s+(?:字幕|影视整理).*$/, '').trim();
-        title.textContent = '影视整理';
-        title.append(create('span', 'tool-context', source));
-    }
+    const title = intro.querySelector('h3'),
+        source = title.textContent.replace(/\s+(?:字幕|影视整理).*$/, '').trim();
+    title.textContent = '影视整理';
+    title.append(create('span', 'tool-context', source));
     const commands = create('div', 'tool-commandbar');
     const firstAction = pane.querySelector(':scope > .panel-actions');
-    const merged = id === 'subtitle' && pane.querySelector('#previewMedia');
+    const merged = pane.querySelector('#previewMedia');
     if (firstAction) commands.append(firstAction);
     if (merged) {
         const actions = pane.querySelector('#stopSubtitles').parentElement;
@@ -174,11 +114,7 @@ function arrangeToolPane(pane, id) {
         actions.remove();
         pane.classList.add('merged-media');
     }
-    if (id === 'json') take(commands, '#stopJson');
     const commandIcons = {
-        generate: 'download',
-        generateGuangya: 'download',
-        exportManifest: 'download',
         scanMedia: 'scan-search',
         openMediaCleanup: 'trash-2',
         readSubtitles: 'search',
@@ -188,71 +124,33 @@ function arrangeToolPane(pane, id) {
     };
     for (const [name, glyph] of Object.entries(commandIcons))
         commands.querySelector('#' + name)?.prepend(workspaceIcon(glyph, 'command-icon'));
-    commands.querySelector('.manifest-import > summary')?.prepend(workspaceIcon('upload', 'command-icon'));
     const layout = create('div', 'tool-layout');
     const main = create('div', 'tool-main');
     const status = create('section', 'tool-status-text');
-    const statusIds =
-        id === 'subtitle'
-            ? ['subtitleScope', 'subtitleProgress', 'subtitleMeter']
-            : ['status', 'target', 'progress'];
+    const statusIds = ['subtitleScope', 'subtitleProgress', 'subtitleMeter'];
     for (const name of statusIds) take(status, '#' + name);
     const heading = create('div', 'tool-list-heading');
-    const headingTitle = create('h4', '', id === 'subtitle' ? '字幕检查结果' : 'JSON 文件清单');
+    const headingTitle = create('h4', '', '字幕检查结果');
     heading.append(headingTitle);
-    if (id === 'subtitle') {
-        headingTitle.id = 'subtitleResultsTitle';
-        if (merged) headingTitle.textContent = '作品与字幕';
-        take(heading, '#subtitleFilters');
-    }
+    headingTitle.id = 'subtitleResultsTitle';
+    if (merged) headingTitle.textContent = '作品与字幕';
+    take(heading, '#subtitleFilters');
     main.append(heading);
-    if (id === 'json') {
-        take(main, '#syncPreview');
-        take(main, '#json');
-        const editor = main.querySelector('#json');
-        editor?.setAttribute('aria-label', 'JSON 文件清单');
-        if (editor) {
-            const surface = create('div', 'json-editor');
-            editor.before(surface);
-            surface.append(editor);
-            const empty = create('div', 'json-editor-empty');
-            empty.setAttribute('aria-hidden', 'true');
-            empty.append(workspaceIcon('folder-open'));
-            empty.append(
-                create('strong', '', '从一份文件清单开始'),
-                create('p', '', '点击上方导出，或在这里粘贴 JSON 清单'),
-                create('span', '', '清单仅包含文件信息，不包含视频内容')
-            );
-            surface.append(empty);
-        }
-        const fileActions = create('div', 'editor-actions');
-        for (const selector of ['#save', '#saveJson', '#copyJson']) take(fileActions, selector);
-        for (const button of fileActions.children)
-            button.prepend(workspaceIcon(button.id === 'copyJson' ? 'files' : 'download', 'command-icon'));
-        if (fileActions.children.length) heading.append(fileActions);
-    } else if (id === 'subtitle') {
-        take(main, '#subtitleSummary');
-        take(main, '#subtitleResults');
-        if (merged) {
-            take(heading, '#allowWithoutSubtitles');
-            const results = main.querySelector('#subtitleResults');
-            const preview = create('details', 'sync-preview');
-            preview.id = 'mediaPreviewPanel';
-            preview.append(create('summary', '', '查看整理预览'));
-            take(preview, '#mediaPreview');
-            results.prepend(preview);
-            results.prepend(pane.querySelector('#mediaCleanup'));
-            take(results, '#mediaRows');
-            results.querySelector('#mediaRows').hidden = true;
-        }
+    take(main, '#subtitleSummary');
+    take(main, '#subtitleResults');
+    if (merged) {
+        take(heading, '#allowWithoutSubtitles');
+        const results = main.querySelector('#subtitleResults');
+        const preview = create('details', 'sync-preview');
+        preview.id = 'mediaPreviewPanel';
+        preview.append(create('summary', '', '查看整理预览'));
+        take(preview, '#mediaPreview');
+        results.prepend(preview);
+        results.prepend(pane.querySelector('#mediaCleanup'));
+        take(results, '#mediaRows');
+        results.querySelector('#mediaRows').hidden = true;
     }
     const utilities = create('div', 'tool-utilities');
-    const auxiliary = id === 'json' ? create('section', 'tool-import-options') : utilities;
-    if (id !== 'subtitle') {
-        for (const node of [...pane.querySelectorAll(':scope > .panel-actions, :scope > .export-options')])
-            auxiliary.append(node);
-        if (id === 'json') commands.append(auxiliary);
-    }
     for (const node of [...pane.children]) {
         if (node.id.endsWith('Settings') || (node.tagName === 'INPUT' && node.hidden)) continue;
         node.classList.add('tool-card');
@@ -266,7 +164,8 @@ function arrangeToolPane(pane, id) {
     pane.append(surface);
 }
 let toolWorkspace = null;
-function makePanel(title, html, id = 'json') {
+function makePanel(title, html) {
+    const id = 'subtitle';
     if (!toolWorkspace) {
         const host = document.createElement('div');
         host.id = 'cloud-media-organizer-tools';
@@ -312,24 +211,16 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 .panel-actions,.tool-commandbar{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
 .panel-actions{margin:12px 0}.tool-commandbar{margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--border)}
 .tool-commandbar>.panel-actions{margin:0}
-.tool-commandbar button,.tool-commandbar .manifest-import>summary{min-height:38px;padding:7px 11px;font-size:15px}
+.tool-commandbar button{min-height:38px;padding:7px 11px;font-size:15px}
 .command-icon{display:inline-block;width:16px;height:16px;margin-right:6px;vertical-align:-3px;pointer-events:none}
-.manifest-import{position:relative}.manifest-import>summary{margin:0;border:1px solid var(--border);border-radius:7px;padding:8px 12px;background:var(--surface);line-height:1.5}
-.manifest-import-actions{position:absolute;top:100%;left:0;z-index:2;width:max-content;margin-top:6px;display:grid;gap:8px;padding:10px;background:var(--panel);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 14px #0002}.manifest-import-actions label{margin:0;align-items:center}.manifest-import-actions input[type=checkbox]{margin:0}
-:is(#generate,#exportManifest,#scanMedia,#readSubtitles,#runMedia,#fillSubtitles,#confirmSync){background:var(--button);border-color:var(--button);color:var(--button-text);font-weight:600}
-:is(#generate,#exportManifest,#scanMedia,#readSubtitles,#runMedia,#fillSubtitles,#confirmSync):hover:not(:disabled){background:var(--button-hover);border-color:var(--button-hover)}
+:is(#scanMedia,#readSubtitles,#runMedia,#fillSubtitles){background:var(--button);border-color:var(--button);color:var(--button-text);font-weight:600}
+:is(#scanMedia,#readSubtitles,#runMedia,#fillSubtitles):hover:not(:disabled){background:var(--button-hover);border-color:var(--button-hover)}
 :is(#runMedia,#fillSubtitles):disabled{background:var(--surface);border-color:var(--border);color:var(--muted)}
 :is(#reviewSubtitleDeletes,#confirmSubtitleDeletes){color:var(--danger)}
-.tool-import-options{color:var(--muted);font-size:15px}.tool-import-options .export-options,.tool-import-options label{margin:0}.panel-actions:empty,.tool-import-options:not(:has(input,select,button)){display:none}
+.panel-actions:empty{display:none}
 .tool-layout{flex:1;min-width:0;min-height:auto}.tool-main{min-width:0}.tool-list-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:34px;margin-bottom:12px}
 .tool-list-heading select{width:auto;max-width:210px;margin:0;font-size:15px;padding:7px 10px}
 .tool-list-heading h4{font-size:19px;font-weight:650}.editor-actions{display:flex;gap:8px}.editor-actions button{background:var(--surface);color:var(--text);border-color:var(--border);padding:4px 9px;font-size:13px;min-height:30px}
-#jsonPane .tool-main{height:100%;display:flex;flex-direction:column;min-height:280px}#jsonPane .tool-main>:not(.json-editor){flex-shrink:0}
-.json-editor{position:relative;display:flex;flex:1;min-height:220px;border:1px solid var(--border);border-radius:8px;background:var(--surface);overflow:hidden;isolation:isolate}
-.json-editor:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--tint)}.json-editor>#json{width:100%;height:100%;flex:1;min-height:0;max-height:none;margin:0;border:0;border-radius:0;background:transparent;resize:none;outline:none;padding:20px;font:16px/1.8 Consolas,"Microsoft YaHei",monospace}
-.json-editor>#json::placeholder{color:transparent}.json-editor-empty{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;padding:24px;text-align:center;color:var(--muted)}
-.json-editor:has(#json:placeholder-shown:not(:focus))>.json-editor-empty{display:flex}.json-editor-empty svg{width:44px;height:44px;padding:8px;border-radius:8px;background:var(--tint);color:var(--muted);margin-bottom:12px}.json-editor-empty strong{color:var(--text);font-size:15px;font-weight:600}.json-editor-empty p{font-size:13px;margin:4px 0 6px}.json-editor-empty span{font-size:12px}
-#jsonPane .tool-main:has(#syncPreview:not([hidden]))>.json-editor{flex:0 0 140px;min-height:140px}#jsonPane:has(#syncPreview:not([hidden])) .tool-layout{flex:none}#jsonPane .tool-main:has(#syncPreview:not([hidden])){height:auto}
 
 .sync-item{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;margin:12px 0;min-width:0}
 :is(#subtitlePane,#mediaPane) :is(.tool-layout,.tool-main){display:flex;min-height:0}:is(#subtitlePane,#mediaPane) .tool-main{flex:1;flex-direction:column}:is(#subtitlePane,#mediaPane) .tool-list-heading{flex:none}#subtitleFilters :focus-visible{outline-offset:-2px}
@@ -417,8 +308,8 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
     #subtitleRows .subtitle-result select{padding-block:4px}
     #subtitleLog{height:38px}
 }
-.sync-preview{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px}.sync-preview h4{margin:0 0 8px}.sync-preview p{margin:6px 0}#syncList{overflow-wrap:anywhere;font-size:15px}#syncDestination{font-weight:600}
-.export-options{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin:12px 0}.export-options input{width:auto}.export-options button{font-size:14px;padding:7px 12px}.credential-head{display:flex;justify-content:space-between;align-items:center;gap:12px}.credential-head a{font-size:15px;flex-shrink:0}
+.sync-preview{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px}.sync-preview h4{margin:0 0 8px}.sync-preview p{margin:6px 0}
+.credential-head{display:flex;justify-content:space-between;align-items:center;gap:12px}.credential-head a{font-size:15px;flex-shrink:0}
 .source-result{margin:12px 0;padding:12px;border:1px solid var(--border);border-radius:8px}.source-result button{margin:8px 8px 0 0;font-size:16px}
 #workspaceSettings{grid-template-rows:minmax(0,1fr);overflow:auto;scrollbar-width:none;overscroll-behavior:contain}
 .settings-main{display:flex;flex-direction:column;min-width:0;min-height:0;padding:25px var(--surface-pad);background:var(--surface)}
@@ -486,7 +377,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         </style><button id="toggle" type="button" title="打开云盘工具" aria-label="打开云盘工具" aria-haspopup="dialog" aria-expanded="false" aria-controls="toolDialog"></button>
         <div class="workspace-overlay" hidden><div class="box" id="toolDialog" role="dialog" aria-modal="false" aria-labelledby="workspaceTitle" tabindex="-1">
         <header class="workspace-header"><div class="workspace-brand"><h2 id="workspaceTitle"><span class="workspace-brand-mark" aria-hidden="true"></span>云盘工具</h2><span class="workspace-location" id="workspaceLocation"></span><p id="windowHint">拖动标题栏移动 · 可同时操作网页</p></div><div class="workspace-window-actions"><button id="settingsWorkspace" type="button">设置</button><button id="pinWorkspace" type="button" aria-pressed="false" title="锁定窗口位置">固定位置</button><button id="closeWorkspace" type="button" aria-label="关闭面板" title="关闭"></button></div></header>
-        <div class="workspace-toolbar"><div class="workspace-tabs" role="tablist" aria-label="功能分类"><button id="jsonTab" type="button" role="tab" aria-selected="false" aria-controls="jsonPane" tabindex="-1" disabled>跨盘清单</button><button id="subtitleTab" type="button" role="tab" aria-selected="false" aria-controls="subtitlePane" tabindex="-1" disabled title="当前网盘暂不支持字幕检查">影视整理</button></div>
+        <div class="workspace-toolbar"><div class="workspace-tabs" role="tablist" aria-label="功能分类"><button id="subtitleTab" type="button" role="tab" aria-selected="false" aria-controls="subtitlePane" tabindex="-1" disabled>影视整理</button></div>
         <label class="theme-row">窗口尺寸<select id="workspaceSize" aria-label="窗口尺寸"><option value="960x600">960 × 600</option><option value="1280x800" selected>1280 × 800（默认）</option><option value="1440x900">1440 × 900</option><option value="1600x1000">1600 × 1000</option></select></label>
         <label class="theme-row">外观<select id="theme"><option value="auto">跟随页面</option><option value="light">浅色</option><option value="dark">深色</option></select></label></div>
         <div class="workspace-body"><section id="workspaceSettings" class="tool-pane" hidden><div class="settings-main"><div class="settings-heading"><h3>设置</h3><div id="settingsAppearance" class="settings-appearance"></div><button id="backToTools">返回工具</button></div><div class="settings-column" id="settingsBasics"></div><div class="settings-column" id="settingsModels"></div></div></section></div></div></div>`;
@@ -512,7 +403,6 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         navFooter.append(version);
         navigation.append(navFooter);
         const icons = {
-            jsonTab: 'files',
             subtitleTab: 'film',
             settingsWorkspace: 'settings',
             closeWorkspace: 'x',
@@ -531,8 +421,8 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         const tabs = new Map();
         let active = null,
             returnFocus = null;
-        const layoutKey = 'cross-drive-window-layout';
-        const saved = GM_getValue(layoutKey, {});
+        const layoutKey = 'media-workspace-layout';
+        const saved = GM_getValue(layoutKey, GM_getValue('cross-drive-window-layout', {}));
         const sizes = new Map([
             ['960x600', [960, 600]],
             ['1280x800', [1280, 800]],
@@ -735,30 +625,14 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
     const { root, tabs, activate } = toolWorkspace;
     if (tabs.has(id)) return tabs.get(id).ui;
     const pane = document.createElement('section');
-    pane.id = id + 'Pane';
+    pane.id = 'subtitlePane';
     pane.className = 'tool-pane';
     pane.setAttribute('role', 'tabpanel');
-    pane.setAttribute('aria-labelledby', id + 'Tab');
+    pane.setAttribute('aria-labelledby', 'subtitleTab');
     pane.tabIndex = 0;
     pane.hidden = true;
-    pane.innerHTML = `<h3></h3>${id !== 'json' ? '' : `<details id="exportHistory"><summary title="复用导出记录，加快读取与续传">导出记录</summary><div class="export-options"><label><input id="incremental" type="checkbox" checked>复用旧记录，加快读取</label></div><p id="historySummary" style="padding:8px;border:1px solid var(--border);border-radius:4px"></p><div class="export-options"><button id="importHistory">导入旧清单</button><button id="resetHistory">重置导出记录</button><input id="historyFile" type="file" accept=".json,application/json" hidden></div></details>`}${html}`;
+    pane.innerHTML = '<h3></h3>' + html;
     pane.querySelector('h3').textContent = title;
-    let stopJson;
-    if (id === 'json') {
-        stopJson = document.createElement('button');
-        stopJson.id = 'stopJson';
-        stopJson.textContent = '停止当前任务';
-        stopJson.hidden = true;
-        stopJson.onclick = () => {
-            jsonTaskStopped = true;
-            stopJson.disabled = true;
-            const cancel = pane.querySelector('#cancelSync');
-            if (cancel && !pane.querySelector('#syncPreview').hidden) cancel.click();
-            const progress = pane.querySelector('#progress');
-            if (progress) progress.textContent = '等待当前请求结束，停止后续操作；已提交项目请刷新目录核对。';
-        };
-        pane.appendChild(stopJson);
-    }
     const log = pane.querySelector('#log');
     if (log) {
         const detail = document.createElement('details'),
@@ -779,9 +653,9 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         log.before(detail);
         detail.append(summary, copy, log);
     }
-    arrangeToolPane(pane, id);
+    arrangeToolPane(pane);
     root.querySelector('.workspace-body').appendChild(pane);
-    const button = root.querySelector('#' + id + 'Tab'),
+    const button = root.querySelector('#subtitleTab'),
         elements = new Map();
     button.disabled = false;
     button.removeAttribute('title');
@@ -825,11 +699,6 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     throw new Error('另一个任务正在运行，请等待完成或先停止');
                 toolWorkspace.owner = id;
             } else if (toolWorkspace.owner === id) toolWorkspace.owner = null;
-            if (id === 'json') {
-                jsonTaskStopped = false;
-                stopJson.hidden = !value;
-                stopJson.disabled = !value;
-            }
             for (const [name, tab] of tabs) {
                 const blocked = !!toolWorkspace.owner && name !== toolWorkspace.owner;
                 tab.button.disabled = blocked;
@@ -862,32 +731,6 @@ function createPanelTask(ui, updateControls) {
         }
     };
 }
-function panelControls(ui) {
-    return [
-        'json',
-        'manifest',
-        'jsonFile',
-        'manifestLocalFiles',
-        'historyFile',
-        'generate',
-        'generateGuangya',
-        'exportManifest',
-        'transfer',
-        'start',
-        'chooseManifest',
-        'chooseJsonFile',
-        'hashManifestFolder',
-        'copyJson',
-        'save',
-        'saveJson',
-        'incremental',
-        'resetHistory',
-        'importHistory',
-        'syncExisting',
-    ]
-        .map(ui.get)
-        .filter(Boolean);
-}
 function appendLog(ui, message) {
     const line = document.createElement('div');
     line.textContent = message;
@@ -899,26 +742,9 @@ function appendLog(ui, message) {
     }
     box.scrollTop = box.scrollHeight;
 }
-async function copyManifest(ui) {
-    const area = ui.get('json');
-    if (!area.value) {
-        ui.get('status').textContent = '没有 JSON 可复制，请先导出或载入清单';
-        return;
-    }
-    try {
-        await navigator.clipboard.writeText(area.value);
-        ui.get('status').textContent = 'JSON 已复制';
-    } catch (_) {
-        area.focus();
-        area.select();
-        ui.get('status').textContent = document.execCommand('copy')
-            ? 'JSON 已复制'
-            : '自动复制失败，请按 Ctrl+C';
-    }
-}
 function bindPanelTheme(host, root) {
     const select = root.querySelector('#theme');
-    select.value = GM_getValue('cross-drive-theme', 'auto');
+    select.value = GM_getValue('media-workspace-theme', GM_getValue('cross-drive-theme', 'auto'));
     const baseStyle = host.style.cssText;
     const media = page.matchMedia?.('(prefers-color-scheme: dark)');
     let queued = false;
@@ -967,7 +793,7 @@ function bindPanelTheme(host, root) {
                 : ';--scheme:light;--panel:#fafafa;--surface:#fff;--rail:#eee;--text:#171717;--muted:#515151;--field:#fff;--border:#dedede;--edge:#adadad;--accent:#161616;--tint:#ebebeb;--hover:#eee;--button:#171717;--button-text:#fff;--button-hover:#373737;--danger:#111');
     }
     select.onchange = () => {
-        GM_setValue('cross-drive-theme', select.value);
+        GM_setValue('media-workspace-theme', select.value);
         update();
     };
     media?.addEventListener('change', schedule);
