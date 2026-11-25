@@ -11203,7 +11203,7 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
             <label><input id="useThunder" type="checkbox" checked>迅雷 · 按片名搜索（免 Key，免费）</label>
             <label><span class="credential-head"><span>射手网整季搜索 Token（可选）</span><a href="https://assrt.net/usercp.php" target="_blank" rel="noopener noreferrer">assrt.net ↗</a></span><input id="assrtKey" type="password" autocomplete="off"></label>
             <label>字幕语言<select id="subtitleLanguage" title="中文优先双语、简体，再繁体。"><option value="zh-cn,zh-tw,zh">中文（简体 / 繁体）</option><option value="zh-cn">简体中文</option><option value="zh-tw">繁体中文</option><option value="en">英文</option></select></label>
-            <details id="openSubtitlesSettings"><summary>OpenSubtitles · 账号与 API</summary>
+            <details id="openSubtitlesSettings" open><summary>OpenSubtitles · 账号与 API</summary>
             <label><input id="useOpenSubtitles" type="checkbox">启用搜索</label>
             <label><span class="credential-head"><span>API Key</span><a href="https://www.opensubtitles.com/en/consumers" target="_blank" rel="noopener noreferrer">获取 API ↗</a></span><input id="openSubtitlesKey" type="password" autocomplete="off"></label>
             <details id="subtitleAccountSettings"><summary title="提高下载配额">账号登录</summary><div><label>用户名<input id="subtitleUsername" autocomplete="off"></label><label>密码<input id="subtitlePassword" type="password" autocomplete="off"></label></div><button id="loginSubtitles">登录</button><p id="subtitleLoginState">密码不保存；令牌仅当前页面有效。</p></details>
