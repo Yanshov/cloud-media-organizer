@@ -16,9 +16,10 @@ function loadMatcher(storage = new Map()) {
     return vm.runInNewContext(
         '(() => {\n' +
             body +
-            '\nreturn { subtitleEpisodeIdentity, subtitleArchiveChoices, matchSubtitleImport, rememberSubtitleEpisodeMapping };\n})()',
+            '\nreturn { subtitleEpisodeIdentity, subtitleArchiveChoices, matchSubtitleImport, rememberSubtitleEpisodeMapping, planSubtitleImport, prepareOnlineSubtitle, selectSubtitleCandidate };\n})()',
         {
             window: { fetch },
+            TextDecoder,
             GM_getValue: (key, fallback) => storage.get(key) ?? fallback,
             GM_setValue: (key, value) => storage.set(key, value),
         }
@@ -86,6 +87,78 @@ test('the verified Sakamoto release number maps to the special in all three path
         false
     );
     assert.equal(matcher.subtitleEpisodeIdentity(name, { ...special.parsed, tmdbId: '0' }).matched, false);
+});
+
+test('local import and online candidates prepare the same subtitle and reject invalid bodies', async () => {
+    const matcher = loadMatcher();
+    const row = {
+        node: { id: 'test', name: 'Fixture.2006.mkv' },
+        parsed: { query: 'Fixture', year: '2006' },
+    };
+    const entry = {
+        name: 'Fixture.2006.zh-CN.srt',
+        ext: 'srt',
+        bytes: new TextEncoder().encode('1\n00:00:01,000 --> 00:00:09,000\n画面上是中文字幕。\n'),
+    };
+    const plan = (item) =>
+        matcher.planSubtitleImport(
+            { entries: [item], language: 'zh-cn', confirmed: new Set(), assignments: new Map() },
+            [row],
+            () => {},
+            () => {}
+        );
+    let calls = 0;
+    const service = {
+        async fetchFile(candidate) {
+            calls++;
+            return {
+                result: { fileName: candidate.name, ext: candidate.ext },
+                bytes: candidate.bytes,
+            };
+        },
+    };
+    const candidate = { ...entry, titleMatched: true, language: 'zh-cn' };
+    const config = { language: 'zh-cn', preparedCandidates: new Map() };
+    const prepare = (target, item) =>
+        matcher.prepareOnlineSubtitle(
+            target,
+            item,
+            config,
+            service,
+            () => {},
+            () => {},
+            true
+        );
+    const [local] = await plan(entry);
+    assert.equal(local.state, 'ready', local.reason);
+    const online = await prepare(row, candidate);
+    assert.equal(local.name, online.name);
+    assert.equal(local.digest, online.digest);
+    assert.equal(local.verification.evidence, online.verification.evidence);
+    assert.equal(await prepare(row, candidate), online);
+    assert.equal(calls, 1);
+    await prepare({ ...row, node: { ...row.node, id: 'different-target' } }, candidate);
+    assert.equal(calls, 2);
+    const invalid = { ...entry, bytes: new TextEncoder().encode('<html>Not a subtitle</html>') };
+    assert.equal((await plan(invalid))[0].state, 'invalid');
+    await assert.rejects(prepare(row, invalid), /返回了 HTML 页面/);
+});
+
+test('online ranking prefers the matching release group among eligible candidates', () => {
+    const matcher = loadMatcher();
+    const candidate = (group) => ({
+        name: '[' + group + '] Fixture.2006.1080p.BluRay.zh-CN.srt',
+        titleMatched: true,
+        language: 'zh-cn',
+    });
+    const same = candidate('GroupA');
+    const row = {
+        node: { name: 'Fixture.2006.mkv', originalName: '[GroupA] Fixture.2006.1080p.BluRay.mkv' },
+        candidates: [candidate('GroupB'), same, { ...same, hardMismatch: true }],
+    };
+    matcher.selectSubtitleCandidate(row, 'zh-cn');
+    assert.equal(row.selectedCandidate, same);
+    assert.equal(row.autoCandidates.length, 2);
 });
 
 test('number-only subtitles use package context while other titles remain unmatched', () => {

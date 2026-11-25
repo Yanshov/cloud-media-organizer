@@ -2436,9 +2436,74 @@ function subtitleVerificationMessage(result) {
     const identity =
         {
             manual: '已手动配对',
+            matched: '依据片名或作品编号配对',
             supported: 'AI 支持作品归属（非实证）',
         }[result.work?.status] || '作品归属未确认';
     return `格式/语言通过；${timing}；${identity}；未核对音画同步`;
+}
+/** Checks subtitle bytes and prepares the file that can be previewed and written. */
+function prepareSubtitleWrite(row, { bytes, ext, originalName, candidate, work }, language, log) {
+    const { text, ...verification } = subtitleValidateContent(row, bytes, ext, language, log);
+    if (work) verification.work = work;
+    const name = candidate
+        ? subtitleCandidateUploadName(row, candidate, originalName, ext)
+        : subtitleUploadName(originalName, ext);
+    const marked = subtitleFileInfo(name).language;
+    if (!candidate && ['zh-cn', 'zh-tw'].includes(language) && marked !== language)
+        throw new Error('字幕文件未标注当前设置要求的简繁语言');
+    return {
+        bytes,
+        name,
+        digest: subtitleMd5(bytes),
+        verification,
+        candidate,
+        language: candidate
+            ? marked || candidate.language || (language === 'en' ? 'en' : 'zh')
+            : language === 'en'
+              ? 'en'
+              : marked.startsWith('zh')
+                ? marked
+                : 'zh',
+    };
+}
+/** Fetches and checks an online candidate, reusing a recent check for the same target. */
+async function prepareOnlineSubtitle(row, candidate, config, service, log, check, reuse = false) {
+    const cache = config.preparedCandidates;
+    const context = subtitleVerificationContext(row);
+    const cached = cache?.get(candidate);
+    const content =
+        cached?.context === context && cached.language === config.language ? cached.content : null;
+    check();
+    if (content) {
+        log('正文校验', row.node.name + ' · 复用已核验的字幕正文');
+        return content;
+    }
+    const { result, bytes } = await service.fetchFile(candidate, config, log, check);
+    check();
+    const sourceName = result.fileName ?? (isSubtitleArchive(candidate.ext) ? undefined : candidate.name);
+    const work =
+        candidate.titleMatched || candidate.identityMatched
+            ? { status: 'matched', reason: '候选片名或作品编号已匹配' }
+            : candidate.aiAccepted
+              ? { status: 'supported', reason: 'AI 候选判断支持作品归属' }
+              : undefined;
+    const prepared = prepareSubtitleWrite(
+        row,
+        { bytes, ext: result.ext, originalName: sourceName, candidate, work },
+        config.language,
+        log
+    );
+    if (reuse && cache) {
+        cache.delete(candidate);
+        cache.set(candidate, { context, language: config.language, content: prepared });
+        let retained = [...cache.values()].reduce((sum, entry) => sum + entry.content.bytes.length, 0);
+        for (const [key, entry] of cache) {
+            if (retained <= SUBTITLE_LIMIT && cache.size <= 16) break;
+            retained -= entry.content.bytes.length;
+            cache.delete(key);
+        }
+    }
+    return prepared;
 }
 function subtitleEpisodeName(name, parsed) {
     const stem = String(name || '')
@@ -2866,7 +2931,8 @@ function subtitleLanguageMatch(name, wanted) {
                   : info.language === language
         );
 }
-function selectSubtitleCandidate(row, language) {
+/** Counts release attributes shared by a video's original name and a subtitle. */
+function subtitleReleaseMatches(row, name) {
     const tokens = (value) =>
         new Set(
             (
@@ -2875,14 +2941,32 @@ function selectSubtitleCandidate(row, language) {
                     .match(/2160p|1080p|720p|bluray|bdrip|webrip|web[ ._-]?dl|remux|hdtv|x26[45]/g) || []
             ).map((v) => v.replace(/[ ._-]/g, ''))
         );
-    const original = tokens(row.node.originalName || row.node.name),
-        wanted = language.split(',');
+    const original = row.node.originalName || row.node.name;
+    const candidate = tokens(name);
+    const group = (value) =>
+        (
+            /^\[([a-z\d][a-z\d._ -]*)\]/i.exec(value)?.[1] ||
+            /(?:\bx26[45]|\b[HA]EVC|\bAVC|\bFLAC[\d.]*|\bAAC[\d.]*)-([a-z][a-z\d]+)(?:\.[^.]+)*$/i.exec(
+                value
+            )?.[1] ||
+            ''
+        ).toLowerCase();
+    const releaseGroup = group(original);
+    return (
+        [...tokens(original)].filter((token) => candidate.has(token)).length +
+        (releaseGroup && group(name) === releaseGroup ? 2 : 0)
+    );
+}
+function selectSubtitleCandidate(row, language) {
+    const wanted = language.split(',');
     const scored = (row.candidates || [])
         .map((candidate) => {
-            const version = tokens(candidate.release + ' ' + candidate.name);
             const editionMismatch =
                 row.parsed && subtitleNetworkEditionMismatch(row.parsed, [candidate.name, candidate.release]);
-            const overlaps = [...original].filter((token) => version.has(token)).length;
+            const overlaps = Math.max(
+                subtitleReleaseMatches(row, candidate.name || ''),
+                subtitleReleaseMatches(row, candidate.release || '')
+            );
             const lang =
                 wanted.includes(candidate.language) ||
                 wanted.some((value) => subtitleLanguageMatch(candidate.name, value));
@@ -3341,23 +3425,17 @@ async function searchSubtitleSources(row, config, service, log = () => {}, check
                 `${row.node.name} · ${candidate.name} · 来源标注 ${candidate.language || '未知'}，读取正文核验`
             );
             try {
-                const { result, bytes } = await service.fetchFile(
-                    candidate,
-                    config,
-                    (phase, message) => log(phase, `${row.node.name} · ${message}`),
-                    check
-                );
-                check();
-                subtitleValidateContent(selection, bytes, result.ext, config.language, (phase, message) =>
-                    log(phase, `${row.node.name} · ${message}`)
-                );
-                subtitleCandidateUploadName(
+                const prepared = await prepareOnlineSubtitle(
                     selection,
                     candidate,
-                    result.fileName ?? candidate.name,
-                    result.ext
+                    config,
+                    service,
+                    (phase, message) => log(phase, `${row.node.name} · ${message}`),
+                    check,
+                    true
                 );
                 candidate.language = config.language === 'en' ? 'en' : 'zh';
+                prepared.language = candidate.language;
                 candidate.matchReason = '';
                 selectSubtitleCandidate(selection, config.language);
                 log(
