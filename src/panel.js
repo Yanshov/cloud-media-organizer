@@ -125,6 +125,7 @@ function arrangeToolPane(pane) {
     main.append(heading);
     take(main, '#subtitleSummary');
     take(main, '#subtitleResults');
+    take(main, '#subtitleDeletePreview');
     if (merged) {
         take(heading, '#allowWithoutSubtitles');
         const results = main.querySelector('#subtitleResults');
@@ -204,7 +205,8 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 :is(#subtitlePane,#mediaPane) :is(.tool-layout,.tool-main){display:flex;min-height:0}:is(#subtitlePane,#mediaPane) .tool-main{flex:1;flex-direction:column}:is(#subtitlePane,#mediaPane) .tool-list-heading{flex:none}#subtitleFilters :focus-visible{outline-offset:-2px}
 #subtitleFilters{display:flex;align-items:center;gap:8px;flex:0 0 auto;max-width:100%}#subtitleFilters label{align-items:center;gap:5px;margin:0;font-size:15px;white-space:nowrap;flex:none}#subtitleFilters input[type=checkbox]{margin:0}
 #subtitleResults{flex:1 1 0;min-height:0;overflow:auto;overscroll-behavior:contain;overflow-anchor:none;scrollbar-gutter:stable;container-type:size}#subtitleResults:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
-#subtitleSummary{flex:none;padding:10px 12px;font-size:15px;overflow-wrap:anywhere}
+#subtitleSummary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;flex:none;padding:10px 12px;font-size:15px;overflow-wrap:anywhere}
+.subtitle-summary-group{display:grid;gap:4px;min-width:0;padding:9px 11px;border:1px solid var(--border);border-radius:6px;background:var(--surface)}.subtitle-summary-group strong{font-size:14px;color:var(--text)}.subtitle-summary-value{color:var(--muted);line-height:1.5}
 :is(#subtitlePane,#mediaPane) .tool-surface{overflow:hidden}
 :is(#subtitleRows,#mediaRows){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:stretch;align-content:start}
 .subtitle-card{margin:0;overflow-wrap:anywhere}
@@ -249,6 +251,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 #subtitleFilters{flex-wrap:wrap}#subtitleDeleteSelectionCount,.subtitle-group-count{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}.subtitle-group-count{margin:4px 0 0;overflow-wrap:anywhere}
 #subtitleRows h5{margin:0;font-size:17px;line-height:1.5;overflow-wrap:anywhere}.subtitle-result{margin-top:8px}.subtitle-result+.subtitle-result{padding-top:8px;border-top:1px solid var(--border)}
 .subtitle-result p{margin:0;line-height:1.55;white-space:pre-wrap;color:var(--muted);font-size:15px}.subtitle-result p>strong{font-weight:650;color:var(--text)}.subtitle-badge{display:inline-block;white-space:nowrap;padding:1px 6px;margin-right:6px;border-radius:4px;background:var(--hover);color:var(--text);font-size:13px;font-weight:600}.subtitle-result[data-state=complete] .subtitle-badge{color:var(--button-text);background:var(--button)}.subtitle-result[data-state=choice] .subtitle-badge{outline:1px solid var(--edge);outline-offset:-1px;background:transparent}.subtitle-detail{display:block}.subtitle-result label{margin:6px 0;font-size:15px;overflow-wrap:anywhere}.subtitle-result select{font-size:15px;padding:7px 8px}
+.subtitle-action-footer{display:flex;align-items:center;flex-wrap:wrap;gap:8px 10px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border)}.subtitle-action-footer button{margin-top:0}.subtitle-action-footer select{flex:1 1 260px;min-width:180px;max-width:100%;margin:0}.subtitle-action-summary{flex:1 1 100%;margin:0;color:var(--muted);font-size:14px;line-height:1.5}
 .sync-location{display:grid;grid-template-columns:6.5em minmax(0,1fr);gap:8px;line-height:1.7}.sync-location span:last-child{white-space:pre-wrap;overflow-wrap:anywhere}.sync-location span:first-child{color:var(--muted)}
 .sync-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border)}
 
@@ -276,7 +279,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 @container(max-height:660px){
     #subtitlePane .tool-commandbar{margin-block:8px}
     #subtitlePane .tool-list-heading{margin-bottom:6px}
-    #subtitlePane #subtitleSummary{padding:6px 10px;margin-bottom:8px}
+    #subtitlePane #subtitleSummary{grid-template-columns:minmax(0,1fr);padding:6px 10px;margin-bottom:8px}
     :is(#subtitleRows,#mediaRows)>.sync-item{padding:6px 8px}
     #subtitleRows .subtitle-group-count{margin-top:2px}
     #subtitleRows .subtitle-result{margin-top:4px}

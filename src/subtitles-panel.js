@@ -764,6 +764,8 @@ function initSubtitles(flow) {
         const draft = importDraft;
         const box = document.createElement('section');
         box.className = 'sync-item subtitle-action-view';
+        const footer = document.createElement('div');
+        footer.className = 'subtitle-action-footer';
         const heading = document.createElement('h5');
         heading.textContent = '本地字幕导入预览';
         box.append(heading);
@@ -810,7 +812,7 @@ function initSubtitles(flow) {
             render();
         };
         box.append(target);
-        addButton(box, '取消导入', 'import-cancel', () => {
+        addButton(footer, '取消导入', 'import-cancel', () => {
             importDraft = null;
             status('已取消导入');
             render();
@@ -828,16 +830,17 @@ function initSubtitles(flow) {
                     return text + ' ' + found.length + ' 项' + (range ? '（' + range + '）' : '');
                 })
                 .join(' · ');
-            box.append(summary);
+            summary.className = 'subtitle-action-summary';
+            footer.prepend(summary);
             const count = draft.plan.filter((entry) => entry.state === 'ready').length;
             const plan = draft.plan;
             if (count)
-                addButton(box, '确认导入 ' + count + ' 项', 'import-confirm', () =>
+                addButton(footer, '确认导入 ' + count + ' 项', 'import-confirm', () =>
                     commitImport(draft, plan)
                 );
             if (draft.plan.some((entry) => entry.state === 'unmatched' || entry.state === 'invalid')) {
                 addButton(
-                    box,
+                    footer,
                     draft.showIssues ? '查看可导入项' : '处理待匹配与失败项',
                     'import-issues',
                     () => {
@@ -872,7 +875,7 @@ function initSubtitles(flow) {
                 box.append(detail);
                 const original = draft.entries[index];
                 if (entry.needsIdentity)
-                    addButton(box, '确认文件归属', 'import-identity-' + index, () => {
+                    addButton(footer, '确认文件归属', 'import-identity-' + index, () => {
                         draft.confirmed.add(original);
                         reviewImport();
                         render();
@@ -880,7 +883,7 @@ function initSubtitles(flow) {
                 if (entry.state === 'unmatched' || entry.state === 'ready' || entry.target) {
                     if (draft.assigning !== original) {
                         addButton(
-                            box,
+                            footer,
                             entry.target ? '更换目标视频' : '指定视频',
                             'import-assign-' + index,
                             () => {
@@ -921,7 +924,7 @@ function initSubtitles(flow) {
                         reviewImport();
                         render();
                     };
-                    box.append(select);
+                    footer.append(select);
                 }
             }
         } else
@@ -930,6 +933,7 @@ function initSubtitles(flow) {
                 line.textContent = safeDiagnostic(entry.label + ' · ' + entry.error);
                 box.append(line);
             }
+        if (footer.childElementCount) box.append(footer);
         host.append(box);
     };
     const render = () => {
@@ -966,26 +970,37 @@ function initSubtitles(flow) {
                 checked.filter((row) => subtitleCoverageState(row) === 'missing' && !pendingFill(row)).length,
             '字幕情况未确认 ' + checked.filter((row) => subtitleCoverageState(row) === 'unconfirmed').length,
         ].join(' · ');
-        const identitySummary =
-            ' · 作品已确认 ' +
-            [...states.values()].filter((state) => state.identity === 'confirmed').length +
-            ' · 可整理 ' +
-            [...states.values()].filter((state) => state.canOrganize).length +
-            ' · 已整理 ' +
-            [...states.values()].filter((state) => state.execution === 'complete').length +
-            ' · 整理待核对 ' +
-            [...states.values()].filter((state) => state.execution === 'unconfirmed').length;
-        summary.textContent =
-            '共 ' +
-            inventory.length +
-            ' 项 · 已检查 ' +
-            checked.length +
-            ' · ' +
-            (scan?.interrupted ? '未检查完成 ' : '待检查 ') +
-            remaining +
-            ' · ' +
-            coverage +
-            identitySummary;
+        const identitySummary = [
+            '作品已确认 ' + [...states.values()].filter((state) => state.identity === 'confirmed').length,
+            '可整理 ' + [...states.values()].filter((state) => state.canOrganize).length,
+            '已整理 ' + [...states.values()].filter((state) => state.execution === 'complete').length,
+            '整理待核对 ' + [...states.values()].filter((state) => state.execution === 'unconfirmed').length,
+        ].join(' · ');
+        const summaryGroup = (title, value) => {
+            const group = document.createElement('div');
+            group.className = 'subtitle-summary-group';
+            const label = document.createElement('strong');
+            label.textContent = title;
+            const detail = document.createElement('span');
+            detail.className = 'subtitle-summary-value';
+            detail.textContent = value;
+            group.append(label, detail);
+            return group;
+        };
+        summary.replaceChildren(
+            summaryGroup(
+                '检查进度',
+                '共 ' +
+                    inventory.length +
+                    ' 项 · 已检查 ' +
+                    checked.length +
+                    ' · ' +
+                    (scan?.interrupted ? '未检查完成 ' : '待检查 ') +
+                    remaining
+            ),
+            summaryGroup('字幕状态', coverage),
+            summaryGroup('整理状态', identitySummary)
+        );
         const totalSelected = new Set(
             inventory.flatMap((row) =>
                 row.subtitles.filter((sub) => selectedForDelete(row, sub)).map((sub) => String(sub.id))
@@ -1016,6 +1031,13 @@ function initSubtitles(flow) {
             button.disabled = busy;
             button.onclick = click;
             box.append(button);
+        };
+        const appendActionSummary = (footer, messages) => {
+            if (!messages.length) return;
+            const summary = document.createElement('p');
+            summary.className = 'subtitle-action-summary';
+            summary.textContent = messages.join(' · ');
+            footer.prepend(summary);
         };
         host.replaceChildren();
         const renderRow = (row, mode) => {
@@ -1106,13 +1128,9 @@ function initSubtitles(flow) {
             );
         });
         const issueRows = new Set(issues);
-        const issueGroups = new Map(
-            groupBatch(issues, (row) => row.groupKey).map((rows) => [rows[0].groupKey, rows])
+        const groups = new Map(
+            groupBatch(inventory, (row) => row.groupKey).map((rows) => [rows[0].groupKey, rows])
         );
-        const cardKey = (row) =>
-            issueRows.has(row) ? JSON.stringify(['work-file', String(row.node.id)]) : row.groupKey;
-        const cardRows = [...inventory.filter((row) => !issueRows.has(row)), ...issues];
-        const groups = new Map(groupBatch(cardRows, cardKey).map((rows) => [cardKey(rows[0]), rows]));
         let visible = 0;
         if (seasonView && !groups.has(seasonView.key)) seasonView = null;
         if (importDraft) {
@@ -1123,10 +1141,12 @@ function initSubtitles(flow) {
             const rows = groups.get(key);
             const box = document.createElement('section');
             box.className = 'sync-item subtitle-action-view';
+            const footer = document.createElement('div');
+            footer.className = 'subtitle-action-footer';
             const heading = document.createElement('h5');
             heading.textContent = (rows[0].parsed.query || rows[0].node.name) + ' · 选择外置字幕';
             box.append(heading);
-            addButton(box, '返回结果', 'subtitle-back', () => {
+            addButton(footer, '返回结果', 'subtitle-back', () => {
                 const origin = seasonView;
                 seasonView = null;
                 render();
@@ -1145,6 +1165,8 @@ function initSubtitles(flow) {
                 box.append(empty);
             }
             host.append(box);
+            appendActionSummary(footer, ['选择本季外置字幕']);
+            box.append(footer);
             visible++;
         } else
             for (const [key, rows] of groups) {
@@ -1152,20 +1174,23 @@ function initSubtitles(flow) {
                 if (!shown.length) continue;
                 visible += shown.length;
                 const first = rows[0];
-                const issue = issueRows.has(first);
-                const season = first.parsed.tv && !issue;
-                const title = issue
-                    ? first.node.name
-                    : (first.parsed.query || first.node.name) +
-                      (season
-                          ? first.parsed.season == null
-                              ? ' · 季号待确认'
-                              : first.parsed.season === 0
-                                ? ' · 特别篇'
-                                : ' · 第 ' + first.parsed.season + ' 季'
-                          : '');
+                const issue = rows.some((row) => issueRows.has(row));
+                const season = first.parsed.tv;
+                const title =
+                    (first.parsed.query || first.node.name) +
+                    (season
+                        ? first.parsed.season == null
+                            ? ' · 季号待确认'
+                            : first.parsed.season === 0
+                              ? ' · 特别篇'
+                              : ' · 第 ' + first.parsed.season + ' 季'
+                        : '') +
+                    (issue ? ' · 待确认' : '');
                 const box = document.createElement('section');
                 box.className = 'sync-item subtitle-card';
+                const footer = document.createElement('div');
+                footer.className = 'subtitle-action-footer';
+                const footerMessages = [];
                 const heading = document.createElement('h5');
                 heading.textContent = title;
                 heading.title = title;
@@ -1183,8 +1208,11 @@ function initSubtitles(flow) {
                     .map((row) => row.media);
                 if (issue) {
                     const reason = document.createElement('p');
-                    reason.textContent = safeDiagnostic(first.media.error || '季集或作品待确认');
+                    const pendingRows = rows.filter((row) => issueRows.has(row));
+                    const source = pendingRows.find((row) => row.media?.error) || pendingRows[0];
+                    reason.textContent = safeDiagnostic(source?.media?.error || '季集或作品待确认');
                     box.append(reason);
+                    footerMessages.push('待确认 ' + pendingRows.length + ' 集 · 需要手动识别');
                 } else if (flow.recognizing || finished || uncertain || edit.length) {
                     const work = document.createElement('p');
                     work.textContent = [
@@ -1200,18 +1228,27 @@ function initSubtitles(flow) {
                     box.append(work);
                 }
                 if (issue) {
-                    addButton(box, '修正此文件', JSON.stringify(['work', key]), () =>
-                        flow.openWork([first.media])
+                    const pendingRows = rows.filter((row) => issueRows.has(row));
+                    addButton(footer, '手动识别', JSON.stringify(['work', key]), () =>
+                        flow.openWork(pendingRows.map((row) => row.media))
                     );
-                    const peers = issueGroups.get(first.groupKey).filter((row) => inView(row, view));
-                    if (peers.length > 1 && peers[0] === first)
-                        addButton(box, '修正整组', JSON.stringify(['work-group', first.groupKey]), () =>
-                            flow.openWork(peers.map((row) => row.media))
+                    const peers = pendingRows.filter((row) => inView(row, view));
+                    if (peers.length > 1)
+                        addButton(
+                            footer,
+                            '手动识别这一组',
+                            JSON.stringify(['work-group', first.groupKey]),
+                            () => flow.openWork(peers.map((row) => row.media))
                         );
                 } else if (edit.length && !flow.recognizing)
-                    addButton(box, season ? '修正作品信息' : '修正片名', JSON.stringify(['work', key]), () =>
-                        flow.openWork(edit)
+                    addButton(
+                        footer,
+                        season ? '修正作品信息' : '修正片名',
+                        JSON.stringify(['work', key]),
+                        () => flow.openWork(edit)
                     );
+                if (edit.length && !flow.recognizing)
+                    footerMessages.push((season ? '作品信息待确认 ' : '片名待确认 ') + edit.length + ' 项');
                 const open = () => {
                     seasonView = {
                         key,
@@ -1328,6 +1365,7 @@ function initSubtitles(flow) {
                             note.textContent =
                                 '已找到字幕 · 待补齐 ' + fill.length + ' 集，点击上方「补齐字幕」';
                             box.append(note);
+                            footerMessages.push('已找到字幕 · 待补齐 ' + fill.length + ' 集');
                         }
                     } else if (actionRows.length && season) {
                         const note = document.createElement('p');
@@ -1335,12 +1373,22 @@ function initSubtitles(flow) {
                         box.append(note);
                     }
                 }
-                if (!busy && shown.some((row) => row.subtitles.some((sub) => canDelete(row, sub)))) {
+                const deletable = shown.filter((row) => row.subtitles.some((sub) => canDelete(row, sub)));
+                if (!busy && deletable.length) {
                     addButton(
-                        box,
+                        footer,
                         season ? '选择本季外置字幕' : '选择外置字幕',
                         JSON.stringify(['delete', key]),
                         open
+                    );
+                    footerMessages.push(
+                        '可选择删除外置字幕 ' +
+                            deletable.reduce(
+                                (count, row) =>
+                                    count + row.subtitles.filter((sub) => canDelete(row, sub)).length,
+                                0
+                            ) +
+                            ' 项'
                     );
                 }
                 const auditRows = rows.filter(
@@ -1355,10 +1403,14 @@ function initSubtitles(flow) {
                                 !row.embedded.metadataUnconfirmed &&
                                 !row.embedded.unsupported))
                 );
-                if (checkedScope !== null && auditRows.length)
-                    addButton(box, '复查已有字幕', JSON.stringify(['audit', key]), () =>
+                if (checkedScope !== null && auditRows.length) {
+                    addButton(footer, '复查已有字幕', JSON.stringify(['audit', key]), () =>
                         recheckWork(auditRows)
                     );
+                    footerMessages.push('已有字幕待复查 ' + auditRows.length + ' 项');
+                }
+                appendActionSummary(footer, footerMessages);
+                if (footer.childElementCount) box.append(footer);
                 host.append(box);
             }
         ui.get('subtitleEmpty').hidden = visible > 0 || !ui.get('mediaRows').hidden;
