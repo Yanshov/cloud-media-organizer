@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v1.0
 // @namespace    local.cloud-media-organizer
-// @version      1.0.1
+// @version      1.0.2
 // @description  面向光鸭网盘的影视整理与字幕补齐工具。
 // @match        https://www.guangyapan.com/*
 // @match        https://guangyapan.com/*
@@ -186,7 +186,7 @@ SOFTWARE.
             (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))
     )
         return;
-    const VERSION = '1.0.1';
+    const VERSION = '1.0.2';
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
     const capture = { token: '' };
@@ -601,7 +601,6 @@ SOFTWARE.
         }
     }
     const workspaceIcons = {
-        film: '<rect width="18" height="18" x="3" y="3" rx="2" /><path d="M7 3v18" /><path d="M3 7.5h4" /><path d="M3 12h18" /><path d="M3 16.5h4" /><path d="M17 3v18" /><path d="M17 7.5h4" /><path d="M17 16.5h4" />',
         settings:
             '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" /><circle cx="12" cy="12" r="3" />',
         upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" x2="12" y1="3" y2="15" />',
@@ -650,18 +649,6 @@ SOFTWARE.
             const node = pane.querySelector(selector);
             if (node) parent.append(node);
         };
-        const intro = create('div', 'tool-intro');
-        take(intro, 'h3');
-        const description = pane.querySelector(':scope > p:not([id]), #scope');
-        if (description) {
-            description.id || (description.id = 'subtitleInstructions');
-            pane.setAttribute('aria-describedby', description.id);
-            intro.append(description);
-        }
-        const title = intro.querySelector('h3'),
-            source = title.textContent.replace(/\s+(?:字幕|影视整理).*$/, '').trim();
-        title.textContent = '影视整理';
-        title.append(create('span', 'tool-context', source));
         const commands = create('div', 'tool-commandbar');
         const firstAction = pane.querySelector(':scope > .panel-actions');
         const merged = pane.querySelector('#previewMedia');
@@ -688,7 +675,7 @@ SOFTWARE.
         const statusIds = ['subtitleScope', 'subtitleProgress', 'subtitleMeter'];
         for (const name of statusIds) take(status, '#' + name);
         const heading = create('div', 'tool-list-heading');
-        const headingTitle = create('h4', '', '字幕检查结果');
+        const headingTitle = create('h3', '', '字幕检查结果');
         heading.append(headingTitle);
         headingTitle.id = 'subtitleResultsTitle';
         if (merged) headingTitle.textContent = '作品与字幕';
@@ -718,20 +705,19 @@ SOFTWARE.
         footer.append(status, utilities);
         const surface = create('div', 'tool-surface');
         layout.append(main);
-        surface.append(intro, commands, layout, footer);
+        surface.append(commands, layout, footer);
         pane.append(surface);
     }
     let toolWorkspace = null;
-    function makePanel(title, html) {
-        const id = 'subtitle';
+    function makePanel(html) {
         if (!toolWorkspace) {
             const host = document.createElement('div');
             host.id = 'cloud-media-organizer-tools';
             host.style.cssText = 'position:fixed;right:24px;bottom:24px;z-index:2147483647';
             for (const event of ['pointerdown', 'mousedown', 'click'])
                 host.addEventListener(event, (event2) => event2.stopPropagation());
-            const root2 = host.attachShadow({ mode: 'closed' });
-            root2.innerHTML = `<style>
+            const root = host.attachShadow({ mode: 'closed' });
+            root.innerHTML = `<style>
 *{box-sizing:border-box}
 :host{font:16px/1.65 "Microsoft YaHei UI","Microsoft YaHei","Segoe UI",sans-serif;color:var(--text);color-scheme:var(--scheme)}
 ::selection{background:var(--accent);color:var(--button-text)}
@@ -745,26 +731,18 @@ textarea{height:180px;resize:vertical;font:14px/1.7 Consolas,"Microsoft YaHei",m
 label:has(>input[type=checkbox]){display:flex;align-items:flex-start;gap:8px}input[type=checkbox]{width:18px!important;height:18px;flex:0 0 auto;min-height:0;padding:0;margin:4px 0 0;accent-color:var(--accent)}
 summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-bottom:12px}
 .workspace-overlay{position:fixed;inset:0;pointer-events:none}.box{position:fixed;display:flex;flex-direction:column;pointer-events:auto;width:1280px;height:800px;overflow:hidden;border:1px solid var(--border);border-radius:12px;background:var(--panel);box-shadow:0 24px 80px #0004;container-type:size;outline:none}
-.workspace-header{display:flex;align-items:center;justify-content:space-between;gap:12px;height:52px;flex-shrink:0;padding:0 18px;cursor:grab;touch-action:none;user-select:none;background:var(--surface);border-bottom:1px solid var(--border)}
-.workspace-header h2{display:flex;align-items:center;gap:9px;margin:0;font-size:14px;font-weight:650;white-space:nowrap}.workspace-brand,.workspace-location{display:flex;align-items:center;gap:12px;min-width:0}.workspace-location{border-left:1px solid var(--border);padding-left:12px;font-size:13px;color:var(--muted)}.workspace-location:empty{display:none}.workspace-brand-mark{display:grid;place-items:center;width:26px;height:26px;border-radius:7px;background:var(--button);color:var(--button-text)}.workspace-brand-mark svg{width:16px;height:16px}
-.workspace-header p{display:none}.workspace-header.dragging{cursor:grabbing}.workspace-header.pinned{cursor:default}.workspace-window-actions{display:flex;align-items:center;gap:12px}
+.workspace-header,.workspace-body{--surface-pad:clamp(16px,2cqw,32px)}
+.workspace-header{display:flex;align-items:center;justify-content:space-between;gap:12px;height:52px;flex-shrink:0;padding:0 var(--surface-pad);cursor:grab;touch-action:none;user-select:none;background:var(--surface);border-bottom:1px solid var(--border)}
+.workspace-header h2{margin:0;font-size:20px;font-weight:650;white-space:nowrap}
+.workspace-header.dragging{cursor:grabbing}.workspace-header.pinned{cursor:default}.workspace-window-actions{display:flex;align-items:center;gap:8px}
+#settingsWorkspace{display:flex;align-items:center;gap:6px;padding:5px 10px;font-size:15px;white-space:nowrap}
+#settingsWorkspace svg{width:16px;height:16px;flex:none}
+#settingsWorkspace[aria-expanded=true]{background:var(--tint)}
 #pinWorkspace,#closeWorkspace{display:grid;place-items:center;width:32px;height:32px;padding:0;background:transparent;border-color:transparent;color:var(--muted)}#pinWorkspace svg,#closeWorkspace svg{width:16px;height:16px}#pinWorkspace[aria-pressed=true]{color:var(--accent);background:var(--tint)}
-.workspace-frame{display:flex;flex:1;min-height:0;min-width:0}
-.workspace-navigation{width:clamp(150px,16cqw,232px);flex:none;display:flex;flex-direction:column;gap:20px;padding:18px 12px;background:var(--panel);border-right:1px solid var(--border)}
-.nav-brand{display:flex;align-items:center;gap:10px;font-size:18px;font-weight:650;padding:4px 8px}
-.workspace-tabs{display:grid;gap:3px}
-.workspace-tabs button,#settingsWorkspace{display:flex;align-items:center;gap:10px;width:100%;min-height:38px;padding:7px 10px;border:0;background:transparent;color:var(--text);text-align:left;font-size:16px;border-radius:6px}
-.workspace-tabs svg,#settingsWorkspace svg{width:18px;height:18px;flex:none}
-.workspace-tabs button[aria-selected=true],#settingsWorkspace[aria-pressed=true]{background:var(--tint);font-weight:650}
-.nav-footer{margin-top:auto;border-top:1px solid var(--border);padding-top:10px}
-.nav-footer small{display:block;margin:8px 10px 0;color:var(--muted);font-size:13px}
-.workspace-body{flex:1;min-width:0;min-height:0;display:flex;--surface-pad:clamp(16px,2cqw,32px)}
-.tool-pane{width:100%;min-width:0;min-height:0}
-.tool-pane[role=tabpanel],#workspaceSettings{display:grid;grid-template-columns:minmax(0,1fr)}
+.workspace-body{flex:1;min-width:0;min-height:0;display:flex}
+.tool-pane{display:grid;grid-template-columns:minmax(0,1fr);width:100%;min-width:0;min-height:0}
 .tool-surface{display:flex;flex-direction:column;min-width:0;min-height:0;overflow:auto;scrollbar-width:none;overscroll-behavior:contain;padding:25px var(--surface-pad) 0;background:var(--surface)}
-.tool-intro,.tool-commandbar,.tool-statusbar{flex-shrink:0}
-.tool-intro{margin:0 0 16px}.tool-intro h3{display:flex;align-items:baseline;gap:12px;font-size:28px;font-weight:650;margin:0;line-height:1.25}.tool-intro p{display:none}
-.tool-context{font-size:15px;color:var(--muted);font-weight:400}
+.tool-commandbar,.tool-statusbar{flex-shrink:0}
 .panel-actions,.tool-commandbar{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
 .panel-actions{margin:12px 0}.tool-commandbar{margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--border)}
 .tool-commandbar>.panel-actions{margin:0}
@@ -777,7 +755,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 .panel-actions:empty{display:none}
 .tool-layout{flex:1;min-width:0;min-height:auto}.tool-main{min-width:0}.tool-list-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:34px;margin-bottom:12px}
 .tool-list-heading select{width:auto;max-width:210px;margin:0;font-size:15px;padding:7px 10px}
-.tool-list-heading h4{font-size:19px;font-weight:650}.editor-actions{display:flex;gap:8px}.editor-actions button{background:var(--surface);color:var(--text);border-color:var(--border);padding:4px 9px;font-size:13px;min-height:30px}
+.tool-list-heading h3{margin:0;font-size:19px;font-weight:650}.editor-actions{display:flex;gap:8px}.editor-actions button{background:var(--surface);color:var(--text);border-color:var(--border);padding:4px 9px;font-size:13px;min-height:30px}
 
 .sync-item{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;margin:12px 0;min-width:0}
 :is(#subtitlePane,#mediaPane) :is(.tool-layout,.tool-main){display:flex;min-height:0}:is(#subtitlePane,#mediaPane) .tool-main{flex:1;flex-direction:column}:is(#subtitlePane,#mediaPane) .tool-list-heading{flex:none}#subtitleFilters :focus-visible{outline-offset:-2px}
@@ -853,8 +831,6 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 #subtitlePane .tool-statusbar:has(#subtitleDiagnostics[open]){max-height:58%}#subtitleDiagnostics .panel-actions{margin:4px 0 8px}
 #subtitleLog{display:block;width:100%;height:clamp(40px,calc(37cqh - 163px),150px);resize:none;overflow:auto;scrollbar-width:none;overscroll-behavior:contain}
 @container(max-height:660px){
-    #subtitlePane .tool-intro p{display:none}
-    #subtitlePane .tool-intro h3{font-size:20px}
     #subtitlePane .tool-commandbar{margin-block:8px}
     #subtitlePane .tool-list-heading{margin-bottom:6px}
     #subtitlePane #subtitleSummary{padding:6px 10px;margin-bottom:8px}
@@ -871,6 +847,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 #workspaceSettings{grid-template-rows:minmax(0,1fr);overflow:auto;scrollbar-width:none;overscroll-behavior:contain}
 .settings-main{display:flex;flex-direction:column;min-width:0;min-height:0;padding:25px var(--surface-pad);background:var(--surface)}
 .settings-heading{display:flex;flex:none;align-items:center;justify-content:space-between;gap:14px;margin-bottom:18px;padding-bottom:18px;border-bottom:1px solid var(--border)}.settings-heading h3{margin:0;font-size:clamp(32px,3.6cqw,52px);line-height:1.2;letter-spacing:-.04em}
+.settings-title{display:flex;align-items:baseline;gap:10px}.settings-title small{color:var(--muted);font-size:13px}
 .settings-appearance{display:flex;align-items:center;gap:12px;margin-left:auto}.settings-appearance label{display:flex;align-items:center;gap:6px;margin:0;font-size:15px;white-space:nowrap}.settings-appearance select{width:auto}#workspaceSettings .settings-appearance select{margin:0}
 .settings-column{min-width:0}.settings-column:empty{display:none}
 #settingsBasics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));flex:none;gap:16px;margin-bottom:16px}#settingsBasics:empty{display:none}
@@ -905,7 +882,6 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 #settingsModels .sync-item:has(#mediaAISettings)>section{display:grid;grid-template-columns:minmax(0,.95fr) minmax(0,1.05fr);grid-auto-rows:max-content;column-gap:10px;align-content:start}#mediaAISettings>*{grid-column:1/-1}#mediaAISettings>label:has(#mediaAIProvider,#mediaAIModelSelect){grid-column:auto;min-width:0}#mediaAIState:empty{display:none}
 #toggle{display:grid;place-items:center;width:50px;height:50px;padding:0;border-radius:12px;background:var(--button);color:var(--button-text);box-shadow:0 5px 20px #0003}#toggle:hover:not(:disabled){background:var(--button-hover)}#toggle svg{width:24px;height:24px;pointer-events:none}#toggle[aria-expanded=true]{visibility:hidden}
 @container(max-width:1050px){
-    .workspace-navigation{padding:12px 8px}
     .tool-surface{padding-top:14px}.settings-main{padding-block:14px}
     .settings-heading{padding-bottom:10px;margin-bottom:10px}.settings-heading h3{font-size:28px}
     #settingsModels{gap:10px}#settingsModels .sync-item{padding:10px}#settingsModels .sync-item>section{gap:2px}
@@ -913,7 +889,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 }
 @container(max-height:660px){#workspaceSettings .sync-item label{margin:2px 0}#workspaceSettings .sync-item input:not([type=checkbox]),#workspaceSettings .sync-item select{min-height:34px;padding-block:4px}#settingsBasics{margin-bottom:10px}}
 @container(max-width:790px){
-    .workspace-body{--surface-pad:12px}.workspace-navigation{width:134px}
+    .workspace-header,.workspace-body{--surface-pad:12px}
     .settings-heading,.settings-appearance{flex-wrap:wrap}
     #settingsBasics{grid-template-columns:minmax(0,1fr);gap:10px;margin-bottom:10px}
     #settingsModels{grid-template-columns:minmax(0,1fr);grid-template-rows:auto;align-content:start;flex-basis:auto;flex-grow:0}
@@ -931,56 +907,52 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         display:grid;grid-template-columns:5em minmax(0,1fr);align-items:center;gap:6px
     }
 }
-        </style><button id="toggle" type="button" title="打开云盘工具" aria-label="打开云盘工具" aria-haspopup="dialog" aria-expanded="false" aria-controls="toolDialog"></button>
+        </style><button id="toggle" type="button" title="打开影视整理" aria-label="打开影视整理" aria-haspopup="dialog" aria-expanded="false" aria-controls="toolDialog"></button>
         <div class="workspace-overlay" hidden><div class="box" id="toolDialog" role="dialog" aria-modal="false" aria-labelledby="workspaceTitle" tabindex="-1">
-        <header class="workspace-header"><div class="workspace-brand"><h2 id="workspaceTitle"><span class="workspace-brand-mark" aria-hidden="true"></span>云盘工具</h2><span class="workspace-location" id="workspaceLocation"></span><p id="windowHint">拖动标题栏移动 · 可同时操作网页</p></div><div class="workspace-window-actions"><button id="settingsWorkspace" type="button">设置</button><button id="pinWorkspace" type="button" aria-pressed="false" title="锁定窗口位置">固定位置</button><button id="closeWorkspace" type="button" aria-label="关闭面板" title="关闭"></button></div></header>
-        <div class="workspace-toolbar"><div class="workspace-tabs" role="tablist" aria-label="功能分类"><button id="subtitleTab" type="button" role="tab" aria-selected="false" aria-controls="subtitlePane" tabindex="-1" disabled>影视整理</button></div>
-        <label class="theme-row">窗口尺寸<select id="workspaceSize" aria-label="窗口尺寸"><option value="960x600">960 × 600</option><option value="1280x800" selected>1280 × 800（默认）</option><option value="1440x900">1440 × 900</option><option value="1600x1000">1600 × 1000</option></select></label>
-        <label class="theme-row">外观<select id="theme"><option value="auto">跟随页面</option><option value="light">浅色</option><option value="dark">深色</option></select></label></div>
-        <div class="workspace-body"><section id="workspaceSettings" class="tool-pane" hidden><div class="settings-main"><div class="settings-heading"><h3>设置</h3><div id="settingsAppearance" class="settings-appearance"></div><button id="backToTools">返回工具</button></div><div class="settings-column" id="settingsBasics"></div><div class="settings-column" id="settingsModels"></div></div></section></div></div></div>`;
-            const overlay = root2.querySelector('.workspace-overlay'),
-                dialog = root2.querySelector('.box'),
-                toggle = root2.querySelector('#toggle');
-            const frame = document.createElement('div');
-            frame.className = 'workspace-frame';
-            const navigation = root2.querySelector('.workspace-toolbar');
-            navigation.className = 'workspace-navigation';
-            const appearance = root2.querySelector('#settingsAppearance');
-            const navBrand = document.createElement('div');
-            navBrand.className = 'nav-brand';
-            navBrand.append(
-                root2.querySelector('.workspace-brand-mark'),
-                document.createTextNode('云盘工具')
-            );
-            root2.querySelector('#workspaceTitle').textContent = '工作区';
-            navigation.prepend(navBrand);
-            for (const label of [...navigation.querySelectorAll('.theme-row')]) appearance.append(label);
-            const navFooter = document.createElement('div');
-            navFooter.className = 'nav-footer';
-            navFooter.append(root2.querySelector('#settingsWorkspace'));
-            const version = document.createElement('small');
-            version.textContent = typeof VERSION === 'string' ? 'v' + VERSION : '';
-            navFooter.append(version);
-            navigation.append(navFooter);
+        <header class="workspace-header">
+            <h2 id="workspaceTitle">影视整理</h2>
+            <div class="workspace-window-actions">
+                <button id="settingsWorkspace" type="button" aria-controls="workspaceSettings" aria-expanded="false">设置</button>
+                <button id="pinWorkspace" type="button" aria-pressed="false" title="锁定窗口位置">固定位置</button>
+                <button id="closeWorkspace" type="button" aria-label="关闭面板" title="关闭"></button>
+            </div>
+        </header>
+        <div class="workspace-body">
+            <section id="subtitlePane" class="tool-pane" aria-labelledby="workspaceTitle" tabindex="0"></section>
+            <section id="workspaceSettings" class="tool-pane" aria-labelledby="settingsTitle" hidden>
+                <div class="settings-main">
+                    <div class="settings-heading">
+                        <div class="settings-title"><h3 id="settingsTitle" tabindex="-1">设置</h3><small>v${VERSION}</small></div>
+                        <div class="settings-appearance">
+                            <label>窗口尺寸<select id="workspaceSize"><option value="960x600">960 × 600</option><option value="1280x800" selected>1280 × 800（默认）</option><option value="1440x900">1440 × 900</option><option value="1600x1000">1600 × 1000</option></select></label>
+                            <label>外观<select id="theme"><option value="auto">跟随页面</option><option value="light">浅色</option><option value="dark">深色</option></select></label>
+                        </div>
+                        <button id="backToTools" type="button">返回影视整理</button>
+                    </div>
+                    <div class="settings-column" id="settingsBasics"></div>
+                    <div class="settings-column" id="settingsModels"></div>
+                </div>
+            </section>
+        </div></div></div>`;
+            const overlay = root.querySelector('.workspace-overlay'),
+                dialog = root.querySelector('.box'),
+                toggle = root.querySelector('#toggle'),
+                pane = root.querySelector('#subtitlePane'),
+                settings = root.querySelector('#workspaceSettings'),
+                settingsButton = root.querySelector('#settingsWorkspace'),
+                backButton = root.querySelector('#backToTools');
             const icons = {
-                subtitleTab: 'film',
                 settingsWorkspace: 'settings',
                 closeWorkspace: 'x',
                 backToTools: 'arrow-left',
             };
             for (const [name, glyph] of Object.entries(icons))
-                root2
-                    .querySelector('#' + name)
-                    .prepend(workspaceIcon(glyph, name === 'backToTools' ? 'command-icon' : ''));
-            root2.querySelector('.workspace-brand-mark').append(workspaceIcon('cloud'));
+                root.querySelector('#' + name).prepend(
+                    workspaceIcon(glyph, name === 'backToTools' ? 'command-icon' : '')
+                );
             toggle.append(workspaceIcon('cloud'));
-            const location2 = root2.querySelector('#workspaceLocation');
-            root2.querySelector('.workspace-tabs').setAttribute('aria-orientation', 'vertical');
-            frame.append(navigation, root2.querySelector('.workspace-body'));
-            dialog.append(frame);
-            const tabs2 = /* @__PURE__ */ new Map();
-            let active = null,
-                returnFocus = null;
+            let returnFocus = null,
+                onActivate = null;
             const layoutKey = 'media-workspace-layout';
             const saved = GM_getValue(layoutKey, GM_getValue('cross-drive-window-layout', {}));
             const sizes = /* @__PURE__ */ new Map([
@@ -996,8 +968,8 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     : null;
             let pinned = saved?.pinned === true,
                 drag = null;
-            const header = root2.querySelector('.workspace-header'),
-                pin = root2.querySelector('#pinWorkspace');
+            const header = root.querySelector('.workspace-header'),
+                pin = root.querySelector('#pinWorkspace');
             const place = (point) => {
                 const width = page.innerWidth,
                     height = page.innerHeight;
@@ -1040,7 +1012,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             const saveLayout = () => {
                 GM_setValue(layoutKey, { ...position, pinned, size: windowSize });
             };
-            const sizeSelect = root2.querySelector('#workspaceSize');
+            const sizeSelect = root.querySelector('#workspaceSize');
             sizeSelect.value = windowSize;
             sizeSelect.onchange = () => {
                 if (!sizes.has(sizeSelect.value)) {
@@ -1058,9 +1030,6 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 pin.setAttribute('aria-pressed', String(pinned));
                 pin.title = pinned ? '解除后可以拖动窗口' : '锁定窗口位置';
                 header.classList.toggle('pinned', pinned);
-                root2.querySelector('#windowHint').textContent = pinned
-                    ? '位置已固定 · 可同时操作网页'
-                    : '拖动标题栏移动 · 可同时操作网页';
             };
             pin.onclick = () => {
                 pinned = !pinned;
@@ -1103,20 +1072,11 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 if (!overlay.hidden) place(position);
             });
             renderPin();
-            const activate2 = (id2, focus = false) => {
-                if (!tabs2.has(id2)) return;
-                active = id2;
-                location2.textContent = tabs2.get(id2).button.textContent;
-                root2.querySelector('#workspaceSettings').hidden = true;
-                root2.querySelector('#settingsWorkspace').setAttribute('aria-pressed', 'false');
-                for (const [name, entry2] of tabs2) {
-                    const selected = name === id2;
-                    entry2.pane.hidden = !selected;
-                    entry2.button.setAttribute('aria-selected', String(selected));
-                    entry2.button.tabIndex = selected ? 0 : -1;
-                }
-                tabs2.get(id2).onActivate?.();
-                if (focus) tabs2.get(id2).button.focus();
+            const showTools = () => {
+                settings.hidden = true;
+                pane.hidden = false;
+                settingsButton.setAttribute('aria-expanded', 'false');
+                onActivate?.();
             };
             const close = () => {
                 overlay.hidden = true;
@@ -1130,155 +1090,107 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     return;
                 }
                 returnFocus = document.activeElement;
-                activate2(active);
                 overlay.hidden = false;
                 place(position);
+                showTools();
                 toggle.setAttribute('aria-expanded', 'true');
                 dialog.focus();
             };
-            root2.querySelector('#closeWorkspace').onclick = close;
-            root2.addEventListener('keydown', (event) => {
+            root.querySelector('#closeWorkspace').onclick = close;
+            root.addEventListener('keydown', (event) => {
                 if (!overlay.hidden && event.key === 'Escape') {
                     event.preventDefault();
                     event.stopPropagation();
                     close();
                 }
             });
-            for (const button2 of root2.querySelectorAll('[role=tab]'))
-                button2.onkeydown = (event) => {
-                    if (
-                        !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(
-                            event.key
-                        )
-                    )
-                        return;
-                    event.preventDefault();
-                    const available = [...root2.querySelectorAll('[role=tab]')]
-                            .map((button3) => button3.id.slice(0, -3))
-                            .filter((id2) => tabs2.has(id2)),
-                        index = available.indexOf(active);
-                    const next =
-                        event.key === 'Home'
-                            ? 0
-                            : event.key === 'End'
-                              ? available.length - 1
-                              : (index +
-                                    (['ArrowRight', 'ArrowDown'].includes(event.key) ? 1 : -1) +
-                                    available.length) %
-                                available.length;
-                    activate2(available[next], true);
-                };
             document.body.appendChild(host);
-            bindPanelTheme(host, root2);
+            bindPanelTheme(host, root);
             const openSettings = (name) => {
-                location2.textContent = '设置';
-                for (const entry2 of tabs2.values()) {
-                    entry2.pane.hidden = true;
-                    entry2.button.setAttribute('aria-selected', 'false');
-                }
-                root2.querySelector('#workspaceSettings').hidden = false;
-                root2.querySelector('#settingsWorkspace').setAttribute('aria-pressed', 'true');
-                const detail = name && root2.querySelector('#' + name);
+                pane.hidden = true;
+                settings.hidden = false;
+                settingsButton.setAttribute('aria-expanded', 'true');
+                root.querySelector('#settingsTitle').focus({ preventScroll: true });
+                const detail = name && root.querySelector('#' + name);
                 if (detail) {
                     if (detail.tagName === 'DETAILS') detail.open = true;
                     detail.scrollIntoView?.({ block: 'nearest' });
                 }
             };
-            root2.querySelector('#settingsWorkspace').onclick = () => openSettings();
-            root2.querySelector('#backToTools').onclick = () => activate2(active);
-            toolWorkspace = { root: root2, tabs: tabs2, activate: activate2, openSettings, owner: null };
-        }
-        const { root, tabs, activate } = toolWorkspace;
-        if (tabs.has(id)) return tabs.get(id).ui;
-        const pane = document.createElement('section');
-        pane.id = 'subtitlePane';
-        pane.className = 'tool-pane';
-        pane.setAttribute('role', 'tabpanel');
-        pane.setAttribute('aria-labelledby', 'subtitleTab');
-        pane.tabIndex = 0;
-        pane.hidden = true;
-        pane.innerHTML = '<h3></h3>' + html;
-        pane.querySelector('h3').textContent = title;
-        const log = pane.querySelector('#log');
-        if (log) {
-            const detail = document.createElement('details'),
-                summary = document.createElement('summary');
-            const copy = document.createElement('button');
-            summary.textContent = '详细日志';
-            copy.type = 'button';
-            copy.textContent = '复制日志';
-            copy.onclick = async () => {
-                const output = [...log.children].map((line) => line.textContent).join('\n');
-                try {
-                    await navigator.clipboard.writeText(output);
-                    copy.textContent = '已复制';
-                } catch {
-                    copy.textContent = '复制失败';
-                }
+            settingsButton.onclick = () => {
+                if (settings.hidden) openSettings();
+                else showTools();
             };
-            log.before(detail);
-            detail.append(summary, copy, log);
+            backButton.onclick = () => {
+                showTools();
+                settingsButton.focus();
+            };
+            pane.innerHTML = html;
+            const log = pane.querySelector('#log');
+            if (log) {
+                const detail = document.createElement('details'),
+                    summary = document.createElement('summary');
+                const copy = document.createElement('button');
+                summary.textContent = '详细日志';
+                copy.type = 'button';
+                copy.textContent = '复制日志';
+                copy.onclick = async () => {
+                    const output = [...log.children].map((line) => line.textContent).join('\n');
+                    try {
+                        await navigator.clipboard.writeText(output);
+                        copy.textContent = '已复制';
+                    } catch {
+                        copy.textContent = '复制失败';
+                    }
+                };
+                log.before(detail);
+                detail.append(summary, copy, log);
+            }
+            arrangeToolPane(pane);
+            const elements = /* @__PURE__ */ new Map();
+            const settingsSections = [];
+            const ui = {
+                get: (name) => {
+                    if (!elements.has(name))
+                        elements.set(
+                            name,
+                            pane.querySelector('#' + name) ||
+                                settingsSections
+                                    .map((section) => section.querySelector('#' + name))
+                                    .find(Boolean) ||
+                                (['toggle', 'theme'].includes(name) ? root.querySelector('#' + name) : null)
+                        );
+                    return elements.get(name);
+                },
+                onActivate: (callback) => {
+                    onActivate = callback;
+                },
+                moveSettings: (ids, headingTitle, destination = '#settingsBasics') => {
+                    const section = document.createElement('fieldset');
+                    section.className = 'sync-item';
+                    section.style.minWidth = '0';
+                    const heading = document.createElement('h3');
+                    heading.textContent = headingTitle;
+                    const glyph = {
+                        mediaSettings: 'key-round',
+                        mediaAISettings: 'cpu',
+                        subtitleSettings: 'languages',
+                    }[ids[0]];
+                    if (glyph) heading.prepend(workspaceIcon(glyph));
+                    section.appendChild(heading);
+                    for (const name of ids) section.appendChild(ui.get(name));
+                    settingsSections.push(section);
+                    root.querySelector(destination).appendChild(section);
+                },
+                openSettings,
+                busy: (value) => {
+                    settingsButton.disabled = value;
+                    backButton.disabled = value;
+                },
+            };
+            toolWorkspace = ui;
         }
-        arrangeToolPane(pane);
-        root.querySelector('.workspace-body').appendChild(pane);
-        const button = root.querySelector('#subtitleTab'),
-            elements = /* @__PURE__ */ new Map();
-        button.disabled = false;
-        button.removeAttribute('title');
-        button.onclick = () => activate(id);
-        const entry = { pane, button, onActivate: null, settings: [] };
-        const ui = {
-            get: (name) => {
-                if (!elements.has(name))
-                    elements.set(
-                        name,
-                        pane.querySelector('#' + name) ||
-                            entry.settings
-                                .map((section) => section.querySelector('#' + name))
-                                .find(Boolean) ||
-                            (['toggle', 'theme'].includes(name) ? root.querySelector('#' + name) : null)
-                    );
-                return elements.get(name);
-            },
-            onActivate: (callback) => {
-                entry.onActivate = callback;
-            },
-            moveSettings: (ids, headingTitle = title, destination = '#settingsBasics') => {
-                const section = document.createElement('fieldset');
-                section.className = 'sync-item';
-                section.style.minWidth = '0';
-                const heading = document.createElement('h3');
-                heading.textContent = headingTitle;
-                const glyph = {
-                    mediaSettings: 'key-round',
-                    mediaAISettings: 'cpu',
-                    subtitleSettings: 'languages',
-                }[ids[0]];
-                if (glyph) heading.prepend(workspaceIcon(glyph));
-                section.appendChild(heading);
-                for (const name of ids) section.appendChild(ui.get(name));
-                entry.settings.push(section);
-                root.querySelector(destination).appendChild(section);
-            },
-            openSettings: (name) => toolWorkspace.openSettings(name),
-            busy: (value) => {
-                if (value) {
-                    if (toolWorkspace.owner && toolWorkspace.owner !== id)
-                        throw new Error('另一个任务正在运行，请等待完成或先停止');
-                    toolWorkspace.owner = id;
-                } else if (toolWorkspace.owner === id) toolWorkspace.owner = null;
-                for (const [name, tab] of tabs) {
-                    const blocked = !!toolWorkspace.owner && name !== toolWorkspace.owner;
-                    tab.button.disabled = blocked;
-                    for (const section of tab.settings) section.disabled = blocked;
-                }
-                root.querySelector('#settingsWorkspace').disabled = !!toolWorkspace.owner;
-                root.querySelector('#backToTools').disabled = !!toolWorkspace.owner;
-            },
-        };
-        tabs.set(id, entry);
-        if (tabs.size === 1) activate(id);
-        return ui;
+        return toolWorkspace;
     }
     function createPanelTask(ui, updateControls) {
         let active = false;
@@ -11231,7 +11143,6 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
     }
     function initSubtitles(flow) {
         const ui = makePanel(
-            '光鸭 影视整理',
             mediaOrganizerMarkup() +
                 `
             <div class="panel-actions"><button id="readSubtitles">查找字幕</button><button id="fillSubtitles" disabled>补齐字幕</button><button id="reviewSubtitleDeletes" disabled>删除字幕</button><button id="importSubtitles" type="button">导入字幕</button><button id="stopSubtitles" hidden>停止</button></div>

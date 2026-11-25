@@ -507,7 +507,6 @@ function initMergedMedia() {
 /** Initializes subtitle controls within the shared media organizer. */
 function initSubtitles(flow) {
     const ui = makePanel(
-        '光鸭 影视整理',
         mediaOrganizerMarkup() +
             `
             <div class="panel-actions"><button id="readSubtitles">查找字幕</button><button id="fillSubtitles" disabled>补齐字幕</button><button id="reviewSubtitleDeletes" disabled>删除字幕</button><button id="importSubtitles" type="button">导入字幕</button><button id="stopSubtitles" hidden>停止</button></div>
