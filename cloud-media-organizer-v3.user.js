@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v3.0（重构版）
 // @namespace    local.cloud-media-organizer
-// @version      3.0.53
+// @version      3.0.54
 // @description  面向百度网盘、123 云盘和光鸭网盘的浏览器脚本，支持跨盘 JSON 清单、影视整理与字幕补齐。
 // @match        https://pan.baidu.com/*
 // @match        https://yun.baidu.com/*
@@ -198,7 +198,7 @@ SOFTWARE.
             (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))
     )
         return;
-    const VERSION = '3.0.53';
+    const VERSION = '3.0.54';
     let jsonTaskStopped = false;
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
@@ -4582,8 +4582,9 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
     const MEDIA_RESOLUTION_EXACT = new RegExp('^(?:' + MEDIA_RESOLUTION_TOKEN + ')$', 'i');
     const MEDIA_RESOLUTION_BOUNDARY = '(?<![a-z0-9])(?:' + MEDIA_RESOLUTION_TOKEN + ')(?![a-z0-9])';
     const MEDIA_RESOLUTION_MATCH = new RegExp(MEDIA_RESOLUTION_BOUNDARY, 'gi');
+    const MEDIA_ORDINAL_SEASON = /\b(\d{1,2})(?:st|nd|rd|th)[ ._-]+Season\b/i;
     const MEDIA_RELEASE_START = new RegExp(
-        String.raw`\bS\d{1,2}E\d|\bSeason[ ._-]*\d{1,2}|\bSE?\d{1,2}\b|\b\d{1,2}x\d|\b(?:EP?|Episode)[ ._-]*\d{1,3}(?=$|[. _-])|第\s*[0-9一二三四五六七八九十零〇两]+\s*[季集话]|${MEDIA_RESOLUTION_BOUNDARY}|\b(?:BluRay|WEB[ ._-]?DL|WEBRip|REMUX|HDR|DV|x26[45]|h[ ._-]?26[45]|HEVC|AVC|DTS|AAC|AC3)\b`,
+        String.raw`\bS\d{1,2}E\d|\bSeason[ ._-]*\d{1,2}|${MEDIA_ORDINAL_SEASON.source}|\bSE?\d{1,2}\b|\b\d{1,2}x\d|\b(?:EP?|Episode)[ ._-]*\d{1,3}(?=$|[. _-])|第\s*[0-9一二三四五六七八九十零〇两]+\s*[季集话]|${MEDIA_RESOLUTION_BOUNDARY}|\b(?:BluRay|WEB[ ._-]?DL|WEBRip|REMUX|HDR|DV|x26[45]|h[ ._-]?26[45]|HEVC|AVC|DTS|AAC|AC3)\b`,
         'i'
     );
     function mediaResolution(name) {
@@ -4625,6 +4626,9 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                     text.matchAll(/(?:\bSeason[ ._-]*|(?:^|[^a-z0-9])SE?)(\d{1,2})(?=E\d|[^0-9]|$)/gi),
                     (match) => Number(match[1])
                 ),
+                ...Array.from(text.matchAll(new RegExp(MEDIA_ORDINAL_SEASON.source, 'gi')), (match) =>
+                    Number(match[1])
+                ),
                 ...Array.from(text.matchAll(/第\s*([0-9一二两三四五六七八九十零〇]+)\s*季/g), (match) =>
                     chineseNumber(match[1])
                 ),
@@ -4634,6 +4638,19 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
     function mediaSeasonNumber(value) {
         const seasons = mediaSeasonNumbers(value);
         return seasons.size === 1 ? seasons.values().next().value : null;
+    }
+    function mediaSeriesSearchTitle(value) {
+        const title = String(value || '')
+            .normalize('NFKC')
+            .trim();
+        const marker = new RegExp(
+            String.raw`(?:[ ._:-]+(?:S\d{1,2}|\bSeason[ ._-]*\d{1,2}|${MEDIA_ORDINAL_SEASON.source})|第\s*[0-9一二两三四五六七八九十零〇]+\s*季)$`,
+            'i'
+        ).exec(title);
+        if (!marker) return null;
+        const query = title.slice(0, marker.index).replace(/[\s:._–—-]+$/, '');
+        const season = mediaSeasonNumber(marker[0]);
+        return query && season != null ? { query, season } : null;
     }
     function mediaSeasonPackageRange(folders = []) {
         for (const folder of folders) {
@@ -4740,12 +4757,16 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             simple =
                 stem.match(/(?:^|[. _-])(?:EP?|Episode)[. _-]*(\d{1,3})(?:$|[. _-])/i) ||
                 stem.match(/^(\d{1,3})$/);
-        const dashEpisode = stem.match(/\s+-\s+(\d{1,3})(?:v\d+)?\s*((?:\[[^\]]+\]\s*)*)$/i);
+        const dashEpisode = stem.match(
+            /\s+-\s+(\d{1,3})(?:v\d+)?\s*(?:\((?:BDRemux|BluRay|BDRip|WEB[ ._-]?(?:DL|Rip)|REMUX|HDTV)\b[^()]*\)\s*)?((?:\[[^\]]+\]\s*)*)$/i
+        );
         const numberedEpisode =
             dashEpisode &&
             (!dashEpisode[2].trim() ||
-                [...dashEpisode[2].matchAll(/\[([^\]]+)\]/g)].every((match) =>
-                    isReleaseTag(match[1].trim().split(/\s+/)[0])
+                [...dashEpisode[2].matchAll(/\[([^\]]+)\]/g)].every(
+                    (match) =>
+                        isReleaseTag(match[1].trim().split(/\s+/)[0]) ||
+                        /^[a-f0-9]{8}$/i.test(match[1].trim())
                 ))
                 ? dashEpisode
                 : null;
@@ -4767,8 +4788,8 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             .filter((match) => Number(match[1]) <= /* @__PURE__ */ new Date().getFullYear() + 1)
             .at(-1);
         const cut = (value) => {
-            let text = value.replace(/\[[^\]]*\]/g, ' ');
-            if (numberedEpisode && value === stem) text = text.replace(/\s+-\s+\d{1,3}(?:v\d+)?\s*$/i, '');
+            const title = numberedEpisode && value === stem ? stem.slice(0, numberedEpisode.index) : value;
+            let text = title.replace(/\[[^\]]*\]/g, ' ');
             if (yearMatch) {
                 const release = new RegExp('(?:^|[. _（(\\[-])' + yearMatch[1] + '(?=$|[. _）)\\]-])').exec(
                     text
@@ -8134,6 +8155,18 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                         if (row.episode == null && hint.episode !== null) row.episode = hint.episode;
                     }
                     log('大模型填写搜索片名：' + group[0].node.name + ' → ' + query);
+                }
+                const seriesTitle =
+                    (identified?.type === 'tv' || group.every((row) => row.tv && !row.standalone)) &&
+                    identified?.type !== 'movie' &&
+                    mediaSeriesSearchTitle(query);
+                if (seriesTitle) {
+                    log('作品搜索取剧名：' + query + ' → ' + seriesTitle.query);
+                    query = seriesTitle.query;
+                    for (const row of group) {
+                        row.query = query;
+                        row.season ?? (row.season = seriesTitle.season);
+                    }
                 }
                 checkStopped();
                 if (!query) {
@@ -11664,6 +11697,8 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
             )
             .replace(/^[ ._\[\]-]+|[ ._\[\]-]+$/g, '')
             .trim();
+        const seriesTitle = mediaSeriesSearchTitle(title);
+        if (seriesTitle?.season === season) title = seriesTitle.query;
         const aliases = new Set(
             [parsed.query, ...(parsed.aliases || [])].filter(Boolean).map(subtitleTitleKey)
         );
@@ -11748,11 +11783,7 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
             ) ||
             (!exactRange && /(?:^|[ ._\[(])\d{1,3}[ ._]*[-~][ ._]*(?:EP?)?\d{1,3}(?!\d)/i.test(stem)) ||
             (named.endEpisode != null && named.endEpisode !== episode && !exactRange);
-        const seasonTags = [
-            ...stem.matchAll(
-                /(?:\bSeason[ ._-]*|(?:^|[^a-z0-9])SE?)(\d{1,2})(?=E\d|[^0-9]|$)|第\s*([零〇一二两三四五六七八九十\d]+)\s*季/gi
-            ),
-        ].map((mark) => (mark[1] ? Number(mark[1]) : mediaSeasonNumber(mark[0])));
+        const seasonTags = mediaSeasonNumbers(stem);
         const result = (matched2, conflict) => ({
             matched: matched2,
             conflict,
@@ -11764,8 +11795,8 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
         });
         if (
             multiple ||
-            new Set(seasonTags).size > 1 ||
-            seasonTags.some((number) => season != null && number !== season) ||
+            seasonTags.size > 1 ||
+            [...seasonTags].some((number) => season != null && number !== season) ||
             (parsed.tv && parsed.season > 0 && named.standalone && !markers.length)
         )
             return result(false, true);

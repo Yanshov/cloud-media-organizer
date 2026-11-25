@@ -2478,6 +2478,8 @@ function subtitleEpisodeName(name, parsed) {
         )
         .replace(/^[ ._\[\]-]+|[ ._\[\]-]+$/g, '')
         .trim();
+    const seriesTitle = mediaSeriesSearchTitle(title);
+    if (seriesTitle?.season === season) title = seriesTitle.query;
     const aliases = new Set([parsed.query, ...(parsed.aliases || [])].filter(Boolean).map(subtitleTitleKey));
     const seasons = (parsed.seasons || []).filter((item) => item.season_number > 0);
     if (season == null && episode != null && parsed.workResolved && title) {
@@ -2560,11 +2562,7 @@ function subtitleEpisodeIdentity(name, parsed, seasonContext = null) {
         ) ||
         (!exactRange && /(?:^|[ ._\[(])\d{1,3}[ ._]*[-~][ ._]*(?:EP?)?\d{1,3}(?!\d)/i.test(stem)) ||
         (named.endEpisode != null && named.endEpisode !== episode && !exactRange);
-    const seasonTags = [
-        ...stem.matchAll(
-            /(?:\bSeason[ ._-]*|(?:^|[^a-z0-9])SE?)(\d{1,2})(?=E\d|[^0-9]|$)|第\s*([零〇一二两三四五六七八九十\d]+)\s*季/gi
-        ),
-    ].map((mark) => (mark[1] ? Number(mark[1]) : mediaSeasonNumber(mark[0])));
+    const seasonTags = mediaSeasonNumbers(stem);
     const result = (matched, conflict) => ({
         matched,
         conflict,
@@ -2576,8 +2574,8 @@ function subtitleEpisodeIdentity(name, parsed, seasonContext = null) {
     });
     if (
         multiple ||
-        new Set(seasonTags).size > 1 ||
-        seasonTags.some((number) => season != null && number !== season) ||
+        seasonTags.size > 1 ||
+        [...seasonTags].some((number) => season != null && number !== season) ||
         (parsed.tv && parsed.season > 0 && named.standalone && !markers.length)
     )
         return result(false, true);

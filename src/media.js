@@ -33,8 +33,9 @@ const MEDIA_RESOLUTION_TOKEN = [
 const MEDIA_RESOLUTION_EXACT = new RegExp('^(?:' + MEDIA_RESOLUTION_TOKEN + ')$', 'i');
 const MEDIA_RESOLUTION_BOUNDARY = '(?<![a-z0-9])(?:' + MEDIA_RESOLUTION_TOKEN + ')(?![a-z0-9])';
 const MEDIA_RESOLUTION_MATCH = new RegExp(MEDIA_RESOLUTION_BOUNDARY, 'gi');
+const MEDIA_ORDINAL_SEASON = /\b(\d{1,2})(?:st|nd|rd|th)[ ._-]+Season\b/i;
 const MEDIA_RELEASE_START = new RegExp(
-    String.raw`\bS\d{1,2}E\d|\bSeason[ ._-]*\d{1,2}|\bSE?\d{1,2}\b|\b\d{1,2}x\d|\b(?:EP?|Episode)[ ._-]*\d{1,3}(?=$|[. _-])|第\s*[0-9一二三四五六七八九十零〇两]+\s*[季集话]|${MEDIA_RESOLUTION_BOUNDARY}|\b(?:BluRay|WEB[ ._-]?DL|WEBRip|REMUX|HDR|DV|x26[45]|h[ ._-]?26[45]|HEVC|AVC|DTS|AAC|AC3)\b`,
+    String.raw`\bS\d{1,2}E\d|\bSeason[ ._-]*\d{1,2}|${MEDIA_ORDINAL_SEASON.source}|\bSE?\d{1,2}\b|\b\d{1,2}x\d|\b(?:EP?|Episode)[ ._-]*\d{1,3}(?=$|[. _-])|第\s*[0-9一二三四五六七八九十零〇两]+\s*[季集话]|${MEDIA_RESOLUTION_BOUNDARY}|\b(?:BluRay|WEB[ ._-]?DL|WEBRip|REMUX|HDR|DV|x26[45]|h[ ._-]?26[45]|HEVC|AVC|DTS|AAC|AC3)\b`,
     'i'
 );
 
@@ -66,6 +67,9 @@ function mediaSeasonNumbers(value) {
                 text.matchAll(/(?:\bSeason[ ._-]*|(?:^|[^a-z0-9])SE?)(\d{1,2})(?=E\d|[^0-9]|$)/gi),
                 (match) => Number(match[1])
             ),
+            ...Array.from(text.matchAll(new RegExp(MEDIA_ORDINAL_SEASON.source, 'gi')), (match) =>
+                Number(match[1])
+            ),
             ...Array.from(text.matchAll(/第\s*([0-9一二两三四五六七八九十零〇]+)\s*季/g), (match) =>
                 chineseNumber(match[1])
             ),
@@ -76,6 +80,20 @@ function mediaSeasonNumbers(value) {
 function mediaSeasonNumber(value) {
     const seasons = mediaSeasonNumbers(value);
     return seasons.size === 1 ? seasons.values().next().value : null;
+}
+/** Reads an explicitly marked season at the end of a series search title. */
+function mediaSeriesSearchTitle(value) {
+    const title = String(value || '')
+        .normalize('NFKC')
+        .trim();
+    const marker = new RegExp(
+        String.raw`(?:[ ._:-]+(?:S\d{1,2}|\bSeason[ ._-]*\d{1,2}|${MEDIA_ORDINAL_SEASON.source})|第\s*[0-9一二两三四五六七八九十零〇]+\s*季)$`,
+        'i'
+    ).exec(title);
+    if (!marker) return null;
+    const query = title.slice(0, marker.index).replace(/[\s:._–—-]+$/, '');
+    const season = mediaSeasonNumber(marker[0]);
+    return query && season != null ? { query, season } : null;
 }
 /** Reads the episode range marked on a multi-season package folder. */
 function mediaSeasonPackageRange(folders = []) {
@@ -184,12 +202,15 @@ function parseMediaName(name, folders = []) {
             stem.match(/(?:^|[. _-])(?:EP?|Episode)[. _-]*(\d{1,3})(?:$|[. _-])/i) ||
             stem.match(/^(\d{1,3})$/);
     // Common anime releases put the episode after a spaced dash, before technical tags.
-    const dashEpisode = stem.match(/\s+-\s+(\d{1,3})(?:v\d+)?\s*((?:\[[^\]]+\]\s*)*)$/i);
+    const dashEpisode = stem.match(
+        /\s+-\s+(\d{1,3})(?:v\d+)?\s*(?:\((?:BDRemux|BluRay|BDRip|WEB[ ._-]?(?:DL|Rip)|REMUX|HDTV)\b[^()]*\)\s*)?((?:\[[^\]]+\]\s*)*)$/i
+    );
     const numberedEpisode =
         dashEpisode &&
         (!dashEpisode[2].trim() ||
-            [...dashEpisode[2].matchAll(/\[([^\]]+)\]/g)].every((match) =>
-                isReleaseTag(match[1].trim().split(/\s+/)[0])
+            [...dashEpisode[2].matchAll(/\[([^\]]+)\]/g)].every(
+                (match) =>
+                    isReleaseTag(match[1].trim().split(/\s+/)[0]) || /^[a-f0-9]{8}$/i.test(match[1].trim())
             ))
             ? dashEpisode
             : null;
@@ -212,8 +233,8 @@ function parseMediaName(name, folders = []) {
         .filter((match) => Number(match[1]) <= new Date().getFullYear() + 1)
         .at(-1);
     const cut = (value) => {
-        let text = value.replace(/\[[^\]]*\]/g, ' ');
-        if (numberedEpisode && value === stem) text = text.replace(/\s+-\s+\d{1,3}(?:v\d+)?\s*$/i, '');
+        const title = numberedEpisode && value === stem ? stem.slice(0, numberedEpisode.index) : value;
+        let text = title.replace(/\[[^\]]*\]/g, ' ');
         if (yearMatch) {
             const release = new RegExp('(?:^|[. _（(\\[-])' + yearMatch[1] + '(?=$|[. _）)\\]-])').exec(text);
             if (release && text.slice(0, release.index).trim()) text = text.slice(0, release.index);

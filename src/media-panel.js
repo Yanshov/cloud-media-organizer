@@ -1068,6 +1068,18 @@ function initMediaOrganizer(provider, flow) {
                 }
                 log('大模型填写搜索片名：' + group[0].node.name + ' → ' + query);
             }
+            const seriesTitle =
+                (identified?.type === 'tv' || group.every((row) => row.tv && !row.standalone)) &&
+                identified?.type !== 'movie' &&
+                mediaSeriesSearchTitle(query);
+            if (seriesTitle) {
+                log('作品搜索取剧名：' + query + ' → ' + seriesTitle.query);
+                query = seriesTitle.query;
+                for (const row of group) {
+                    row.query = query;
+                    row.season ??= seriesTitle.season;
+                }
+            }
             checkStopped();
             if (!query) {
                 group.forEach((row) => {
