@@ -6,7 +6,7 @@ if (
 )
     return;
 
-const VERSION = '3.0.57';
+const VERSION = '1.0.0';
 const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
 const nativeFetch = page.fetch.bind(page);
 const capture = { token: '' };

@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         云盘媒体整理工具 v3.0（重构版）
+// @name         云盘媒体整理工具 v1.0
 // @namespace    local.cloud-media-organizer
-// @version      3.0.57
+// @version      1.0.0
 // @description  面向光鸭网盘的影视整理与字幕补齐工具。
 // @match        https://www.guangyapan.com/*
 // @match        https://guangyapan.com/*
@@ -186,7 +186,7 @@ SOFTWARE.
             (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))
     )
         return;
-    const VERSION = '3.0.57';
+    const VERSION = '1.0.0';
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
     const capture = { token: '' };
