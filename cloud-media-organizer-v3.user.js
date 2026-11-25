@@ -847,7 +847,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 .sync-preview{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px}.sync-preview h4{margin:0 0 8px}.sync-preview p{margin:6px 0}
 .credential-head{display:flex;justify-content:space-between;align-items:center;gap:12px}.credential-head a{font-size:15px;flex-shrink:0}
 .source-result{margin:12px 0;padding:12px;border:1px solid var(--border);border-radius:8px}.source-result button{margin:8px 8px 0 0;font-size:16px}
-#workspaceSettings{grid-template-rows:minmax(0,1fr);overflow:auto;scrollbar-width:none;overscroll-behavior:contain}
+#workspaceSettings{grid-template-rows:minmax(0,1fr);overflow:hidden;overscroll-behavior:contain}
 .settings-main{display:flex;flex-direction:column;min-width:0;min-height:0;padding:25px var(--surface-pad);background:var(--surface)}
 .settings-heading{display:flex;flex:none;align-items:center;justify-content:space-between;gap:14px;margin-bottom:18px;padding-bottom:18px;border-bottom:1px solid var(--border)}.settings-heading h3{margin:0;font-size:clamp(32px,3.6cqw,52px);line-height:1.2;letter-spacing:-.04em}
 .settings-title{display:flex;align-items:baseline;gap:10px}.settings-title small{color:var(--muted);font-size:13px}
@@ -874,7 +874,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 #settingsModels>.sync-item{display:flex;flex-direction:column;min-height:0;padding:18px 20px 12px;border:1px solid var(--border);border-radius:12px;background:var(--surface)}
 #settingsModels .sync-item:has(#mediaAISettings){background:var(--panel)}
 #settingsModels .sync-item h3{flex:none;margin-bottom:12px;font-size:20px}
-#settingsModels .sync-item>section{display:flex;flex:1;flex-direction:column;gap:clamp(4px,1cqh,10px);min-width:0;min-height:0;overflow:auto;scrollbar-width:thin}
+#settingsModels .sync-item>section{display:flex;flex:1;flex-direction:column;gap:clamp(4px,1cqh,10px);min-width:0;min-height:0;overflow:visible}
 #settingsModels .sync-item>section>*{flex-shrink:0}
 #settingsModels .sync-item>section>.panel-actions{margin-top:auto;padding-top:8px;border-top:1px solid var(--border)}
 #openSubtitlesSettings{padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--rail)}
@@ -911,11 +911,17 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
     }
 }
 @container(max-height:720px){
-    #workspaceSettings .settings-main{padding-block:10px}
+    #workspaceSettings .settings-main{padding-block:10px;overflow:hidden}
     #workspaceSettings .settings-heading{padding-bottom:8px;margin-bottom:8px}
     #workspaceSettings #settingsBasics{margin-bottom:8px}
     #workspaceSettings #settingsModels{gap:10px}
-    #workspaceSettings #settingsModels>.sync-item{padding:12px 14px 8px}
+    #workspaceSettings #settingsBasics>.sync-item{min-height:0;padding:10px 12px}
+    #workspaceSettings #settingsModels>.sync-item{padding:10px 12px 6px}
+    #workspaceSettings #settingsModels .sync-item>section{gap:2px}
+    #workspaceSettings .sync-item label{margin:2px 0}
+    #workspaceSettings p{margin:3px 0}
+    #workspaceSettings input,#workspaceSettings select{min-height:32px;padding-block:3px;margin-top:3px}
+    #workspaceSettings .panel-actions{margin:3px 0}
 }
         </style><button id="toggle" type="button" title="打开影视整理" aria-label="打开影视整理" aria-haspopup="dialog" aria-expanded="false" aria-controls="toolDialog"></button>
         <div class="workspace-overlay" hidden><div class="box" id="toolDialog" role="dialog" aria-modal="false" aria-labelledby="workspaceTitle" tabindex="-1">
