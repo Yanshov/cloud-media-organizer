@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v1.0
 // @namespace    local.cloud-media-organizer
-// @version      1.0.4
+// @version      1.0.5
 // @description  面向光鸭网盘的影视整理与字幕补齐工具。
 // @match        https://www.guangyapan.com/*
 // @match        https://guangyapan.com/*

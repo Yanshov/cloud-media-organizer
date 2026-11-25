@@ -202,9 +202,10 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 .tool-list-heading h3{margin:0;font-size:19px;font-weight:650}.editor-actions{display:flex;gap:8px}.editor-actions button{background:var(--surface);color:var(--text);border-color:var(--border);padding:4px 9px;font-size:13px;min-height:30px}
 
 .sync-item{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px;margin:12px 0;min-width:0}
-:is(#subtitlePane,#mediaPane) :is(.tool-layout,.tool-main){display:flex;min-height:0}:is(#subtitlePane,#mediaPane) .tool-main{flex:1;flex-direction:column}:is(#subtitlePane,#mediaPane) .tool-list-heading{flex:none}#subtitleFilters :focus-visible{outline-offset:-2px}
+:is(#subtitlePane,#mediaPane) .tool-layout{display:flex;flex:1 0 auto}
+:is(#subtitlePane,#mediaPane) .tool-main{display:flex;flex:1;flex-direction:column;min-height:0}:is(#subtitlePane,#mediaPane) .tool-list-heading{flex:none}#subtitleFilters :focus-visible{outline-offset:-2px}
 #subtitleFilters{display:flex;align-items:center;gap:8px;flex:0 0 auto;max-width:100%}#subtitleFilters label{align-items:center;gap:5px;margin:0;font-size:15px;white-space:nowrap;flex:none}#subtitleFilters input[type=checkbox]{margin:0}
-#subtitleResults{flex:none;min-height:auto;overflow:visible;overflow-anchor:none;container-type:size}#subtitleResults:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+#subtitleResults{flex:none;min-height:auto;overflow:visible;overflow-anchor:none;container-type:inline-size}#subtitleResults:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 #subtitleSummary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;flex:none;padding:10px 12px;font-size:15px;overflow-wrap:anywhere}
 .subtitle-summary-group{display:grid;gap:4px;min-width:0;padding:9px 11px;border:1px solid var(--border);border-radius:6px;background:var(--surface)}.subtitle-summary-group strong{font-size:14px;color:var(--text)}.subtitle-summary-value{color:var(--muted);line-height:1.5}
 :is(#subtitleRows,#mediaRows){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:stretch;align-content:start}

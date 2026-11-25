@@ -1110,7 +1110,7 @@ function initSubtitles(flow) {
             const reason =
                 !pending &&
                 (row.error ||
-                    subtitleCandidateNameIssue(row, row.selectedCandidate) ||
+                    (coverage !== 'complete' && subtitleCandidateNameIssue(row, row.selectedCandidate)) ||
                     (embedded?.unconfirmed && embedded.message) ||
                     (row.coverageUnconfirmed && row.searchMessage) ||
                     failedSource?.error ||
@@ -1436,7 +1436,9 @@ function initSubtitles(flow) {
                     addButton(footer, '复查已有字幕', JSON.stringify(['audit', key]), () =>
                         recheckWork(auditRows)
                     );
-                    footerMessages.push('已有字幕待复查 ' + auditRows.length + ' 项');
+                    const pendingAudit = auditRows.filter((row) => !covered(row) || row.writeBlocked);
+                    if (pendingAudit.length)
+                        footerMessages.push('已有字幕待复查 ' + pendingAudit.length + ' 项');
                 }
                 appendActionSummary(footer, footerMessages);
                 if (footer.childElementCount) box.append(footer);
