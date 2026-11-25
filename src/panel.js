@@ -299,9 +299,9 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 #settingsBasics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));flex:none;gap:16px;margin-bottom:16px}#settingsBasics:empty{display:none}
 #settingsBasics>.sync-item{display:flex;flex-direction:column;min-width:0;min-height:116px;padding:14px 16px;border:1px solid var(--border);border-radius:12px;background:var(--surface)}
 #settingsBasics .sync-item h3{display:flex;align-items:center;gap:8px;flex:none;margin:0 0 10px;font-size:18px}
-#settingsBasics .sync-item h3{justify-content:space-between;flex-wrap:wrap}
-#settingsBasics .settings-card-title{display:flex;align-items:center;gap:8px;min-width:0}
-#settingsBasics .sync-item h3>.panel-actions{flex:none;align-items:center;gap:6px;margin:0 0 0 auto}
+#settingsBasics .sync-item h3{justify-content:flex-start;flex-wrap:wrap}
+#settingsBasics .settings-card-title{display:flex;align-items:center;gap:8px;flex:0 0 auto;white-space:nowrap}
+#settingsBasics .sync-item h3>.panel-actions{flex:none;align-items:center;gap:6px;margin:0}
 #settingsBasics .sync-item>section{display:flex;flex:1;flex-direction:column;min-width:0;gap:8px}
 #settingsBasics #mediaSettings{align-items:stretch;gap:8px}
 #settingsBasics #mediaSettings>label{flex:1;min-width:180px;margin:0}
