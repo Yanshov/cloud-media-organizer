@@ -81,6 +81,7 @@ function matchSubtitleImport(name, rows, archiveName = '', { manual = false, tar
     const stem = mediaStem(name).normalize('NFKC');
     const marks = [...stem.matchAll(/(?:^|[^\dA-Z])S(\d{1,2})[ ._-]*E(\d{1,3})(?!\d)/gi)];
     const parsed = parseMediaName(name);
+    let episodeMatched = false;
     if (
         marks.length > 1 ||
         (parsed.endEpisode && parsed.endEpisode !== parsed.episode) ||
@@ -108,6 +109,33 @@ function matchSubtitleImport(name, rows, archiveName = '', { manual = false, tar
     if (rows[0].parsed.tv) {
         const archiveSeason = archiveName ? subtitlePackSeason([archiveName]) : null;
         targets = rows.filter((row) => subtitleEpisodeIdentity(matchName, row.parsed, archiveSeason).matched);
+        const detail = subtitleEpisodeName(matchName, rows[0].parsed);
+        if (!targets.length && archiveName && detail.episode != null) {
+            const season = detail.season ?? archiveSeason;
+            targets = rows.filter(
+                (row) =>
+                    row.parsed.episode === detail.episode && (season == null || row.parsed.season === season)
+            );
+            if (!targets.length && season == null && detail.episode > 0) {
+                const specialRows = rows.filter(
+                    (row) => row.parsed.season === 0 && row.parsed.episode != null
+                );
+                const regularSeason = rows[0].media?.detail?.seasons?.find(
+                    (item) => item.season_number === 1
+                );
+                const range = /(?:^|[^\d])(\d{1,3})\s*[-~]\s*(\d{1,3})(?!\d)/.exec(archiveName);
+                if (
+                    specialRows.length === 1 &&
+                    regularSeason?.episode_count &&
+                    detail.episode === Number(regularSeason.episode_count) + 1 &&
+                    range &&
+                    Number(range[1]) === 1 &&
+                    Number(range[2]) === detail.episode
+                )
+                    targets = specialRows;
+            }
+            episodeMatched = targets.length === 1;
+        }
         if (!targets.length && archiveName) {
             const range = /\bTV[ _.-]*(\d{1,3})\s*[-~]\s*(\d{1,3})(?!\d)/i.exec(archiveName);
             const numbered = /^(.+?)\s+-\s+(\d{1,3})$/.exec(stem);
@@ -131,6 +159,7 @@ function matchSubtitleImport(name, rows, archiveName = '', { manual = false, tar
         }
         if (targets.length !== 1)
             return {
+                outOfScope: !!archiveName && detail.episode != null && !targets.length,
                 reason: targets.length ? '同一集有多个目标版本' : '季集与所选目标不符或缺少可验证的季集标记',
             };
         if (targets[0].parsed.endEpisode && targets[0].parsed.endEpisode !== targets[0].parsed.episode)
@@ -180,7 +209,7 @@ function matchSubtitleImport(name, rows, archiveName = '', { manual = false, tar
             : matchName;
     const identity = subtitleWorkIdentity(row.parsed, [], identityName);
     if (identity.hardMismatch) return { row, reason: identity.matchReason };
-    if (identity.titleMatched || mediaSubtitleSuffix(row.node.name, name) !== null)
+    if (identity.titleMatched || mediaSubtitleSuffix(row.node.name, name) !== null || episodeMatched)
         return { row, releaseWarning };
     const title = (marks.length ? stem.slice(0, marks[0].index) : stem).trim();
     if (!title || /^(?:subtitles?|字幕|中文|简中|繁中|chs|cht|zh(?:[-_. ]?(?:cn|tw))?)[ ._-]*$/i.test(title))
@@ -235,6 +264,15 @@ async function planSubtitleImport({ entries, language, confirmed, assignments },
                 target,
             }),
             { row, releaseWarning } = match;
+        if (match.outOfScope && !target) {
+            planned.push({
+                ...entry,
+                state: 'skip',
+                ignored: true,
+                reason: '压缩包内与当前选中视频无关，已忽略',
+            });
+            continue;
+        }
         if (match.reason) {
             planned.push({ ...entry, row, target, state: 'unmatched', reason: match.reason });
             continue;
@@ -836,13 +874,15 @@ function initSubtitles(flow) {
             const summary = document.createElement('p');
             summary.textContent = Object.entries(label)
                 .map(([state, text]) => {
-                    const found = draft.plan.filter((entry) => entry.state === state);
+                    const found = draft.plan.filter((entry) => entry.state === state && !entry.ignored);
                     const range = subtitleEpisodeRangeSummary(
                         found.filter((entry) => entry.row).map((entry) => entry.row)
                     );
                     return text + ' ' + found.length + ' 项' + (range ? '（' + range + '）' : '');
                 })
                 .join(' · ');
+            const ignored = draft.plan.filter((entry) => entry.ignored).length;
+            if (ignored) summary.textContent += ' · 已忽略包内无关字幕 ' + ignored + ' 项';
             summary.className = 'subtitle-action-summary';
             footer.prepend(summary);
             const count = draft.plan.filter((entry) => entry.state === 'ready').length;
@@ -863,6 +903,7 @@ function initSubtitles(flow) {
                 );
             }
             for (const [index, entry] of draft.plan.entries()) {
+                if (entry.ignored) continue;
                 const issue = entry.state === 'unmatched' || entry.state === 'invalid';
                 if (issue !== draft.showIssues) continue;
                 const detail = document.createElement('p');
@@ -1497,6 +1538,7 @@ function initSubtitles(flow) {
                     (draft.showIssues || !plan.some((entry) => entry.state === 'ready')) &&
                     plan.some((entry) => entry.state === 'unmatched' || entry.state === 'invalid');
                 for (const entry of plan) {
+                    if (entry.ignored) continue;
                     const outcome =
                         entry.state === 'ready'
                             ? [subtitleVerificationMessage(entry.verification), entry.releaseWarning]
@@ -1510,16 +1552,18 @@ function initSubtitles(flow) {
                 }
                 const importCounts = plan.reduce(
                     (counts, entry) => {
-                        if (entry.state === 'ready') counts.ready++;
+                        if (entry.ignored) counts.ignored++;
+                        else if (entry.state === 'ready') counts.ready++;
                         else if (entry.state === 'skip') counts.skip++;
                         else if (entry.state === 'invalid') counts.invalid++;
                         else if (entry.state === 'unmatched') counts.unmatched++;
                         return counts;
                     },
-                    { ready: 0, skip: 0, invalid: 0, unmatched: 0 }
+                    { ready: 0, skip: 0, invalid: 0, unmatched: 0, ignored: 0 }
                 );
                 status(
-                    `导入检测完成 · 可导入 ${importCounts.ready} · 已跳过 ${importCounts.skip} · 检测失败 ${importCounts.invalid} · 待匹配 ${importCounts.unmatched}`
+                    `导入检测完成 · 可导入 ${importCounts.ready} · 已跳过 ${importCounts.skip} · 检测失败 ${importCounts.invalid} · 待匹配 ${importCounts.unmatched}` +
+                        (importCounts.ignored ? ` · 已忽略无关字幕 ${importCounts.ignored}` : '')
                 );
             } catch (error) {
                 status('导入检测结束 · ' + error.message);
