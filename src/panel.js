@@ -306,7 +306,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
 #settingsBasics .credential-head{flex:none}
 #settingsBasics #tmdbKey{margin:0}
 #settingsBasics #mediaSettings .panel-actions{margin-top:auto}
-#settingsModels{display:grid;flex:1 0 245px;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:minmax(0,1fr);gap:16px}
+#settingsModels{display:grid;flex:1 1 0;min-height:0;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:minmax(0,1fr);gap:16px}
 #settingsModels:has(>:only-child){grid-template-columns:minmax(0,1fr)}#settingsModels:empty{display:none}
 #workspaceSettings .sync-item{margin:0;padding:0;border:0;background:transparent;min-inline-size:0}#workspaceSettings h3>svg{width:18px;height:18px;flex:none;color:var(--accent)}
 #workspaceSettings .sync-item h3{display:flex;align-items:center;gap:8px;margin:0 0 8px;font-size:18px}
@@ -352,6 +352,13 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
     #mediaAISettings>label:has(#mediaAIBase,#mediaAIKey){
         display:grid;grid-template-columns:5em minmax(0,1fr);align-items:center;gap:6px
     }
+}
+@container(max-height:720px){
+    #workspaceSettings .settings-main{padding-block:10px}
+    #workspaceSettings .settings-heading{padding-bottom:8px;margin-bottom:8px}
+    #workspaceSettings #settingsBasics{margin-bottom:8px}
+    #workspaceSettings #settingsModels{gap:10px}
+    #workspaceSettings #settingsModels>.sync-item{padding:12px 14px 8px}
 }
         </style><button id="toggle" type="button" title="打开影视整理" aria-label="打开影视整理" aria-haspopup="dialog" aria-expanded="false" aria-controls="toolDialog"></button>
         <div class="workspace-overlay" hidden><div class="box" id="toolDialog" role="dialog" aria-modal="false" aria-labelledby="workspaceTitle" tabindex="-1">
