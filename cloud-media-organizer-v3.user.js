@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v1.0
 // @namespace    local.cloud-media-organizer
-// @version      1.0.0
+// @version      1.0.1
 // @description  面向光鸭网盘的影视整理与字幕补齐工具。
 // @match        https://www.guangyapan.com/*
 // @match        https://guangyapan.com/*
@@ -186,7 +186,7 @@ SOFTWARE.
             (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))
     )
         return;
-    const VERSION = '1.0.0';
+    const VERSION = '1.0.1';
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
     const capture = { token: '' };
@@ -2265,6 +2265,13 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         if (hasFileMetadata(node) || !source.metadata) return node;
         const info = await source.metadata(node);
         return { ...node, md5: info.md5, size: info.size };
+    }
+    function matchSelected(children, selected) {
+        const selectedIds = new Set(selected.map((item) => String(item?.id ?? '')));
+        const matches = children.filter((node) => selectedIds.has(String(node.id)));
+        if (matches.length !== selectedIds.size)
+            throw new Error('选中的项目已不在当前目录中，请刷新页面并重新勾选');
+        return matches;
     }
     async function collectSelectedTree(selected, source, progress = () => {}, check = () => {}, log) {
         if (!selected.length) throw new Error('请先勾选文件或文件夹');

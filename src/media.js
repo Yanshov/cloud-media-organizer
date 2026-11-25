@@ -528,6 +528,13 @@ async function mediaFileMetadata(node, source) {
     const info = await source.metadata(node);
     return { ...node, md5: info.md5, size: info.size };
 }
+function matchSelected(children, selected) {
+    const selectedIds = new Set(selected.map((item) => String(item?.id ?? '')));
+    const matches = children.filter((node) => selectedIds.has(String(node.id)));
+    if (matches.length !== selectedIds.size)
+        throw new Error('选中的项目已不在当前目录中，请刷新页面并重新勾选');
+    return matches;
+}
 async function collectSelectedTree(selected, source, progress = () => {}, check = () => {}, log) {
     if (!selected.length) throw new Error('请先勾选文件或文件夹');
     const nodes = [],
