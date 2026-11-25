@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v3.0（重构版）
 // @namespace    local.cloud-media-organizer
-// @version      3.0.52
+// @version      3.0.53
 // @description  面向百度网盘、123 云盘和光鸭网盘的浏览器脚本，支持跨盘 JSON 清单、影视整理与字幕补齐。
 // @match        https://pan.baidu.com/*
 // @match        https://yun.baidu.com/*
@@ -198,7 +198,7 @@ SOFTWARE.
             (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))
     )
         return;
-    const VERSION = '3.0.52';
+    const VERSION = '3.0.53';
     let jsonTaskStopped = false;
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
@@ -9354,6 +9354,38 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
             .trim();
     }
     const subtitleTitleKey = (value) => titleKey(String(value || '').replace(/[ː∶]/g, ':'));
+    const SUBTITLE_SEASON_ALIASES = {
+        '82739:2': [
+            '青春猪头少年不会梦到圣诞服女郎',
+            '青春豬頭少年不會夢到聖誕服女郎',
+            '青春ブタ野郎はサンタクロースの夢を見ない',
+            'Rascal Does Not Dream of Santa Claus',
+            'Seishun Buta Yarou wa Santa Claus no Yume wo Minai',
+        ],
+    };
+    function subtitleSeasonTitles(parsed, seasonNumber = parsed.season) {
+        if (!parsed.tv || !parsed.workResolved || seasonNumber == null || seasonNumber <= 0) return [];
+        const season = parsed.seasons?.find((item) => item.season_number === seasonNumber);
+        if (!season) return [];
+        const workKey = subtitleTitleKey(parsed.query);
+        const verified = SUBTITLE_SEASON_ALIASES[`${parsed.tmdbId}:${seasonNumber}`] || [];
+        const label = subtitleQueryTitle(season.name, parsed.year);
+        const key = subtitleTitleKey(label);
+        if (
+            !workKey ||
+            !key ||
+            key === workKey ||
+            /^第[零〇一二两三四五六七八九十\d]+季$|^(?:s|season)\d*$/i.test(key) ||
+            parsed.seasons.some(
+                (item) => item.season_number !== seasonNumber && subtitleTitleKey(item.name) === key
+            )
+        )
+            return verified;
+        const qualified =
+            key.startsWith(workKey) ||
+            (parsed.aliases || []).some((alias) => subtitleTitleKey(alias) === key);
+        return [...verified, qualified ? label : `${parsed.query} ${label}`];
+    }
     function subtitleReleaseChapter(parsed) {
         if (
             !parsed.tv ||
@@ -9502,6 +9534,7 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
             ...[
                 subtitleQueryTitle(parsed.query, parsed.year),
                 ...(parsed.aliases || []),
+                ...subtitleSeasonTitles(parsed),
                 subtitleReleaseChapter(parsed),
             ].flatMap(variants),
         ]);
@@ -9912,6 +9945,14 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                 .find((name, index) => name && titleKey(name) !== titleKey(unique[index]));
         return [...new Set([unique[0], theatrical, japanese, latin, ...unique].filter(Boolean))].slice(0, 3);
     }
+    function subtitleSeasonSearchNames(parsed) {
+        const names = [...new Set(subtitleSeasonTitles(parsed))];
+        const first = names[0];
+        const other = names.find(
+            (name) => name !== first && /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Latin}]/u.test(name)
+        );
+        return [first, other].filter(Boolean);
+    }
     function subtitleRequestPool(interval, limit, request) {
         let queue = Promise.resolve(),
             last = 0;
@@ -9998,6 +10039,7 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                 names = subtitleSearchNames(parsed);
             const season = ' S' + String(parsed.season).padStart(2, '0');
             const searches = [
+                ...subtitleSeasonSearchNames(parsed).map((query) => ({ query, limit: 2 })),
                 ...names.slice(0, 2).map((name) => ({ query: name + season, limit: 2 })),
                 ...names.map((query) => ({ query, limit: maxDetails })),
             ];
@@ -10314,7 +10356,7 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                     parsed.year,
                     parsed.season,
                     subtitleReleaseChapter(parsed),
-                    subtitleSearchNames(parsed),
+                    [...subtitleSeasonSearchNames(parsed), ...subtitleSearchNames(parsed)],
                     config.language,
                     config.thunder,
                     config.assrtKey,
@@ -10420,6 +10462,7 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                 if (parsed.tv && (parsed.season == null || parsed.episode == null))
                     throw subtitleSourceError('缺少明确季集，未按片名搜索');
                 const chapter = subtitleReleaseChapter(parsed);
+                const seasonNames = subtitleSeasonSearchNames(parsed);
                 const seasonKey = parsed.tv
                     ? JSON.stringify([
                           'thunder-season',
@@ -10428,6 +10471,7 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                           parsed.tmdbId || '',
                           parsed.season,
                           chapter,
+                          seasonNames,
                       ])
                     : '';
                 let items, attempts;
@@ -10459,17 +10503,21 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                     ) ||
                         (parsed.tv && /\b(?:2160p|1080p|720p)\b/i.test(original)));
                 const plainQueries = names.map((name) => name + suffix);
+                const seasonQueries = seasonNames.map(
+                    (name) => name + (config.seasonSearch ? '' : ' ' + episodeLabel)
+                );
+                const releaseQuery = withRelease && original.replace(/\.[^.]+$/, '');
+                const fallbackQueries = seasonQueries.length
+                    ? [...plainQueries, releaseQuery]
+                    : [releaseQuery, ...plainQueries];
                 const chapterQuery = chapter && chapter + (config.seasonSearch ? '' : ' ' + episodeLabel);
                 const chapterEpisodeQuery =
                     chapter && !config.seasonSearch && chapter + ' S' + parsed.season + episodeSuffix;
                 const queries = [
                     ...new Set(
-                        [
-                            chapterEpisodeQuery,
-                            chapterQuery,
-                            withRelease && original.replace(/\.[^.]+$/, ''),
-                            ...plainQueries,
-                        ].filter(Boolean)
+                        [...seasonQueries, chapterEpisodeQuery, chapterQuery, ...fallbackQueries].filter(
+                            Boolean
+                        )
                     ),
                 ].slice(0, chapterEpisodeQuery ? 4 : 3);
                 const filter = (items2, { parsed: target, node }) => {
@@ -11623,7 +11671,13 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
         if (season == null && episode != null && parsed.workResolved && title) {
             const releaseTitle = subtitleTitleKey(subtitleReleaseChapter(parsed));
             const subtitleTitle = subtitleTitleKey(title);
-            if (releaseTitle && releaseTitle === subtitleTitle) season = parsed.season;
+            const titleSeasons = seasons.filter((item) =>
+                subtitleSeasonTitles(parsed, item.season_number).some(
+                    (name2) => subtitleTitleKey(name2) === subtitleTitle
+                )
+            );
+            if (titleSeasons.length === 1) season = titleSeasons[0].season_number;
+            if (season == null && releaseTitle && releaseTitle === subtitleTitle) season = parsed.season;
             const suffix = title.match(/^(.*?)[ ._-]*(\d{1,2}|VIII|VII|VI|IV|IX|III|II|V|X|I)$/i);
             const roman = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9, X: 10 };
             const number =

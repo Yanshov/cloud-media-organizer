@@ -210,6 +210,39 @@ function mediaTheatricalQuery(value) {
         .trim();
 }
 const subtitleTitleKey = (value) => titleKey(String(value || '').replace(/[ː∶]/g, ':'));
+// TMDB also lists these as work aliases, which carry no season number on their own.
+const SUBTITLE_SEASON_ALIASES = {
+    '82739:2': [
+        '青春猪头少年不会梦到圣诞服女郎',
+        '青春豬頭少年不會夢到聖誕服女郎',
+        '青春ブタ野郎はサンタクロースの夢を見ない',
+        'Rascal Does Not Dream of Santa Claus',
+        'Seishun Buta Yarou wa Santa Claus no Yume wo Minai',
+    ],
+};
+function subtitleSeasonTitles(parsed, seasonNumber = parsed.season) {
+    if (!parsed.tv || !parsed.workResolved || seasonNumber == null || seasonNumber <= 0) return [];
+    const season = parsed.seasons?.find((item) => item.season_number === seasonNumber);
+    if (!season) return [];
+    const workKey = subtitleTitleKey(parsed.query);
+    const verified = SUBTITLE_SEASON_ALIASES[`${parsed.tmdbId}:${seasonNumber}`] || [];
+    const label = subtitleQueryTitle(season.name, parsed.year);
+    const key = subtitleTitleKey(label);
+    if (
+        !workKey ||
+        !key ||
+        key === workKey ||
+        /^第[零〇一二两三四五六七八九十\d]+季$|^(?:s|season)\d*$/i.test(key) ||
+        parsed.seasons.some(
+            (item) => item.season_number !== seasonNumber && subtitleTitleKey(item.name) === key
+        )
+    )
+        return verified;
+    // Short season labels such as "Part 2" need the series title to identify the work.
+    const qualified =
+        key.startsWith(workKey) || (parsed.aliases || []).some((alias) => subtitleTitleKey(alias) === key);
+    return [...verified, qualified ? label : `${parsed.query} ${label}`];
+}
 function subtitleReleaseChapter(parsed) {
     if (
         !parsed.tv ||
@@ -362,6 +395,7 @@ function subtitleWorkIdentity(parsed, fields, name) {
         ...[
             subtitleQueryTitle(parsed.query, parsed.year),
             ...(parsed.aliases || []),
+            ...subtitleSeasonTitles(parsed),
             subtitleReleaseChapter(parsed),
         ].flatMap(variants),
     ]);
@@ -773,6 +807,14 @@ function subtitleSearchNames(parsed) {
             .find((name, index) => name && titleKey(name) !== titleKey(unique[index]));
     return [...new Set([unique[0], theatrical, japanese, latin, ...unique].filter(Boolean))].slice(0, 3);
 }
+function subtitleSeasonSearchNames(parsed) {
+    const names = [...new Set(subtitleSeasonTitles(parsed))];
+    const first = names[0];
+    const other = names.find(
+        (name) => name !== first && /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Latin}]/u.test(name)
+    );
+    return [first, other].filter(Boolean);
+}
 function subtitleRequestPool(interval, limit, request) {
     let queue = Promise.resolve(),
         last = 0;
@@ -859,6 +901,7 @@ function createSubtitleService({ wait = (ms) => sleep(ms), check = () => {}, log
             names = subtitleSearchNames(parsed);
         const season = ' S' + String(parsed.season).padStart(2, '0');
         const searches = [
+            ...subtitleSeasonSearchNames(parsed).map((query) => ({ query, limit: 2 })),
             ...names.slice(0, 2).map((name) => ({ query: name + season, limit: 2 })),
             ...names.map((query) => ({ query, limit: maxDetails })),
         ];
@@ -1169,7 +1212,7 @@ function createSubtitleService({ wait = (ms) => sleep(ms), check = () => {}, log
                 parsed.year,
                 parsed.season,
                 subtitleReleaseChapter(parsed),
-                subtitleSearchNames(parsed),
+                [...subtitleSeasonSearchNames(parsed), ...subtitleSearchNames(parsed)],
                 config.language,
                 config.thunder,
                 config.assrtKey,
@@ -1269,6 +1312,7 @@ function createSubtitleService({ wait = (ms) => sleep(ms), check = () => {}, log
             if (parsed.tv && (parsed.season == null || parsed.episode == null))
                 throw subtitleSourceError('缺少明确季集，未按片名搜索');
             const chapter = subtitleReleaseChapter(parsed);
+            const seasonNames = subtitleSeasonSearchNames(parsed);
             const seasonKey = parsed.tv
                 ? JSON.stringify([
                       'thunder-season',
@@ -1277,6 +1321,7 @@ function createSubtitleService({ wait = (ms) => sleep(ms), check = () => {}, log
                       parsed.tmdbId || '',
                       parsed.season,
                       chapter,
+                      seasonNames,
                   ])
                 : '';
             let items, attempts;
@@ -1306,17 +1351,19 @@ function createSubtitleService({ wait = (ms) => sleep(ms), check = () => {}, log
                 ) ||
                     (parsed.tv && /\b(?:2160p|1080p|720p)\b/i.test(original)));
             const plainQueries = names.map((name) => name + suffix);
+            const seasonQueries = seasonNames.map(
+                (name) => name + (config.seasonSearch ? '' : ' ' + episodeLabel)
+            );
+            const releaseQuery = withRelease && original.replace(/\.[^.]+$/, '');
+            const fallbackQueries = seasonQueries.length
+                ? [...plainQueries, releaseQuery]
+                : [releaseQuery, ...plainQueries];
             const chapterQuery = chapter && chapter + (config.seasonSearch ? '' : ' ' + episodeLabel);
             const chapterEpisodeQuery =
                 chapter && !config.seasonSearch && chapter + ' S' + parsed.season + episodeSuffix;
             const queries = [
                 ...new Set(
-                    [
-                        chapterEpisodeQuery,
-                        chapterQuery,
-                        withRelease && original.replace(/\.[^.]+$/, ''),
-                        ...plainQueries,
-                    ].filter(Boolean)
+                    [...seasonQueries, chapterEpisodeQuery, chapterQuery, ...fallbackQueries].filter(Boolean)
                 ),
             ].slice(0, chapterEpisodeQuery ? 4 : 3);
             const filter = (items, { parsed: target, node }) => {
@@ -2436,7 +2483,13 @@ function subtitleEpisodeName(name, parsed) {
     if (season == null && episode != null && parsed.workResolved && title) {
         const releaseTitle = subtitleTitleKey(subtitleReleaseChapter(parsed));
         const subtitleTitle = subtitleTitleKey(title);
-        if (releaseTitle && releaseTitle === subtitleTitle) season = parsed.season;
+        const titleSeasons = seasons.filter((item) =>
+            subtitleSeasonTitles(parsed, item.season_number).some(
+                (name) => subtitleTitleKey(name) === subtitleTitle
+            )
+        );
+        if (titleSeasons.length === 1) season = titleSeasons[0].season_number;
+        if (season == null && releaseTitle && releaseTitle === subtitleTitle) season = parsed.season;
         const suffix = title.match(/^(.*?)[ ._-]*(\d{1,2}|VIII|VII|VI|IV|IX|III|II|V|X|I)$/i);
         const roman = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9, X: 10 };
         const number =
