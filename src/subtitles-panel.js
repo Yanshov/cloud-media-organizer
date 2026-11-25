@@ -470,17 +470,17 @@ function mergedSubtitleFillTargets(rows, ready, covered) {
         const missing = group.filter((row) => !covered(row));
         if (!group[0].parsed.tv) return missing.filter(ready);
         if (group[0].parsed.season == null || !missing.length) return [];
-        const episodes = new Set(missing.map((row) => row.parsed.episode));
+        const targets = missing.filter(ready);
+        if (!targets.length) return [];
+        const episodes = new Set(targets.map((row) => row.parsed.episode));
         if (
-            !missing.every(
+            !targets.every(
                 (row) =>
-                    ready(row) &&
-                    !row.selectedCandidate.hardMismatch &&
-                    row.autoCandidates?.includes(row.selectedCandidate)
+                    !row.selectedCandidate.hardMismatch && row.autoCandidates?.includes(row.selectedCandidate)
             )
         )
             return [];
-        const directFiles = missing.filter((row) => !isSubtitleArchive(row.selectedCandidate.ext));
+        const directFiles = targets.filter((row) => !isSubtitleArchive(row.selectedCandidate.ext));
         const names = new Set(
             directFiles.map((row) =>
                 JSON.stringify([
@@ -495,8 +495,8 @@ function mergedSubtitleFillTargets(rows, ready, covered) {
             )
         );
         if (names.size !== directFiles.length) return [];
-        if (episodes.has(null) || episodes.has(undefined) || episodes.size !== missing.length) return [];
-        return missing;
+        if (episodes.has(null) || episodes.has(undefined) || episodes.size !== targets.length) return [];
+        return targets;
     });
 }
 function initMergedMedia(provider) {
@@ -1874,9 +1874,6 @@ function initSubtitles(provider, flow) {
                     (row) => !row.autoCandidates?.some((candidate) => !candidate.downloadFailed)
                 );
                 if (!missing.length) continue;
-                for (const row of targets) {
-                    row.selectedCandidate = null;
-                }
                 const episodes = missing.map(
                     (row) =>
                         'S' +
@@ -1885,15 +1882,15 @@ function initSubtitles(provider, flow) {
                         String(row.parsed.episode).padStart(2, '0')
                 );
                 diag(
-                    '整季转手动导入',
+                    '整季候选缺集',
                     group[0].parsed.query +
-                        ' · 可靠候选覆盖 ' +
+                        ' · 已确认可用中文字幕 ' +
                         (targets.length - missing.length) +
                         '/' +
                         targets.length +
-                        ' · 缺少可靠候选：' +
+                        ' · 未找到可用中文字幕：' +
                         episodes.join('、') +
-                        ' · 停止逐集补齐'
+                        ' · 已保留已确认候选，可先补齐可用集，其余集可导入字幕或继续单独查找'
                 );
             }
             const sourceFailures = rows.filter((row) =>

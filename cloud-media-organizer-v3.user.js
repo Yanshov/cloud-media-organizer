@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v3.0（重构版）
 // @namespace    local.cloud-media-organizer
-// @version      3.0.54
+// @version      3.0.55
 // @description  面向百度网盘、123 云盘和光鸭网盘的浏览器脚本，支持跨盘 JSON 清单、影视整理与字幕补齐。
 // @match        https://pan.baidu.com/*
 // @match        https://yun.baidu.com/*
@@ -198,7 +198,7 @@ SOFTWARE.
             (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))
     )
         return;
-    const VERSION = '3.0.54';
+    const VERSION = '3.0.55';
     let jsonTaskStopped = false;
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
@@ -14169,17 +14169,18 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
             const missing = group.filter((row) => !covered(row));
             if (!group[0].parsed.tv) return missing.filter(ready2);
             if (group[0].parsed.season == null || !missing.length) return [];
-            const episodes = new Set(missing.map((row) => row.parsed.episode));
+            const targets = missing.filter(ready2);
+            if (!targets.length) return [];
+            const episodes = new Set(targets.map((row) => row.parsed.episode));
             if (
-                !missing.every(
+                !targets.every(
                     (row) =>
-                        ready2(row) &&
                         !row.selectedCandidate.hardMismatch &&
                         row.autoCandidates?.includes(row.selectedCandidate)
                 )
             )
                 return [];
-            const directFiles = missing.filter((row) => !isSubtitleArchive(row.selectedCandidate.ext));
+            const directFiles = targets.filter((row) => !isSubtitleArchive(row.selectedCandidate.ext));
             const names = new Set(
                 directFiles.map((row) =>
                     JSON.stringify([
@@ -14194,8 +14195,8 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                 )
             );
             if (names.size !== directFiles.length) return [];
-            if (episodes.has(null) || episodes.has(void 0) || episodes.size !== missing.length) return [];
-            return missing;
+            if (episodes.has(null) || episodes.has(void 0) || episodes.size !== targets.length) return [];
+            return targets;
         });
     }
     function initMergedMedia(provider) {
@@ -15594,9 +15595,6 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                         (row) => !row.autoCandidates?.some((candidate) => !candidate.downloadFailed)
                     );
                     if (!missing.length) continue;
-                    for (const row of targets) {
-                        row.selectedCandidate = null;
-                    }
                     const episodes = missing.map(
                         (row) =>
                             'S' +
@@ -15605,15 +15603,15 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                             String(row.parsed.episode).padStart(2, '0')
                     );
                     diag(
-                        '整季转手动导入',
+                        '整季候选缺集',
                         group[0].parsed.query +
                             ' · 可靠候选覆盖 ' +
                             (targets.length - missing.length) +
                             '/' +
                             targets.length +
-                            ' · 缺少可靠候选：' +
+                            ' · 仍缺字幕：' +
                             episodes.join('、') +
-                            ' · 停止逐集补齐'
+                            ' · 已保留已确认候选，可先补齐可用集，其余集可导入字幕或继续单独查找'
                     );
                 }
                 const sourceFailures = rows.filter((row) =>
