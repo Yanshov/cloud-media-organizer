@@ -6,7 +6,7 @@ if (
 )
     return;
 
-const VERSION = '1.0.6';
+const VERSION = '1.0.7';
 const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
 const nativeFetch = page.fetch.bind(page);
 const capture = { token: '' };
@@ -263,7 +263,8 @@ function titleKey(value) {
 function guangyaAuthHeaders(token) {
     return { 'Content-Type': 'application/json;charset=utf-8', Authorization: 'Bearer ' + token, dt: '4' };
 }
-function requestGuangya(token, endpoint, body) {
+async function requestGuangya(session, endpoint, body) {
+    const token = await session.getToken();
     return requestJson('https://api.guangyapan.com' + endpoint, {
         method: 'POST',
         headers: guangyaAuthHeaders(token),
@@ -405,9 +406,9 @@ function taskIdOf(data) {
     if (typeof value === 'number' && Number.isSafeInteger(value)) return String(value);
     return '';
 }
-async function requestJson(url, options = {}) {
+async function requestJson(url, options = {}, timeout = 30000) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 30000);
+    const timer = setTimeout(() => controller.abort(), timeout);
     try {
         const response = await nativeFetch(url, { ...options, signal: controller.signal });
         if (!response.ok) {
@@ -418,7 +419,7 @@ async function requestJson(url, options = {}) {
         }
         return await response.json();
     } catch (error) {
-        if (error.name === 'AbortError') throw new Error('请求超时（30 秒）');
+        if (error.name === 'AbortError') throw new Error('请求超时（' + timeout / 1000 + ' 秒）');
         throw error;
     } finally {
         clearTimeout(timer);

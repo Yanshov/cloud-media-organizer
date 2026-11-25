@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v1.0
 // @namespace    local.cloud-media-organizer
-// @version      1.0.6
+// @version      1.0.7
 // @description  面向光鸭网盘的影视整理与字幕补齐工具。
 // @match        https://www.guangyapan.com/*
 // @match        https://guangyapan.com/*
@@ -186,7 +186,7 @@ SOFTWARE.
             (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))
     )
         return;
-    const VERSION = '1.0.6';
+    const VERSION = '1.0.7';
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
     const capture = { token: '' };
@@ -438,7 +438,8 @@ SOFTWARE.
             dt: '4',
         };
     }
-    function requestGuangya(token, endpoint, body) {
+    async function requestGuangya(session, endpoint, body) {
+        const token = await session.getToken();
         return requestJson('https://api.guangyapan.com' + endpoint, {
             method: 'POST',
             headers: guangyaAuthHeaders(token),
@@ -581,9 +582,9 @@ SOFTWARE.
         if (typeof value === 'number' && Number.isSafeInteger(value)) return String(value);
         return '';
     }
-    async function requestJson(url, options = {}) {
+    async function requestJson(url, options = {}, timeout = 3e4) {
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 3e4);
+        const timer = setTimeout(() => controller.abort(), timeout);
         try {
             const response = await nativeFetch(url, { ...options, signal: controller.signal });
             if (!response.ok) {
@@ -594,7 +595,7 @@ SOFTWARE.
             }
             return await response.json();
         } catch (error) {
-            if (error.name === 'AbortError') throw new Error('请求超时（30 秒）');
+            if (error.name === 'AbortError') throw new Error('请求超时（' + timeout / 1e3 + ' 秒）');
             throw error;
         } finally {
             clearTimeout(timer);
@@ -1607,8 +1608,59 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             breadcrumbs,
         };
     }
-    function guangyaSource(token) {
-        const post = paced(180, requestGuangya.bind(null, token));
+    const guangyaAccounts = /* @__PURE__ */ new Map();
+    function guangyaAccount(token) {
+        if (!guangyaAccounts.has(token)) {
+            const profile = requestJson(
+                'https://account.guangyapan.com/v1/user/me',
+                { credentials: 'omit', headers: { Authorization: 'Bearer ' + token } },
+                6e3
+            )
+                .then(({ sub }) => {
+                    const account =
+                        typeof sub === 'string' || Number.isSafeInteger(sub) ? String(sub).trim() : '';
+                    if (!account) throw new Error('光鸭未返回账号 ID');
+                    return account;
+                })
+                .catch(() => {
+                    if (guangyaAccounts.get(token) === profile) guangyaAccounts.delete(token);
+                    return null;
+                });
+            guangyaAccounts.set(token, profile);
+            evict(guangyaAccounts, 4);
+        }
+        return guangyaAccounts.get(token);
+    }
+    function createGuangyaSession(token, parent) {
+        let account = guangyaAccount(token);
+        let authorizedToken = token;
+        return {
+            provider: '光鸭',
+            token,
+            parent,
+            async getToken() {
+                const latest = capture.token;
+                if (latest && latest === authorizedToken) return latest;
+                if (!latest) throw new Error('暂时无法读取光鸭登录状态，请稍后重试。');
+                const [originalAccount, nextAccount] = await Promise.all([
+                    account.then((value) => value || guangyaAccount(token)),
+                    guangyaAccount(latest),
+                ]);
+                if (originalAccount) account = Promise.resolve(originalAccount);
+                if (capture.token !== latest || !originalAccount || !nextAccount)
+                    throw new Error('暂时无法核对光鸭登录状态，请稍后重试。');
+                if (originalAccount !== nextAccount)
+                    throw Object.assign(new Error('光鸭账号已变化，请重新识别并检查。'), {
+                        accountChanged: true,
+                        stop: true,
+                    });
+                authorizedToken = latest;
+                return latest;
+            },
+        };
+    }
+    function guangyaSource(session) {
+        const post = paced(180, requestGuangya.bind(null, session));
         const node = (file) => {
             const id = decimalId(file?.fileId);
             if (!id || typeof file.fileName !== 'string') throw new Error('光鸭目录项目缺少 ID 或名称');
@@ -2650,9 +2702,9 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         evict(tmdbClients, 2);
         return client;
     }
-    function mediaGuangyaPost(token, writeInterval = 650) {
+    function mediaGuangyaPost(session, writeInterval = 650) {
         const request = async (endpoint, body) => {
-            const result = await requestGuangya(token, endpoint, body);
+            const result = await requestGuangya(session, endpoint, body);
             if (guangyaCode(result) !== 0) throw apiError('光鸭整理', result);
             return result;
         };
@@ -2664,26 +2716,28 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         const folder = currentGuangyaFolder();
         if (!folder) throw new Error('请先打开光鸭“全部”中的文件夹');
         if (!capture.token) throw new Error('未捕获光鸭登录状态，请切换文件夹后重试');
-        const source = guangyaSource(capture.token);
+        const selected = selectedGuangyaItems();
+        const session = createGuangyaSession(capture.token, folder.id);
+        const source = guangyaSource(session);
         source.parentId = folder.id;
         source.breadcrumbs = folder.breadcrumbs;
         return {
-            session: { provider: '光鸭', token: capture.token, parent: folder.id },
+            session,
             source,
             path: folder.relativePath,
-            selected: selectedGuangyaItems(),
+            selected,
         };
     }
     async function recycleMedia(item, session, source) {
         try {
-            await removeGuangyaNode(item, source, mediaGuangyaPost(session.token), sleep, () => {});
+            await removeGuangyaNode(item, source, mediaGuangyaPost(session), sleep, () => {});
         } catch (error) {
             if (!error.terminal) error.pending = true;
             throw error;
         }
     }
     function mediaOrganizerWriter(session, source, readSubtitleLinks) {
-        const post = mediaGuangyaPost(session.token, 0);
+        const post = mediaGuangyaPost(session, 0);
         const directories = /* @__PURE__ */ new Map([['', session.parent]]),
             bindings = /* @__PURE__ */ new Map(),
             scopeSnapshots = /* @__PURE__ */ new Map();
@@ -9968,7 +10022,7 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
         const rejected = [];
         for (const sub of row.subtitles.filter((sub2) => /\.(srt|ass|ssa|vtt)$/i.test(sub2.name))) {
             check();
-            drive.assertReady?.();
+            await drive.assertReady?.();
             if (force) drive.verified?.forget(sub);
             const cached = !force && drive.verified?.get(sub, language, row);
             if (cached) {
@@ -10404,29 +10458,31 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
             if (receiptKey) GM_setValue(receiptKey, [...receipts]);
         };
         let authError = null;
-        const assertReady = () => {
-            if (authError) throw authError;
+        const assertReady = async () => {
+            const token = session.getToken ? await session.getToken() : session.token;
+            if (authError?.token === token) throw authError.error;
+            return token;
         };
         const driveCall = async (operation) => {
-            assertReady();
+            const token = await assertReady();
             try {
-                return await operation();
+                return await operation(token);
             } catch (error) {
-                if (error.stop || [401, 403].includes(error.status)) {
+                if (!error.accountChanged && (error.stop || [401, 403].includes(error.status))) {
                     error.stop = true;
                     error.phase = 'drive-auth';
-                    error.message = `光鸭网盘登录失效或权限不足：${error.message}；请刷新网盘登录后重新检查目录`;
-                    authError = error;
+                    error.message = `光鸭网盘登录失效或权限不足：${error.message}。请恢复登录后重试。`;
+                    authError = { token, error };
                 }
                 throw error;
             }
         };
         const post = paced(350, (path, body, allowed = [0, 200]) =>
-            driveCall(async () => {
+            driveCall(async (token) => {
                 const response = await requestJson('https://api.guangyapan.com' + path, {
                     method: 'POST',
                     credentials: 'omit',
-                    headers: guangyaAuthHeaders(session.token),
+                    headers: guangyaAuthHeaders(token),
                     body: JSON.stringify(body),
                 });
                 if (!allowed.includes(guangyaCode(response))) {
@@ -12817,7 +12873,7 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                 `剧集先按季搜索并建立文件索引；缺集再搜索迅雷、OpenSubtitles；${ai ? '名称有歧义时交给 AI 判断' : 'AI 未启用，使用严格片名匹配'}；来源限流后本批跳过该来源`
             );
             try {
-                drive.assertReady?.();
+                await drive.assertReady?.();
                 diag('并发策略', '视频任务上限 8，AI 请求上限 2；同季命名判断合并，优先使用整季缓存');
                 for (const row of rows.filter((row2) => row2.parsed.tv))
                     diag(
@@ -13267,21 +13323,40 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                     )
                     .sort(),
             ]);
-        const sameCheckedSelection = (current) =>
-            checkedScope !== null &&
-            subtitleContext &&
-            current.session.token === subtitleContext.session.token &&
-            scopeKey(current) === scopeKey(subtitleContext);
+        const invalidateCheckedSelection = (message) => {
+            checkedScope = null;
+            flow.registryReady = false;
+            flow.invalidate(message);
+            ui.get('previewMedia').disabled = true;
+        };
+        const verifyCheckedSelection = async (current, context) => {
+            if (!current.selected.length && current.session.parent === context.session.parent)
+                throw new Error('当前未读取到已勾选项目。请核对网页勾选并重试。');
+            if (scopeKey(current) !== scopeKey(context))
+                throw Object.assign(new Error('网盘选区已变化，请重新识别并检查。'), {
+                    selectionChanged: true,
+                });
+            if (context.session.getToken) await context.session.getToken();
+            else if (current.session.token !== context.session.token)
+                throw Object.assign(new Error('光鸭账号已变化，请重新识别并检查。'), {
+                    accountChanged: true,
+                });
+        };
         const requireCheckedSelection = async () => {
-            const current = await mediaContext();
-            check();
-            if (!sameCheckedSelection(current)) {
-                checkedScope = null;
-                flow.registryReady = false;
-                flow.invalidate('账号或选区已变化');
-                throw new Error('账号或选区已变化，请重新查找字幕或导入。');
+            const context = subtitleContext;
+            if (checkedScope === null || !context) throw new Error('请先识别并检查当前选区。');
+            try {
+                const current = await mediaContext();
+                check();
+                await verifyCheckedSelection(current, context);
+                check();
+                await drive.assertReady?.();
+                check();
+            } catch (error) {
+                if (context === subtitleContext && (error.selectionChanged || error.accountChanged))
+                    invalidateCheckedSelection(error.message);
+                throw error;
             }
-            drive.assertReady?.();
         };
         const recheckWork = (rows) =>
             runTask(async () => {
@@ -14183,27 +14258,41 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
             if (!flow.registryReady) throw new Error('请先识别并检查当前选区');
             await requireCheckedSelection();
         };
+        let scopeRevision = 0;
         const verifyVisibleScope = async () => {
-            if (active || !flow.context || checkedScope === null) return;
-            const context = flow.context;
+            const context = subtitleContext;
+            if (active || !context || checkedScope === null) return;
+            const revision = ++scopeRevision;
             try {
                 const current = await mediaContext();
-                if (context !== flow.context || active || sameCheckedSelection(current)) return;
-            } catch {
-                if (context !== flow.context || active) return;
+                if (
+                    context !== subtitleContext ||
+                    active ||
+                    checkedScope === null ||
+                    revision !== scopeRevision
+                )
+                    return;
+                await verifyCheckedSelection(current, context);
+            } catch (error) {
+                if (
+                    context !== subtitleContext ||
+                    active ||
+                    checkedScope === null ||
+                    revision !== scopeRevision ||
+                    (!error.selectionChanged && !error.accountChanged)
+                )
+                    return;
+                invalidateCheckedSelection(error.message);
+                status(error.message);
+                render();
             }
-            checkedScope = null;
-            flow.registryReady = false;
-            flow.invalidate('网盘选区已变化');
-            ui.get('previewMedia').disabled = true;
-            status('网盘选区已变化，请重新识别并检查。');
-            render();
         };
         ui.onActivate?.(verifyVisibleScope);
         let scopeTimer;
         const recheckScopeSoon = (event) => {
             const inPanel = event.composedPath?.().includes(results.getRootNode?.().host);
             if (inPanel || active || !flow.context) return;
+            scopeRevision++;
             clearTimeout(scopeTimer);
             scopeTimer = setTimeout(verifyVisibleScope, 120);
         };

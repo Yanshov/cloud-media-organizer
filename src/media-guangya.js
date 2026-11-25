@@ -291,8 +291,64 @@ function currentGuangyaFolder() {
     };
 }
 
-function guangyaSource(token) {
-    const post = paced(180, requestGuangya.bind(null, token));
+const guangyaAccounts = new Map();
+
+/** Reads the account subject from the same profile endpoint used by the web app. */
+function guangyaAccount(token) {
+    if (!guangyaAccounts.has(token)) {
+        const profile = requestJson(
+            'https://account.guangyapan.com/v1/user/me',
+            { credentials: 'omit', headers: { Authorization: 'Bearer ' + token } },
+            6000
+        )
+            .then(({ sub }) => {
+                const account =
+                    typeof sub === 'string' || Number.isSafeInteger(sub) ? String(sub).trim() : '';
+                if (!account) throw new Error('光鸭未返回账号 ID');
+                return account;
+            })
+            .catch(() => {
+                if (guangyaAccounts.get(token) === profile) guangyaAccounts.delete(token);
+                return null;
+            });
+        guangyaAccounts.set(token, profile);
+        evict(guangyaAccounts, 4);
+    }
+    return guangyaAccounts.get(token);
+}
+
+/** Pins an operation to the selected account while allowing that account to renew its token. */
+function createGuangyaSession(token, parent) {
+    let account = guangyaAccount(token);
+    let authorizedToken = token;
+    return {
+        provider: '光鸭',
+        token,
+        parent,
+        async getToken() {
+            const latest = capture.token;
+            if (latest && latest === authorizedToken) return latest;
+            if (!latest) throw new Error('暂时无法读取光鸭登录状态，请稍后重试。');
+            const [originalAccount, nextAccount] = await Promise.all([
+                account.then((value) => value || guangyaAccount(token)),
+                guangyaAccount(latest),
+            ]);
+            if (originalAccount) account = Promise.resolve(originalAccount);
+            if (capture.token !== latest || !originalAccount || !nextAccount)
+                throw new Error('暂时无法核对光鸭登录状态，请稍后重试。');
+            if (originalAccount !== nextAccount)
+                throw Object.assign(new Error('光鸭账号已变化，请重新识别并检查。'), {
+                    accountChanged: true,
+                    stop: true,
+                });
+            authorizedToken = latest;
+            return latest;
+        },
+    };
+}
+
+function guangyaSource(session) {
+    const post = paced(180, requestGuangya.bind(null, session));
     const node = (file) => {
         const id = decimalId(file?.fileId);
         if (!id || typeof file.fileName !== 'string') throw new Error('光鸭目录项目缺少 ID 或名称');

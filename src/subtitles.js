@@ -3692,7 +3692,7 @@ async function inspectExistingSubtitles(
     const rejected = [];
     for (const sub of row.subtitles.filter((sub) => /\.(srt|ass|ssa|vtt)$/i.test(sub.name))) {
         check();
-        drive.assertReady?.();
+        await drive.assertReady?.();
         if (force) drive.verified?.forget(sub);
         const cached = !force && drive.verified?.get(sub, language, row);
         if (cached) {
@@ -4123,29 +4123,31 @@ function subtitleDrive(context, wait = sleep) {
         if (receiptKey) GM_setValue(receiptKey, [...receipts]);
     };
     let authError = null;
-    const assertReady = () => {
-        if (authError) throw authError;
+    const assertReady = async () => {
+        const token = session.getToken ? await session.getToken() : session.token;
+        if (authError?.token === token) throw authError.error;
+        return token;
     };
     const driveCall = async (operation) => {
-        assertReady();
+        const token = await assertReady();
         try {
-            return await operation();
+            return await operation(token);
         } catch (error) {
-            if (error.stop || [401, 403].includes(error.status)) {
+            if (!error.accountChanged && (error.stop || [401, 403].includes(error.status))) {
                 error.stop = true;
                 error.phase = 'drive-auth';
-                error.message = `光鸭网盘登录失效或权限不足：${error.message}；请刷新网盘登录后重新检查目录`;
-                authError = error;
+                error.message = `光鸭网盘登录失效或权限不足：${error.message}。请恢复登录后重试。`;
+                authError = { token, error };
             }
             throw error;
         }
     };
     const post = paced(350, (path, body, allowed = [0, 200]) =>
-        driveCall(async () => {
+        driveCall(async (token) => {
             const response = await requestJson('https://api.guangyapan.com' + path, {
                 method: 'POST',
                 credentials: 'omit',
-                headers: guangyaAuthHeaders(session.token),
+                headers: guangyaAuthHeaders(token),
                 body: JSON.stringify(body),
             });
             if (!allowed.includes(guangyaCode(response))) {

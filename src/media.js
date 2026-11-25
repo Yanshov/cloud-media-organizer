@@ -962,9 +962,9 @@ function tmdbClient(credential) {
     evict(tmdbClients, 2);
     return client;
 }
-function mediaGuangyaPost(token, writeInterval = 650) {
+function mediaGuangyaPost(session, writeInterval = 650) {
     const request = async (endpoint, body) => {
-        const result = await requestGuangya(token, endpoint, body);
+        const result = await requestGuangya(session, endpoint, body);
         if (guangyaCode(result) !== 0) throw apiError('光鸭整理', result);
         return result;
     };
@@ -976,19 +976,21 @@ async function mediaContext() {
     const folder = currentGuangyaFolder();
     if (!folder) throw new Error('请先打开光鸭“全部”中的文件夹');
     if (!capture.token) throw new Error('未捕获光鸭登录状态，请切换文件夹后重试');
-    const source = guangyaSource(capture.token);
+    const selected = selectedGuangyaItems();
+    const session = createGuangyaSession(capture.token, folder.id);
+    const source = guangyaSource(session);
     source.parentId = folder.id;
     source.breadcrumbs = folder.breadcrumbs;
     return {
-        session: { provider: '光鸭', token: capture.token, parent: folder.id },
+        session,
         source,
         path: folder.relativePath,
-        selected: selectedGuangyaItems(),
+        selected,
     };
 }
 async function recycleMedia(item, session, source) {
     try {
-        await removeGuangyaNode(item, source, mediaGuangyaPost(session.token), sleep, () => {});
+        await removeGuangyaNode(item, source, mediaGuangyaPost(session), sleep, () => {});
     } catch (error) {
         if (!error.terminal) error.pending = true;
         throw error;
@@ -996,7 +998,7 @@ async function recycleMedia(item, session, source) {
 }
 /** Prepares organization plans, rechecks their scope, and performs confirmed writes. */
 function mediaOrganizerWriter(session, source, readSubtitleLinks) {
-    const post = mediaGuangyaPost(session.token, 0);
+    const post = mediaGuangyaPost(session, 0);
     const directories = new Map([['', session.parent]]),
         bindings = new Map(),
         scopeSnapshots = new Map();

@@ -1925,7 +1925,7 @@ function initSubtitles(flow) {
             `剧集先按季搜索并建立文件索引；缺集再搜索迅雷、OpenSubtitles；${ai ? '名称有歧义时交给 AI 判断' : 'AI 未启用，使用严格片名匹配'}；来源限流后本批跳过该来源`
         );
         try {
-            drive.assertReady?.();
+            await drive.assertReady?.();
             diag('并发策略', '视频任务上限 8，AI 请求上限 2；同季命名判断合并，优先使用整季缓存');
             for (const row of rows.filter((row) => row.parsed.tv))
                 diag(
@@ -2370,21 +2370,36 @@ function initSubtitles(flow) {
                 .map((item) => JSON.stringify([item.id ?? '', [...(item.names || [item.name || ''])].sort()]))
                 .sort(),
         ]);
-    const sameCheckedSelection = (current) =>
-        checkedScope !== null &&
-        subtitleContext &&
-        current.session.token === subtitleContext.session.token &&
-        scopeKey(current) === scopeKey(subtitleContext);
+    const invalidateCheckedSelection = (message) => {
+        checkedScope = null;
+        flow.registryReady = false;
+        flow.invalidate(message);
+        ui.get('previewMedia').disabled = true;
+    };
+    const verifyCheckedSelection = async (current, context) => {
+        if (!current.selected.length && current.session.parent === context.session.parent)
+            throw new Error('当前未读取到已勾选项目。请核对网页勾选并重试。');
+        if (scopeKey(current) !== scopeKey(context))
+            throw Object.assign(new Error('网盘选区已变化，请重新识别并检查。'), { selectionChanged: true });
+        if (context.session.getToken) await context.session.getToken();
+        else if (current.session.token !== context.session.token)
+            throw Object.assign(new Error('光鸭账号已变化，请重新识别并检查。'), { accountChanged: true });
+    };
     const requireCheckedSelection = async () => {
-        const current = await mediaContext();
-        check();
-        if (!sameCheckedSelection(current)) {
-            checkedScope = null;
-            flow.registryReady = false;
-            flow.invalidate('账号或选区已变化');
-            throw new Error('账号或选区已变化，请重新查找字幕或导入。');
+        const context = subtitleContext;
+        if (checkedScope === null || !context) throw new Error('请先识别并检查当前选区。');
+        try {
+            const current = await mediaContext();
+            check();
+            await verifyCheckedSelection(current, context);
+            check();
+            await drive.assertReady?.();
+            check();
+        } catch (error) {
+            if (context === subtitleContext && (error.selectionChanged || error.accountChanged))
+                invalidateCheckedSelection(error.message);
+            throw error;
         }
-        drive.assertReady?.();
     };
     const recheckWork = (rows) =>
         runTask(async () => {
@@ -3269,27 +3284,36 @@ function initSubtitles(flow) {
         if (!flow.registryReady) throw new Error('请先识别并检查当前选区');
         await requireCheckedSelection();
     };
+    let scopeRevision = 0;
     const verifyVisibleScope = async () => {
-        if (active || !flow.context || checkedScope === null) return;
-        const context = flow.context;
+        const context = subtitleContext;
+        if (active || !context || checkedScope === null) return;
+        const revision = ++scopeRevision;
         try {
             const current = await mediaContext();
-            if (context !== flow.context || active || sameCheckedSelection(current)) return;
-        } catch {
-            if (context !== flow.context || active) return;
+            if (context !== subtitleContext || active || checkedScope === null || revision !== scopeRevision)
+                return;
+            await verifyCheckedSelection(current, context);
+        } catch (error) {
+            if (
+                context !== subtitleContext ||
+                active ||
+                checkedScope === null ||
+                revision !== scopeRevision ||
+                (!error.selectionChanged && !error.accountChanged)
+            )
+                return;
+            invalidateCheckedSelection(error.message);
+            status(error.message);
+            render();
         }
-        checkedScope = null;
-        flow.registryReady = false;
-        flow.invalidate('网盘选区已变化');
-        ui.get('previewMedia').disabled = true;
-        status('网盘选区已变化，请重新识别并检查。');
-        render();
     };
     ui.onActivate?.(verifyVisibleScope);
     let scopeTimer;
     const recheckScopeSoon = (event) => {
         const inPanel = event.composedPath?.().includes(results.getRootNode?.().host);
         if (inPanel || active || !flow.context) return;
+        scopeRevision++;
         clearTimeout(scopeTimer);
         scopeTimer = setTimeout(verifyVisibleScope, 120);
     };

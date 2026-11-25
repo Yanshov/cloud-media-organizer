@@ -12,19 +12,72 @@ const body = modules
     .join('\n');
 
 /** Loads the userscript's matching functions with isolated settings. */
-function loadMatcher(storage = new Map()) {
+function loadMatcher(storage = new Map(), fetchRequest = fetch) {
     return vm.runInNewContext(
         '(() => {\n' +
             body +
-            '\nreturn { subtitleEpisodeIdentity, subtitleArchiveChoices, matchSubtitleImport, rememberSubtitleEpisodeMapping, planSubtitleImport, prepareOnlineSubtitle, selectSubtitleCandidate };\n})()',
+            '\nreturn { subtitleEpisodeIdentity, subtitleArchiveChoices, matchSubtitleImport, rememberSubtitleEpisodeMapping, planSubtitleImport, prepareOnlineSubtitle, selectSubtitleCandidate, capture, createGuangyaSession, requestGuangya, subtitleDrive };\n})()',
         {
-            window: { fetch },
+            window: { fetch: fetchRequest },
+            AbortController,
             TextDecoder,
+            TextEncoder,
+            setTimeout,
+            clearTimeout,
             GM_getValue: (key, fallback) => storage.get(key) ?? fallback,
             GM_setValue: (key, value) => storage.set(key, value),
         }
     );
 }
+
+test('a checked drive continues with a renewed token for the same verified account', async () => {
+    const seen = [];
+    const matcher = loadMatcher(new Map(), async (url, { headers }) => {
+        const token = headers.Authorization;
+        if (url === 'https://account.guangyapan.com/v1/user/me') return Response.json({ sub: 'account-a' });
+        seen.push(token);
+        return token === 'Bearer initial' ? new Response(null, { status: 401 }) : Response.json({ code: 0 });
+    });
+    matcher.capture.token = 'initial';
+    const session = matcher.createGuangyaSession('initial', '42');
+    const drive = matcher.subtitleDrive({
+        session,
+        source: { children: () => matcher.requestGuangya(session, '/directory', {}) },
+    });
+    await assert.rejects(drive.read({ id: '1', name: 'Fixture.srt' }), { status: 401, phase: 'drive-auth' });
+    await assert.rejects(drive.assertReady(), { status: 401, phase: 'drive-auth' });
+    matcher.capture.token = 'renewed';
+    assert.equal(await drive.assertReady(), 'renewed');
+    await matcher.requestGuangya(session, '/directory', {});
+    assert.deepEqual(seen, ['Bearer initial', 'Bearer renewed']);
+});
+
+test('account changes block requests and transient profile failures can be retried', async () => {
+    let fail = true;
+    let directoryReads = 0;
+    const matcher = loadMatcher(new Map(), async (url, { headers }) => {
+        if (url === 'https://account.guangyapan.com/v1/user/me') {
+            const token = headers.Authorization;
+            if (token === 'Bearer renewed' && fail) throw new Error('Network unavailable');
+            return Response.json({ sub: token === 'Bearer different-account' ? 'account-b' : 'account-a' });
+        }
+        directoryReads++;
+        return Response.json({ code: 0 });
+    });
+    matcher.capture.token = 'initial';
+    const session = matcher.createGuangyaSession('initial', '42');
+    matcher.capture.token = 'renewed';
+    await assert.rejects(matcher.requestGuangya(session, '/directory', {}), /暂时无法核对/);
+    assert.equal(directoryReads, 0);
+    fail = false;
+    await matcher.requestGuangya(session, '/directory', {});
+    matcher.capture.token = 'different-account';
+    await assert.rejects(matcher.requestGuangya(session, '/directory', {}), {
+        accountChanged: true,
+        stop: true,
+    });
+    assert.equal(directoryReads, 1);
+});
 
 const special = {
     node: { name: "Haven't.You.Heard.I'm.Sakamoto.S00E01.1080p.BluRay.mkv" },
