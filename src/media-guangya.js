@@ -1,3 +1,236 @@
+async function readPages(load, keyOf) {
+    const items = [],
+        seen = new Set();
+    let expectedTotal = null;
+    const inconsistent = (message) => Object.assign(new Error(message), { directoryChanged: true });
+    for (let pageNumber = 1; pageNumber <= 10000; pageNumber++) {
+        const result = await load(pageNumber, items.length);
+        if (!result || !Array.isArray(result.items)) throw new Error('目录列表格式不正确');
+        if (result.total != null) {
+            if (expectedTotal != null && result.total !== expectedTotal)
+                throw inconsistent('读取期间目录项目数发生变化，请重试');
+            expectedTotal = result.total;
+        }
+        let added = 0;
+        for (const item of result.items) {
+            const key = keyOf(item);
+            if (!key) throw new Error('目录列表缺少 ID');
+            if (seen.has(key)) throw inconsistent('目录分页没有进展或包含重复项目，请重新读取，避免漏文件');
+            seen.add(key);
+            items.push(item);
+            added++;
+        }
+        if (!result.more) {
+            if (expectedTotal != null && items.length !== expectedTotal)
+                throw inconsistent(
+                    `目录项目数不一致：应有 ${expectedTotal}，实际读到 ${items.length}；请重新读取`
+                );
+            return items;
+        }
+        if (expectedTotal != null && items.length >= expectedTotal)
+            throw inconsistent('目录分页与总数不一致，请重新读取');
+        if (!added) throw inconsistent('目录分页没有进展，已停止，避免漏文件');
+    }
+    throw new Error('目录分页超过上限，请分批读取');
+}
+function decimalId(value) {
+    if (typeof value === 'number' && !Number.isSafeInteger(value)) return '';
+    return /^(0|[1-9]\d*)$/.test(String(value)) ? String(value) : '';
+}
+function selectedGuangyaItems() {
+    const seen = new Set();
+    for (const element of document.querySelectorAll('#app *')) {
+        const key = Object.keys(element).find((key) => key.startsWith('__reactFiber$'));
+        let fiber = key && element[key];
+        while (fiber && !seen.has(fiber)) {
+            seen.add(fiber);
+            const props = fiber.memoizedProps;
+            if (
+                props?.rowKey === 'fileId' &&
+                Array.isArray(props.dataSource) &&
+                Array.isArray(props.selectedItems)
+            ) {
+                const ids = props.selectedItems.map(decimalId);
+                if (ids.some((id) => !id)) throw new Error('光鸭选中项目缺少有效 ID，请重新勾选');
+                return ids.map((id) => ({ id, names: [] }));
+            }
+            fiber = fiber.return;
+        }
+    }
+    throw new Error('无法读取光鸭文件列表，请刷新页面后重试');
+}
+function installHooks() {
+    const targetOf = (value) => {
+        try {
+            const url = new URL(value, location.href);
+            return url.origin === 'https://api.guangyapan.com' ? url : null;
+        } catch {
+            return null;
+        }
+    };
+    const captureHeaders = (headers) => {
+        const auth = headers.get('authorization');
+        if (auth && /^Bearer\s+\S+/i.test(auth)) capture.token = auth.replace(/^Bearer\s+/i, '').trim();
+    };
+    page.fetch = function (input, init) {
+        try {
+            const isRequest = input && typeof input === 'object' && typeof input.url === 'string';
+            if (targetOf(isRequest ? input.url : String(input)))
+                captureHeaders(
+                    new page.Headers(
+                        init?.headers !== undefined ? init.headers : isRequest ? input.headers : undefined
+                    )
+                );
+        } catch (_) {}
+        return nativeFetch(...arguments);
+    };
+    const proto = page.XMLHttpRequest?.prototype;
+    if (!proto) return;
+    const metadata = new WeakMap(),
+        open = proto.open,
+        setHeader = proto.setRequestHeader,
+        send = proto.send;
+    proto.open = function (_method, url) {
+        const result = open.apply(this, arguments);
+        metadata.delete(this);
+        try {
+            const target = targetOf(String(url));
+            if (target) metadata.set(this, new page.Headers());
+        } catch (_) {}
+        return result;
+    };
+    proto.setRequestHeader = function (name, value) {
+        const result = setHeader.apply(this, arguments);
+        const headers = metadata.get(this);
+        if (headers) {
+            try {
+                headers.append(name, value);
+            } catch (_) {}
+        }
+        return result;
+    };
+    proto.send = function (body) {
+        const headers = metadata.get(this);
+        if (headers) captureHeaders(headers);
+        return send.apply(this, arguments);
+    };
+}
+async function readPages(load, keyOf) {
+    const items = [],
+        seen = new Set();
+    let expectedTotal = null;
+    const inconsistent = (message) => Object.assign(new Error(message), { directoryChanged: true });
+    for (let pageNumber = 1; pageNumber <= 10000; pageNumber++) {
+        const result = await load(pageNumber, items.length);
+        if (!result || !Array.isArray(result.items)) throw new Error('目录列表格式不正确');
+        if (result.total != null) {
+            if (expectedTotal != null && result.total !== expectedTotal)
+                throw inconsistent('读取期间目录项目数发生变化，请重试');
+            expectedTotal = result.total;
+        }
+        let added = 0;
+        for (const item of result.items) {
+            const key = keyOf(item);
+            if (!key) throw new Error('目录列表缺少 ID');
+            if (seen.has(key)) throw inconsistent('目录分页没有进展或包含重复项目，请重新读取，避免漏文件');
+            seen.add(key);
+            items.push(item);
+            added++;
+        }
+        if (!result.more) {
+            if (expectedTotal != null && items.length !== expectedTotal)
+                throw inconsistent(
+                    `目录项目数不一致：应有 ${expectedTotal}，实际读到 ${items.length}；请重新读取`
+                );
+            return items;
+        }
+        if (expectedTotal != null && items.length >= expectedTotal)
+            throw inconsistent('目录分页与总数不一致，请重新读取');
+        if (!added) throw inconsistent('目录分页没有进展，已停止，避免漏文件');
+    }
+    throw new Error('目录分页超过上限，请分批读取');
+}
+function decimalId(value) {
+    if (typeof value === 'number' && !Number.isSafeInteger(value)) return '';
+    return /^(0|[1-9]\d*)$/.test(String(value)) ? String(value) : '';
+}
+function selectedGuangyaItems() {
+    const seen = new Set();
+    for (const element of document.querySelectorAll('#app *')) {
+        const key = Object.keys(element).find((key) => key.startsWith('__reactFiber$'));
+        let fiber = key && element[key];
+        while (fiber && !seen.has(fiber)) {
+            seen.add(fiber);
+            const props = fiber.memoizedProps;
+            if (
+                props?.rowKey === 'fileId' &&
+                Array.isArray(props.dataSource) &&
+                Array.isArray(props.selectedItems)
+            ) {
+                const ids = props.selectedItems.map(decimalId);
+                if (ids.some((id) => !id)) throw new Error('光鸭选中项目缺少有效 ID，请重新勾选');
+                return ids.map((id) => ({ id, names: [] }));
+            }
+            fiber = fiber.return;
+        }
+    }
+    throw new Error('无法读取光鸭文件列表，请刷新页面后重试');
+}
+function installHooks() {
+    const targetOf = (value) => {
+        try {
+            const url = new URL(value, location.href);
+            return url.origin === 'https://api.guangyapan.com' ? url : null;
+        } catch {
+            return null;
+        }
+    };
+    const captureHeaders = (headers) => {
+        const auth = headers.get('authorization');
+        if (auth && /^Bearer\s+\S+/i.test(auth)) capture.token = auth.replace(/^Bearer\s+/i, '').trim();
+    };
+    page.fetch = function (input, init) {
+        try {
+            const isRequest = input && typeof input === 'object' && typeof input.url === 'string';
+            if (targetOf(isRequest ? input.url : String(input)))
+                captureHeaders(
+                    new page.Headers(
+                        init?.headers !== undefined ? init.headers : isRequest ? input.headers : undefined
+                    )
+                );
+        } catch (_) {}
+        return nativeFetch(...arguments);
+    };
+    const proto = page.XMLHttpRequest?.prototype;
+    if (!proto) return;
+    const metadata = new WeakMap(),
+        open = proto.open,
+        setHeader = proto.setRequestHeader,
+        send = proto.send;
+    proto.open = function (_method, url) {
+        const result = open.apply(this, arguments);
+        metadata.delete(this);
+        try {
+            if (targetOf(String(url))) metadata.set(this, new page.Headers());
+        } catch (_) {}
+        return result;
+    };
+    proto.setRequestHeader = function (name, value) {
+        const result = setHeader.apply(this, arguments);
+        const headers = metadata.get(this);
+        if (headers) {
+            try {
+                headers.append(name, value);
+            } catch (_) {}
+        }
+        return result;
+    };
+    proto.send = function () {
+        const headers = metadata.get(this);
+        if (headers) captureHeaders(headers);
+        return send.apply(this, arguments);
+    };
+}
 async function guangyaListPage(post, parentId, page, loaded = 0) {
     const response = await post(GUANGYA_API.list, {
         parentId: parentId === '0' ? '' : parentId,

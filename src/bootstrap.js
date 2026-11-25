@@ -1,7 +1,4 @@
-if (location.hostname === 'www.guangyapan.com') {
+if (['www.guangyapan.com', 'guangyapan.com'].includes(location.hostname)) {
     installHooks();
-    ready(() => initMergedMedia('光鸭'));
-} else if (is123Host(location.hostname)) {
-    installHooks();
-    ready(() => initMergedMedia('123'));
+    ready(() => initMergedMedia());
 }

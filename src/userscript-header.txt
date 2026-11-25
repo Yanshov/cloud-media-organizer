@@ -1,19 +1,10 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v3.0（重构版）
 // @namespace    local.cloud-media-organizer
-// @version      3.0.56
-// @description  面向 123 云盘和光鸭网盘的影视整理与字幕补齐工具。
+// @version      3.0.57
+// @description  面向光鸭网盘的影视整理与字幕补齐工具。
 // @match        https://www.guangyapan.com/*
-// @match        https://*.123pan.com/*
-// @match        https://123pan.com/*
-// @match        https://*.123pan.cn/*
-// @match        https://123pan.cn/*
-// @match        https://*.123865.com/*
-// @match        https://123865.com/*
-// @match        https://*.123684.com/*
-// @match        https://123684.com/*
-// @match        https://*.123912.com/*
-// @match        https://123912.com/*
+// @match        https://guangyapan.com/*
 // @grant        unsafeWindow
 // @grant        GM_xmlhttpRequest
 // @connect      api.opensubtitles.com

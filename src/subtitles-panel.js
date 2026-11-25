@@ -499,15 +499,15 @@ function mergedSubtitleFillTargets(rows, ready, covered) {
         return targets;
     });
 }
-function initMergedMedia(provider) {
+function initMergedMedia() {
     const flow = { controls: [], registryReady: false };
-    initSubtitles(provider, flow);
-    initMediaOrganizer(provider, flow);
+    initSubtitles(flow);
+    initMediaOrganizer(flow);
 }
 /** Initializes subtitle controls within the shared media organizer. */
-function initSubtitles(provider, flow) {
+function initSubtitles(flow) {
     const ui = makePanel(
-        provider + ' 影视整理',
+        '光鸭 影视整理',
         mediaOrganizerMarkup() +
             `
             <div class="panel-actions"><button id="readSubtitles">查找字幕</button><button id="fillSubtitles" disabled>补齐字幕</button><button id="reviewSubtitleDeletes" disabled>删除字幕</button><button id="importSubtitles" type="button">导入字幕</button><button id="stopSubtitles" hidden>停止</button></div>
@@ -586,7 +586,6 @@ function initSubtitles(provider, flow) {
         for (const secret of [
             ui.get('assrtKey')?.value,
             capture.token,
-            capture.token123,
             ui.get('tmdbKey')?.value,
             ui.get('mediaAIKey')?.value,
         ]) {
@@ -2154,7 +2153,7 @@ function initSubtitles(provider, flow) {
         current.session.token === subtitleContext.session.token &&
         scopeKey(current) === scopeKey(subtitleContext);
     const requireCheckedSelection = async () => {
-        const current = await mediaContext(provider, subtitleContext);
+        const current = await mediaContext();
         check();
         if (!sameCheckedSelection(current)) {
             checkedScope = null;
@@ -2795,7 +2794,7 @@ function initSubtitles(provider, flow) {
         const currentDrive =
             drive ||
             subtitleDrive({
-                session: provider === '光鸭' ? { provider, token: capture.token } : recover123Session(),
+                session: { provider: '光鸭', token: capture.token },
                 source: {},
             });
         currentDrive.verified?.clear();
@@ -2812,7 +2811,7 @@ function initSubtitles(provider, flow) {
         const mediaCount = clearMediaRequestCaches();
         let verificationStatus = '未找到当前账号的字幕核验记录';
         try {
-            const session = provider === '光鸭' ? { provider, token: capture.token } : recover123Session();
+            const session = { provider: '光鸭', token: capture.token };
             if (session?.token) {
                 const verifiedCount = subtitleDrive({ session, source: {} }).verified.clear();
                 verificationStatus = `已清理当前账号字幕正文核验记录 ${verifiedCount} 条`;
@@ -3166,7 +3165,7 @@ function initSubtitles(provider, flow) {
         if (active || !flow.context || checkedScope === null) return;
         const context = flow.context;
         try {
-            const current = await mediaContext(provider, context);
+            const current = await mediaContext();
             if (context !== flow.context || active || sameCheckedSelection(current)) return;
         } catch {
             if (context !== flow.context || active) return;

@@ -3844,13 +3844,11 @@ async function inspectMkvSubtitleTracks(size, readRange, check = () => {}, repor
     throw new Error('在读取限制内未找到 MKV 轨道表');
 }
 function subtitleDrive(context, wait = sleep) {
-    const { session, source } = context,
-        guangya = session.provider === '光鸭';
+    const { session, source } = context;
     const history = typeof mediaFileHistory === 'function' ? mediaFileHistory(session) : null;
     // A token digest scopes receipts without storing a credential. Token changes do not reuse old receipts.
     const receiptKey = session.token
-        ? 'cross-drive-subtitle-uploads-v1:' +
-          subtitleMd5(new TextEncoder().encode((session.provider || '123') + ':' + session.token))
+        ? 'cross-drive-subtitle-uploads-v1:' + subtitleMd5(new TextEncoder().encode('光鸭:' + session.token))
         : '';
     const verifiedKey = receiptKey.replace(
         'cross-drive-subtitle-uploads-v1:',
@@ -3942,7 +3940,7 @@ function subtitleDrive(context, wait = sleep) {
             if (error.stop || [401, 403].includes(error.status)) {
                 error.stop = true;
                 error.phase = 'drive-auth';
-                error.message = `${session.provider || '123'}网盘登录失效或权限不足：${error.message}；请刷新网盘登录后重新检查目录`;
+                error.message = `光鸭网盘登录失效或权限不足：${error.message}；请刷新网盘登录后重新检查目录`;
                 authError = error;
             }
             throw error;
@@ -3950,21 +3948,16 @@ function subtitleDrive(context, wait = sleep) {
     };
     const post = paced(350, (path, body, allowed = [0, 200]) =>
         driveCall(async () => {
-            const response = await requestJson(
-                guangya ? 'https://api.guangyapan.com' + path : session.base + path,
-                {
-                    method: 'POST',
-                    credentials: 'omit',
-                    headers: guangya
-                        ? guangyaAuthHeaders(session.token)
-                        : { ...session.headers, 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body),
-                }
-            );
-            if (!allowed.includes(guangya ? guangyaCode(response) : apiCode(response))) {
+            const response = await requestJson('https://api.guangyapan.com' + path, {
+                method: 'POST',
+                credentials: 'omit',
+                headers: guangyaAuthHeaders(session.token),
+                body: JSON.stringify(body),
+            });
+            if (!allowed.includes(guangyaCode(response))) {
                 const error = apiError('字幕网盘操作', response);
                 error.submissionRejected = [110, 117, 118, 400, 401, 403, 404, 413, 415, 422, 429].includes(
-                    apiCode(response)
+                    guangyaCode(response)
                 );
                 throw error;
             }
@@ -3972,25 +3965,10 @@ function subtitleDrive(context, wait = sleep) {
         })
     );
     const downloadUrl = async (node) => {
-        if (guangya) {
-            const result = await post('/userres/v1/get_res_download_url', { fileId: node.id });
-            return subtitleDownloadUrl(
-                result.data?.signedURL || result.data?.signedUrl || result.data?.downloadUrl
-            );
-        }
-        const result = await post('/file/download_info', {
-            driveId: 0,
-            fileId: node.id,
-            fileName: node.name,
-            size: node.size,
-            etag: node.md5,
-            type: 0,
-            s3keyFlag: node.s3keyFlag,
-        });
-        let url = result.data?.DownloadUrl;
-        const wrapped = new URL(url).searchParams.get('params');
-        if (wrapped) url = atob(wrapped);
-        return subtitleDownloadUrl(url);
+        const result = await post('/userres/v1/get_res_download_url', { fileId: node.id });
+        return subtitleDownloadUrl(
+            result.data?.signedURL || result.data?.signedUrl || result.data?.downloadUrl
+        );
     };
     const retryable = (error) =>
         !error.stop && /连接|超时|网络|fetch|network|HTTP\s*(?:401|403|408|429|5\d\d)/i.test(error.message);
@@ -4073,7 +4051,7 @@ function subtitleDrive(context, wait = sleep) {
     const sameContent = async (node, bytes, md5, progress = () => {}, check = () => {}) => {
         if (node.directory || node.size !== bytes.length) return false;
         let hash = node.md5;
-        if (!/^[a-f0-9]{32}$/i.test(hash || '') && guangya && source.metadata) {
+        if (!/^[a-f0-9]{32}$/i.test(hash || '') && source.metadata) {
             check();
             try {
                 const metadata = await driveCall(() => source.metadata(node));
@@ -4287,70 +4265,29 @@ function subtitleDrive(context, wait = sleep) {
             };
             let uploadAccepted = false;
             try {
-                if (guangya) {
-                    const result = await post(
-                        GUANGYA_API.create,
-                        {
-                            capacity: 2,
-                            name,
-                            parentId: row.node.parentId === '0' ? '' : row.node.parentId,
-                            res: { fileSize: bytes.length, md5 },
-                        },
-                        [0, 156]
-                    );
-                    uploadAccepted = true;
-                    if (guangyaCode(result) !== 156) {
-                        check();
-                        await ossUpload(result.data || {}, bytes);
-                    }
-                    const taskId = taskIdOf(result.data);
-                    if (!taskId) throw new Error('上传请求已提交，但未返回任务 ID');
-                    for (let attempt = 0; attempt < 20; attempt++) {
-                        check();
-                        progress('等待网盘处理字幕');
-                        const task = await post(GUANGYA_API.info, { taskId }, [0, 145, 146, 147, 155, 163]);
-                        if (task.data?.fileId || task.data?.fileInfo?.fileId) break;
-                        if (attempt < 19) await wait(1000);
-                    }
-                } else {
-                    const result = await post('/file/upload_request', {
-                        driveId: 0,
-                        duplicate: 0,
-                        etag: md5,
-                        fileName: name,
-                        parentFileId: row.node.parentId,
-                        size: bytes.length,
-                        type: 0,
-                    });
-                    uploadAccepted = true;
-                    const data = result.data || {};
-                    if (data.Reuse !== true) {
-                        if (!data.Key || !data.Bucket || !data.FileId)
-                            throw new Error('123 未返回完整上传任务，未报告成功');
-                        check();
-                        const body = {
-                            StorageNode: data.StorageNode,
-                            bucket: data.Bucket,
-                            key: data.Key,
-                            uploadId: data.UploadId,
-                            partNumberStart: 1,
-                            partNumberEnd: 2,
-                        };
-                        const auth = await post('/file/s3_upload_object/auth', body);
-                        const url = auth.data?.presignedUrls?.['1'];
-                        if (!url) throw new Error('123 未返回字幕上传地址');
-                        check();
-                        await subtitleBinary(url, { method: 'PUT', bytes });
-                        await post('/file/upload_complete/v2', {
-                            StorageNode: data.StorageNode,
-                            bucket: data.Bucket,
-                            fileId: data.FileId,
-                            fileSize: bytes.length,
-                            isMultipart: false,
-                            key: data.Key,
-                            uploadId: data.UploadId,
-                        });
-                    }
+                const result = await post(
+                    GUANGYA_API.create,
+                    {
+                        capacity: 2,
+                        name,
+                        parentId: row.node.parentId === '0' ? '' : row.node.parentId,
+                        res: { fileSize: bytes.length, md5 },
+                    },
+                    [0, 156]
+                );
+                uploadAccepted = true;
+                if (guangyaCode(result) !== 156) {
+                    check();
+                    await ossUpload(result.data || {}, bytes);
+                }
+                const taskId = taskIdOf(result.data);
+                if (!taskId) throw new Error('上传请求已提交，但未返回任务 ID');
+                for (let attempt = 0; attempt < 20; attempt++) {
+                    check();
+                    progress('等待网盘处理字幕');
+                    const task = await post(GUANGYA_API.info, { taskId }, [0, 145, 146, 147, 155, 163]);
+                    if (task.data?.fileId || task.data?.fileInfo?.fileId) break;
+                    if (attempt < 19) await wait(1000);
                 }
             } catch (error) {
                 if (

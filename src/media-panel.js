@@ -23,8 +23,9 @@ function mediaOrganizerMarkup() {
             <div class="panel-actions"><button id="checkCleanup">识别并检查清理范围</button><button id="runEmpty" disabled>确认清理</button></div>
             <div id="emptyPreview" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto"></div></section>`;
 }
-function initMediaOrganizer(provider, flow) {
+function initMediaOrganizer(flow) {
     const { ui } = flow;
+    const provider = '光鸭';
     ui.moveSettings(['mediaSettings'], 'TMDB 设置', '#settingsBasics');
     ui.moveSettings(['mediaAISettings'], '大模型识别', '#settingsModels');
     ui.get('tmdbKey').value = GM_getValue('cross-drive-tmdb-key', '');
@@ -181,7 +182,7 @@ function initMediaOrganizer(provider, flow) {
             ui.get('emptyPreview').textContent = '';
             meter(emptyOnly ? '检查空文件夹' : extras ? '检查非正片与附件' : '检查不规范项目');
             try {
-                const context = await mediaContext(provider);
+                const context = await mediaContext();
                 emptySession = context.session;
                 emptySource = context.source;
                 checkStopped();
@@ -1461,13 +1462,13 @@ function initMediaOrganizer(provider, flow) {
         render();
         meter('读取选中内容');
         try {
-            const context = await mediaContext(provider);
+            const context = await mediaContext();
             session = context.session;
             source = context.source;
             const selected = context.selected;
             if (!selected.length) throw new Error('请先在 ' + provider + ' 勾选文件或文件夹');
             const parentPath = context.path;
-            const root = mediaClassificationRoot(source, parentPath);
+            const root = mediaClassificationRoot();
             targetPath = root.path;
             targetSession = { ...session, parent: root.id };
             history = mediaFileHistory(session);

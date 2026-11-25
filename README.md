@@ -1,13 +1,13 @@
 # 云盘媒体整理工具
 
-在 123 云盘和光鸭网盘网页里整理影视文件、补齐字幕。
+在光鸭网盘网页里整理影视文件、补齐字幕。
 
-**当前版本 v3.0.56** · [安装脚本](https://raw.githubusercontent.com/Yanshov/cloud-media-organizer/main/cloud-media-organizer-v3.user.js) · [GitHub 发布页](https://github.com/Yanshov/cloud-media-organizer/releases)
+**当前版本 v3.0.57** · [安装脚本](https://raw.githubusercontent.com/Yanshov/cloud-media-organizer/main/cloud-media-organizer-v3.user.js) · [GitHub 发布页](https://github.com/Yanshov/cloud-media-organizer/releases)
 
-| 功能 | 123 云盘 | 光鸭网盘 |
-| --- | --- | --- |
-| 识别影视、预览并整理文件 | 支持 | 支持 |
-| 查找、补齐、导入和删除字幕 | 支持 | 支持 |
+| 功能 | 光鸭网盘 |
+| --- | --- |
+| 识别影视、预览并整理文件 | 支持 |
+| 查找、补齐、导入和删除字幕 | 支持 |
 
 ## 安装
 

@@ -1,19 +1,10 @@
 // ==UserScript==
 // @name         云盘媒体整理工具 v3.0（重构版）
 // @namespace    local.cloud-media-organizer
-// @version      3.0.56
-// @description  面向 123 云盘和光鸭网盘的影视整理与字幕补齐工具。
+// @version      3.0.57
+// @description  面向光鸭网盘的影视整理与字幕补齐工具。
 // @match        https://www.guangyapan.com/*
-// @match        https://*.123pan.com/*
-// @match        https://123pan.com/*
-// @match        https://*.123pan.cn/*
-// @match        https://123pan.cn/*
-// @match        https://*.123865.com/*
-// @match        https://123865.com/*
-// @match        https://*.123684.com/*
-// @match        https://123684.com/*
-// @match        https://*.123912.com/*
-// @match        https://123912.com/*
+// @match        https://guangyapan.com/*
 // @grant        unsafeWindow
 // @grant        GM_xmlhttpRequest
 // @connect      api.opensubtitles.com
@@ -195,10 +186,10 @@ SOFTWARE.
             (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))
     )
         return;
-    const VERSION = '3.0.56';
+    const VERSION = '3.0.57';
     const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
     const nativeFetch = page.fetch.bind(page);
-    const capture = { token: '', token123: '', parent123: null, base123: '', loginUuid123: '' };
+    const capture = { token: '' };
     const GUANGYA_API = {
         create: '/userres/v2/get_res_center_token',
         check: '/userres/v1/check_can_flash_upload',
@@ -578,8 +569,7 @@ SOFTWARE.
             (value) => typeof value === 'string' && value.trim()
         );
         let message = raw ? raw.trim() : '接口未提供错误说明';
-        for (const token of [capture.token, capture.token123])
-            if (token) message = message.split(token).join('[凭证已隐藏]');
+        if (capture.token) message = message.split(capture.token).join('[凭证已隐藏]');
         message = message.replace(/Bearer\s+\S+/gi, 'Bearer [已隐藏]').slice(0, 600);
         const error = new Error(`${stage}返回码 ${code ?? '缺失'}：${message}`);
         error.stop = [110, 117, 118, 401, 403].includes(code);
@@ -1420,241 +1410,123 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         if (typeof value === 'number' && !Number.isSafeInteger(value)) return '';
         return /^(0|[1-9]\d*)$/.test(String(value)) ? String(value) : '';
     }
-    const pan123Domains = ['123pan.com', '123pan.cn', '123865.com', '123684.com', '123912.com'];
-    const is123Host = (host) =>
-        pan123Domains.some((domain) => host === domain || host.endsWith('.' + domain));
-    const pan123ApiOrigins = /* @__PURE__ */ new Set([
-        'https://api.123278.com',
-        'https://api.123panapi.com',
-        'https://api.123panapi.cn',
-    ]);
-    function is123ApiUrl(url) {
-        return (
-            url.protocol === 'https:' &&
-            (pan123ApiOrigins.has(url.origin) || is123Host(url.hostname)) &&
-            /^\/(?:[ab]\/)?api\//.test(url.pathname)
-        );
-    }
-    function read123Storage(key) {
-        try {
-            return page.localStorage?.getItem(key) ?? '';
-        } catch (_) {
-            return '';
-        }
-    }
-    function stored123Token(key) {
-        let value = read123Storage(key);
-        try {
-            value = JSON.parse(value);
-        } catch (_) {}
-        if (typeof value !== 'string') return '';
-        value = value.trim().replace(/^Bearer\s+/i, '');
-        return value && !/^(?:null|undefined)$/i.test(value) && !/[\s"\x00-\x1f]/.test(value) ? value : '';
-    }
-    function current123Parent() {
-        const url = new URL(location.href);
-        const raw = url.searchParams.get('homeFilePath') ?? routeHashParams(url.hash).get('homeFilePath');
-        if (raw != null && raw.trim()) {
-            const ids = raw.split(',').map((id) => decimalId(id.trim()));
-            if (ids.some((id) => !id))
-                throw new Error('网址中的 homeFilePath 不是有效目录路径，请重新打开所需文件夹');
-            return ids.at(-1);
-        }
-        if (url.pathname === '/' && (!url.hash || raw != null)) return '0';
-        if (capture.parent123 != null) return capture.parent123;
-        throw new Error('未识别到当前目录，请打开“全部文件”中的目标文件夹');
-    }
-    async function media123ParentPath(source, breadcrumbs) {
-        if (source.parentId === '0') return '';
-        const url = new URL(location.href);
-        const raw = url.searchParams.get('homeFilePath') ?? routeHashParams(url.hash).get('homeFilePath');
-        const ids = (raw || source.parentId)
-            .split(',')
-            .map((id) => decimalId(id.trim()))
-            .filter((id) => id !== '0');
-        if (ids.some((id) => !id) || ids.at(-1) !== source.parentId)
-            throw new Error('无法确认当前目录路径，请重新打开文件夹后重试');
-        let parent = '0';
-        const names = [];
-        for (const id of ids) {
-            const folder = (await source.children({ id: parent })).find(
-                (item) => item.id === id && item.directory
-            );
-            if (!folder || relativeParts(folder.name).length !== 1)
-                throw new Error('无法读取完整源目录树，请从网盘根目录逐层打开文件夹后重试');
-            names.push(folder.name);
-            breadcrumbs?.push({ id, name: folder.name });
-            parent = id;
-        }
-        return names.join('/');
-    }
-    function recover123Session() {
-        const token = stored123Token('authorToken') || capture.token123 || stored123Token('accessToken');
-        if (!token)
-            throw new Error('没有读到 123 登录状态，请确认当前网页已登录后刷新；无需填写或复制 Token');
-        capture.token123 = token;
-        let base = capture.base123;
-        if (!base) {
-            try {
-                const entries = page.performance?.getEntriesByType('resource') || [];
-                for (let index = entries.length - 1; index >= 0; index--) {
-                    const url2 = new URL(entries[index].name, location.href);
-                    if (is123ApiUrl(url2) && /^\/[ab]\/api\//.test(url2.pathname)) {
-                        base = url2.origin + url2.pathname.match(/^\/[ab]\/api/)[0];
-                        break;
-                    }
-                }
-            } catch (_) {}
-        }
-        if (!base) base = 'https://api.123278.com/b/api';
-        const target = new URL(base + '/file/list/new');
-        if (!is123ApiUrl(target)) throw new Error('123 接口地址不受支持，请刷新页面后重试');
-        const url = new URL(location.href);
-        const hashParams = routeHashParams(url.hash);
-        const category = url.searchParams.get('category') ?? hashParams.get('category');
-        if (
-            (category != null && category !== '' && category !== '0') ||
-            url.searchParams.get('search') ||
-            hashParams.get('search')
-        )
-            throw new Error('请先进入“全部文件”的实际文件夹；分类、搜索和回收站页面不支持');
-        const headers = { Authorization: `Bearer ${token}`, platform: 'web', 'app-version': '3' };
-        const loginUuid = read123Storage('LoginUuid') || capture.loginUuid123;
-        if (loginUuid) headers.LoginUuid = loginUuid;
-        return { token, base, parent: current123Parent(), headers };
-    }
-    function crc32(value) {
-        let crc = -1;
-        for (const byte of new TextEncoder().encode(value)) {
-            crc ^= byte;
-            for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ (crc & 1 ? 3988292384 : 0);
-        }
-        return (crc ^ -1) >>> 0;
-    }
-    function signed123Url(base, params, now = Date.now(), random = Math.round(Math.random() * 1e7)) {
-        const url = new URL(base + '/file/list/new');
-        const minute = new Date(now + 8 * 36e5).toISOString().slice(0, 16).replace(/\D/g, '');
-        const letters = ['a', 'd', 'e', 'f', 'g', 'h', 'l', 'm', 'y', 'i'];
-        const key = String(crc32([...minute].map((char) => letters[Number(char)]).join('')));
-        const timestamp = Math.floor(now / 1e3);
-        const signature = crc32(`${timestamp}|${random}|${url.pathname}|web|3|${key}`);
-        for (const [name, value] of Object.entries(params)) url.searchParams.set(name, String(value));
-        url.searchParams.set(key, `${timestamp}-${random}-${signature}`);
-        return url.href;
-    }
-    function pan123Node(file) {
-        const id = decimalId(file?.FileId);
-        if (
-            !id ||
-            id === '0' ||
-            typeof file.FileName !== 'string' ||
-            ![0, 1].includes(nonNegativeInteger(file.Type))
-        )
-            throw new Error('123 文件元数据格式不正确');
-        return {
-            key: id,
-            id,
-            name: file.FileName,
-            directory: Number(file.Type) === 1,
-            md5: file.Etag,
-            s3keyFlag: file.S3KeyFlag,
-            size: nonNegativeInteger(file.Size),
-        };
-    }
-    function pan123Source(session = recover123Session()) {
-        const { base, parent, headers } = session;
-        const get = paced(250, (url) => requestJson(url, { credentials: 'omit', headers }));
-        return {
-            parentId: parent,
-            async children(node) {
-                let next = '0';
-                return readPages(
-                    async (pageNumber, count) => {
-                        const url = signed123Url(base, {
-                            driveId: 0,
-                            limit: 100,
-                            next,
-                            orderBy: 'file_id',
-                            orderDirection: 'desc',
-                            parentFileId: node.id,
-                            trashed: false,
-                            SearchData: '',
-                            Page: pageNumber,
-                            OnlyLookAbnormalFile: 0,
-                            event: 'homeListFile',
-                            operateType: 4,
-                            inDirectSpace: false,
-                        });
-                        const data = await get(url);
-                        if (![0, 200].includes(apiCode(data))) throw apiError('123 目录读取', data);
-                        if (!Array.isArray(data.data?.InfoList)) throw new Error('123 没有返回文件列表');
-                        const items = data.data.InfoList.map(pan123Node);
-                        next = String(data.data.Next ?? '0');
-                        const total = nonNegativeInteger(data.data.Total);
-                        const more =
-                            next !== '-1' &&
-                            (total != null
-                                ? count + items.length < total
-                                : next !== '0' || items.length >= 100);
-                        return { items, more, total };
-                    },
-                    (file) => file.key
-                );
-            },
-        };
-    }
-    function selected123State() {
-        const containers = document.querySelectorAll(
-            '.file-table-list-wrapper, .tiled-list-content-scroll, .file-wrapper[data-file]'
-        );
-        for (const element of containers) {
+    function selectedGuangyaItems() {
+        const seen = /* @__PURE__ */ new Set();
+        for (const element of document.querySelectorAll('#app *')) {
             const key = Object.keys(element).find((key2) => key2.startsWith('__reactFiber$'));
             let fiber = key && element[key];
-            if (!fiber) continue;
-            let root = fiber;
-            while (root.return) root = root.return;
-            if (root.stateNode?.current && root.stateNode.current !== root) fiber = fiber.alternate || fiber;
-            while (fiber) {
+            while (fiber && !seen.has(fiber)) {
+                seen.add(fiber);
                 const props = fiber.memoizedProps;
-                const state = props?.value?.browserBridge?.homeState || props?.value?.homeState;
-                const ids = props?.rowSelection?.selectedRowKeys ?? state?.selectedRowKeys;
-                if (Array.isArray(ids)) return ids.map((id) => ({ id: decimalId(id), names: [] }));
+                if (
+                    props?.rowKey === 'fileId' &&
+                    Array.isArray(props.dataSource) &&
+                    Array.isArray(props.selectedItems)
+                ) {
+                    const ids = props.selectedItems.map(decimalId);
+                    if (ids.some((id) => !id)) throw new Error('光鸭选中项目缺少有效 ID，请重新勾选');
+                    return ids.map((id) => ({ id, names: [] }));
+                }
                 fiber = fiber.return;
             }
         }
-        return null;
+        throw new Error('无法读取光鸭文件列表，请刷新页面后重试');
     }
-    function selected123Items() {
-        const state = selected123State();
-        if (state !== null) {
-            if (state.some((item) => !item.id)) throw new Error('选中项目缺少有效 ID，请重新选择');
-            return state;
+    function installHooks() {
+        const targetOf = (value) => {
+            try {
+                const url = new URL(value, location.href);
+                return url.origin === 'https://api.guangyapan.com' ? url : null;
+            } catch {
+                return null;
+            }
+        };
+        const captureHeaders = (headers) => {
+            const auth = headers.get('authorization');
+            if (auth && /^Bearer\s+\S+/i.test(auth)) capture.token = auth.replace(/^Bearer\s+/i, '').trim();
+        };
+        page.fetch = function (input, init) {
+            try {
+                const isRequest = input && typeof input === 'object' && typeof input.url === 'string';
+                if (targetOf(isRequest ? input.url : String(input)))
+                    captureHeaders(
+                        new page.Headers(
+                            init?.headers !== void 0 ? init.headers : isRequest ? input.headers : void 0
+                        )
+                    );
+            } catch (_) {}
+            return nativeFetch(...arguments);
+        };
+        const proto = page.XMLHttpRequest?.prototype;
+        if (!proto) return;
+        const metadata = /* @__PURE__ */ new WeakMap(),
+            open = proto.open,
+            setHeader = proto.setRequestHeader,
+            send = proto.send;
+        proto.open = function (_method, url) {
+            const result = open.apply(this, arguments);
+            metadata.delete(this);
+            try {
+                const target = targetOf(String(url));
+                if (target) metadata.set(this, new page.Headers());
+            } catch (_) {}
+            return result;
+        };
+        proto.setRequestHeader = function (name, value) {
+            const result = setHeader.apply(this, arguments);
+            const headers = metadata.get(this);
+            if (headers) {
+                try {
+                    headers.append(name, value);
+                } catch (_) {}
+            }
+            return result;
+        };
+        proto.send = function (body) {
+            const headers = metadata.get(this);
+            if (headers) captureHeaders(headers);
+            return send.apply(this, arguments);
+        };
+    }
+    async function readPages(load, keyOf) {
+        const items = [],
+            seen = /* @__PURE__ */ new Set();
+        let expectedTotal = null;
+        const inconsistent = (message) => Object.assign(new Error(message), { directoryChanged: true });
+        for (let pageNumber = 1; pageNumber <= 1e4; pageNumber++) {
+            const result = await load(pageNumber, items.length);
+            if (!result || !Array.isArray(result.items)) throw new Error('目录列表格式不正确');
+            if (result.total != null) {
+                if (expectedTotal != null && result.total !== expectedTotal)
+                    throw inconsistent('读取期间目录项目数发生变化，请重试');
+                expectedTotal = result.total;
+            }
+            let added = 0;
+            for (const item of result.items) {
+                const key = keyOf(item);
+                if (!key) throw new Error('目录列表缺少 ID');
+                if (seen.has(key))
+                    throw inconsistent('目录分页没有进展或包含重复项目，请重新读取，避免漏文件');
+                seen.add(key);
+                items.push(item);
+                added++;
+            }
+            if (!result.more) {
+                if (expectedTotal != null && items.length !== expectedTotal)
+                    throw inconsistent(
+                        `目录项目数不一致：应有 ${expectedTotal}，实际读到 ${items.length}；请重新读取`
+                    );
+                return items;
+            }
+            if (expectedTotal != null && items.length >= expectedTotal)
+                throw inconsistent('目录分页与总数不一致，请重新读取');
+            if (!added) throw inconsistent('目录分页没有进展，已停止，避免漏文件');
         }
-        const rows = new Set(
-            document.querySelectorAll(
-                '.ant-table-row-selected, .ant-table-row[aria-selected="true"], tr[aria-selected="true"][data-row-key], .file-wrapper.selected[data-file], .file-wrapper[aria-selected="true"][data-file]'
-            )
-        );
-        for (const checkbox of document.querySelectorAll(
-            'input[type="checkbox"]:checked, [role="checkbox"][aria-checked="true"]'
-        )) {
-            const row = checkbox.closest('.ant-table-row, tr[data-row-key], .file-wrapper[data-file]');
-            if (row) rows.add(row);
-        }
-        const items = /* @__PURE__ */ new Map();
-        for (const row of rows) {
-            const id = ['data-row-key', 'data-id', 'data-file-id', 'data-file']
-                .map((key) => decimalId(row.getAttribute(key)))
-                .find(Boolean);
-            const names = id
-                ? []
-                : [...row.querySelectorAll('[title]')]
-                      .map((element) => element.getAttribute('title'))
-                      .filter(Boolean);
-            if (!id && !names.length) throw new Error('选中项目缺少 ID 和文件名，请切换列表视图后重试');
-            items.set(id || row, { id, names });
-        }
-        return [...items.values()];
+        throw new Error('目录分页超过上限，请分批读取');
+    }
+    function decimalId(value) {
+        if (typeof value === 'number' && !Number.isSafeInteger(value)) return '';
+        return /^(0|[1-9]\d*)$/.test(String(value)) ? String(value) : '';
     }
     function selectedGuangyaItems() {
         const seen = /* @__PURE__ */ new Set();
@@ -1678,41 +1550,60 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         }
         throw new Error('无法读取光鸭文件列表，请刷新页面后重试');
     }
-    function inspectRequest(target, headers, body) {
-        const pan123 = is123ApiUrl(target);
-        const tokenKey = pan123 ? 'token123' : 'token';
-        const auth = headers.get('authorization');
-        if (auth && /^Bearer\s+\S+/i.test(auth)) {
-            const token = auth.replace(/^Bearer\s+/i, '').trim();
-            capture[tokenKey] = token;
-        }
-        if (pan123) {
-            const uuid = headers.get('LoginUuid');
-            if (uuid) capture.loginUuid123 = uuid;
-        }
-        const isList = pan123
-            ? /\/(?:[ab]\/)?api\/file\/list(?:\/new)?$/.test(target.pathname)
-            : target.pathname === GUANGYA_API.list;
-        if (isList) {
-            const key = pan123 ? 'parentFileId' : 'parentId';
-            let parent = target.searchParams.get(key);
-            if (typeof body === 'string' && body.trim()) {
-                try {
-                    parent = JSON.parse(body)?.[key] ?? parent;
-                } catch (_) {}
-                if (
-                    parent == null &&
-                    /application\/x-www-form-urlencoded/i.test(headers.get('content-type') || '')
-                )
-                    parent = new URLSearchParams(body).get(key);
-            } else if (body && typeof body.get === 'function') parent = body.get(key) ?? parent;
-            const id = parent === '' ? '0' : decimalId(parent);
-            if (pan123 && id) {
-                capture.parent123 = id;
-                capture.base123 = target.origin + target.pathname.replace(/\/file\/list(?:\/new)?$/, '');
+    function installHooks() {
+        const targetOf = (value) => {
+            try {
+                const url = new URL(value, location.href);
+                return url.origin === 'https://api.guangyapan.com' ? url : null;
+            } catch {
+                return null;
             }
-        }
-        return isList;
+        };
+        const captureHeaders = (headers) => {
+            const auth = headers.get('authorization');
+            if (auth && /^Bearer\s+\S+/i.test(auth)) capture.token = auth.replace(/^Bearer\s+/i, '').trim();
+        };
+        page.fetch = function (input, init) {
+            try {
+                const isRequest = input && typeof input === 'object' && typeof input.url === 'string';
+                if (targetOf(isRequest ? input.url : String(input)))
+                    captureHeaders(
+                        new page.Headers(
+                            init?.headers !== void 0 ? init.headers : isRequest ? input.headers : void 0
+                        )
+                    );
+            } catch (_) {}
+            return nativeFetch(...arguments);
+        };
+        const proto = page.XMLHttpRequest?.prototype;
+        if (!proto) return;
+        const metadata = /* @__PURE__ */ new WeakMap(),
+            open = proto.open,
+            setHeader = proto.setRequestHeader,
+            send = proto.send;
+        proto.open = function (_method, url) {
+            const result = open.apply(this, arguments);
+            metadata.delete(this);
+            try {
+                if (targetOf(String(url))) metadata.set(this, new page.Headers());
+            } catch (_) {}
+            return result;
+        };
+        proto.setRequestHeader = function (name, value) {
+            const result = setHeader.apply(this, arguments);
+            const headers = metadata.get(this);
+            if (headers) {
+                try {
+                    headers.append(name, value);
+                } catch (_) {}
+            }
+            return result;
+        };
+        proto.send = function () {
+            const headers = metadata.get(this);
+            if (headers) captureHeaders(headers);
+            return send.apply(this, arguments);
+        };
     }
     async function guangyaListPage(post, parentId, page2, loaded = 0) {
         const response = await post(GUANGYA_API.list, {
@@ -2421,9 +2312,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
     }
     function mediaFileHistory(session) {
         if (!session?.token) return null;
-        const account = subtitleMd5(
-            new TextEncoder().encode((session.provider || '123') + ':' + session.token)
-        );
+        const account = subtitleMd5(new TextEncoder().encode('光鸭:' + session.token));
         const key = 'cross-drive-file-history-v1:' + account;
         const load = () => new Map(GM_getValue(key, []));
         const snapshot = (node, parentId) => [
@@ -2821,22 +2710,11 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             read = paced(180, request);
         return (endpoint, body) => (endpoint === GUANGYA_API.task ? read : write)(endpoint, body);
     }
-    async function mediaContext(provider, previous) {
-        if (provider === '123') {
-            const session = recover123Session(),
-                source2 = pan123Source(session);
-            const sameFolder =
-                previous?.session.token === session.token && previous.session.parent === session.parent;
-            source2.mediaBreadcrumbs = sameFolder ? previous.source?.mediaBreadcrumbs || [] : [];
-            const path = sameFolder
-                ? previous.path
-                : await media123ParentPath(source2, source2.mediaBreadcrumbs);
-            return { session, source: source2, path, selected: selected123Items() };
-        }
+    async function mediaContext() {
         const folder = currentGuangyaFolder();
         if (!folder) throw new Error('请先打开光鸭“全部”中的文件夹');
         if (!capture.token) throw new Error('未捕获光鸭登录状态，请切换文件夹后重试');
-        const source = guangyaSource(capture.token, false);
+        const source = guangyaSource(capture.token);
         source.parentId = folder.id;
         source.breadcrumbs = folder.breadcrumbs;
         return {
@@ -2847,7 +2725,6 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         };
     }
     async function recycleMedia(item, session, source) {
-        if (session.provider !== '光鸭') return recycleMedia123(item, session, source);
         try {
             await removeGuangyaNode(item, source, mediaGuangyaPost(session.token), sleep, () => {});
         } catch (error) {
@@ -2856,23 +2733,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         }
     }
     function mediaOrganizerWriter(session, source, readSubtitleLinks) {
-        const guangya = session.provider === '光鸭';
-        const post = guangya
-            ? mediaGuangyaPost(session.token, 0)
-            : paced(700, async (path, body) => {
-                  const result = await requestJson(session.base + path, {
-                      method: 'POST',
-                      credentials: 'omit',
-                      headers: { ...session.headers, 'Content-Type': 'application/json' },
-                      body: JSON.stringify(body),
-                  });
-                  if (![0, 200].includes(apiCode(result)))
-                      throw apiError(
-                          '123 ' + path + (body.fileName ? '，请求名称：' + body.fileName : ''),
-                          result
-                      );
-                  return result;
-              });
+        const post = mediaGuangyaPost(session.token, 0);
         const directories = /* @__PURE__ */ new Map([['', session.parent]]),
             bindings = /* @__PURE__ */ new Map(),
             scopeSnapshots = /* @__PURE__ */ new Map();
@@ -3185,23 +3046,16 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 throw new Error('原目录有同名项目，未覆盖：' + name);
             if (current.name !== name) {
                 verify();
-                await post(
-                    guangya ? '/userres/v1/file/rename' : '/file/rename',
-                    guangya
-                        ? { fileId: folder.id, newName: name }
-                        : { driveId: 0, fileId: folder.id, fileName: name }
-                );
+                await post('/userres/v1/file/rename', { fileId: folder.id, newName: name });
                 await confirm(name);
             }
             if (currentParent !== parentId) {
                 verify();
-                const result = await post(
-                    guangya ? '/userres/v1/file/move_file' : '/file/mod_pid',
-                    guangya
-                        ? { fileIds: [folder.id], parentId: parentId === '0' ? '' : parentId }
-                        : { fileIdList: [{ FileId: folder.id }], parentFileId: parentId }
-                );
-                if (guangya && taskIdOf(result.data))
+                const result = await post('/userres/v1/file/move_file', {
+                    fileIds: [folder.id],
+                    parentId: parentId === '0' ? '' : parentId,
+                });
+                if (taskIdOf(result.data))
                     await waitGuangyaDelete(taskIdOf(result.data), post, sleep, '移动文件夹');
                 currentParent = parentId;
                 await confirm(name);
@@ -3223,21 +3077,11 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             }
             if (!matches.length) {
                 verify();
-                if (guangya)
-                    await post(GUANGYA_API.mkdir, {
-                        parentId: parentId === '0' ? '' : parentId,
-                        dirName: name,
-                        failIfNameExist: true,
-                    });
-                else
-                    await post('/file/upload_request', {
-                        driveId: 0,
-                        parentFileId: parentId,
-                        fileName: name,
-                        type: 1,
-                        size: 0,
-                        duplicate: 0,
-                    });
+                await post(GUANGYA_API.mkdir, {
+                    parentId: parentId === '0' ? '' : parentId,
+                    dirName: name,
+                    failIfNameExist: true,
+                });
                 for (let i = 0; i < 3; i++) {
                     if (i) await sleep(400);
                     matches = (await source.children({ id: parentId })).filter((node) => node.name === name);
@@ -3345,24 +3189,17 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             };
             const changeName = async () => {
                 verify();
-                await post(
-                    guangya ? '/userres/v1/file/rename' : '/file/rename',
-                    guangya
-                        ? { fileId: original.id, newName: name }
-                        : { driveId: 0, fileId: original.id, fileName: name }
-                );
+                await post('/userres/v1/file/rename', { fileId: original.id, newName: name });
                 await confirm(name);
                 rememberCurrent();
             };
             const changeParent = async () => {
                 verify();
-                const result = await post(
-                    guangya ? '/userres/v1/file/move_file' : '/file/mod_pid',
-                    guangya
-                        ? { fileIds: [original.id], parentId: targetId === '0' ? '' : targetId }
-                        : { fileIdList: [{ FileId: original.id }], parentFileId: targetId }
-                );
-                if (guangya && taskIdOf(result.data))
+                const result = await post('/userres/v1/file/move_file', {
+                    fileIds: [original.id],
+                    parentId: targetId === '0' ? '' : targetId,
+                });
+                if (taskIdOf(result.data))
                     await waitGuangyaDelete(taskIdOf(result.data), post, sleep, '移动');
                 parentId = targetId;
                 await confirm(current.name);
@@ -3749,60 +3586,8 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
         await recycleMedia(item, session, source);
         return message;
     }
-    async function recycleMedia123(item, session, source) {
-        const fileId = Number(item.id);
-        if (!Number.isSafeInteger(fileId) || fileId <= 0)
-            throw new Error('文件 ID 无法安全转换为网页接口要求的数值');
-        const body = {
-            RequestSource: null,
-            driveId: 0,
-            event: 'intoRecycle',
-            fileTrashInfoList: [{ FileId: fileId }],
-            operatePlace: 1,
-            operation: true,
-        };
-        const result = await requestJson(session.base + '/file/trash', {
-            method: 'POST',
-            credentials: 'omit',
-            headers: { ...session.headers, 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-        });
-        if (![0, 1, 200].includes(apiCode(result))) throw apiError('123 移入回收站', result);
-        for (let i = 0; i < 10; i++) {
-            if (i) await sleep(1e3);
-            if (!(await source.children({ id: item.parentId })).some((n) => n.id === item.id)) return;
-        }
-        throw Object.assign(
-            new Error(
-                '接口已受理，但目录列表仍有此项目，删除结果待确认；返回码 ' +
-                    apiCode(result) +
-                    (result.message ? '：' + result.message : '')
-            ),
-            { pending: true }
-        );
-    }
-    function mediaClassificationRoot(source, parentPath) {
-        const names = parentPath.split('/').filter(Boolean);
-        if (source.breadcrumbs) return { id: '0', path: '' };
-        const categoryIndex = names.findIndex((name) =>
-            ['电影', '剧集', '动漫', '纪录片', '综艺'].includes(name)
-        );
-        if (categoryIndex < 0) return { id: source.parentId, path: parentPath };
-        const url = new URL(location.href);
-        const raw =
-            url.searchParams.get('homeFilePath') ??
-            routeHashParams(url.hash).get('homeFilePath') ??
-            source.parentId;
-        const ids = raw
-            .split(',')
-            .map((id) => decimalId(id.trim()))
-            .filter((id) => id !== '0');
-        if (ids.length !== names.length || ids.some((id) => !id) || ids.at(-1) !== source.parentId)
-            throw new Error('无法确认分类根目录，请从网盘根目录逐层打开后重试');
-        return {
-            id: categoryIndex === 0 ? '0' : ids[categoryIndex - 1],
-            path: names.slice(0, categoryIndex).join('/'),
-        };
+    function mediaClassificationRoot() {
+        return { id: '0', path: '' };
     }
     function mediaAIEndpoint(config, resource = 'chat/completions') {
         if (!config.base || (resource === 'chat/completions' && !config.model))
@@ -4386,8 +4171,9 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             <div class="panel-actions"><button id="checkCleanup">识别并检查清理范围</button><button id="runEmpty" disabled>确认清理</button></div>
             <div id="emptyPreview" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto"></div></section>`;
     }
-    function initMediaOrganizer(provider, flow) {
+    function initMediaOrganizer(flow) {
         const { ui } = flow;
+        const provider = '光鸭';
         ui.moveSettings(['mediaSettings'], 'TMDB 设置', '#settingsBasics');
         ui.moveSettings(['mediaAISettings'], '大模型识别', '#settingsModels');
         ui.get('tmdbKey').value = GM_getValue('cross-drive-tmdb-key', '');
@@ -4544,7 +4330,7 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
                 ui.get('emptyPreview').textContent = '';
                 meter(emptyOnly ? '检查空文件夹' : extras ? '检查非正片与附件' : '检查不规范项目');
                 try {
-                    const context = await mediaContext(provider);
+                    const context = await mediaContext();
                     emptySession = context.session;
                     emptySource = context.source;
                     checkStopped();
@@ -5845,13 +5631,13 @@ summary{cursor:pointer;overflow-wrap:anywhere}details[open]>summary{margin-botto
             render();
             meter('读取选中内容');
             try {
-                const context = await mediaContext(provider);
+                const context = await mediaContext();
                 session = context.session;
                 source = context.source;
                 const selected = context.selected;
                 if (!selected.length) throw new Error('请先在 ' + provider + ' 勾选文件或文件夹');
                 const parentPath = context.path;
-                const root = mediaClassificationRoot(source, parentPath);
+                const root = mediaClassificationRoot();
                 targetPath = root.path;
                 targetSession = { ...session, parent: root.id };
                 history = mediaFileHistory(session);
@@ -10374,12 +10160,11 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
         throw new Error('在读取限制内未找到 MKV 轨道表');
     }
     function subtitleDrive(context, wait = sleep) {
-        const { session, source } = context,
-            guangya = session.provider === '光鸭';
+        const { session, source } = context;
         const history = typeof mediaFileHistory === 'function' ? mediaFileHistory(session) : null;
         const receiptKey = session.token
             ? 'cross-drive-subtitle-uploads-v1:' +
-              subtitleMd5(new TextEncoder().encode((session.provider || '123') + ':' + session.token))
+              subtitleMd5(new TextEncoder().encode('光鸭:' + session.token))
             : '';
         const verifiedKey = receiptKey.replace(
             'cross-drive-subtitle-uploads-v1:',
@@ -10471,7 +10256,7 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                 if (error.stop || [401, 403].includes(error.status)) {
                     error.stop = true;
                     error.phase = 'drive-auth';
-                    error.message = `${session.provider || '123'}网盘登录失效或权限不足：${error.message}；请刷新网盘登录后重新检查目录`;
+                    error.message = `光鸭网盘登录失效或权限不足：${error.message}；请刷新网盘登录后重新检查目录`;
                     authError = error;
                 }
                 throw error;
@@ -10479,47 +10264,27 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
         };
         const post = paced(350, (path, body, allowed = [0, 200]) =>
             driveCall(async () => {
-                const response = await requestJson(
-                    guangya ? 'https://api.guangyapan.com' + path : session.base + path,
-                    {
-                        method: 'POST',
-                        credentials: 'omit',
-                        headers: guangya
-                            ? guangyaAuthHeaders(session.token)
-                            : { ...session.headers, 'Content-Type': 'application/json' },
-                        body: JSON.stringify(body),
-                    }
-                );
-                if (!allowed.includes(guangya ? guangyaCode(response) : apiCode(response))) {
+                const response = await requestJson('https://api.guangyapan.com' + path, {
+                    method: 'POST',
+                    credentials: 'omit',
+                    headers: guangyaAuthHeaders(session.token),
+                    body: JSON.stringify(body),
+                });
+                if (!allowed.includes(guangyaCode(response))) {
                     const error = apiError('字幕网盘操作', response);
                     error.submissionRejected = [
                         110, 117, 118, 400, 401, 403, 404, 413, 415, 422, 429,
-                    ].includes(apiCode(response));
+                    ].includes(guangyaCode(response));
                     throw error;
                 }
                 return response;
             })
         );
         const downloadUrl = async (node) => {
-            if (guangya) {
-                const result2 = await post('/userres/v1/get_res_download_url', { fileId: node.id });
-                return subtitleDownloadUrl(
-                    result2.data?.signedURL || result2.data?.signedUrl || result2.data?.downloadUrl
-                );
-            }
-            const result = await post('/file/download_info', {
-                driveId: 0,
-                fileId: node.id,
-                fileName: node.name,
-                size: node.size,
-                etag: node.md5,
-                type: 0,
-                s3keyFlag: node.s3keyFlag,
-            });
-            let url = result.data?.DownloadUrl;
-            const wrapped = new URL(url).searchParams.get('params');
-            if (wrapped) url = atob(wrapped);
-            return subtitleDownloadUrl(url);
+            const result = await post('/userres/v1/get_res_download_url', { fileId: node.id });
+            return subtitleDownloadUrl(
+                result.data?.signedURL || result.data?.signedUrl || result.data?.downloadUrl
+            );
         };
         const retryable = (error) =>
             !error.stop &&
@@ -10602,7 +10367,7 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
         const sameContent = async (node, bytes, md5, progress = () => {}, check = () => {}) => {
             if (node.directory || node.size !== bytes.length) return false;
             let hash = node.md5;
-            if (!/^[a-f0-9]{32}$/i.test(hash || '') && guangya && source.metadata) {
+            if (!/^[a-f0-9]{32}$/i.test(hash || '') && source.metadata) {
                 check();
                 try {
                     const metadata = await driveCall(() => source.metadata(node));
@@ -10828,74 +10593,29 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
                 };
                 let uploadAccepted = false;
                 try {
-                    if (guangya) {
-                        const result = await post(
-                            GUANGYA_API.create,
-                            {
-                                capacity: 2,
-                                name,
-                                parentId: row.node.parentId === '0' ? '' : row.node.parentId,
-                                res: { fileSize: bytes.length, md5 },
-                            },
-                            [0, 156]
-                        );
-                        uploadAccepted = true;
-                        if (guangyaCode(result) !== 156) {
-                            check();
-                            await ossUpload(result.data || {}, bytes);
-                        }
-                        const taskId = taskIdOf(result.data);
-                        if (!taskId) throw new Error('上传请求已提交，但未返回任务 ID');
-                        for (let attempt = 0; attempt < 20; attempt++) {
-                            check();
-                            progress('等待网盘处理字幕');
-                            const task = await post(
-                                GUANGYA_API.info,
-                                { taskId },
-                                [0, 145, 146, 147, 155, 163]
-                            );
-                            if (task.data?.fileId || task.data?.fileInfo?.fileId) break;
-                            if (attempt < 19) await wait(1e3);
-                        }
-                    } else {
-                        const result = await post('/file/upload_request', {
-                            driveId: 0,
-                            duplicate: 0,
-                            etag: md5,
-                            fileName: name,
-                            parentFileId: row.node.parentId,
-                            size: bytes.length,
-                            type: 0,
-                        });
-                        uploadAccepted = true;
-                        const data = result.data || {};
-                        if (data.Reuse !== true) {
-                            if (!data.Key || !data.Bucket || !data.FileId)
-                                throw new Error('123 未返回完整上传任务，未报告成功');
-                            check();
-                            const body = {
-                                StorageNode: data.StorageNode,
-                                bucket: data.Bucket,
-                                key: data.Key,
-                                uploadId: data.UploadId,
-                                partNumberStart: 1,
-                                partNumberEnd: 2,
-                            };
-                            const auth = await post('/file/s3_upload_object/auth', body);
-                            const url = auth.data?.presignedUrls?.['1'];
-                            if (!url) throw new Error('123 未返回字幕上传地址');
-                            check();
-                            await subtitleBinary(url, { method: 'PUT', bytes });
-                            await post('/file/upload_complete/v2', {
-                                StorageNode: data.StorageNode,
-                                bucket: data.Bucket,
-                                fileId: data.FileId,
-                                fileSize: bytes.length,
-                                isMultipart: false,
-                                key: data.Key,
-                                uploadId: data.UploadId,
-                            });
-                        }
+                    const result = await post(
+                        GUANGYA_API.create,
+                        {
+                            capacity: 2,
+                            name,
+                            parentId: row.node.parentId === '0' ? '' : row.node.parentId,
+                            res: { fileSize: bytes.length, md5 },
+                        },
+                        [0, 156]
+                    );
+                    uploadAccepted = true;
+                    if (guangyaCode(result) !== 156) {
+                        check();
+                        await ossUpload(result.data || {}, bytes);
+                    }
+                    const taskId = taskIdOf(result.data);
+                    if (!taskId) throw new Error('上传请求已提交，但未返回任务 ID');
+                    for (let attempt = 0; attempt < 20; attempt++) {
+                        check();
+                        progress('等待网盘处理字幕');
+                        const task = await post(GUANGYA_API.info, { taskId }, [0, 145, 146, 147, 155, 163]);
+                        if (task.data?.fileId || task.data?.fileInfo?.fileId) break;
+                        if (attempt < 19) await wait(1e3);
                     }
                 } catch (error) {
                     if (
@@ -11497,14 +11217,14 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
             return targets;
         });
     }
-    function initMergedMedia(provider) {
+    function initMergedMedia() {
         const flow = { controls: [], registryReady: false };
-        initSubtitles(provider, flow);
-        initMediaOrganizer(provider, flow);
+        initSubtitles(flow);
+        initMediaOrganizer(flow);
     }
-    function initSubtitles(provider, flow) {
+    function initSubtitles(flow) {
         const ui = makePanel(
-            provider + ' 影视整理',
+            '光鸭 影视整理',
             mediaOrganizerMarkup() +
                 `
             <div class="panel-actions"><button id="readSubtitles">查找字幕</button><button id="fillSubtitles" disabled>补齐字幕</button><button id="reviewSubtitleDeletes" disabled>删除字幕</button><button id="importSubtitles" type="button">导入字幕</button><button id="stopSubtitles" hidden>停止</button></div>
@@ -11583,7 +11303,6 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
             for (const secret of [
                 ui.get('assrtKey')?.value,
                 capture.token,
-                capture.token123,
                 ui.get('tmdbKey')?.value,
                 ui.get('mediaAIKey')?.value,
             ]) {
@@ -13175,7 +12894,7 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
             current.session.token === subtitleContext.session.token &&
             scopeKey(current) === scopeKey(subtitleContext);
         const requireCheckedSelection = async () => {
-            const current = await mediaContext(provider, subtitleContext);
+            const current = await mediaContext();
             check();
             if (!sameCheckedSelection(current)) {
                 checkedScope = null;
@@ -13846,7 +13565,7 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
             const currentDrive =
                 drive ||
                 subtitleDrive({
-                    session: provider === '光鸭' ? { provider, token: capture.token } : recover123Session(),
+                    session: { provider: '光鸭', token: capture.token },
                     source: {},
                 });
             currentDrive.verified?.clear();
@@ -13863,8 +13582,7 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
             const mediaCount = clearMediaRequestCaches();
             let verificationStatus = '未找到当前账号的字幕核验记录';
             try {
-                const session =
-                    provider === '光鸭' ? { provider, token: capture.token } : recover123Session();
+                const session = { provider: '光鸭', token: capture.token };
                 if (session?.token) {
                     const verifiedCount = subtitleDrive({ session, source: {} }).verified.clear();
                     verificationStatus = `已清理当前账号字幕正文核验记录 ${verifiedCount} 条`;
@@ -14218,7 +13936,7 @@ ${plan.contents.map((node) => '  ' + node.path + (node.directory ? '/' : '')).jo
             if (active || !flow.context || checkedScope === null) return;
             const context = flow.context;
             try {
-                const current = await mediaContext(provider, context);
+                const current = await mediaContext();
                 if (context !== flow.context || active || sameCheckedSelection(current)) return;
             } catch {
                 if (context !== flow.context || active) return;
@@ -16412,11 +16130,8 @@ r('fu`,
         'postMessage(\n{type:"error",error:Z.get(x.reason)||"RAR 解压失败："+String(x.mess',
         'age||x).slice(0,180)})}};\n',
     ].join('');
-    if (location.hostname === 'www.guangyapan.com') {
+    if (['www.guangyapan.com', 'guangyapan.com'].includes(location.hostname)) {
         installHooks();
-        ready(() => initMergedMedia('光鸭'));
-    } else if (is123Host(location.hostname)) {
-        installHooks();
-        ready(() => initMergedMedia('123'));
+        ready(() => initMergedMedia());
     }
 })();

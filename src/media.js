@@ -574,7 +574,7 @@ async function collectSelectedTree(selected, source, progress = () => {}, check 
 }
 function mediaFileHistory(session) {
     if (!session?.token) return null;
-    const account = subtitleMd5(new TextEncoder().encode((session.provider || '123') + ':' + session.token));
+    const account = subtitleMd5(new TextEncoder().encode('光鸭:' + session.token));
     const key = 'cross-drive-file-history-v1:' + account;
     const load = () => new Map(GM_getValue(key, []));
     const snapshot = (node, parentId) => [
@@ -965,20 +965,11 @@ function mediaGuangyaPost(token, writeInterval = 650) {
         read = paced(180, request);
     return (endpoint, body) => (endpoint === GUANGYA_API.task ? read : write)(endpoint, body);
 }
-async function mediaContext(provider, previous) {
-    if (provider === '123') {
-        const session = recover123Session(),
-            source = pan123Source(session);
-        const sameFolder =
-            previous?.session.token === session.token && previous.session.parent === session.parent;
-        source.mediaBreadcrumbs = sameFolder ? previous.source?.mediaBreadcrumbs || [] : [];
-        const path = sameFolder ? previous.path : await media123ParentPath(source, source.mediaBreadcrumbs);
-        return { session, source, path, selected: selected123Items() };
-    }
+async function mediaContext() {
     const folder = currentGuangyaFolder();
     if (!folder) throw new Error('请先打开光鸭“全部”中的文件夹');
     if (!capture.token) throw new Error('未捕获光鸭登录状态，请切换文件夹后重试');
-    const source = guangyaSource(capture.token, false);
+    const source = guangyaSource(capture.token);
     source.parentId = folder.id;
     source.breadcrumbs = folder.breadcrumbs;
     return {
@@ -989,7 +980,6 @@ async function mediaContext(provider, previous) {
     };
 }
 async function recycleMedia(item, session, source) {
-    if (session.provider !== '光鸭') return recycleMedia123(item, session, source);
     try {
         await removeGuangyaNode(item, source, mediaGuangyaPost(session.token), sleep, () => {});
     } catch (error) {
@@ -999,23 +989,7 @@ async function recycleMedia(item, session, source) {
 }
 /** Prepares organization plans, rechecks their scope, and performs confirmed writes. */
 function mediaOrganizerWriter(session, source, readSubtitleLinks) {
-    const guangya = session.provider === '光鸭';
-    const post = guangya
-        ? mediaGuangyaPost(session.token, 0)
-        : paced(700, async (path, body) => {
-              const result = await requestJson(session.base + path, {
-                  method: 'POST',
-                  credentials: 'omit',
-                  headers: { ...session.headers, 'Content-Type': 'application/json' },
-                  body: JSON.stringify(body),
-              });
-              if (![0, 200].includes(apiCode(result)))
-                  throw apiError(
-                      '123 ' + path + (body.fileName ? '，请求名称：' + body.fileName : ''),
-                      result
-                  );
-              return result;
-          });
+    const post = mediaGuangyaPost(session.token, 0);
     const directories = new Map([['', session.parent]]),
         bindings = new Map(),
         scopeSnapshots = new Map();
@@ -1329,23 +1303,16 @@ function mediaOrganizerWriter(session, source, readSubtitleLinks) {
             throw new Error('原目录有同名项目，未覆盖：' + name);
         if (current.name !== name) {
             verify();
-            await post(
-                guangya ? '/userres/v1/file/rename' : '/file/rename',
-                guangya
-                    ? { fileId: folder.id, newName: name }
-                    : { driveId: 0, fileId: folder.id, fileName: name }
-            );
+            await post('/userres/v1/file/rename', { fileId: folder.id, newName: name });
             await confirm(name);
         }
         if (currentParent !== parentId) {
             verify();
-            const result = await post(
-                guangya ? '/userres/v1/file/move_file' : '/file/mod_pid',
-                guangya
-                    ? { fileIds: [folder.id], parentId: parentId === '0' ? '' : parentId }
-                    : { fileIdList: [{ FileId: folder.id }], parentFileId: parentId }
-            );
-            if (guangya && taskIdOf(result.data))
+            const result = await post('/userres/v1/file/move_file', {
+                fileIds: [folder.id],
+                parentId: parentId === '0' ? '' : parentId,
+            });
+            if (taskIdOf(result.data))
                 await waitGuangyaDelete(taskIdOf(result.data), post, sleep, '移动文件夹');
             currentParent = parentId;
             await confirm(name);
@@ -1367,21 +1334,11 @@ function mediaOrganizerWriter(session, source, readSubtitleLinks) {
         }
         if (!matches.length) {
             verify();
-            if (guangya)
-                await post(GUANGYA_API.mkdir, {
-                    parentId: parentId === '0' ? '' : parentId,
-                    dirName: name,
-                    failIfNameExist: true,
-                });
-            else
-                await post('/file/upload_request', {
-                    driveId: 0,
-                    parentFileId: parentId,
-                    fileName: name,
-                    type: 1,
-                    size: 0,
-                    duplicate: 0,
-                });
+            await post(GUANGYA_API.mkdir, {
+                parentId: parentId === '0' ? '' : parentId,
+                dirName: name,
+                failIfNameExist: true,
+            });
             for (let i = 0; i < 3; i++) {
                 if (i) await sleep(400);
                 matches = (await source.children({ id: parentId })).filter((node) => node.name === name);
@@ -1489,25 +1446,17 @@ function mediaOrganizerWriter(session, source, readSubtitleLinks) {
         };
         const changeName = async () => {
             verify();
-            await post(
-                guangya ? '/userres/v1/file/rename' : '/file/rename',
-                guangya
-                    ? { fileId: original.id, newName: name }
-                    : { driveId: 0, fileId: original.id, fileName: name }
-            );
+            await post('/userres/v1/file/rename', { fileId: original.id, newName: name });
             await confirm(name);
             rememberCurrent();
         };
         const changeParent = async () => {
             verify();
-            const result = await post(
-                guangya ? '/userres/v1/file/move_file' : '/file/mod_pid',
-                guangya
-                    ? { fileIds: [original.id], parentId: targetId === '0' ? '' : targetId }
-                    : { fileIdList: [{ FileId: original.id }], parentFileId: targetId }
-            );
-            if (guangya && taskIdOf(result.data))
-                await waitGuangyaDelete(taskIdOf(result.data), post, sleep, '移动');
+            const result = await post('/userres/v1/file/move_file', {
+                fileIds: [original.id],
+                parentId: targetId === '0' ? '' : targetId,
+            });
+            if (taskIdOf(result.data)) await waitGuangyaDelete(taskIdOf(result.data), post, sleep, '移动');
             parentId = targetId;
             await confirm(current.name);
             rememberCurrent();
@@ -1887,60 +1836,8 @@ async function removeMediaNonstandard(item, session, source, check = () => {}) {
     await recycleMedia(item, session, source);
     return message;
 }
-async function recycleMedia123(item, session, source) {
-    const fileId = Number(item.id);
-    if (!Number.isSafeInteger(fileId) || fileId <= 0)
-        throw new Error('文件 ID 无法安全转换为网页接口要求的数值');
-    const body = {
-        RequestSource: null,
-        driveId: 0,
-        event: 'intoRecycle',
-        fileTrashInfoList: [{ FileId: fileId }],
-        operatePlace: 1,
-        operation: true,
-    };
-    const result = await requestJson(session.base + '/file/trash', {
-        method: 'POST',
-        credentials: 'omit',
-        headers: { ...session.headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-    });
-    if (![0, 1, 200].includes(apiCode(result))) throw apiError('123 移入回收站', result);
-    for (let i = 0; i < 10; i++) {
-        if (i) await sleep(1000);
-        if (!(await source.children({ id: item.parentId })).some((n) => n.id === item.id)) return;
-    }
-    throw Object.assign(
-        new Error(
-            '接口已受理，但目录列表仍有此项目，删除结果待确认；返回码 ' +
-                apiCode(result) +
-                (result.message ? '：' + result.message : '')
-        ),
-        { pending: true }
-    );
-}
-function mediaClassificationRoot(source, parentPath) {
-    const names = parentPath.split('/').filter(Boolean);
-    if (source.breadcrumbs) return { id: '0', path: '' };
-    const categoryIndex = names.findIndex((name) =>
-        ['电影', '剧集', '动漫', '纪录片', '综艺'].includes(name)
-    );
-    if (categoryIndex < 0) return { id: source.parentId, path: parentPath };
-    const url = new URL(location.href);
-    const raw =
-        url.searchParams.get('homeFilePath') ??
-        routeHashParams(url.hash).get('homeFilePath') ??
-        source.parentId;
-    const ids = raw
-        .split(',')
-        .map((id) => decimalId(id.trim()))
-        .filter((id) => id !== '0');
-    if (ids.length !== names.length || ids.some((id) => !id) || ids.at(-1) !== source.parentId)
-        throw new Error('无法确认分类根目录，请从网盘根目录逐层打开后重试');
-    return {
-        id: categoryIndex === 0 ? '0' : ids[categoryIndex - 1],
-        path: names.slice(0, categoryIndex).join('/'),
-    };
+function mediaClassificationRoot() {
+    return { id: '0', path: '' };
 }
 function mediaAIEndpoint(config, resource = 'chat/completions') {
     if (!config.base || (resource === 'chat/completions' && !config.model))

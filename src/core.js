@@ -6,10 +6,10 @@ if (
 )
     return;
 
-const VERSION = '3.0.56';
+const VERSION = '3.0.57';
 const page = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
 const nativeFetch = page.fetch.bind(page);
-const capture = { token: '', token123: '', parent123: null, base123: '', loginUuid123: '' };
+const capture = { token: '' };
 const GUANGYA_API = {
     create: '/userres/v2/get_res_center_token',
     check: '/userres/v1/check_can_flash_upload',
@@ -393,8 +393,7 @@ function apiError(stage, data) {
         (value) => typeof value === 'string' && value.trim()
     );
     let message = raw ? raw.trim() : '接口未提供错误说明';
-    for (const token of [capture.token, capture.token123])
-        if (token) message = message.split(token).join('[凭证已隐藏]');
+    if (capture.token) message = message.split(capture.token).join('[凭证已隐藏]');
     message = message.replace(/Bearer\s+\S+/gi, 'Bearer [已隐藏]').slice(0, 600);
     const error = new Error(`${stage}返回码 ${code ?? '缺失'}：${message}`);
     error.stop = [110, 117, 118, 401, 403].includes(code);
